@@ -7,6 +7,8 @@ namespace DartSass\Compilers;
 use Closure;
 use DartSass\Parsers\Nodes\AstNode;
 use DartSass\Parsers\Nodes\CommentNode;
+use DartSass\Parsers\Nodes\NumberNode;
+use DartSass\Parsers\Nodes\OperationNode;
 use DartSass\Utils\PositionTracker;
 use DartSass\Utils\ResultFormatterInterface;
 use DartSass\Utils\StringFormatter;
@@ -15,7 +17,9 @@ use function current;
 use function key;
 use function max;
 use function str_repeat;
+use function str_starts_with;
 use function strlen;
+use function substr;
 
 readonly class DeclarationCompiler
 {
@@ -62,12 +66,17 @@ readonly class DeclarationCompiler
 
                 $generatedPosition = $this->positionTracker->getCurrentPosition();
 
-                $evaluatedValue = $expression($value);
-                if ($evaluatedValue === null || $evaluatedValue === '') {
-                    continue;
+                if ($this->shouldPreserveSlashOperation($value)) {
+                    $formattedValue = $this->formatPreservedSlashOperation($value, $expression);
+                } else {
+                    $evaluatedValue = $expression($value);
+                    if ($evaluatedValue === null || $evaluatedValue === '') {
+                        continue;
+                    }
+
+                    $formattedValue = $this->resultFormatter->format($evaluatedValue);
                 }
 
-                $formattedValue = $this->resultFormatter->format($evaluatedValue);
                 if ($value->important ?? false) {
                     $formattedValue .= ' !important';
                 }
@@ -99,5 +108,27 @@ readonly class DeclarationCompiler
         }
 
         return $css;
+    }
+
+    private function shouldPreserveSlashOperation(mixed $value): bool
+    {
+        if (! $value instanceof OperationNode || $value->operator !== '/') {
+            return false;
+        }
+
+        if (! $value->left instanceof NumberNode || ! $value->right instanceof NumberNode) {
+            return false;
+        }
+
+        return ($value->left->unit === null) !== ($value->right->unit === null);
+    }
+
+    private function formatPreservedSlashOperation(OperationNode $value, Closure $expression): string
+    {
+        return StringFormatter::concatMultiple([
+            $this->resultFormatter->format($expression($value->left)),
+            ' / ',
+            $this->resultFormatter->format($expression($value->right)),
+        ]);
     }
 }

@@ -8,6 +8,7 @@ use Closure;
 use DartSass\Exceptions\CompilationException;
 use DartSass\Parsers\Nodes\AstNode;
 use DartSass\Parsers\Nodes\OperationNode;
+use DartSass\Utils\ArithmeticCalculator;
 use DartSass\Utils\ResultFormatterInterface;
 use DartSass\Values\SassNumber;
 
@@ -73,8 +74,7 @@ readonly class CalcFunctionEvaluator
     private function resolveNode(mixed $node, Closure $expression): mixed
     {
         if ($node instanceof OperationNode) {
-            $node = $this->ensurePrecedence($node);
-
+            $node  = $this->ensurePrecedence($node);
             $left  = $this->resolveNode($node->left, $expression);
             $right = $this->resolveNode($node->right, $expression);
 
@@ -92,9 +92,8 @@ readonly class CalcFunctionEvaluator
 
     private function ensurePrecedence(OperationNode $node): OperationNode
     {
-        $left  = $node->left;
-        $right = $node->right;
-
+        $left     = $node->left;
+        $right    = $node->right;
         $operator = $node->operator;
 
         if (($operator === '*' || $operator === '/') && $left instanceof OperationNode) {
@@ -127,7 +126,7 @@ readonly class CalcFunctionEvaluator
                     '+' => $leftNumber->add($rightNumber),
                     '-' => $leftNumber->subtract($rightNumber),
                     '*' => $leftNumber->multiply($rightNumber),
-                    '/' => $leftNumber->divide($rightNumber),
+                    '/' => ArithmeticCalculator::divide($leftNumber, $rightNumber),
                 };
 
                 return $result->toArray();
@@ -137,7 +136,6 @@ readonly class CalcFunctionEvaluator
 
         $lStr = $this->formatResult($left);
         $rStr = $this->formatResult($right);
-
         $lStr = $this->unwrapCalc($lStr);
         $rStr = $this->unwrapCalc($rStr);
 
