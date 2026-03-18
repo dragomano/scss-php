@@ -16,6 +16,7 @@ use function max;
 use function mb_strlen;
 use function mb_substr;
 use function min;
+use function preg_match;
 use function preg_quote;
 use function preg_split;
 use function random_int;
@@ -234,7 +235,7 @@ class StringModule extends AbstractModule
             throw new CompilationException('to-upper-case() argument must be a string');
         }
 
-        return StringFormatter::forceQuoteString(strtoupper($this->unquoteString($string)));
+        return $this->formatCaseTransformedString($string, strtoupper($this->unquoteString($string)));
     }
 
     public function toLowerCase(array $args): string
@@ -245,7 +246,7 @@ class StringModule extends AbstractModule
             throw new CompilationException('to-lower-case() argument must be a string');
         }
 
-        return StringFormatter::forceQuoteString(strtolower($this->unquoteString($string)));
+        return $this->formatCaseTransformedString($string, strtolower($this->unquoteString($string)));
     }
 
     public function uniqueId(array $args): string
@@ -310,5 +311,23 @@ class StringModule extends AbstractModule
 
         // Replace escape characters with letters for CSS output
         return str_replace(["\n", "\t", "\r"], ['n', 't', 'r'], $unquoted);
+    }
+
+    private function formatCaseTransformedString(string $source, string $transformed): string
+    {
+        if ($this->shouldQuoteCaseTransformedString($source)) {
+            return StringFormatter::forceQuoteString($transformed);
+        }
+
+        return $transformed;
+    }
+
+    private function shouldQuoteCaseTransformedString(string $source): bool
+    {
+        if ($this->isQuoted($source) || $source === '') {
+            return true;
+        }
+
+        return preg_match('/^[a-zA-Z_-][a-zA-Z0-9_-]*$/', $source) !== 1;
     }
 }

@@ -7,6 +7,7 @@ namespace DartSass\Evaluators;
 use Closure;
 use DartSass\Exceptions\CompilationException;
 use DartSass\Parsers\Nodes\OperationNode;
+use DartSass\Parsers\Nodes\StringNode;
 use DartSass\Utils\ArithmeticCalculator;
 use DartSass\Utils\LazyEvaluatable;
 use DartSass\Utils\LazyValue;
@@ -41,8 +42,8 @@ class OperationEvaluator implements EvaluatorInterface
     public function evaluate(mixed $expression): string|bool|SassNumber
     {
         if ($expression instanceof OperationNode) {
-            $left     = ($this->nodeEvaluator)($expression->left);
-            $right    = ($this->nodeEvaluator)($expression->right);
+            $left     = $this->evaluateOperand($expression->left);
+            $right    = $this->evaluateOperand($expression->right);
             $operator = $expression->operator;
 
             return $this->evaluateOperation($left, $operator, $right);
@@ -79,6 +80,17 @@ class OperationEvaluator implements EvaluatorInterface
 
         if ($value instanceof LazyEvaluatable) {
             return $value->evaluate();
+        }
+
+        return $value;
+    }
+
+    private function evaluateOperand(mixed $operand): mixed
+    {
+        $value = ($this->nodeEvaluator)($operand);
+
+        if ($operand instanceof StringNode && $operand->quoted && is_string($value)) {
+            return StringFormatter::forceQuoteString(StringFormatter::unquoteString($value));
         }
 
         return $value;

@@ -87,4 +87,9 @@ readonly class FunctionHandler
 
         return $this->router->route($name, $args);
     }
+
+    public function shouldPreserveQuotedStringArguments(string $name): bool
+    {
+        return $this->router->shouldPreserveQuotedStringArguments($name);
+    }
 }

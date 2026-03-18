@@ -33,6 +33,7 @@ use function is_string;
 use function preg_match;
 use function preg_replace;
 use function str_contains;
+use function str_ends_with;
 use function trim;
 
 class ExpressionParser extends AbstractParser
@@ -270,7 +271,11 @@ class ExpressionParser extends AbstractParser
             'colon',
             'semicolon'           => new OperatorNode($token->value, $token->line),
             'hex_color'           => new HexColorNode($token->value, $token->line),
-            'string'              => new StringNode(trim($token->value, '"\''), $token->line),
+            'string'              => new StringNode(
+                trim($token->value, '"\''),
+                $token->line,
+                $this->isQuotedStringToken($token->value)
+            ),
             'variable'            => new VariableNode($token->value, $token->line),
             'css_custom_property' => new CssCustomPropertyNode($token->value, $token->line),
             'important_modifier'  => new IdentifierNode('!important', $token->line),
@@ -450,7 +455,7 @@ class ExpressionParser extends AbstractParser
         $fullContent = preg_replace('/^url\((.*)\)$/s', '$1', $token->value);
         $fullContent = trim($fullContent);
 
-        $urlNode = new StringNode($fullContent, $token->line);
+        $urlNode = new StringNode($fullContent, $token->line, $this->isQuotedStringToken($fullContent));
 
         return new FunctionNode('url', [$urlNode], line: $token->line);
     }
@@ -681,7 +686,11 @@ class ExpressionParser extends AbstractParser
             case 'string':
                 $this->advanceToken();
 
-                return new StringNode(trim($token->value, "'\""), $token->line);
+                return new StringNode(
+                    trim($token->value, "'\""),
+                    $token->line,
+                    $this->isQuotedStringToken($token->value)
+                );
 
             case 'identifier':
                 $this->advanceToken();
@@ -696,5 +705,12 @@ class ExpressionParser extends AbstractParser
             default:
                 return $this->parse();
         }
+    }
+
+    private function isQuotedStringToken(string $value): bool
+    {
+        return $value !== ''
+            && (($value[0] === '"' && str_ends_with($value, '"'))
+            || ($value[0] === "'" && str_ends_with($value, "'")));
     }
 }

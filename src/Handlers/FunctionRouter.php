@@ -8,6 +8,7 @@ use DartSass\Exceptions\CompilationException;
 use DartSass\Handlers\Builtins\ConditionalPreservationInterface;
 use DartSass\Handlers\Builtins\LazyEvaluationInterface;
 use DartSass\Handlers\Builtins\ModuleHandlerInterface;
+use DartSass\Handlers\Builtins\QuotedStringArgumentsInterface;
 use DartSass\Utils\ResultFormatterInterface;
 use Exception;
 
@@ -61,6 +62,15 @@ readonly class FunctionRouter
                 "Error processing function $functionName: " . $e->getMessage()
             );
         }
+    }
+
+    public function shouldPreserveQuotedStringArguments(string $functionName): bool
+    {
+        $shortName = $this->getShortName($functionName);
+        $handler   = $this->getHandler($shortName, $functionName);
+
+        return $handler instanceof QuotedStringArgumentsInterface
+            && $handler->shouldPreserveQuotedStringArguments($shortName);
     }
 
     private function getShortName(string $functionName): string

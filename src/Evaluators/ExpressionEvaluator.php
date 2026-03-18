@@ -99,8 +99,12 @@ readonly class ExpressionEvaluator implements EvaluatorInterface
             return $node->value;
         }
 
-        if ($node instanceof ConditionNode || $node instanceof InterpolationNode) {
+        if ($node instanceof ConditionNode) {
             return $this->evaluate($node->expression);
+        }
+
+        if ($node instanceof InterpolationNode) {
+            return $this->unwrapInterpolationResult($this->evaluate($node->expression));
         }
 
         $type = $node->type;
@@ -168,12 +172,15 @@ readonly class ExpressionEvaluator implements EvaluatorInterface
         $name = $node->name;
         $args = $node->args ?? [];
 
+        if ($name === 'calc') {
+            return $this->evaluateCalcFunction($args);
+        }
+
         if ($this->hasSlashSeparator($args)) {
             return $this->evaluateFunctionWithSlashSeparator($name, $args);
         }
 
         return match (true) {
-            $name === 'calc' => $this->evaluateCalcFunction($args),
             $name === 'if'   => $this->evaluateIfFunction($args),
             $name === 'url'  => $this->evaluateUrlFunction($args),
             default          => $this->evaluateStandardFunction($name, $args),
@@ -201,6 +208,10 @@ readonly class ExpressionEvaluator implements EvaluatorInterface
 
         if (preg_match('/^[a-zA-Z_-][a-zA-Z0-9_-]*$/', $value)) {
             return $value;
+        }
+
+        if ($node->quoted) {
+            return StringFormatter::forceQuoteString(StringFormatter::unquoteString($value));
         }
 
         return StringFormatter::forceQuoteString($value);
@@ -355,6 +366,12 @@ readonly class ExpressionEvaluator implements EvaluatorInterface
 
     private function evaluateStandardFunction(string $name, array $args): mixed
     {
+        if ($this->functionHandler->shouldPreserveQuotedStringArguments($name)) {
+            $args = $this->evaluateArgumentsPreservingQuotedStrings($args);
+
+            return $this->functionHandler->call($name, $args);
+        }
+
         $args = SpreadHelper::expand(
             $this->evaluateArguments($args),
             $this->evaluate(...)
@@ -401,20 +418,17 @@ readonly class ExpressionEvaluator implements EvaluatorInterface
         $originalContent = $arg->value;
 
         if (str_contains($originalContent, '#{$')) {
-            $wasQuoted = preg_match('/^["\'](.*)["\']$/', $originalContent);
             $evaluated = $this->evaluate($arg);
 
             return [
-                'value'  => $evaluated,
-                'quoted' => $wasQuoted,
+                'value'  => $arg->quoted ? StringFormatter::unquoteString($evaluated) : $evaluated,
+                'quoted' => $arg->quoted,
             ];
         }
 
-        $wasQuoted = preg_match('/^["\'](.*)["\']$/', $originalContent, $matches);
-
-        if ($wasQuoted) {
+        if ($arg->quoted) {
             return [
-                'value'  => $matches[1],
+                'value'  => StringFormatter::unquoteString($originalContent),
                 'quoted' => true,
             ];
         }
@@ -457,6 +471,25 @@ readonly class ExpressionEvaluator implements EvaluatorInterface
         return $processedArgs;
     }
 
+    private function evaluateArgumentsPreservingQuotedStrings(array $args): array
+    {
+        $evaluated = [];
+
+        foreach ($args as $key => $arg) {
+            if ($arg instanceof StringNode && $arg->quoted) {
+                $evaluated[$key] = StringFormatter::forceQuoteString(
+                    $this->interpolationEvaluator->evaluate($arg->value, $this->evaluate(...))
+                );
+
+                continue;
+            }
+
+            $evaluated[$key] = $this->evaluate($arg);
+        }
+
+        return SpreadHelper::expand($evaluated, $this->evaluate(...));
+    }
+
     private function negateNumber(SassNumber $number): float|array
     {
         $negated = ArithmeticCalculator::negate($number);
@@ -467,5 +500,14 @@ readonly class ExpressionEvaluator implements EvaluatorInterface
     private function formatValue(mixed $value): string
     {
         return $this->resultFormatter->format($value);
+    }
+
+    private function unwrapInterpolationResult(mixed $value): mixed
+    {
+        if (is_string($value) && StringFormatter::isQuoted($value)) {
+            return StringFormatter::unquoteString($value);
+        }
+
+        return $value;
     }
 }
