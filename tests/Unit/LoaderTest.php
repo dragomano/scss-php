@@ -117,6 +117,52 @@ describe('Loader', function () {
                 }
             }
         });
+
+        it('resolves current directory before configured include paths', function () {
+            $workDir = sys_get_temp_dir() . '/dart-sass-loader-cwd-' . uniqid('', true);
+            $loadDir = sys_get_temp_dir() . '/dart-sass-loader-loadpath-' . uniqid('', true);
+
+            mkdir($workDir, 0777, true);
+            mkdir($loadDir, 0777, true);
+
+            $cwdPath = $workDir . '/style.scss';
+            $loadPath = $loadDir . '/style.scss';
+
+            file_put_contents($cwdPath, '.from-cwd { color: red; }');
+            file_put_contents($loadPath, '.from-loadpath { color: blue; }');
+
+            $initialCwd = getcwd();
+
+            try {
+                chdir($workDir);
+
+                $loader = new Loader([$loadDir]);
+                $result = $loader->load('style');
+
+                expect($result['content'])->toContain('.from-cwd')
+                    ->and($result['content'])->not->toContain('.from-loadpath');
+            } finally {
+                if ($initialCwd !== false) {
+                    chdir($initialCwd);
+                }
+
+                if (file_exists($cwdPath)) {
+                    unlink($cwdPath);
+                }
+
+                if (file_exists($loadPath)) {
+                    unlink($loadPath);
+                }
+
+                if (is_dir($workDir)) {
+                    rmdir($workDir);
+                }
+
+                if (is_dir($loadDir)) {
+                    rmdir($loadDir);
+                }
+            }
+        });
     });
 
     describe('addPath()', function () {

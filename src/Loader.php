@@ -167,11 +167,17 @@ final class Loader implements LoaderInterface
     {
         $cwd = getcwd();
 
-        if ($cwd === false || in_array($cwd, $this->includePaths, true)) {
+        if ($cwd === false) {
             return $this->includePaths;
         }
 
-        return [$cwd, ...$this->includePaths];
+        $resolvedCwd = realpath($cwd);
+
+        if ($resolvedCwd === false || in_array($resolvedCwd, $this->includePaths, true)) {
+            return $this->includePaths;
+        }
+
+        return [$resolvedCwd, ...$this->includePaths];
     }
 
     private function isImportOnlyPath(string $path): bool
