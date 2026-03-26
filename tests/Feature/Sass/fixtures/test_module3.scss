@@ -1,6 +1,0 @@
-$max-width: 1200px;
-$min-padding: 10px;
-
-@mixin responsive-text {
-  font-size: clamp(12px, 2.5vw, 20px);
-}

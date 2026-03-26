@@ -2,44 +2,42 @@
 
 declare(strict_types=1);
 
-use DartSass\Values\SassList;
+use Bugo\SCSS\Values\SassList;
 
-describe('SassList', function () {
-    describe('__toString()', function () {
-        it('formats list with space separator', function () {
-            $list = new SassList(['a', 'b', 'c']);
+describe(SassList::class, function () {
+    it('renders space separated list', function () {
+        $list = new SassList(['10px', '20px'], 'space');
 
-            expect((string) $list)->toBe('a b c');
-        });
+        expect($list->toCss())->toBe('10px 20px');
+    });
 
-        it('formats list with comma separator', function () {
-            $list = new SassList(['a', 'b', 'c'], 'comma');
+    it('optimizes four-value box shorthand', function () {
+        $list = new SassList(['10px', '20px', '10px', '20px'], 'space');
 
-            expect((string) $list)->toBe('a, b, c');
-        });
+        expect($list->toCss())->toBe('10px 20px');
+    });
 
-        it('formats list with slash separator', function () {
-            $list = new SassList(['a', 'b', 'c'], 'slash');
+    it('optimizes three-value box shorthand to two values', function () {
+        $list = new SassList(['3px', '6px', '3px'], 'space');
 
-            expect((string) $list)->toBe('a / b / c');
-        });
+        expect($list->toCss())->toBe('3px 6px');
+    });
 
-        it('formats bracketed list', function () {
-            $list = new SassList(['a', 'b', 'c'], 'space', true);
+    it('optimizes three-value box shorthand to one value', function () {
+        $list = new SassList(['5px', '5px', '5px'], 'space');
 
-            expect((string) $list)->toBe('[a b c]');
-        });
+        expect($list->toCss())->toBe('5px');
+    });
 
-        it('formats empty list', function () {
-            $list = new SassList([]);
+    it('optimizes two equal box values to one value', function () {
+        $list = new SassList(['4px', '4px'], 'space');
 
-            expect((string) $list)->toBe('');
-        });
+        expect($list->toCss())->toBe('4px');
+    });
 
-        it('formats list with numbers', function () {
-            $list = new SassList([1, 2, 3]);
+    it('keeps non-space lists unchanged in box optimization mode', function () {
+        $list = new SassList(['4px', '4px'], 'comma');
 
-            expect((string) $list)->toBe('1 2 3');
-        });
+        expect($list->toCss())->toBe('4px, 4px');
     });
 })->covers(SassList::class);

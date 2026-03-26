@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use DartSass\Normalizers\NoOpNormalizer;
-use DartSass\Parsers\Syntax;
+use Bugo\SCSS\Normalizers\NoOpNormalizer;
+use Bugo\SCSS\Syntax;
 
 describe('NoOpNormalizer', function () {
     beforeEach(function () {

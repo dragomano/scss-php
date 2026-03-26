@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
-use DartSass\Utils\SourceMapGenerator;
+use Bugo\SCSS\Utils\SourceMapGenerator;
+use Bugo\SCSS\Utils\SourceMapMapping;
+use Bugo\SCSS\Utils\SourceMapOptions;
+use Bugo\SCSS\Utils\SourceMapPosition;
 use Tests\ReflectionAccessor;
 
 beforeEach(function () {
@@ -10,16 +13,48 @@ beforeEach(function () {
     $this->accessor  = new ReflectionAccessor($this->generator);
 });
 
+function mapping(
+    int $generatedLine,
+    int $generatedColumn,
+    int $originalLine,
+    int $originalColumn,
+    int $sourceIndex = 0
+): SourceMapMapping {
+    return new SourceMapMapping(
+        new SourceMapPosition($generatedLine, $generatedColumn),
+        new SourceMapPosition($originalLine, $originalColumn),
+        $sourceIndex,
+    );
+}
+
+function sourceMapOptions(
+    int $outputLines = 0,
+    bool $includeSources = false,
+    string $sourceContent = '',
+    string $sourceMapRoot = '',
+    array $sources = []
+): SourceMapOptions {
+    return new SourceMapOptions(
+        outputLines: $outputLines,
+        sourceMapRoot: $sourceMapRoot,
+        sourceContent: $sourceContent,
+        includeSources: $includeSources,
+        sources: $sources,
+    );
+}
+
 describe('source map generation', function () {
     it('provides backward compatibility without options', function () {
         $mappings = [
-            [
-                'generated' => ['line' => 1, 'column' => 0],
-                'original'  => ['line' => 1, 'column' => 0],
-            ],
+            mapping(1, 0, 1, 0),
         ];
 
-        $result = $this->generator->generate($mappings, 'input.scss', 'output.css');
+        $result = $this->generator->generate(
+            $mappings,
+            'input.scss',
+            'output.css',
+            sourceMapOptions()
+        );
 
         $sourceMap = json_decode($result, true);
 
@@ -32,14 +67,14 @@ describe('source map generation', function () {
 
     it('includes sourcesContent when includeSources is true', function () {
         $mappings = [
-            [
-                'generated' => ['line' => 1, 'column' => 0],
-                'original'  => ['line' => 1, 'column' => 0],
-            ],
+            mapping(1, 0, 1, 0),
         ];
-        $options = ['includeSources' => true, 'sourceContent' => ''];
-
-        $result = $this->generator->generate($mappings, 'input.scss', 'output.css', $options);
+        $result = $this->generator->generate(
+            $mappings,
+            'input.scss',
+            'output.css',
+            sourceMapOptions(includeSources: true)
+        );
 
         $sourceMap = json_decode($result, true);
 
@@ -51,19 +86,16 @@ describe('source map generation', function () {
 describe('mappings generation', function () {
     it('adds comma between multiple mappings on the same line', function () {
         $mappings = [
-            [
-                'generated'   => ['line' => 1, 'column' => 0],
-                'original'    => ['line' => 1, 'column' => 0],
-                'sourceIndex' => 0,
-            ],
-            [
-                'generated'   => ['line' => 1, 'column' => 10],
-                'original'    => ['line' => 1, 'column' => 10],
-                'sourceIndex' => 0,
-            ],
+            mapping(1, 0, 1, 0),
+            mapping(1, 10, 1, 10),
         ];
 
-        $result = $this->generator->generate($mappings, 'source.scss', 'output.css');
+        $result = $this->generator->generate(
+            $mappings,
+            'source.scss',
+            'output.css',
+            sourceMapOptions()
+        );
         $sourceMap = json_decode($result, true);
 
         expect($sourceMap)->toBeArray()
@@ -72,24 +104,17 @@ describe('mappings generation', function () {
 
     it('handles multiple mappings on same line after empty lines', function () {
         $mappings = [
-            [
-                'generated'   => ['line' => 1, 'column' => 0],
-                'original'    => ['line' => 1, 'column' => 0],
-                'sourceIndex' => 0,
-            ],
-            [
-                'generated'   => ['line' => 5, 'column' => 0],
-                'original'    => ['line' => 2, 'column' => 0],
-                'sourceIndex' => 0,
-            ],
-            [
-                'generated'   => ['line' => 5, 'column' => 10],
-                'original'    => ['line' => 2, 'column' => 10],
-                'sourceIndex' => 0,
-            ],
+            mapping(1, 0, 1, 0),
+            mapping(5, 0, 2, 0),
+            mapping(5, 10, 2, 10),
         ];
 
-        $result = $this->generator->generate($mappings, 'source.scss', 'output.css');
+        $result = $this->generator->generate(
+            $mappings,
+            'source.scss',
+            'output.css',
+            sourceMapOptions()
+        );
         $sourceMap = json_decode($result, true);
 
         expect($sourceMap)->toBeArray()
@@ -101,14 +126,15 @@ describe('mappings generation', function () {
 describe('source map options', function () {
     it('checks that SourceMapGenerator with includeSources false does not include sourcesContent', function () {
         $mappings = [
-            [
-                'generated'   => ['line' => 1, 'column' => 0],
-                'original'    => ['line' => 1, 'column' => 0],
-                'sourceIndex' => 0,
-            ],
+            mapping(1, 0, 1, 0),
         ];
 
-        $result = $this->generator->generate($mappings, 'source.scss', 'output.css', ['includeSources' => false]);
+        $result = $this->generator->generate(
+            $mappings,
+            'source.scss',
+            'output.css',
+            sourceMapOptions()
+        );
         $sourceMap = json_decode($result, true);
 
         expect($sourceMap)->toBeArray()

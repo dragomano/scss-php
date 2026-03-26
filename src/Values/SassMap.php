@@ -2,41 +2,30 @@
 
 declare(strict_types=1);
 
-namespace DartSass\Values;
-
-use Stringable;
+namespace Bugo\SCSS\Values;
 
 use function implode;
-use function is_array;
-use function is_object;
-use function is_string;
-use function json_encode;
-use function method_exists;
 
-readonly class SassMap implements Stringable
+final class SassMap extends AbstractSassValue
 {
-    public function __construct(public array $value) {}
+    /**
+     * @param array<int, array{key: SassValue, value: SassValue}> $pairs
+     */
+    public function __construct(private readonly array $pairs) {}
 
-    public function __toString(): string
+    public function toCss(): string
     {
         $parts = [];
 
-        foreach ($this->value as $key => $value) {
-            $formattedKey = is_string($key) ? $key : json_encode($key);
-
-            if ($value instanceof SassMixin) {
-                $formattedValue = $value;
-            } elseif (is_object($value) && method_exists($value, '__toString')) {
-                $formattedValue = $value->__toString();
-            } elseif (is_array($value) || is_object($value)) {
-                $formattedValue = json_encode($value);
-            } else {
-                $formattedValue = json_encode($value);
-            }
-
-            $parts[] = "$formattedKey: $formattedValue";
+        foreach ($this->pairs as $pair) {
+            $parts[] = $pair['key']->toCss() . ': ' . $pair['value']->toCss();
         }
 
         return '(' . implode(', ', $parts) . ')';
+    }
+
+    public function isTruthy(): bool
+    {
+        return true;
     }
 }

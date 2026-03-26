@@ -2,359 +2,113 @@
 
 declare(strict_types=1);
 
-use DartSass\Utils\OutputOptimizer;
+use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Style;
+use Bugo\SCSS\Utils\OutputOptimizer;
 
-dataset('css input and expected output', [
-    'simple property with zero unit' => [
-        '.test { width: 0px; }',
-        '.test { width: 0; }',
-    ],
-
-    'multiple properties with zero units' => [
-        '.test { width: 0px; height: 0em; margin: 0pt; padding: 0pc; }',
-        '.test { width: 0; height: 0; margin: 0; padding: 0; }',
-    ],
-
-    'mixed zero and non-zero values' => [
-        '.test { width: 0px; height: 10px; margin: 0em; padding: 5px; }',
-        '.test { width: 0; height: 10px; margin: 0; padding: 5px; }',
-    ],
-
-    'zero values without units' => [
-        '.test { width: 0; height: 0; }',
-        '.test { width: 0; height: 0; }',
-    ],
-
-    'complex values' => [
-        '.test { background: linear-gradient(to right, red, blue); width: 0px; }',
-        '.test { background: linear-gradient(to right, red, blue); width: 0; }',
-    ],
-
-    'calc functions' => [
-        '.test { width: calc(100% - 0px); height: calc(50vh + 0em); }',
-        '.test { width: calc(100% - 0px); height: calc(50vh + 0em); }',
-    ],
-
-    'important declarations' => [
-        '.test { width: 0px !important; height: 10px !important; }',
-        '.test { width: 0 !important; height: 10px !important; }',
-    ],
-
-    'properties without colons' => [
-        '.test { width: 10px; some random text; height: 20px; }',
-        '.test { width: 10px; some random text; height: 20px; }',
-    ],
-
-    'empty blocks' => [
-        '.test { }',
-        '.test { }',
-    ],
-
-    'multiple blocks' => [
-        '.first { width: 10px; } .second { height: 0px; }',
-        '.first { width: 10px; } .second { height: 0; }',
-    ],
-
-    'at-rules keep units inside' => [
-        '@media (min-width: 768px) { .test { width: 0px; } }',
-        '@media (min-width: 768px) { .test { width: 0; } }',
-    ],
-
-    'font-face rule' => [
-        '@font-face { font-family: Test; src: url(test.woff); }',
-        '@font-face { font-family: Test; src: url(test.woff); }',
-    ],
-
-    'nested structure' => [
-        '.parent { width: 0px; .child { height: 0em; } }',
-        '.parent { width: 0; .child { height: 0; } }',
-    ],
-
-    'curly braces in values' => [
-        '.test { content: "}"; width: 0px; }',
-        '.test { content: "}"; width: 0; }',
-    ],
-
-    'empty CSS' => [
-        '',
-        '',
-    ],
-]);
-
-dataset('compressed style cases', [
-    'simple compressed' => [
-        '.test { width: 10px; height: 0px; }',
-        '.test{width:10px;height:0}',
-    ],
-
-    'removes comments' => [
-        '/* comment */ .test { /* another */ width: 10px; }',
-        '.test{width:10px}',
-    ],
-
-    'removes extra spaces' => [
-        '.test  {  width  :  10px  ;  }',
-        '.test{width:10px}',
-    ],
-
-    'removes line breaks' => [
-        ".test {\n  width: 10px;\n  height: 20px;\n}",
-        '.test{width:10px;height:20px}',
-    ],
-
-    'handles multiple selectors' => [
-        '.test, .other { width: 0px; }',
-        '.test,.other{width:0}',
-    ],
-
-    'removes spaces around punctuation' => [
-        '.test { width : 10px ; height : 20px ; }',
-        '.test{width:10px;height:20px}',
-    ],
-
-    'empty blocks in compressed' => [
-        '.test { } .other { width: 10px; }',
-        '.test{}.other{width:10px}',
-    ],
-
-    'preserves sourceMappingURL comments' => [
-        '.test { width: 10px; } /*# sourceMappingURL=style.css.map */',
-        '.test{width:10px}/*# sourceMappingURL=style.css.map */',
-    ],
-
-    'removes regular comments but preserves sourceMappingURL' => [
-        '/* regular comment */ .test { /* another comment */ width: 10px; } /*# sourceMappingURL=style.css.map */',
-        '.test{width:10px}/*# sourceMappingURL=style.css.map */',
-    ],
-
-    'preserves important comments' => [
-        '/*! important comment */ .test { width: 10px; }',
-        '/*! important comment */ .test{width:10px}',
-    ],
-
-    'removes regular comments but preserves important comments' => [
-        '/* regular comment */ .test { width: 10px; } /*! important comment */',
-        '.test{width:10px}/*! important comment */',
-    ],
-]);
-
-dataset('expanded style cases', [
-    'simple expanded' => [
-        '.test { width: 10px; height: 0px; }',
-        '.test { width: 10px; height: 0; }',
-    ],
-
-    'multiple selectors' => [
-        '.test, .other { width: 0px; }',
-        '.test, .other { width: 0; }',
-    ],
-
-    'nested rules' => [
-        '.parent { .child { width: 0px; } }',
-        '.parent { .child { width: 0; } }',
-    ],
-
-    'complex properties' => [
-        '.test { background: linear-gradient(to right, red, blue); width: 0px; }',
-        '.test { background: linear-gradient(to right, red, blue); width: 0; }',
-    ],
-]);
-
-dataset('redundant properties cases', [
-    'keeps all safe properties' => [
-        '.test { width: 10px; width: 20px; height: 30px; }',
-        '.test { width: 10px; width: 20px; height: 30px; }',
-    ],
-
-    'keeps all unsafe properties' => [
-        '.test { background: red; background: blue; filter: blur(5px); filter: blur(10px); }',
-        '.test { background: red; background: blue; filter: blur(5px); filter: blur(10px); }',
-    ],
-]);
-
-dataset('complex scenarios', [
-    'pseudo-selectors keep units' => [
-        '.test:hover, .other:focus { width: 0px; }',
-        '.test:hover, .other:focus { width: 0; }',
-    ],
-
-    'keyframes keep units inside' => [
-        '@keyframes slideIn { 0% { transform: translateX(0px); } 100% { transform: translateX(100%); } }',
-        '@keyframes slideIn { 0% { transform: translateX(0px); } 100% { transform: translateX(100%); } }',
-    ],
-
-    'consecutive commas in selector' => [
-        '.test,, .other { width: 0px; }',
-        '.test, .other { width: 0; }',
-    ],
-
-    'CSS with whitespace only' => [
-        "   \n   \t   ",
-        "\n\n",
-    ],
-]);
-
-it('optimizes zero units for all CSS', function (string $input, string $expected) {
-    $optimizer = new OutputOptimizer('expanded');
-
-    $result = $optimizer->optimize($input);
-
-    expect($result)->toEqualCss($expected);
-})->with('css input and expected output');
-
-it('optimizes compressed style', function (string $input, string $expected) {
-    $optimizer = new OutputOptimizer('compressed');
-
-    $result = $optimizer->optimize($input);
-
-    expect($result)->toEqualCss($expected);
-})->with('compressed style cases');
-
-it('optimizes expanded style', function (string $input, string $expected) {
-    $optimizer = new OutputOptimizer('expanded');
-
-    $result = $optimizer->optimize($input);
-
-    expect($result)->toEqualCss($expected);
-})->with('expanded style cases');
-
-it('handles redundant properties correctly', function (string $input, string $expected) {
-    $optimizer = new OutputOptimizer('expanded');
-
-    $result = $optimizer->optimize($input);
-
-    expect($result)->toEqualCss($expected);
-})->with('redundant properties cases');
-
-it('handles complex scenarios', function (string $input, string $expected) {
-    $optimizer = new OutputOptimizer('expanded');
-
-    $result = $optimizer->optimize($input);
-
-    expect($result)->toEqualCss($expected);
-})->with('complex scenarios');
-
-it('initializes with different styles', function () {
-    $expandedOptimizer   = new OutputOptimizer('expanded');
-    $compressedOptimizer = new OutputOptimizer('compressed');
-
-    expect($expandedOptimizer)->toBeInstanceOf(OutputOptimizer::class)
-        ->and($compressedOptimizer)->toBeInstanceOf(OutputOptimizer::class);
+beforeEach(function () {
+    $this->optimizer = new OutputOptimizer();
 });
 
-it('preserves calc functions with zero units', function () {
-    $css       = '.test { width: calc(100% - 0px); }';
-    $expected  = '.test { width: calc(100% - 0px); }';
-    $optimizer = new OutputOptimizer('expanded');
-
-    $result = $optimizer->optimize($css);
-
-    expect($result)->toEqualCss($expected);
-});
-
-it('handles properties with complex values and zero units', function () {
-    $css       = '.test { background: url(image.png) no-repeat 0px 0px; width: 0px; }';
-    $expected  = '.test { background: url(image.png) no-repeat 0 0; width: 0; }';
-    $optimizer = new OutputOptimizer('expanded');
-
-    $result = $optimizer->optimize($css);
-
-    expect($result)->toEqualCss($expected);
-});
-
-it('returns CSS unchanged for unsupported styles', function () {
-    $css       = '.test { width: 10px; height: 20px; }';
-    $optimizer = new OutputOptimizer('unsupported');
-
-    $result = $optimizer->optimize($css);
-
-    expect($result)->toEqualCss($css);
-});
-
-it('keeps non-property lines inside declaration blocks', function () {
-    $css = /** @lang text */ <<<'CSS'
-    .test {
-      some random text;
-      width: 10px;
-    }
+it('adds charset for non ascii css', function () {
+    $source = /** @lang text */ <<<'CSS'
+    .test { content: "панда"; }
     CSS;
 
-    $optimizer = new OutputOptimizer('expanded');
-    $result = $optimizer->optimize($css);
+    $result = $this->optimizer->optimize($source, new CompilerOptions());
 
-    expect($result)->toContain('some random text;');
+    expect($result)->toStartWith("@charset \"UTF-8\";\n");
 });
 
-dataset('separate rules cases', [
-    'two simple rules' => [
-        '.first { width: 10px; }' . "\n" . '.second { height: 20px; }',
-        '.first { width: 10px; }' . "\n\n" . '.second { height: 20px; }',
-    ],
+it('keeps ascii css without charset prefix', function () {
+    $source = /** @lang text */ <<<'CSS'
+    .test { color: red; }
+    CSS;
 
-    'multiple rules' => [
-        '.first { width: 10px; }' . "\n" . '.second { height: 20px; }' . "\n" . '.third { margin: 0; }',
-        '.first { width: 10px; }' . "\n\n" . '.second { height: 20px; }' . "\n\n" . '.third { margin: 0; }',
-    ],
+    $result = $this->optimizer->optimize($source, new CompilerOptions());
 
-    'nested rules' => [
-        '.parent { width: 10px; }' . "\n" . '.parent .child { height: 20px; }',
-        '.parent { width: 10px; }' . "\n\n" . '.parent .child { height: 20px; }',
-    ],
+    expect($result)->toBe($source);
+});
 
-    'at-rules' => [
-        '@media (min-width: 768px) { .test { width: 10px; } }' . "\n" . '.other { height: 20px; }',
-        '@media (min-width: 768px) { .test { width: 10px; } }' . "\n\n" . '.other { height: 20px; }',
-    ],
+it('adds blank lines between root rules when splitRules is enabled', function () {
+    $options = new CompilerOptions(splitRules: true);
+    $source = /** @lang text */ <<<'CSS'
+    .first { width: 1px; }
+    .second { width: 2px; }
+    CSS;
+    $expected = /** @lang text */ <<<'CSS'
+    .first { width: 1px; }
 
-    'single rule unchanged' => [
-        '.single { width: 10px; }',
-        '.single { width: 10px; }',
-    ],
+    .second { width: 2px; }
+    CSS;
 
-    'empty CSS unchanged' => [
-        '',
-        '',
-    ],
+    $result = $this->optimizer->optimize($source, $options);
 
-    'multiline blocks' => [
-        ".first {\n  width: 10px;\n}\n.second {\n  height: 20px;\n}",
-        ".first {\n  width: 10px;\n}\n\n.second {\n  height: 20px;\n}",
-    ],
+    expect($result)->toBe($expected);
+});
 
-    'multiline blocks with multiple properties' => [
-        ".first {\n  width: 10px;\n  height: 20px;\n}\n.second {\n  margin: 0;\n  padding: 5px;\n}",
-        ".first {\n  width: 10px;\n  height: 20px;\n}\n\n.second {\n  margin: 0;\n  padding: 5px;\n}",
-    ],
+it('compresses css output when style is compressed', function () {
+    $options = new CompilerOptions(style: Style::COMPRESSED);
+    $source = /** @lang text */ <<<'CSS'
+    /* comment */ .test { width: 10px; opacity: 0.7; } /*# sourceMappingURL=style.css.map */
+    CSS;
 
-    'multiline blocks with nested rules' => [
-        ".parent {\n  width: 10px;\n}\n.parent .child {\n  height: 20px;\n}",
-        ".parent {\n  width: 10px;\n}\n\n.parent .child {\n  height: 20px;\n}",
-    ],
+    $result = $this->optimizer->optimize($source, $options);
 
-    'multiline blocks with at-rules' => [
-        "@media (min-width: 768px) {\n  .test {\n    width: 10px;\n  }\n}\n.other {\n  height: 20px;\n}",
-        "@media (min-width: 768px) {\n  .test {\n    width: 10px;\n  }\n}\n\n.other {\n  height: 20px;\n}",
-    ],
+    expect($result)->toBe('.test{width:10px;opacity:0.7}/*# sourceMappingURL=style.css.map */');
+});
 
-    'mixed single-line and multiline blocks' => [
-        ".first { width: 10px; }\n.second {\n  height: 20px;\n}",
-        ".first { width: 10px; }\n\n.second {\n  height: 20px;\n}",
-    ],
-]);
+it('removes spaces around multiplication in math expressions when compressed', function () {
+    $options = new CompilerOptions(style: Style::COMPRESSED);
+    $source = /** @lang text */ <<<'CSS'
+    .test { padding: max(8px, min(10px, 2vw) * 2); }
+    CSS;
 
-it('separates rule blocks when separateRules is enabled', function (string $input, string $expected) {
-    $optimizer = new OutputOptimizer('expanded', true);
+    $result = $this->optimizer->optimize($source, $options);
 
-    $result = $optimizer->optimize($input);
+    expect($result)->toBe('.test{padding:max(8px,min(10px,2vw)*2)}');
+});
 
-    expect($result)->toEqualCss($expected);
-})->with('separate rules cases');
+it('keeps preserved comments without inserting extra spaces when compressed', function () {
+    $options = new CompilerOptions(style: Style::COMPRESSED);
+    $source = /** @lang text */ <<<'CSS'
+    /*! one */ /*! two */ .test { width: 1px; }
+    CSS;
 
-it('does not separate rule blocks when separateRules is disabled', function () {
-    $css = '.first { width: 10px; }' . "\n" . '.second { height: 20px; }';
-    $optimizer = new OutputOptimizer('expanded', false);
+    $result = $this->optimizer->optimize($source, $options);
 
-    $result = $optimizer->optimize($css);
+    expect($result)->toBe('/*! one *//*! two */.test{width:1px}');
+});
 
-    expect($result)->toEqualCss($css);
+it('removes spaces between adjacent function calls when compressed', function () {
+    $options = new CompilerOptions(style: Style::COMPRESSED);
+    $source = /** @lang text */ <<<'CSS'
+    .test { filter: hue-rotate(120deg) saturate(113%); }
+    CSS;
+
+    $result = $this->optimizer->optimize($source, $options);
+
+    expect($result)->toBe('.test{filter:hue-rotate(120deg)saturate(113%)}');
+});
+
+it('preserves raw rgba literals in compressed output', function () {
+    $options = new CompilerOptions(style: Style::COMPRESSED);
+    $source = /** @lang text */ <<<'CSS'
+    .test { box-shadow: 0 2px 5px rgba(0,0,0,.3); color: rgba(255,255,255,1); }
+    CSS;
+
+    $result = $this->optimizer->optimize($source, $options);
+
+    expect($result)->toBe('.test{box-shadow:0 2px 5px rgba(0,0,0,.3);color:rgba(255,255,255,1)}');
+});
+
+it('shortens hue-rotate zero angle in compressed output', function () {
+    $options = new CompilerOptions(style: Style::COMPRESSED);
+    $source = /** @lang text */ <<<'CSS'
+    .test { filter: hue-rotate(0deg) saturate(100%); }
+    CSS;
+
+    $result = $this->optimizer->optimize($source, $options);
+
+    expect($result)->toBe('.test{filter:hue-rotate(0)saturate(100%)}');
 });

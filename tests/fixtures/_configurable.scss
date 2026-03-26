@@ -1,0 +1,11 @@
+$primary: red !default;
+$gap: 8px !default;
+
+@mixin theme() {
+  color: $primary;
+  margin: $gap;
+}
+
+@function tone() {
+  @return $primary;
+}

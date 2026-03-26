@@ -2,19 +2,18 @@
 
 declare(strict_types=1);
 
-namespace DartSass\Utils;
+namespace Bugo\SCSS\Utils;
 
-use function array_multisort;
-use function is_string;
 use function json_encode;
+use function usort;
 
 use const PHP_INT_MAX;
 
-class SourceMapGenerator
+final class SourceMapGenerator
 {
-    private const VLQ_BASE_SHIFT       = 5;
+    private const VLQ_BASE_SHIFT = 5;
 
-    private const VLQ_BASE_MASK        = 31;
+    private const VLQ_BASE_MASK = 31;
 
     private const VLQ_CONTINUATION_BIT = 32;
 
@@ -25,37 +24,71 @@ class SourceMapGenerator
         'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/',
     ];
 
-    public function generate(array $mappings, string $sourceFile, string $outputFile, array $options = []): string
-    {
+    /**
+     * @param array<int, SourceMapMapping> $mappings
+     */
+    public function generate(
+        array $mappings,
+        string $sourceFile,
+        string $outputFile,
+        SourceMapOptions $options
+    ): string {
         $sourceMap = [
             'version'    => 3,
-            'sourceRoot' => $options['sourceMapRoot'] ?? '',
-            'sources'    => $options['sources'] ?? [$sourceFile],
+            'sourceRoot' => $options->sourceMapRoot,
+            'sources'    => $options->sources ?: [$sourceFile],
             'names'      => [],
-            'mappings'   => $this->generateMappings($mappings, $options['outputLines'] ?? null),
+            'mappings'   => $this->generateMappings($mappings, $options->outputLines),
             'file'       => $outputFile,
         ];
 
-        if ($options['includeSources'] ?? false) {
-            $sourceMap['sourcesContent'] = [
-                is_string($options['sourceContent'] ?? '') ? $options['sourceContent'] : '',
-            ];
+        if ($options->includeSources) {
+            $sourceMap['sourcesContent'] = [$options->sourceContent];
         }
 
-        return json_encode($sourceMap, JSON_UNESCAPED_SLASHES);
+        $encoded = json_encode($sourceMap, JSON_UNESCAPED_SLASHES);
+
+        return $encoded === false ? '' : $encoded;
     }
 
+    /**
+     * @param array<int, SourceMapMapping> $mappings
+     */
     private function generateMappings(array $mappings, ?int $totalLines = null): string
     {
-        $genLines   = [];
-        $genColumns = [];
+        $sorted     = true;
+        $lastLine   = -1;
+        $lastColumn = -1;
 
-        foreach ($mappings as $key => $mapping) {
-            $genLines[$key]   = $mapping['generated']['line'] ?? 0;
-            $genColumns[$key] = $mapping['generated']['column'] ?? 0;
+        foreach ($mappings as $mapping) {
+            [$genLine, $genCol] = $this->extractGenerated($mapping);
+
+            if ($genLine < $lastLine || ($genLine === $lastLine && $genCol < $lastColumn)) {
+                $sorted = false;
+
+                break;
+            }
+
+            $lastLine   = $genLine;
+            $lastColumn = $genCol;
         }
 
-        array_multisort($genLines, SORT_ASC, $genColumns, SORT_ASC, $mappings);
+        if (! $sorted) {
+            /**
+             * @param SourceMapMapping $a
+             * @param SourceMapMapping $b
+             */
+            usort($mappings, function (SourceMapMapping $a, SourceMapMapping $b): int {
+                [$aLine, $aCol] = $this->extractGenerated($a);
+                [$bLine, $bCol] = $this->extractGenerated($b);
+
+                if ($aLine === $bLine) {
+                    return $aCol <=> $bCol;
+                }
+
+                return $aLine <=> $bLine;
+            });
+        }
 
         $result        = '';
         $lineSegments  = '';
@@ -66,24 +99,23 @@ class SourceMapGenerator
         $lastSourceIdx = 0;
 
         foreach ($mappings as $mapping) {
-            $gen       = $mapping['generated'];
-            $orig      = $mapping['original'];
-            $genLine   = $gen['line'];
-            $genCol    = $gen['column'];
-            $origLine  = $orig['line'];
-            $origCol   = $orig['column'];
-            $sourceIdx = $mapping['sourceIndex'] ?? 0;
+            [$genLine, $genCol]   = $this->extractGenerated($mapping);
+            [$origLine, $origCol] = $this->extractOriginal($mapping);
+
+            $sourceIdx = $this->extractSourceIndex($mapping);
 
             // Add empty segments for lines between lastGenLine + 1 and genLine - 1
             while ($lastGenLine < $genLine) {
                 if ($lineSegments !== '') {
-                    $result       .= $lineSegments . ';';
-                    $lineSegments  = '';
+                    $result .= $lineSegments . ';';
+
+                    $lineSegments = '';
                 } else {
                     $result .= ';';
                 }
 
                 $lastGenLine++;
+
                 $lastGenCol = 0;
             }
 
@@ -110,6 +142,7 @@ class SourceMapGenerator
         if ($totalLines !== null) {
             while ($lastGenLine < $totalLines - 1) {
                 $result .= ';';
+
                 $lastGenLine++;
             }
         }
@@ -117,8 +150,38 @@ class SourceMapGenerator
         return $result;
     }
 
+    /**
+     * @return array{0: int, 1: int}
+     */
+    private function extractGenerated(SourceMapMapping $mapping): array
+    {
+        return [$mapping->generated->line, $mapping->generated->column];
+    }
+
+    /**
+     * @return array{0: int, 1: int}
+     */
+    private function extractOriginal(SourceMapMapping $mapping): array
+    {
+        return [$mapping->original->line, $mapping->original->column];
+    }
+
+    /**
+     */
+    private function extractSourceIndex(SourceMapMapping $mapping): int
+    {
+        return $mapping->sourceIndex;
+    }
+
     private function encodeVLQ(int $value): string
     {
+        /** @var array<int, string> $cache */
+        static $cache = [];
+
+        if (isset($cache[$value])) {
+            return $cache[$value];
+        }
+
         $encoded = '';
 
         $vlq = $value < 0 ? ((-$value) << 1) + 1 : $value << 1;
@@ -133,6 +196,8 @@ class SourceMapGenerator
 
             $encoded .= self::BASE64_MAP[$digit];
         } while ($vlq > 0);
+
+        $cache[$value] = $encoded;
 
         return $encoded;
     }

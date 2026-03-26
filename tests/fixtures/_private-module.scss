@@ -1,0 +1,7 @@
+$-hidden: 7px;
+$_secret: 9px;
+$public: 3px;
+
+@mixin expose-hidden {
+  width: $-hidden;
+}

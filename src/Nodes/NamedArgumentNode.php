@@ -1,0 +1,10 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Bugo\SCSS\Nodes;
+
+final class NamedArgumentNode extends AstNode
+{
+    public function __construct(public string $name, public AstNode $value) {}
+}

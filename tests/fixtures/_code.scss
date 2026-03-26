@@ -1,0 +1,29 @@
+$border-contrast: false !default;
+$hopbush: #c69;
+$midnight-blue: #036;
+$wafer: #e1d7d2;
+
+code {
+  background-color: #6b717f;
+  color: #d2e1dd;
+
+  @if $border-contrast {
+    border-color: #dadbdf;
+  }
+}
+
+@function pow($base, $exponent) {
+  $result: 1;
+
+  @for $_ from 1 through $exponent {
+    $result: $result * $base;
+  }
+
+  @return $result;
+}
+
+@mixin stretch() {
+  align-items: stretch;
+  display: flex;
+  flex-direction: row;
+}
