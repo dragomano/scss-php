@@ -1,0 +1,9 @@
+$import-color: red;
+
+@mixin imported-border() {
+  border: 1px solid $import-color;
+}
+
+.from-import {
+  value: imported;
+}

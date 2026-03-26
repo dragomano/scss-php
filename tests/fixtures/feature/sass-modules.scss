@@ -1,0 +1,21 @@
+@use "sass:list";
+@use "sass:map";
+@use "sass:string";
+
+$colors: red, green, blue;
+$config: (theme: (primary: #112233, accent: #445566), size: md);
+
+.demo {
+  list_len: list.length($colors);
+  list_join: list.join([1, 2], [3, 4], $separator: slash, $bracketed: true);
+  list_sep: list.separator(list.append(a b, c, $separator: comma));
+
+  map_get: map.get($config, theme, primary);
+  map_has: map.has-key($config, theme, accent);
+  map_keys: map.keys($config);
+
+  string_len: string.length(hello);
+  string_insert: string.insert(abcd, X, 3);
+  string_slice: string.slice(abcdef, 2, 4);
+  string_upper: string.to-upper-case(ab);
+}

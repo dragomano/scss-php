@@ -1,0 +1,7 @@
+@function double($value) {
+    @return $value * 2;
+}
+
+@mixin highlight($color) {
+    border: 1px solid $color;
+}

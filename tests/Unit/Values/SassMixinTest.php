@@ -2,62 +2,28 @@
 
 declare(strict_types=1);
 
-use DartSass\Handlers\MixinHandler;
-use DartSass\Values\SassMixin;
+use Bugo\SCSS\Values\SassMixin;
 
 describe('SassMixin', function () {
-    describe('__toString()', function () {
-        it('returns mixin name', function () {
-            $handler = mock(MixinHandler::class);
-            $mixin   = new SassMixin($handler, 'myMixin');
+    it('name() returns the stored mixin name', function () {
+        $mixin = new SassMixin('button');
 
-            expect((string) $mixin)->toBe('myMixin');
-        });
+        expect($mixin->name())->toBe('button');
     });
 
-    describe('acceptsContent()', function () {
-        it('returns false when mixin definition is null', function () {
-            $handler = mock(MixinHandler::class);
-            $handler->shouldReceive('getMixin')
-                ->with('nonExistentMixin')
-                ->andReturn(null);
+    it('toCss() wraps name in get-mixin() call', function () {
+        $mixin = new SassMixin('card');
 
-            $mixin = new SassMixin($handler, 'nonExistentMixin');
-
-            expect($mixin->acceptsContent())->toBeFalse();
-        });
-
-        it('does not throw when mixin definition is null', function () {
-            $handler = mock(MixinHandler::class);
-            $handler->shouldReceive('getMixin')
-                ->with('nonExistentMixin')
-                ->andReturn(null);
-
-            $mixin = new SassMixin($handler, 'nonExistentMixin');
-
-            expect(fn() => $mixin->acceptsContent())->not->toThrow(Throwable::class);
-        });
-
-        it('returns true when body contains @content', function () {
-            $handler = mock(MixinHandler::class);
-            $handler->shouldReceive('getMixin')
-                ->with('myMixin')
-                ->andReturn(['body' => ['some code', '@content', 'more code']]);
-
-            $mixin = new SassMixin($handler, 'myMixin');
-
-            expect($mixin->acceptsContent())->toBeTrue();
-        });
-
-        it('returns false when body does not contain @content', function () {
-            $handler = mock(MixinHandler::class);
-            $handler->shouldReceive('getMixin')
-                ->with('myMixin')
-                ->andReturn(['body' => ['some code', 'more code']]);
-
-            $mixin = new SassMixin($handler, 'myMixin');
-
-            expect($mixin->acceptsContent())->toBeFalse();
-        });
+        expect($mixin->toCss())->toBe('get-mixin("card")');
     });
-})->covers(SassMixin::class);
+
+    it('isTruthy() always returns true', function () {
+        expect((new SassMixin('any'))->isTruthy())->toBeTrue();
+    });
+
+    it('__toString() delegates to toCss()', function () {
+        $mixin = new SassMixin('icon');
+
+        expect((string) $mixin)->toBe('get-mixin("icon")');
+    });
+});

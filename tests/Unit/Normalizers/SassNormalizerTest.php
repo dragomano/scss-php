@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
-use DartSass\Normalizers\SassNormalizer;
+use Bugo\SCSS\Normalizers\SassNormalizer;
+use Tests\ReflectionAccessor;
 
 describe('SassNormalizer', function () {
     beforeEach(function () {
         $this->normalizer = new SassNormalizer();
+        $this->accessor   = new ReflectionAccessor($this->normalizer);
     });
 
     it('converts variables and simple rules', function () {
@@ -371,6 +373,38 @@ describe('SassNormalizer', function () {
         expect($this->normalizer->normalize($sass))->toBe($expected);
     });
 
+    it('handles multiline parenthesized declarations and split @for headers', function () {
+        $sass = <<<'SASS'
+        .grid
+          display: grid
+          grid-template: (
+            "header" min-content
+            "main" 1fr
+          )
+
+        @for
+          $i from
+          1 through 3
+            ul:nth-child(3n + #{$i})
+              margin-left: $i * 10
+        SASS;
+
+        $expected = <<<'SCSS'
+        .grid {
+          display: grid;
+          grid-template: ( "header" min-content "main" 1fr );
+        }
+
+        @for $i from 1 through 3 {
+            ul:nth-child(3n + #{$i}) {
+              margin-left: $i * 10;
+            }
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
     it('handles @each loops', function () {
         $sass = <<<'SASS'
         @each $color in red, green, blue
@@ -558,6 +592,21 @@ describe('SassNormalizer', function () {
         SCSS;
 
         expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
+    it('treats empty directive header continuation line as invalid', function () {
+        expect($this->accessor->callMethod('looksLikeDirectiveHeaderContinuation', ['']))
+            ->toBeFalse();
+    });
+
+    it('treats directive continuation keywords as valid header continuations', function () {
+        expect($this->accessor->callMethod('looksLikeDirectiveHeaderContinuation', ['through 3']))
+            ->toBeTrue();
+    });
+
+    it('continues scanning pseudo-classes after selector-like false positives', function () {
+        expect($this->accessor->callMethod('containsPseudoClass', ['.item:hoverable:hover']))
+            ->toBeTrue();
     });
 
     describe('Line Ending Detection', function () {

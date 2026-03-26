@@ -28,15 +28,6 @@ class ReflectionAccessor
         }
     }
 
-    public function setProperty(mixed $property, mixed $value): void
-    {
-        try {
-            $prop = $this->reflection->getProperty($property);
-            $prop->setValue($this->object, $value);
-        } catch (ReflectionException) {
-        }
-    }
-
     public function getProperty(string $property): mixed
     {
         try {
@@ -45,6 +36,17 @@ class ReflectionAccessor
             return $prop->getValue($this->object);
         } catch (ReflectionException $e) {
             return $e->getMessage();
+        }
+    }
+
+    public function setProperty(string $property, mixed $value): void
+    {
+        try {
+            $prop = $this->reflection->getProperty($property);
+
+            $prop->setValue($this->object, $value);
+        } catch (ReflectionException $e) {
+            dump($e->getMessage());
         }
     }
 

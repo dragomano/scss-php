@@ -2,68 +2,48 @@
 
 declare(strict_types=1);
 
-use DartSass\Handlers\MixinHandler;
-use DartSass\Values\SassMap;
-use DartSass\Values\SassMixin;
+use Bugo\SCSS\Values\SassMap;
+use Bugo\SCSS\Values\SassString;
 
 describe('SassMap', function () {
-    describe('__toString()', function () {
-        it('formats map with string keys and values', function () {
-            $map = new SassMap(['key1' => 'value1', 'key2' => 'value2']);
+    it('empty map produces "()"', function () {
+        $map = new SassMap([]);
 
-            expect((string) $map)->toBe('(key1: "value1", key2: "value2")');
-        });
-
-        it('formats map with numeric keys', function () {
-            $map = new SassMap([1 => 'value1', 2 => 'value2']);
-
-            expect((string) $map)->toBe('(1: "value1", 2: "value2")');
-        });
-
-        it('formats empty map', function () {
-            $map = new SassMap([]);
-
-            expect((string) $map)->toBe('()');
-        });
-
-        it('formats map with mixed values', function () {
-            $map = new SassMap(['a' => 1, 'b' => true, 'c' => null]);
-
-            expect((string) $map)->toBe('(a: 1, b: true, c: null)');
-        });
-
-        it('formats map with SassMixin value', function () {
-            $handler = mock(MixinHandler::class);
-            $mixin   = new SassMixin($handler, 'testMixin');
-            $map     = new SassMap(['mixin' => $mixin]);
-
-            expect((string) $map)->toBe('(mixin: testMixin)');
-        });
-
-        it('formats map with object having __toString', function () {
-            $obj = new class () {
-                public function __toString(): string
-                {
-                    return 'custom object';
-                }
-            };
-            $map = new SassMap(['obj' => $obj]);
-
-            expect((string) $map)->toBe('(obj: custom object)');
-        });
-
-        it('formats map with array value', function () {
-            $map = new SassMap(['arr' => [1, 2, 3]]);
-
-            expect((string) $map)->toBe('(arr: [1,2,3])');
-        });
-
-        it('formats map with object value', function () {
-            $obj = new stdClass();
-            $obj->prop = 'value';
-            $map = new SassMap(['std' => $obj]);
-
-            expect((string) $map)->toBe('(std: {"prop":"value"})');
-        });
+        expect($map->toCss())->toBe('()');
     });
-})->covers(SassMap::class);
+
+    it('single-pair map renders key: value', function () {
+        $map = new SassMap([
+            ['key' => new SassString('color'), 'value' => new SassString('red')],
+        ]);
+
+        expect($map->toCss())->toBe('(color: red)');
+    });
+
+    it('multi-pair map renders comma-separated pairs', function () {
+        $map = new SassMap([
+            ['key' => new SassString('a'), 'value' => new SassString('1')],
+            ['key' => new SassString('b'), 'value' => new SassString('2')],
+        ]);
+
+        expect($map->toCss())->toBe('(a: 1, b: 2)');
+    });
+
+    it('isTruthy() always returns true', function () {
+        $emptyMap = new SassMap([]);
+        $nonEmptyMap = new SassMap([
+            ['key' => new SassString('x'), 'value' => new SassString('y')],
+        ]);
+
+        expect($emptyMap->isTruthy())->toBeTrue()
+            ->and($nonEmptyMap->isTruthy())->toBeTrue();
+    });
+
+    it('__toString() delegates to toCss()', function () {
+        $map = new SassMap([
+            ['key' => new SassString('k'), 'value' => new SassString('v')],
+        ]);
+
+        expect((string) $map)->toBe('(k: v)');
+    });
+});

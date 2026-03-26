@@ -1,0 +1,13 @@
+$forward-color: green;
+
+@mixin forwarded-mixin() {
+  color: $forward-color;
+}
+
+@function forwarded-fn() {
+  @return $forward-color;
+}
+
+.from-forwarded {
+  value: forwarded;
+}

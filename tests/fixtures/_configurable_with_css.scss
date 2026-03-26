@@ -1,0 +1,7 @@
+$primary: red !default;
+$gap: 8px !default;
+
+.configurable-sample {
+  color: $primary;
+  margin: $gap;
+}
