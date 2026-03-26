@@ -33,6 +33,7 @@
     "ext-ctype": "*",
     "bugo/iris": "^0.1",
     "psr/log": "^3.0",
+    "psr/simple-cache": "^3.0",
     "symfony/filesystem": "^7.4|^8.0"
   },
   "require-dev": {
@@ -47,6 +48,7 @@
     "phpstan/phpstan": "^2.1",
     "rector/rector": "^2.3",
     "scssphp/scssphp": "^2.1",
+    "symfony/cache": "^7.4|^8.0",
     "symfony/stopwatch": "^7.4|^8.0",
     "symfony/var-dumper": "^7.4|^8.0",
     "vimeo/psalm": "^6.15"

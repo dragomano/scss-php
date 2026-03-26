@@ -8,11 +8,33 @@ use Bugo\BenchmarkUtils\BenchmarkRunner;
 use Bugo\BenchmarkUtils\ScssGenerator;
 use Bugo\Sass\Compiler as EmbeddedCompiler;
 use Bugo\Sass\Options;
+use Bugo\SCSS\Cache\CachingCompiler;
+use Bugo\SCSS\Cache\TrackingLoader;
 use Bugo\SCSS\Compiler as SassCompiler;
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Loader;
 use Bugo\SCSS\Style;
 use ScssPhp\ScssPhp\Compiler as ScssCompiler;
 use ScssPhp\ScssPhp\OutputStyle;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Psr16Cache;
+
+final class CachedBenchmarkCompiler
+{
+    public function __construct(
+        private readonly CachingCompiler $compiler,
+        private readonly string $entryPath
+    ) {}
+
+    public function compileString(string $scss): string
+    {
+        if (! file_exists($this->entryPath) || file_get_contents($this->entryPath) !== $scss) {
+            file_put_contents($this->entryPath, $scss, LOCK_EX);
+        }
+
+        return $this->compiler->compileFile($this->entryPath);
+    }
+}
 
 $args = $_SERVER['argv'] ?? [];
 
@@ -37,7 +59,7 @@ if (! $forceRegenerate && file_exists($scssFile)) {
 echo 'SCSS size: ' . strlen($scss) . " bytes\n";
 
 $minimize     = false;
-$sourceMap    = false;
+$sourceMap    = true;
 $singleRuns   = 10;
 $warmupRuns   = 2;
 $outputDir    = __DIR__;
@@ -45,6 +67,7 @@ $allResults   = [];
 $aggregate    = [];
 $compilerList = [
     'bugo/scss-php',
+    'bugo/scss-php+cache',
     'bugo/sass-embedded-php',
     'scssphp/scssphp',
 ];
@@ -66,6 +89,26 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
             );
 
             return new SassCompiler($options);
+        })
+        ->addCompiler('bugo/scss-php+cache', function () use ($scss, $scssFile, $sourceMap, $minimize) {
+            $options = new CompilerOptions(
+                style: $minimize ? Style::COMPRESSED : Style::EXPANDED,
+                outputFile: 'result-bugo-scss-php-cache.css',
+                sourceMapFile: $sourceMap ? 'result-bugo-scss-php-cache.css.map' : null,
+                includeSources: true,
+                outputHexColors: true,
+            );
+
+            file_put_contents($scssFile, $scss, LOCK_EX);
+
+            $trackingLoader = new TrackingLoader(new Loader([__DIR__]));
+            $compiler       = new SassCompiler($options, $trackingLoader);
+            $cache          = new Psr16Cache(new ArrayAdapter());
+
+            return new CachedBenchmarkCompiler(
+                new CachingCompiler($compiler, $cache, $trackingLoader, $options),
+                $scssFile,
+            );
         })
         ->addCompiler('bugo/sass-embedded-php', function () use ($sourceMap, $minimize) {
             $compiler = new EmbeddedCompiler();
