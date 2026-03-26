@@ -2,69 +2,145 @@
 
 declare(strict_types=1);
 
-namespace DartSass;
+namespace Bugo\SCSS;
 
-use DartSass\Compilers\CompilerBuilder;
-use DartSass\Compilers\CompilerEngineInterface;
-use DartSass\Loaders\FileLoader;
-use DartSass\Loaders\LoaderInterface;
-use DartSass\Parsers\Syntax;
-use DartSass\Utils\LoggerInterface;
+use Bugo\SCSS\Builtins\Color\ColorBundleAdapter;
+use Bugo\SCSS\Builtins\Color\ColorSerializerAdapter;
+use Bugo\SCSS\Contracts\Color\ColorBundleInterface;
+use Bugo\SCSS\Contracts\Color\ColorSerializerInterface;
+use Bugo\SCSS\Nodes\RootNode;
+use Bugo\SCSS\Nodes\StatementNode;
+use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Values\ValueFactory;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 
-use function array_merge;
+use function file_put_contents;
 
-readonly class Compiler
+final class Compiler implements CompilerInterface
 {
-    private CompilerEngineInterface $engine;
+    private readonly CompilerContext $ctx;
+
+    private readonly CompilerRuntime $runtime;
 
     public function __construct(
-        array $options = [],
-        ?LoaderInterface $loader = null,
-        ?LoggerInterface $logger = null
+        protected CompilerOptions $options = new CompilerOptions(),
+        protected LoaderInterface $loader = new Loader(),
+        protected ParserInterface $parser = new Parser(),
+        protected LoggerInterface $logger = new NullLogger(),
+        protected ColorSerializerInterface $colorSerializer = new ColorSerializerAdapter(),
+        protected ColorBundleInterface $colorBundle = new ColorBundleAdapter()
     ) {
-        $options = array_merge(
-            [
-                'style'          => 'expanded',
-                'sourceMap'      => false,
-                'includeSources' => false,
-                'loadPaths'      => [],
-                'sourceFile'     => 'input.scss',
-                'sourceMapFile'  => 'output.css.map',
-                'outputFile'     => 'output.css',
-                'separateRules'  => false,
-            ],
-            $options
+        $this->ctx = $this->createContext();
+
+        $this->runtime = new CompilerRuntime(
+            $this->ctx,
+            $this->options,
+            $this->loader,
+            $this->parser,
+            $this->logger
         );
-
-        $loader ??= new FileLoader($options['loadPaths']);
-
-        $builder = new CompilerBuilder($options, $loader, $logger);
-
-        $this->engine = $builder->build();
     }
 
-    public function compileString(string $string, ?Syntax $syntax = null): string
+    public function compileString(string $source, ?Syntax $syntax = null, string $sourceFile = ''): string
     {
-        return $this->engine->compileString($string, $syntax);
+        $this->resetState();
+
+        $this->ctx->currentSourceFile = $sourceFile ?: $this->options->sourceFile;
+
+        try {
+            $syntax ??= Syntax::SCSS;
+
+            $ast         = $this->parse($source, $syntax);
+            $environment = $this->buildEnvironment($ast);
+            $compiled    = $this->compileAst($ast, $environment);
+
+            return $this->postProcess($compiled, $source);
+        } finally {
+            $this->resetState();
+        }
     }
 
-    public function compileFile(string $filePath): string
+    public function compileFile(string $path): string
     {
-        return $this->engine->compileFile($filePath);
+        $loaded = $this->loader->load($path);
+
+        return $this->compileString($loaded['content'], Syntax::fromPath($path, $loaded['content']), $path);
     }
 
-    public function addFunction(string $name, callable $callback): void
+    private function createContext(): CompilerContext
     {
-        $this->engine->addFunction($name, $callback);
+        return new CompilerContext(
+            valueFactory: new ValueFactory(
+                outputHexColors: $this->options->outputHexColors,
+                colorSerializer: $this->colorSerializer
+            ),
+            colorSerializer: $this->colorSerializer,
+            colorBundle: $this->colorBundle
+        );
     }
 
-    public function getOptions(): array
+    private function resetState(): void
     {
-        return $this->engine->getOptions();
+        $this->ctx->moduleState->reset();
+        $this->ctx->outputState->reset();
+        $this->ctx->conditionCacheState->reset();
+        $this->ctx->functionRegistry->reset();
+        $this->ctx->sourceMapState->reset();
     }
 
-    public function getMappings(): array
+    private function parse(string $source, Syntax $syntax): RootNode
     {
-        return $this->engine->getMappings();
+        $source = $this->normalizeSource($source, $syntax);
+
+        $this->parser->setTrackSourceLocations(true);
+
+        return $this->parser->parse($source);
+    }
+
+    private function buildEnvironment(RootNode $ast): Environment
+    {
+        $environment = new Environment();
+
+        $this->runtime->ast()->evaluate($ast, $environment);
+        $this->runtime->selector()->collectExtends($ast, $environment);
+        $this->runtime->selector()->finalizeCollectedExtends();
+
+        return $environment;
+    }
+
+    private function compileAst(StatementNode $ast, Environment $environment): string
+    {
+        if ($this->options->sourceMapFile !== null) {
+            $this->ctx->sourceMapState->startCollection();
+        }
+
+        $compiled = $this->runtime->dispatcher()->compile($ast, $environment);
+
+        if ($this->options->sourceMapFile !== null) {
+            $this->ctx->sourceMapState->stopCollection();
+        }
+
+        return $compiled;
+    }
+
+    private function postProcess(string $compiled, string $source): string
+    {
+        $optimized = $this->runtime->render()->optimize($compiled);
+
+        if ($this->options->sourceMapFile !== null) {
+            $sourceMap = $this->runtime->render()->buildSourceMap($optimized, $source);
+
+            file_put_contents($this->options->sourceMapFile, $sourceMap);
+
+            return $optimized . "\n/*# sourceMappingURL=" . $this->options->sourceMapFile . ' */';
+        }
+
+        return $optimized;
+    }
+
+    private function normalizeSource(string $source, Syntax $syntax): string
+    {
+        return $this->ctx->normalizerPipeline->process($source, $syntax);
     }
 }

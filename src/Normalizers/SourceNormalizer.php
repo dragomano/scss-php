@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace DartSass\Normalizers;
+namespace Bugo\SCSS\Normalizers;
 
-use DartSass\Parsers\Syntax;
+use Bugo\SCSS\Syntax;
 
 interface SourceNormalizer
 {

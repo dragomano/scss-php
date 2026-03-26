@@ -2,60 +2,24 @@
 
 declare(strict_types=1);
 
-namespace DartSass\Values;
+namespace Bugo\SCSS\Values;
 
-use DartSass\Handlers\MixinHandler;
-use Stringable;
-
-readonly class SassMixin implements Stringable
+final class SassMixin extends AbstractSassValue
 {
-    public function __construct(
-        private MixinHandler $mixinHandler,
-        private string $mixinName
-    ) {}
+    public function __construct(private readonly string $name) {}
 
-    public function __toString(): string
+    public function toCss(): string
     {
-        return $this->mixinName;
+        return 'get-mixin("' . $this->name . '")';
     }
 
-    public function apply(array $args, ?array $content = null): string
+    public function isTruthy(): bool
     {
-        return $this->mixinHandler->include($this->mixinName, $args, $content);
+        return true;
     }
 
-    public function acceptsContent(): bool
+    public function name(): string
     {
-        $mixinDefinition = $this->getMixinDefinition();
-
-        if ($mixinDefinition === null) {
-            return false;
-        }
-
-        foreach ($mixinDefinition['body'] as $item) {
-            if ($this->isContentDirective($item)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function getMixinDefinition(): ?array
-    {
-        return $this->mixinHandler->getMixin($this->mixinName) ?? null;
-    }
-
-    private function isContentDirective(mixed $item): bool
-    {
-        if ($item === '@content') {
-            return true;
-        }
-
-        if (is_object($item) && property_exists($item, 'name') && $item->name === '@content') {
-            return true;
-        }
-
-        return false;
+        return $this->name;
     }
 }
