@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Builtins\SassMathModule;
+use Bugo\SCSS\Exceptions\BuiltinArgumentException;
+use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
+use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\NumberNode;
 
@@ -90,6 +93,11 @@ describe('SassMathModule', function () {
         expect($result->value)->toBeCloseTo(45.0, 0.001);
     });
 
+    it('throws for atan2 with incompatible units', function () {
+        expect(fn() => $this->module->call('atan2', [new NumberNode(1, 'px'), new NumberNode(1, 's')], []))
+            ->toThrow(IncompatibleUnitsException::class);
+    });
+
     it('evaluates ceil', function () {
         $result = $this->module->call('ceil', [new NumberNode(1.2, 'px')], []);
         expect($result->value)->toBe(2)->and($result->unit)->toBe('px');
@@ -98,6 +106,16 @@ describe('SassMathModule', function () {
     it('evaluates clamp', function () {
         $result = $this->module->call('clamp', [new NumberNode(1), new NumberNode(10), new NumberNode(5)], []);
         expect($result->value)->toBe(5);
+    });
+
+    it('returns min and middle values for clamp and rethrows non-css errors', function () {
+        $min = $this->module->call('clamp', [new NumberNode(10), new NumberNode(5), new NumberNode(20)], []);
+        $middle = $this->module->call('clamp', [new NumberNode(1), new NumberNode(3), new NumberNode(5)], []);
+
+        expect($min->value)->toBe(10)
+            ->and($middle->value)->toBe(3)
+            ->and(fn() => $this->module->call('clamp', [new NumberNode(1)], []))
+            ->toThrow(MissingFunctionArgumentsException::class);
     });
 
     it('evaluates compatible', function () {
@@ -116,6 +134,16 @@ describe('SassMathModule', function () {
         expect($result->value)->toBe(5.0)->and($result->unit)->toBe('px');
     });
 
+    it('handles division by zero edge cases', function () {
+        $nan = $this->module->call('div', [new NumberNode(0), new NumberNode(0)], []);
+        $positiveInfinity = $this->module->call('div', [new NumberNode(10), new NumberNode(0)], []);
+        $negativeInfinity = $this->module->call('div', [new NumberNode(-10), new NumberNode(0)], []);
+
+        expect(is_nan($nan->value))->toBeTrue()
+            ->and($positiveInfinity->value)->toBe(INF)
+            ->and($negativeInfinity->value)->toBe(-INF);
+    });
+
     it('evaluates floor', function () {
         $result = $this->module->call('floor', [new NumberNode(1.8, 'px')], []);
         expect($result->value)->toBe(1)->and($result->unit)->toBe('px');
@@ -124,6 +152,13 @@ describe('SassMathModule', function () {
     it('evaluates hypot', function () {
         $result = $this->module->call('hypot', [new NumberNode(3), new NumberNode(4)], []);
         expect($result->value)->toBeCloseTo(5.0, 0.001);
+    });
+
+    it('throws for empty or incompatible hypot inputs', function () {
+        expect(fn() => $this->module->call('hypot', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class)
+            ->and(fn() => $this->module->call('hypot', [new NumberNode(3, 'px'), new NumberNode(4, 's')], []))
+            ->toThrow(IncompatibleUnitsException::class);
     });
 
     it('evaluates is-unitless', function () {
@@ -135,6 +170,16 @@ describe('SassMathModule', function () {
     it('evaluates log', function () {
         $result = $this->module->call('log', [new NumberNode(8), new NumberNode(2)], []);
         expect($result->value)->toBeCloseTo(3.0, 0.001);
+    });
+
+    it('handles log edge cases', function () {
+        $baseZero = $this->module->call('log', [new NumberNode(8), new NumberNode(0)], []);
+        $baseOne = $this->module->call('log', [new NumberNode(8), new NumberNode(1)], []);
+        $natural = $this->module->call('log', [new NumberNode(8)], []);
+
+        expect(is_nan($baseZero->value))->toBeTrue()
+            ->and(is_nan($baseOne->value))->toBeTrue()
+            ->and($natural->value)->toBeCloseTo(log(8), 0.000001);
     });
 
     it('evaluates max', function () {
@@ -167,9 +212,23 @@ describe('SassMathModule', function () {
         expect($result->value)->toBeGreaterThanOrEqual(1)->toBeLessThanOrEqual(3);
     });
 
+    it('throws for invalid random limit', function () {
+        expect(fn() => $this->module->call('random', [new NumberNode(0)], []))
+            ->toThrow(BuiltinArgumentException::class)
+            ->and(fn() => $this->module->call('random', [new NumberNode(1.5)], []))
+            ->toThrow(BuiltinArgumentException::class);
+    });
+
     it('evaluates round', function () {
         $result = $this->module->call('round', [new NumberNode(1.8, 'px')], []);
         expect($result->value)->toBe(2)->and($result->unit)->toBe('px');
+    });
+
+    it('rethrows non-css errors for abs and round', function () {
+        expect(fn() => $this->module->call('abs', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class)
+            ->and(fn() => $this->module->call('round', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class);
     });
 
     it('evaluates sin', function () {

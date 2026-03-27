@@ -3,17 +3,21 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Builtins\SassMapModule;
+use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
+use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Tests\ReflectionAccessor;
 
 describe('SassMapModule', function () {
     beforeEach(function () {
-        $this->module = new SassMapModule();
-        $this->map = new MapNode([
+        $this->module   = new SassMapModule();
+        $this->accessor = new ReflectionAccessor($this->module);
+        $this->map      = new MapNode([
             ['key' => new StringNode('a'), 'value' => new NumberNode(1)],
             ['key' => new StringNode('nested'), 'value' => new MapNode([
                 ['key' => new StringNode('b'), 'value' => new NumberNode(2)],
@@ -60,7 +64,7 @@ describe('SassMapModule', function () {
     });
 
     it('evaluates deep-remove', function () {
-        $set = $this->module->call('set', [$this->map, new StringNode('nested'), new StringNode('x'), new NumberNode(5)], []);
+        $set    = $this->module->call('set', [$this->map, new StringNode('nested'), new StringNode('x'), new NumberNode(5)], []);
         $result = $this->module->call('deep-remove', [$set, new StringNode('nested'), new StringNode('x')], []);
 
         expect($result)->toBeInstanceOf(MapNode::class);
@@ -95,7 +99,7 @@ describe('SassMapModule', function () {
     });
 
     it('evaluates merge (two args)', function () {
-        $right = new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(9)]]);
+        $right  = new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(9)]]);
         $result = $this->module->call('merge', [$this->map, $right], []);
 
         expect($result)->toBeInstanceOf(MapNode::class)
@@ -137,5 +141,73 @@ describe('SassMapModule', function () {
         $result = $this->module->call('values', [$this->map], []);
         expect($result)->toBeInstanceOf(ListNode::class)
             ->and(count($result->items))->toBe(2);
+    });
+
+    it('throws for unknown functions and missing required arguments', function () {
+        expect(fn() => $this->module->call('unknown', [], []))
+            ->toThrow(UnknownSassFunctionException::class)
+            ->and(fn() => $this->module->call('deep-merge', [$this->map], []))
+            ->toThrow(MissingFunctionArgumentsException::class)
+            ->and(fn() => $this->module->call('deep-remove', [$this->map], []))
+            ->toThrow(MissingFunctionArgumentsException::class)
+            ->and(fn() => $this->module->call('has-key', [$this->map], []))
+            ->toThrow(MissingFunctionArgumentsException::class)
+            ->and(fn() => $this->module->call('keys', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class)
+            ->and(fn() => $this->module->call('merge', [$this->map], []))
+            ->toThrow(MissingFunctionArgumentsException::class)
+            ->and(fn() => $this->module->call('remove', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class)
+            ->and(fn() => $this->module->call('set', [$this->map, new StringNode('a')], []))
+            ->toThrow(MissingFunctionArgumentsException::class)
+            ->and(fn() => $this->module->call('values', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class);
+    });
+
+    it('returns null when get() traverses into a non-map value', function () {
+        $result = $this->module->call('get', [$this->map, new StringNode('a'), new StringNode('x')], []);
+
+        expect($result)->toBeInstanceOf(NullNode::class);
+    });
+
+    it('returns key and value lists preserving map order', function () {
+        $keys   = $this->module->call('keys', [$this->map], []);
+        $values = $this->module->call('values', [$this->map], []);
+
+        expect($keys)->toBeInstanceOf(ListNode::class)
+            ->and($keys->items[0]->value)->toBe('a')
+            ->and($keys->items[1]->value)->toBe('nested')
+            ->and($values)->toBeInstanceOf(ListNode::class)
+            ->and($values->items[0]->value)->toBe(1)
+            ->and($values->items[1])->toBeInstanceOf(MapNode::class);
+    });
+
+    it('throws when merge second argument is not a map', function () {
+        expect(fn() => $this->module->call('merge', [$this->map, new StringNode('nested')], []))
+            ->toThrow('merge() (map module) expects map');
+    });
+
+    it('replaces scalar path values with the provided map in variadic merge', function () {
+        $patch = new MapNode([
+            ['key' => new StringNode('x'), 'value' => new NumberNode(9)],
+        ]);
+
+        $result = $this->module->call('merge', [$this->map, new StringNode('a'), $patch], []);
+
+        expect($result)->toBeInstanceOf(MapNode::class)
+            ->and($result->pairs[0]['value'])->toBeInstanceOf(MapNode::class)
+            ->and($result->pairs[0]['value']->pairs[0]['value']->value)->toBe(9);
+    });
+
+    it('covers merge() guard for non-integer last variadic index', function () {
+        $patch = new MapNode([
+            ['key' => new StringNode('x'), 'value' => new NumberNode(9)],
+        ]);
+
+        expect(fn() => $this->accessor->callMethod('merge', [[
+            0 => $this->map,
+            'path' => new StringNode('nested'),
+            'patch' => $patch,
+        ], null]))->toThrow(MissingFunctionArgumentsException::class);
     });
 });

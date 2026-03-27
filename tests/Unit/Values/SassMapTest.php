@@ -30,7 +30,7 @@ describe('SassMap', function () {
     });
 
     it('isTruthy() always returns true', function () {
-        $emptyMap = new SassMap([]);
+        $emptyMap    = new SassMap([]);
         $nonEmptyMap = new SassMap([
             ['key' => new SassString('x'), 'value' => new SassString('y')],
         ]);

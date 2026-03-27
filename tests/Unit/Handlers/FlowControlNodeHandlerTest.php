@@ -17,8 +17,8 @@ use Tests\RuntimeFactory;
 
 it('handles if branches', function () {
     $runtime = RuntimeFactory::createRuntime();
-    $ctx = RuntimeFactory::context(indent: 1);
-    $node = new IfNode(
+    $ctx     = RuntimeFactory::context(indent: 1);
+    $node    = new IfNode(
         '1 > 2',
         [new DeclarationNode('color', new StringNode('red'))],
         [new ElseIfNode('2 > 1', [new DeclarationNode('color', new StringNode('blue'))])]
@@ -29,6 +29,7 @@ it('handles if branches', function () {
 
 it('handles each for and while loops', function () {
     $runtime = RuntimeFactory::createRuntime();
+
     $ctx = RuntimeFactory::context(indent: 1);
     $ctx->env->getCurrentScope()->setVariable('i', new NumberNode(0));
 

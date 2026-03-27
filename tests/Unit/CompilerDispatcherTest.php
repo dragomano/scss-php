@@ -3,13 +3,18 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\CompilerDispatcher;
+use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\RootNode;
+use Bugo\SCSS\Nodes\RuleNode;
+use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 
 describe('CompilerDispatcher', function () {
     it('throws LogicException when visitor is not set', function () {
         $dispatcher = new CompilerDispatcher();
-        $env = new Environment();
+
+        $env  = new Environment();
         $node = new RootNode([]);
 
         expect(fn() => $dispatcher->compile($node, $env))
@@ -33,7 +38,7 @@ describe('CompilerDispatcher', function () {
         $runtime = Tests\RuntimeFactory::createRuntime();
 
         $root = new RootNode([]);
-        $env = new Environment();
+        $env  = new Environment();
 
         $result = $runtime->dispatcher()->compile($root, $env);
 
@@ -44,10 +49,25 @@ describe('CompilerDispatcher', function () {
         $runtime = Tests\RuntimeFactory::createRuntime();
 
         $root = new RootNode([]);
-        $ctx = Tests\RuntimeFactory::context();
+        $ctx  = Tests\RuntimeFactory::context();
 
         $result = $runtime->dispatcher()->compileWithContext($root, $ctx);
 
         expect($result)->toBe('');
+    });
+
+    it('compile() dispatches @at-root nodes through the visitor', function () {
+        $runtime = Tests\RuntimeFactory::createRuntime();
+        $env = new Environment();
+        $node = new AtRootNode([
+            new RuleNode('.outside', [
+                new DeclarationNode('color', new StringNode('red')),
+            ]),
+        ]);
+
+        $result = $runtime->dispatcher()->compile($node, $env);
+
+        expect($result)->toContain('.outside')
+            ->and($result)->toContain('color: red');
     });
 });

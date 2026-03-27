@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Builtins\SassColorModule;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
+use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Tests\ReflectionAccessor;
 
 describe('SassColorModule', function () {
     beforeEach(function () {
         $this->module = new SassColorModule();
+        $this->accessor = new ReflectionAccessor($this->module);
     });
 
     it('exposes metadata', function () {
@@ -384,6 +387,11 @@ describe('SassColorModule', function () {
             ->and($result->arguments[1]->value)->toBe(34.0)
             ->and($result->arguments[2]->value)->toBe(51.0)
             ->and($result->arguments[3]->value)->toBeCloseTo(0.7019607843, 0.0000000001);
+    });
+
+    it('throws for unknown legacy alpha adjustments', function () {
+        expect(fn() => $this->accessor->callMethod('legacyAlphaAdjustment', ['unknown', [], null]))
+            ->toThrow(UnknownSassFunctionException::class);
     });
 
     it('evaluates red', function () {

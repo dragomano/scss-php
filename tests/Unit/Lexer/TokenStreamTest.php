@@ -39,6 +39,20 @@ describe('TokenStream', function () {
         expect($stream->current()->type)->toBe(TokenType::COLON);
     });
 
+    it('clamps advance() to the end of the token array', function () {
+        $tokens = makeTokens([
+            [TokenType::IDENTIFIER, 'foo'],
+            [TokenType::COLON, ':'],
+            [TokenType::EOF, ''],
+        ]);
+        $stream = new TokenStream($tokens);
+
+        $stream->advance(10);
+
+        expect($stream->getPosition())->toBe(3)
+            ->and($stream->current()->type)->toBe(TokenType::EOF);
+    });
+
     it('peeks ahead without advancing', function () {
         $tokens = makeTokens([
             [TokenType::IDENTIFIER, 'foo'],

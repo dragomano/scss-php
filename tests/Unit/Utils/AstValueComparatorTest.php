@@ -80,11 +80,25 @@ describe('AstValueComparator', function () {
             expect(AstValueComparator::equals($a, $b))->toBeFalse();
         });
 
+        it('compares function nodes with different argument values as unequal', function () {
+            $a = new FunctionNode('rgb', [new NumberNode(255), new NumberNode(0), new NumberNode(0)]);
+            $b = new FunctionNode('rgb', [new NumberNode(255), new NumberNode(1), new NumberNode(0)]);
+
+            expect(AstValueComparator::equals($a, $b))->toBeFalse();
+        });
+
         it('compares equal lists', function () {
             $a = new ListNode([new StringNode('a'), new StringNode('b')], 'space');
             $b = new ListNode([new StringNode('a'), new StringNode('b')], 'space');
 
             expect(AstValueComparator::equals($a, $b))->toBeTrue();
+        });
+
+        it('compares lists with different items as unequal', function () {
+            $a = new ListNode([new StringNode('a'), new StringNode('b')], 'space');
+            $b = new ListNode([new StringNode('a'), new StringNode('c')], 'space');
+
+            expect(AstValueComparator::equals($a, $b))->toBeFalse();
         });
 
         it('compares lists with different separators as unequal', function () {
@@ -111,6 +125,20 @@ describe('AstValueComparator', function () {
         it('compares maps with different pair counts as unequal', function () {
             $a = new MapNode([['key' => new StringNode('k'), 'value' => new StringNode('v')]]);
             $b = new MapNode([]);
+
+            expect(AstValueComparator::equals($a, $b))->toBeFalse();
+        });
+
+        it('compares maps with different keys as unequal', function () {
+            $a = new MapNode([['key' => new StringNode('k1'), 'value' => new StringNode('v')]]);
+            $b = new MapNode([['key' => new StringNode('k2'), 'value' => new StringNode('v')]]);
+
+            expect(AstValueComparator::equals($a, $b))->toBeFalse();
+        });
+
+        it('compares maps with different values as unequal', function () {
+            $a = new MapNode([['key' => new StringNode('k'), 'value' => new StringNode('v1')]]);
+            $b = new MapNode([['key' => new StringNode('k'), 'value' => new StringNode('v2')]]);
 
             expect(AstValueComparator::equals($a, $b))->toBeFalse();
         });

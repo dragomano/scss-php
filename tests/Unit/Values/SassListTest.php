@@ -11,10 +11,22 @@ describe(SassList::class, function () {
         expect($list->toCss())->toBe('10px 20px');
     });
 
+    it('omits separator when hyphenated fragments should stay adjacent', function () {
+        $list = new SassList(['foo-', 'bar'], 'space');
+
+        expect($list->toCss())->toBe('foo-bar');
+    });
+
     it('optimizes four-value box shorthand', function () {
         $list = new SassList(['10px', '20px', '10px', '20px'], 'space');
 
         expect($list->toCss())->toBe('10px 20px');
+    });
+
+    it('optimizes four-value box shorthand to three values when only left and right match', function () {
+        $list = new SassList(['1px', '2px', '3px', '2px'], 'space');
+
+        expect($list->toCss())->toBe('1px 2px 3px');
     });
 
     it('optimizes three-value box shorthand to two values', function () {

@@ -48,4 +48,34 @@ describe(SassNumber::class, function () {
         expect($nearUpperInteger->toCss())->toBe('1.0000000001')
             ->and($nearLowerInteger->toCss())->toBe('.9999999999');
     });
+
+    it('drops compound units for zero values unless preservation is requested', function () {
+        $number = new SassNumber(0.0, 'px/s');
+
+        expect($number->toCss())->toBe('0');
+    });
+
+    it('returns zero when a float rounds down to all zero fractional digits', function () {
+        $number = new SassNumber(0.00000000001);
+
+        expect($number->toCss())->toBe('0');
+    });
+
+    it('normalizes negative zero after trimming fractional digits', function () {
+        $number = new SassNumber(-0.00000000001);
+
+        expect($number->toCss())->toBe('0');
+    });
+
+    it('formats negative infinity with compound units as calc expression', function () {
+        $number = new SassNumber(-INF, 'px/s');
+
+        expect($number->toCss())->toBe('calc(-infinity * 1px / 1s)');
+    });
+
+    it('handles malformed compound units without adding an empty suffix', function () {
+        $number = new SassNumber(2, '*');
+
+        expect($number->toCss())->toBe('calc(2)');
+    });
 })->covers(SassNumber::class);

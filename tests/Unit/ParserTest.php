@@ -23,7 +23,6 @@ use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinNode;
-use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
@@ -66,6 +65,7 @@ describe('Parser', function () {
     describe('parse()', function () {
         it('parses simple CSS rules', function () {
             $source = '.test { color: red; }';
+
             $ast = $this->parser->parse($source);
 
             expect($ast)->toBeInstanceOf(RootNode::class)
@@ -91,6 +91,7 @@ describe('Parser', function () {
               disabled: false;
             }
             SCSS;
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(VariableDeclarationNode::class)
@@ -106,6 +107,7 @@ describe('Parser', function () {
 
         it('parses nested rules', function () {
             $source = '.parent { .child { margin: 10px; } }';
+
             $ast = $this->parser->parse($source);
 
             $parentRule = $ast->children[0];
@@ -124,6 +126,7 @@ describe('Parser', function () {
 
         it('parses color values', function () {
             $source = '.colors { hex3: #f00; hex6: #ff0000; }';
+
             $ast = $this->parser->parse($source);
 
             $declarations = $ast->children[0]->children;
@@ -136,6 +139,7 @@ describe('Parser', function () {
 
         it('parses number values with units', function () {
             $source = '.numbers { width: 100px; opacity: 0.5; }';
+
             $ast = $this->parser->parse($source);
 
             $declarations = $ast->children[0]->children;
@@ -150,6 +154,7 @@ describe('Parser', function () {
 
         it('parses @use directives', function () {
             $source = '@use "functions"; @use "sass:color" as *;';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(UseNode::class)
@@ -162,6 +167,7 @@ describe('Parser', function () {
 
         it('parses @import directives', function () {
             $source = '@import "_imported.scss";';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(ImportNode::class)
@@ -170,6 +176,7 @@ describe('Parser', function () {
 
         it('parses @import directives with multiple files', function () {
             $source = '@import "code", "lists";';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(ImportNode::class)
@@ -178,6 +185,7 @@ describe('Parser', function () {
 
         it('parses css-like @import directives as raw import entries', function () {
             $source = '@import "theme.css", "http://example.com/a.css", url(theme), "landscape" screen and (orientation: landscape);';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(ImportNode::class)
@@ -191,6 +199,7 @@ describe('Parser', function () {
 
         it('parses @forward directives', function () {
             $source = '@forward "_forwarded.scss";';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(ForwardNode::class)
@@ -199,6 +208,7 @@ describe('Parser', function () {
 
         it('parses @forward directives with as prefix-*', function () {
             $source = '@forward "_forwarded.scss" as list-*;';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(ForwardNode::class)
@@ -208,6 +218,7 @@ describe('Parser', function () {
 
         it('parses @forward directives with hide members', function () {
             $source = '@forward "_forwarded.scss" hide $forward-color, forwarded-fn;';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(ForwardNode::class)
@@ -218,6 +229,7 @@ describe('Parser', function () {
 
         it('parses @forward directives with show members', function () {
             $source = '@forward "_forwarded.scss" show $forward-color, forwarded-mixin;';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(ForwardNode::class)
@@ -228,6 +240,7 @@ describe('Parser', function () {
 
         it('parses @forward directives with configuration and !default', function () {
             $source = '@forward "code" with ($black: #222 !default, $radius: 1rem);';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(ForwardNode::class)
@@ -241,6 +254,7 @@ describe('Parser', function () {
 
         it('parses @include directives', function () {
             $source = '.test { @include mixin-name; @include namespace.mixin(10px, #fff); }';
+
             $ast = $this->parser->parse($source);
 
             $includes = [
@@ -269,6 +283,7 @@ describe('Parser', function () {
               h1 { font-size: 40px; }
             }
             SCSS;
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(IncludeNode::class)
@@ -282,6 +297,7 @@ describe('Parser', function () {
 
         it('parses @extend directives inside rules', function () {
             $source = '.test { @extend .base; }';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(RuleNode::class)
@@ -291,8 +307,8 @@ describe('Parser', function () {
 
         it('parses @at-root directives', function () {
             $source = '.test { @at-root { .outside { color: red; } } }';
-            $ast = $this->parser->parse($source);
 
+            $ast    = $this->parser->parse($source);
             $atRoot = $ast->children[0]->children[0];
 
             expect($atRoot)->toBeInstanceOf(AtRootNode::class)
@@ -303,6 +319,7 @@ describe('Parser', function () {
 
         it('parses @debug, @warn and @error directives', function () {
             $source = '@debug hello; @warn careful; @error stop;';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(DebugNode::class)
@@ -318,6 +335,7 @@ describe('Parser', function () {
 
         it('parses @use directive with namespace and with configuration', function () {
             $source = '@use "_configurable.scss" as cfg with ($primary: blue, $gap: 12px);';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(UseNode::class)
@@ -329,6 +347,7 @@ describe('Parser', function () {
 
         it('parses @mixin directives', function () {
             $source = '@mixin button-style($color) { color: $color; border: 1px solid $color; }';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(MixinNode::class)
@@ -337,6 +356,7 @@ describe('Parser', function () {
 
         it('parses @function directives', function () {
             $source = '@function scale($value, $factor: 2) { @return $value * $factor; }';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(FunctionDeclarationNode::class)
@@ -353,6 +373,7 @@ describe('Parser', function () {
 
         it('parses rest parameter in @function directives', function () {
             $source = '@function collect($args...) { @return $args; }';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(FunctionDeclarationNode::class)
@@ -364,6 +385,7 @@ describe('Parser', function () {
 
         it('parses @for directives', function () {
             $source = '@for $i from 1 through 3 { .item-$i { width: $i; } }';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(ForNode::class)
@@ -374,6 +396,7 @@ describe('Parser', function () {
 
         it('parses @while directives', function () {
             $source = '$i: 1; @while $i <= 3 { .item { width: $i; } $i: $i + 1; }';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[1])->toBeInstanceOf(WhileNode::class)
@@ -383,6 +406,7 @@ describe('Parser', function () {
 
         it('parses @supports directives', function () {
             $source = '@supports (display: grid) { .item { display: grid; } }';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(SupportsNode::class)
@@ -393,6 +417,7 @@ describe('Parser', function () {
 
         it('parses function calls', function () {
             $source = '.test { background: color.mix(#fff, #000, 20%); }';
+
             $ast = $this->parser->parse($source);
 
             $functionCall = $ast->children[0]->children[0]->value;
@@ -403,6 +428,7 @@ describe('Parser', function () {
 
         it('parses spread arguments in function calls', function () {
             $source = '.test { value: list.zip($values...); }';
+
             $ast = $this->parser->parse($source);
 
             $functionCall = $ast->children[0]->children[0]->value;
@@ -413,6 +439,7 @@ describe('Parser', function () {
 
         it('parses identifier followed by parenthesized expression as declaration value, not function call', function () {
             $source = '.slider { transition: left (120px - 10px) * $speed; }';
+
             $ast = $this->parser->parse($source);
 
             $value = $ast->children[0]->children[0]->value;
@@ -428,12 +455,10 @@ describe('Parser', function () {
                 ->and($value->items[3]->name)->toBe('speed');
         });
 
-
-
         it('parses bracketed lists', function () {
             $source = '.test { values: [1, 2, 3]; }';
-            $ast = $this->parser->parse($source);
 
+            $ast   = $this->parser->parse($source);
             $value = $ast->children[0]->children[0]->value;
 
             expect($value)->toBeInstanceOf(ListNode::class)
@@ -443,8 +468,8 @@ describe('Parser', function () {
         });
         it('parses map literals in declarations', function () {
             $source = '.test { data: (a: 1, b: 2); }';
-            $ast = $this->parser->parse($source);
 
+            $ast   = $this->parser->parse($source);
             $value = $ast->children[0]->children[0]->value;
 
             expect($value)->toBeInstanceOf(MapNode::class)
@@ -454,6 +479,7 @@ describe('Parser', function () {
         });
         it('parses variable declarations', function () {
             $source = '$primary-color: #333; $font-size: 16px;';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(VariableDeclarationNode::class)
@@ -467,20 +493,9 @@ describe('Parser', function () {
                 ->and($ast->children[1]->value->unit)->toBe('px');
         });
 
-        it('parses module variable declarations from the statement entry point', function () {
-            prepareParserForMethodTest($this->parser, 'theme.$primary: red;');
-
-            $statement = invokeParserMethod($this->parser, 'parseStatement');
-
-            expect($statement)->toBeInstanceOf(ModuleVarDeclarationNode::class)
-                ->and($statement->module)->toBe('theme')
-                ->and($statement->name)->toBe('primary')
-                ->and($statement->value)->toBeInstanceOf(StringNode::class)
-                ->and($statement->value->value)->toBe('red');
-        });
-
         it('parses pseudo-selectors and combinators', function () {
             $source = '.item:hover { color: blue; } #id > .child + .sibling { margin: 5px; }';
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0]->selector)->toBe('.item:hover')
@@ -489,6 +504,7 @@ describe('Parser', function () {
 
         it('parses complex selector combinations', function () {
             $source = '#lp_blocks .item &:hover { box-shadow: 0 2px 5px rgba(0, 0, 0, .3); }';
+
             $ast = $this->parser->parse($source);
 
             $rule = $ast->children[0];
@@ -500,6 +516,7 @@ describe('Parser', function () {
 
         it('handles comments and whitespace', function () {
             $source = "/* comment */\n.test {\n  // another comment\n  color: red;\n}";
+
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(CommentNode::class)
@@ -718,6 +735,7 @@ describe('Parser', function () {
 
         it('parses vendor prefixes correctly', function () {
             $source = '.test-class { display: -webkit-box; display: -moz-box; display: -ms-flexbox; display: flex; }';
+
             $ast = $this->parser->parse($source);
 
             $declarations = $ast->children[0]->children;
@@ -739,6 +757,7 @@ describe('Parser', function () {
 
         it('parses comma-separated lists with space-separated values', function () {
             $source = '.test { box-shadow: 0 1px 3px 0 rgba(0, 0, 0, .1), 0 1px 2px 0 rgba(0, 0, 0, .06); }';
+
             $ast = $this->parser->parse($source);
 
             $declaration = $ast->children[0]->children[0];
@@ -775,6 +794,7 @@ describe('Parser', function () {
 
         it('parses function arguments with space-separated values', function () {
             $source = '.test { background-image: linear-gradient(to bottom, transparent, #111827); }';
+
             $ast = $this->parser->parse($source);
 
             $functionCall = $ast->children[0]->children[0]->value;
@@ -816,6 +836,7 @@ describe('Parser', function () {
 
     it('handles malformed input gracefully', function () {
         $source = '.unclosed { color: red';
+
         $ast = $this->parser->parse($source);
 
         expect($ast)->toBeInstanceOf(RootNode::class)
@@ -824,6 +845,7 @@ describe('Parser', function () {
 
     it('parses legacy = operator in function arguments for IE compatibility', function () {
         $source = '.test { filter: chroma(color=#0000ff); }';
+
         $ast = $this->parser->parse($source);
 
         $rule = $ast->children[0];

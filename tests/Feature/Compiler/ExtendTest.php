@@ -528,6 +528,35 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('orders many simple extenders in reverse declaration order like dart sass', function () {
+            $source = <<<'SCSS'
+            .s {
+              color: red;
+            }
+
+            @for $i from 1 through 1000 {
+              .c#{$i} {
+                @extend .s;
+              }
+            }
+            SCSS;
+
+            $selectors = array_map(
+                static fn(int $index): string => '.c' . $index,
+                range(1000, 1),
+            );
+
+            $expected = /** @lang text */ '.s, ' . implode(', ', $selectors) . <<<'CSS'
+             {
+              color: red;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
         it('omits placeholder-only rules and placeholder parts in mixed selector lists without extends', function () {
             $source = <<<'SCSS'
             .alert:hover, %strong-alert {

@@ -36,8 +36,16 @@ describe('CompressedCssFormatter', function () {
             expect($this->formatter->format($css))->toBe('.a{color:red}/* # sourceMappingURL=out.css.map */');
         });
 
+        it('keeps trailing content when a regular comment is not closed', function () {
+            expect($this->formatter->format('.a{/* unclosed'))->toBe('.a{/* unclosed');
+        });
+
         it('shortens 6-digit hex colors to 3-digit when possible', function () {
             expect($this->formatter->format('.a{color:#ffffff}'))->toBe('.a{color:#fff}');
+        });
+
+        it('shortens 8-digit hex colors to 4-digit when possible', function () {
+            expect($this->formatter->format('.a{color:#ffffffff}'))->toBe('.a{color:#ffff}');
         });
 
         it('leaves 6-digit hex colors that cannot be shortened', function () {
@@ -68,8 +76,24 @@ describe('CompressedCssFormatter', function () {
             expect($this->formatter->format($css))->toBe('.a{content:"hello world"}');
         });
 
+        it('keeps escaped quotes inside strings', function () {
+            $css = '.a { content: "a\"b"; color: red; }';
+
+            expect($this->formatter->format($css))->toBe('.a{content:"a\"b";color:red}');
+        });
+
         it('keeps spaces between selector and block', function () {
             expect($this->formatter->format('.a .b { color: red; }'))->toBe('.a .b{color:red}');
+        });
+
+        it('skips space before preserved comments that follow a value', function () {
+            $css = '.a{width:calc(1px /*!keep*/ / 2px)}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(1px/*!keep*//2px)}');
+        });
+
+        it('keeps a terminal semicolon when no non-space character follows it', function () {
+            expect($this->formatter->format('@charset "UTF-8";'))->toBe('@charset "UTF-8";');
         });
     });
 });

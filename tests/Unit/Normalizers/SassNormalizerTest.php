@@ -605,8 +605,33 @@ describe('SassNormalizer', function () {
     });
 
     it('continues scanning pseudo-classes after selector-like false positives', function () {
-        expect($this->accessor->callMethod('containsPseudoClass', ['.item:hoverable:hover']))
-            ->toBeTrue();
+        $sass = <<<'SASS'
+        .item:hoverable:hover
+          color: red
+        SASS;
+
+        $expected = <<<'SCSS'
+        .item:hoverable:hover {
+          color: red;
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
+    it('continues scanning non-prefixed pseudo-classes after false positives', function () {
+        $sass = <<<'SASS'
+        body:hoverable:hover
+          color: red
+        SASS;
+
+        $expected = <<<'SCSS'
+        body:hoverable:hover {
+          color: red;
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
     });
 
     describe('Line Ending Detection', function () {

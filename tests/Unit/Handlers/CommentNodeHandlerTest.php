@@ -10,6 +10,7 @@ use Tests\RuntimeFactory;
 
 it('renders preserved and interpolated comments', function () {
     $runtime = RuntimeFactory::createRuntime();
+
     $ctx = RuntimeFactory::context(indent: 1);
     $ctx->env->getCurrentScope()->setVariable('name', new StringNode('box'));
 
@@ -20,7 +21,7 @@ it('renders preserved and interpolated comments', function () {
 
 it('drops non preserved comments in compressed mode', function () {
     $runtime = RuntimeFactory::createRuntime(options: new CompilerOptions(style: Style::COMPRESSED));
-    $ctx = RuntimeFactory::context();
+    $ctx     = RuntimeFactory::context();
 
     expect($runtime->comment()->handle(new CommentNode('x'), $ctx))->toBe('');
 });

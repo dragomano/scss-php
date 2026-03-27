@@ -12,9 +12,11 @@ use Tests\RuntimeFactory;
 
 it('registers functions mixins and variables in scope', function () {
     $runtime = RuntimeFactory::createRuntime();
-    $ctx = RuntimeFactory::context();
+    $ctx     = RuntimeFactory::context();
+
     $moduleScope = new Scope();
     $moduleScope->setVariable('tone', new NumberNode(1));
+
     $ctx->env->getCurrentScope()->addModule('theme', $moduleScope);
 
     $runtime->definition()->handleFunction(new FunctionDeclarationNode('size'), $ctx);

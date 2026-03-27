@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
+use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
 describe('Text service', function () {
@@ -29,6 +30,10 @@ describe('Text service', function () {
             $this->env->getCurrentScope()->setVariable('b', new StringNode('y'));
 
             expect($this->text->interpolateText('#{$a}-#{$b}', $this->env))->toBe('x-y');
+        });
+
+        it('keeps trailing text when interpolation is not closed', function () {
+            expect($this->text->replaceInterpolations('a#{b', $this->env))->toBe('a#{b');
         });
     });
 
@@ -115,6 +120,40 @@ describe('Text service', function () {
 
             expect($result['name'])->toBe('background')
                 ->and($result['value'])->toBe('url(x:y)');
+        });
+    });
+
+    describe('internal helpers', function () {
+        beforeEach(function () {
+            $this->accessor = new ReflectionAccessor($this->text);
+        });
+
+        it('returns empty typed items when input is not an array', function () {
+            expect($this->text->extractStringKeyedArrayItems('nope'))->toBe([]);
+        });
+
+        it('keeps the rest of supports condition when closing parenthesis is missing', function () {
+            $result = $this->text->resolveSupportsCondition('display and (color: red', $this->env);
+
+            expect($result)->toBe('display and (color: red');
+        });
+
+        it('wraps not children in parentheses when rendering boolean supports expressions', function () {
+            $result = $this->text->resolveSupportsCondition('(not (display: grid)) and (color: red)', $this->env);
+
+            expect($result)->toBe('(not (display: grid)) and (color: red)');
+        });
+
+        it('returns empty string for empty interpolation expressions', function () {
+            $result = $this->text->interpolateText('#{}', $this->env);
+
+            expect($result)->toBe('');
+        });
+
+        it('returns original interpolation expression when parser does not yield a declaration', function () {
+            $result = $this->text->interpolateText('#{1 + 2}', $this->env);
+
+            expect($result)->toBe('3');
         });
     });
 });

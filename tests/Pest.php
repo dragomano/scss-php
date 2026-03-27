@@ -4,10 +4,6 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\Assert;
 
-expect()->extend('toBeOne', function () {
-    return $this->toBe(1);
-});
-
 expect()->extend('toEqualCss', function (string $expected) {
     $normalize = static function (string $s): string {
         return str_replace(["\r\n", "\r"], "\n", trim($s));

@@ -42,7 +42,7 @@ describe('Compiler', function () {
         }
         SCSS;
 
-        $expected = <<<'CSS'
+        $expected = /** @lang text */ <<<'CSS'
         .all-spaces {
           --rgb: rgb(12 34 56);
           --hwb: hwb(210deg 20% 30%);

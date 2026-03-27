@@ -121,6 +121,85 @@ describe('mappings generation', function () {
             ->and($sourceMap['mappings'])->toContain(',')
             ->and($sourceMap['mappings'])->toMatch('/;;;/');
     });
+
+    it('sorts mappings that are out of order on the same generated line', function () {
+        $sortedMappings = [
+            mapping(1, 0, 1, 0),
+            mapping(1, 10, 1, 10),
+        ];
+        $unsortedMappings = [
+            mapping(1, 10, 1, 10),
+            mapping(1, 0, 1, 0),
+        ];
+
+        $sortedResult = $this->generator->generate(
+            $sortedMappings,
+            'source.scss',
+            'output.css',
+            sourceMapOptions()
+        );
+        $unsortedResult = $this->generator->generate(
+            $unsortedMappings,
+            'source.scss',
+            'output.css',
+            sourceMapOptions()
+        );
+
+        $sortedMap = json_decode($sortedResult, true);
+        $unsortedMap = json_decode($unsortedResult, true);
+
+        expect($unsortedMap)->toBeArray()
+            ->and($sortedMap)->toBeArray()
+            ->and($unsortedMap['mappings'])->toBe($sortedMap['mappings']);
+    });
+
+    it('sorts mappings that are out of order across generated lines', function () {
+        $sortedMappings = [
+            mapping(1, 0, 1, 0),
+            mapping(2, 0, 2, 0),
+        ];
+        $unsortedMappings = [
+            mapping(2, 0, 2, 0),
+            mapping(1, 0, 1, 0),
+        ];
+
+        $sortedResult = $this->generator->generate(
+            $sortedMappings,
+            'source.scss',
+            'output.css',
+            sourceMapOptions()
+        );
+        $unsortedResult = $this->generator->generate(
+            $unsortedMappings,
+            'source.scss',
+            'output.css',
+            sourceMapOptions()
+        );
+
+        $sortedMap = json_decode($sortedResult, true);
+        $unsortedMap = json_decode($unsortedResult, true);
+
+        expect($unsortedMap)->toBeArray()
+            ->and($sortedMap)->toBeArray()
+            ->and($unsortedMap['mappings'])->toBe($sortedMap['mappings']);
+    });
+
+    it('adds trailing empty line segments up to outputLines', function () {
+        $mappings = [
+            mapping(1, 0, 1, 0),
+        ];
+
+        $result = $this->generator->generate(
+            $mappings,
+            'source.scss',
+            'output.css',
+            sourceMapOptions(outputLines: 4)
+        );
+        $sourceMap = json_decode($result, true);
+
+        expect($sourceMap)->toBeArray()
+            ->and($sourceMap['mappings'])->toBe(';AACA;;');
+    });
 })->covers(SourceMapGenerator::class);
 
 describe('source map options', function () {

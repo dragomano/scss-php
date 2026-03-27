@@ -9,7 +9,7 @@ use Tests\RuntimeFactory;
 
 it('renders indentation and trims trailing newlines', function () {
     $runtime = RuntimeFactory::createRuntime();
-    $render = $runtime->render();
+    $render  = $runtime->render();
 
     expect($render->indentPrefix(2))->toBe('    ')
         ->and($render->trimTrailingNewlines("a\n\n"))->toBe('a')
@@ -17,17 +17,22 @@ it('renders indentation and trims trailing newlines', function () {
 });
 
 it('collects source mappings and builds a source map', function () {
-    $runtime = RuntimeFactory::createRuntime(options: new CompilerOptions(sourceMapFile: 'output.css.map', includeSources: true));
+    $runtime = RuntimeFactory::createRuntime(
+        options: new CompilerOptions(sourceMapFile: 'output.css.map', includeSources: true)
+    );
+
     $render = $runtime->render();
     $output = '';
 
     $runtime->context()->options();
+
     $runtimeContext = new ReflectionAccessor($runtime);
 
     $ctx = $runtimeContext->getProperty('ctx');
     $ctx->sourceMapState->collectMappings = true;
 
     $render->appendChunk($output, '.a', new CommentNode('x', false, 2, 3));
+
     $map = $render->buildSourceMap($output, '.a {}');
 
     expect($output)->toBe('.a')

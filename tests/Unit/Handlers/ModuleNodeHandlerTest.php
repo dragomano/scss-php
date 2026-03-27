@@ -15,7 +15,9 @@ it('handles @import, @forward and @use css emission', function () {
     $forwarded = $runtime->moduleLoad()->handleForward(new ForwardNode('_forwarded.scss'), $ctx);
 
     $use = new UseNode('_configurable_with_css.scss', 'cfg');
+
     $runtime->module()->handleUse($use, $ctx->env);
+
     $used      = $runtime->moduleLoad()->handleUse($use);
     $usedAgain = $runtime->moduleLoad()->handleUse($use);
 

@@ -141,4 +141,64 @@ describe('Tokenizer', function () {
         expect($barToken)->not->toBeNull()
             ->and($barToken->line)->toBe(2);
     });
+
+    it('skips unknown characters and handles unclosed comments or strings with trailing escapes', function () {
+        $unknown = $this->tokenizer->tokenize('`');
+        $comment = $this->tokenizer->tokenize('/* unterminated');
+        $string = $this->tokenizer->tokenize('"foo\\');
+
+        expect($unknown)->toHaveCount(1)
+            ->and($unknown[0]->type)->toBe(TokenType::EOF)
+            ->and($comment[0]->type)->toBe(TokenType::COMMENT_LOUD)
+            ->and($comment[0]->value)->toBe(' unterminated')
+            ->and($string[0]->type)->toBe(TokenType::STRING)
+            ->and($string[0]->value)->toBe('foo\\');
+    });
+
+    it('handles exponent edge cases css variables and optional operators', function () {
+        $exponent = $this->tokenizer->tokenize('1e');
+        $cssVar = $this->tokenizer->tokenize('--gap,');
+        $single = $this->tokenizer->tokenize('>');
+        $double = $this->tokenizer->tokenize('>=');
+        $tilde = $this->tokenizer->tokenize('~');
+
+        expect($exponent[0]->type)->toBe(TokenType::NUMBER)
+            ->and($exponent[0]->value)->toBe('1e')
+            ->and($cssVar[0]->type)->toBe(TokenType::CSS_VARIABLE)
+            ->and($cssVar[0]->value)->toBe('--gap')
+            ->and($cssVar[1]->type)->toBe(TokenType::COMMA)
+            ->and($single[0]->type)->toBe(TokenType::GREATER_THAN)
+            ->and($double[0]->type)->toBe(TokenType::GREATER_THAN_EQUALS)
+            ->and($tilde[0]->type)->toBe(TokenType::TILDE);
+    });
+
+    it('supports tokenization without tracking positions', function () {
+        $this->tokenizer->setTrackPositions(false);
+
+        $tokens = $this->tokenizer->tokenize("a\nb");
+
+        expect($tokens[0]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($tokens[0]->value)->toBe('a')
+            ->and($tokens[2]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($tokens[2]->value)->toBe('b');
+    });
+
+    it('tokenizes escaped identifiers and strings through the public api', function () {
+        $escapedBackslashIdentifier = $this->tokenizer->tokenize('\\');
+        $escapedQuestionIdentifier = $this->tokenizer->tokenize('\\?');
+        $hexEscapedIdentifier = $this->tokenizer->tokenize('\\41 ');
+        $accentedIdentifier = $this->tokenizer->tokenize('\\E9 ');
+        $euroIdentifier = $this->tokenizer->tokenize('\\20AC ');
+
+        expect($escapedBackslashIdentifier[0]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($escapedBackslashIdentifier[0]->value)->toBe('\\')
+            ->and($escapedQuestionIdentifier[0]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($escapedQuestionIdentifier[0]->value)->toBe('\\?')
+            ->and($hexEscapedIdentifier[0]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($hexEscapedIdentifier[0]->value)->toBe('A')
+            ->and($accentedIdentifier[0]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($accentedIdentifier[0]->value)->toBe("\xC3\xA9")
+            ->and($euroIdentifier[0]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($euroIdentifier[0]->value)->toBe("\xE2\x82\xAC");
+    });
 });

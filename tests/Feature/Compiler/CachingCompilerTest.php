@@ -13,98 +13,96 @@ use Psr\SimpleCache\CacheInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Psr16Cache;
 
-final class CountingCompiler implements CompilerInterface
-{
-    public int $compileFileCalls = 0;
-
-    public int $compileStringCalls = 0;
-
-    public function __construct(private readonly CompilerInterface $inner) {}
-
-    public function compileString(string $source, ?Syntax $syntax = null, string $sourceFile = ''): string
-    {
-        $this->compileStringCalls++;
-
-        return $this->inner->compileString($source, $syntax, $sourceFile);
-    }
-
-    public function compileFile(string $path): string
-    {
-        $this->compileFileCalls++;
-
-        return $this->inner->compileFile($path);
-    }
-}
-
-final class MutableCache implements CacheInterface
-{
-    /** @var array<string, mixed> */
-    private array $items = [];
-
-    public function get(string $key, mixed $default = null): mixed
-    {
-        return $this->items[$key] ?? $default;
-    }
-
-    public function set(string $key, mixed $value, null|int|\DateInterval $ttl = null): bool
-    {
-        $this->items[$key] = $value;
-
-        return true;
-    }
-
-    public function delete(string $key): bool
-    {
-        unset($this->items[$key]);
-
-        return true;
-    }
-
-    public function clear(): bool
-    {
-        $this->items = [];
-
-        return true;
-    }
-
-    public function getMultiple(iterable $keys, mixed $default = null): iterable
-    {
-        $values = [];
-
-        foreach ($keys as $key) {
-            $values[$key] = $this->get($key, $default);
-        }
-
-        return $values;
-    }
-
-    public function setMultiple(iterable $values, null|int|\DateInterval $ttl = null): bool
-    {
-        foreach ($values as $key => $value) {
-            $this->set((string) $key, $value, $ttl);
-        }
-
-        return true;
-    }
-
-    public function deleteMultiple(iterable $keys): bool
-    {
-        foreach ($keys as $key) {
-            $this->delete((string) $key);
-        }
-
-        return true;
-    }
-
-    public function has(string $key): bool
-    {
-        return is_array($this->items) && array_key_exists($key, $this->items);
-    }
-}
-
 describe('CachingCompiler', function () {
     beforeEach(function () {
         $this->tmpDir = sys_get_temp_dir() . '/dart-sass-cache-' . uniqid('', true);
+
+        $this->makeCountingCompiler = static fn(CompilerInterface $inner) => new class ($inner) implements CompilerInterface {
+            public int $compileFileCalls = 0;
+
+            public int $compileStringCalls = 0;
+
+            public function __construct(private readonly CompilerInterface $inner) {}
+
+            public function compileString(string $source, ?Syntax $syntax = null, string $sourceFile = ''): string
+            {
+                $this->compileStringCalls++;
+
+                return $this->inner->compileString($source, $syntax, $sourceFile);
+            }
+
+            public function compileFile(string $path): string
+            {
+                $this->compileFileCalls++;
+
+                return $this->inner->compileFile($path);
+            }
+        };
+
+        $this->makeMutableCache = static fn() => new class () implements CacheInterface {
+            /** @var array<string, mixed> */
+            private array $items = [];
+
+            public function get(string $key, mixed $default = null): mixed
+            {
+                return $this->items[$key] ?? $default;
+            }
+
+            public function set(string $key, mixed $value, null|int|\DateInterval $ttl = null): bool
+            {
+                $this->items[$key] = $value;
+
+                return true;
+            }
+
+            public function delete(string $key): bool
+            {
+                unset($this->items[$key]);
+
+                return true;
+            }
+
+            public function clear(): bool
+            {
+                $this->items = [];
+
+                return true;
+            }
+
+            public function getMultiple(iterable $keys, mixed $default = null): iterable
+            {
+                $values = [];
+
+                foreach ($keys as $key) {
+                    $values[$key] = $this->get($key, $default);
+                }
+
+                return $values;
+            }
+
+            public function setMultiple(iterable $values, null|int|\DateInterval $ttl = null): bool
+            {
+                foreach ($values as $key => $value) {
+                    $this->set((string) $key, $value, $ttl);
+                }
+
+                return true;
+            }
+
+            public function deleteMultiple(iterable $keys): bool
+            {
+                foreach ($keys as $key) {
+                    $this->delete((string) $key);
+                }
+
+                return true;
+            }
+
+            public function has(string $key): bool
+            {
+                return array_key_exists($key, $this->items);
+            }
+        };
 
         mkdir($this->tmpDir, 0777, true);
     });
@@ -137,7 +135,7 @@ describe('CachingCompiler', function () {
         SCSS);
 
         $trackingLoader = new TrackingLoader(new Loader([$this->tmpDir]));
-        $compiler       = new CountingCompiler(new Compiler(loader: $trackingLoader));
+        $compiler       = ($this->makeCountingCompiler)(new Compiler(loader: $trackingLoader));
         $cachedCompiler = new CachingCompiler(
             $compiler,
             new Psr16Cache(new ArrayAdapter()),
@@ -186,7 +184,7 @@ describe('CachingCompiler', function () {
 
         $options        = new CompilerOptions(sourceMapFile: $mapPath);
         $trackingLoader = new TrackingLoader(new Loader([$this->tmpDir]));
-        $compiler       = new CountingCompiler(new Compiler($options, $trackingLoader));
+        $compiler       = ($this->makeCountingCompiler)(new Compiler($options, $trackingLoader));
         $cachedCompiler = new CachingCompiler(
             $compiler,
             new Psr16Cache(new ArrayAdapter()),
@@ -210,7 +208,7 @@ describe('CachingCompiler', function () {
 
     it('delegates compileString without caching', function () {
         $trackingLoader = new TrackingLoader(new Loader([$this->tmpDir]));
-        $compiler       = new CountingCompiler(new Compiler(loader: $trackingLoader));
+        $compiler       = ($this->makeCountingCompiler)(new Compiler(loader: $trackingLoader));
         $cachedCompiler = new CachingCompiler(
             $compiler,
             new Psr16Cache(new ArrayAdapter()),
@@ -219,11 +217,13 @@ describe('CachingCompiler', function () {
 
         $scss = '.box { color: red; }';
 
-        expect($cachedCompiler->compileString($scss))->toEqualCss(<<<'CSS'
+        $expected = /** @lang text */ <<<'CSS'
         .box {
           color: red;
         }
-        CSS)
+        CSS;
+
+        expect($cachedCompiler->compileString($scss))->toEqualCss($expected)
             ->and($compiler->compileStringCalls)->toBe(1)
             ->and($compiler->compileFileCalls)->toBe(0);
     });
@@ -241,25 +241,22 @@ describe('CachingCompiler', function () {
         }
         SCSS);
 
-        $cache          = new MutableCache();
+        $cache          = ($this->makeMutableCache)();
         $trackingLoader = new TrackingLoader(new Loader([$this->tmpDir]));
-        $compiler       = new CountingCompiler(new Compiler(loader: $trackingLoader));
-        $cachedCompiler = new CachingCompiler(
-            $compiler,
-            $cache,
-            $trackingLoader,
-        );
+        $compiler       = ($this->makeCountingCompiler)(new Compiler(loader: $trackingLoader));
+        $cachedCompiler = new CachingCompiler($compiler, $cache, $trackingLoader);
 
         $cacheKey = buildCacheKey($entryPath);
 
-        expect($cache->set($cacheKey, $entry))->toBeTrue()
-            ->and($cache->has($cacheKey))->toBeTrue();
-
-        expect($cachedCompiler->compileFile($entryPath))->toEqualCss(<<<'CSS'
+        $expected = /** @lang text */ <<<'CSS'
         .box {
           color: red;
         }
-        CSS)
+        CSS;
+
+        expect($cache->set($cacheKey, $entry))->toBeTrue()
+            ->and($cache->has($cacheKey))->toBeTrue()
+            ->and($cachedCompiler->compileFile($entryPath))->toEqualCss($expected)
             ->and($compiler->compileFileCalls)->toBe(1);
     })->with([
         'css is not string' => [[

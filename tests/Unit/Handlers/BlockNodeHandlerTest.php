@@ -15,6 +15,7 @@ use Tests\RuntimeFactory;
 
 it('handles local mixin includes', function () {
     $runtime = RuntimeFactory::createRuntime();
+
     $ctx = RuntimeFactory::context();
     $ctx->env->getCurrentScope()->defineMixin('box', [], [
         new DeclarationNode('color', new StringNode('red')),

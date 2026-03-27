@@ -2,24 +2,42 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
+use Bugo\SCSS\Nodes\ArgumentListNode;
+use Bugo\SCSS\Nodes\BooleanNode;
+use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
+use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
+use Bugo\SCSS\Nodes\ReturnNode;
+use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Parser;
+use Bugo\SCSS\ParserInterface;
+use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Runtime\Scope;
+use Bugo\SCSS\Style;
+use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
 it('evaluates variable references and resolves spread arguments', function () {
     $runtime = RuntimeFactory::createRuntime();
+
     $env = new Environment();
     $env->getCurrentScope()->setVariable('value', new NumberNode(5, 'px'));
 
     $resolved = $runtime->evaluation()->evaluateValue(new VariableReferenceNode('value'), $env);
+
     [$positional, $named] = $runtime->evaluation()->resolveCallArguments([
         new SpreadArgumentNode(new ListNode([new StringNode('a'), new StringNode('b')], 'comma')),
         new NamedArgumentNode('width', new NumberNode(10, 'px')),
@@ -39,7 +57,7 @@ it('evaluates variable references and resolves spread arguments', function () {
 it('parses content call arguments and concatenates strings', function () {
     $runtime = RuntimeFactory::createRuntime();
 
-    $arguments = $runtime->evaluation()->parseContentCallArguments('(10px, $tone: red)');
+    $arguments    = $runtime->evaluation()->parseContentCallArguments('(10px, $tone: red)');
     $concatenated = $runtime->evaluation()->evaluateStringConcatenationList(
         new ListNode([new StringNode('foo'), new StringNode('+'), new StringNode('bar')], 'space')
     );
@@ -56,8 +74,8 @@ it('parses content call arguments and concatenates strings', function () {
 
 it('evaluates logical operators in list expressions', function () {
     $runtime = RuntimeFactory::createRuntime();
-    $env = new Environment();
-    $parser = new Parser();
+    $env     = new Environment();
+    $parser  = new Parser();
 
     $ast = $parser->parse(<<<'SCSS'
     .test {
@@ -108,8 +126,8 @@ it('evaluates logical operators in list expressions', function () {
 
 it('evaluates comparison operators with correct precedence', function () {
     $runtime = RuntimeFactory::createRuntime();
-    $env = new Environment();
-    $parser = new Parser();
+    $env     = new Environment();
+    $parser  = new Parser();
 
     $ast = $parser->parse(<<<'SCSS'
     .test {
@@ -156,4 +174,357 @@ it('evaluates comparison operators with correct precedence', function () {
         ->and($runtime->evaluation()->format($f, $env))->toBe('true')
         ->and($runtime->evaluation()->format($g, $env))->toBe('true')
         ->and($runtime->evaluation()->format($h, $env))->toBe('true');
+});
+
+it('preserves literal slash sublists while still evaluating changed list items', function () {
+    $runtime = RuntimeFactory::createRuntime();
+
+    $env = new Environment();
+    $env->getCurrentScope()->setVariable('value', new StringNode('resolved'));
+
+    $slashList = new ListNode([
+        new NumberNode(1.0, null, true),
+        new StringNode('/'),
+        new NumberNode(2.0, null, true),
+    ], 'space');
+
+    $result = $runtime->evaluation()->evaluateValue(new ListNode([
+        new VariableReferenceNode('value'),
+        $slashList,
+    ], 'comma'), $env);
+
+    expect($result)->toBeInstanceOf(ListNode::class);
+
+    if (! $result instanceof ListNode) {
+        throw new RuntimeException('Expected result to be ListNode.');
+    }
+
+    expect($result->items[0])->toBeInstanceOf(StringNode::class)
+        ->and($result->items[1])->toBe($slashList);
+
+    /** @var StringNode $firstItem */
+    $firstItem = $result->items[0];
+
+    expect($firstItem->value)->toBe('resolved');
+});
+
+it('returns comparison results directly from list evaluation', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+
+    $result = $runtime->evaluation()->evaluateValue(new ListNode([
+        new NumberNode(1.0),
+        new StringNode('<'),
+        new NumberNode(2.0),
+    ], 'space'), $env);
+
+    expect($result)->toBeInstanceOf(BooleanNode::class);
+
+    if (! $result instanceof BooleanNode) {
+        throw new RuntimeException('Expected result to be BooleanNode.');
+    }
+
+    expect($runtime->evaluation()->format($result, $env))->toBe('true');
+});
+
+it('evaluates argument list items and keywords lazily', function () {
+    $runtime = RuntimeFactory::createRuntime();
+
+    $env = new Environment();
+    $env->getCurrentScope()->setVariable('first', new StringNode('resolved-item'));
+    $env->getCurrentScope()->setVariable('named', new StringNode('resolved-keyword'));
+
+    $result = $runtime->evaluation()->evaluateValue(new ArgumentListNode(
+        [new VariableReferenceNode('first'), new StringNode('tail')],
+        'comma',
+        false,
+        [
+            'primary' => new VariableReferenceNode('named'),
+            'secondary' => new StringNode('kept'),
+        ]
+    ), $env);
+
+    expect($result)->toBeInstanceOf(ArgumentListNode::class);
+
+    if (! $result instanceof ArgumentListNode) {
+        throw new RuntimeException('Expected result to be ArgumentListNode.');
+    }
+
+    expect($result->items[0])->toBeInstanceOf(StringNode::class)
+        ->and($result->items[1])->toBeInstanceOf(StringNode::class)
+        ->and($result->keywords['primary'])->toBeInstanceOf(StringNode::class)
+        ->and($result->keywords['secondary'])->toBeInstanceOf(StringNode::class)
+        ->and(count($result->items))->toBe(2);
+
+    /** @var StringNode $firstItem */
+    $firstItem = $result->items[0];
+    /** @var StringNode $secondItem */
+    $secondItem = $result->items[1];
+    /** @var StringNode $primaryKeyword */
+    $primaryKeyword = $result->keywords['primary'];
+    /** @var StringNode $secondaryKeyword */
+    $secondaryKeyword = $result->keywords['secondary'];
+
+    expect($firstItem->value)->toBe('resolved-item')
+        ->and($secondItem->value)->toBe('tail')
+        ->and($primaryKeyword->value)->toBe('resolved-keyword')
+        ->and($secondaryKeyword->value)->toBe('kept');
+});
+
+it('evaluates map keys and values lazily', function () {
+    $runtime = RuntimeFactory::createRuntime();
+
+    $env = new Environment();
+    $env->getCurrentScope()->setVariable('key', new StringNode('resolved-key'));
+    $env->getCurrentScope()->setVariable('value', new StringNode('resolved-value'));
+
+    $unchangedKey   = new StringNode('kept-key');
+    $unchangedValue = new StringNode('kept-value');
+
+    $map = new MapNode([
+        ['key' => new VariableReferenceNode('key'), 'value' => new VariableReferenceNode('value')],
+        ['key' => $unchangedKey, 'value' => $unchangedValue],
+    ]);
+
+    $result = $runtime->evaluation()->evaluateValue($map, $env);
+
+    expect($result)->toBeInstanceOf(MapNode::class)
+        ->and($result)->not->toBe($map);
+
+    if (! $result instanceof MapNode) {
+        throw new RuntimeException('Expected result to be MapNode.');
+    }
+
+    expect($result->pairs[0]['key'])->toBeInstanceOf(StringNode::class)
+        ->and($result->pairs[0]['value'])->toBeInstanceOf(StringNode::class)
+        ->and($result->pairs[1]['key'])->toBe($unchangedKey)
+        ->and($result->pairs[1]['value'])->toBe($unchangedValue);
+
+    /** @var StringNode $firstKey */
+    $firstKey = $result->pairs[0]['key'];
+    /** @var StringNode $firstValue */
+    $firstValue = $result->pairs[0]['value'];
+
+    expect($firstKey->value)->toBe('resolved-key')
+        ->and($firstValue->value)->toBe('resolved-value');
+});
+
+it('keeps named arguments unchanged when their value does not change', function () {
+    $runtime  = RuntimeFactory::createRuntime();
+    $env      = new Environment();
+    $argument = new NamedArgumentNode('tone', new StringNode('red'));
+
+    $result = $runtime->evaluation()->evaluateValue($argument, $env);
+
+    expect($result)->toBe($argument);
+});
+
+it('rebuilds named arguments when their value changes', function () {
+    $runtime = RuntimeFactory::createRuntime();
+
+    $env = new Environment();
+    $env->getCurrentScope()->setVariable('tone', new StringNode('blue'));
+
+    $result = $runtime->evaluation()->evaluateValue(
+        new NamedArgumentNode('tone', new VariableReferenceNode('tone')),
+        $env
+    );
+
+    expect($result)->toBeInstanceOf(NamedArgumentNode::class);
+
+    if (! $result instanceof NamedArgumentNode) {
+        throw new RuntimeException('Expected result to be NamedArgumentNode.');
+    }
+
+    expect($result->name)->toBe('tone')
+        ->and($result->value)->toBeInstanceOf(StringNode::class);
+
+    /** @var StringNode $namedValue */
+    $namedValue = $result->value;
+
+    expect($namedValue->value)->toBe('blue');
+});
+
+it('throws when user function recursion exceeds the evaluator limit', function () {
+    $runtime = RuntimeFactory::createRuntime();
+
+    $env = new Environment();
+    $env->getCurrentScope()->setFunction('loop', new CallableDefinition([], [
+        new ReturnNode(new StringNode('done')),
+    ], $env->getCurrentScope(), 1));
+
+    $ctx = (new ReflectionAccessor($runtime))->getProperty('ctx');
+    $ctx->moduleState->callDepth = 100;
+
+    expect(fn() => $runtime->evaluation()->evaluateValue(new FunctionNode('loop'), $env))
+        ->toThrow(MaxIterationsExceededException::class);
+});
+
+it('returns simplified max() calls when builtins defer to css', function () {
+    $runtime = RuntimeFactory::createRuntime();
+
+    $env = new Environment();
+    $ctx = (new ReflectionAccessor($runtime))->getProperty('ctx');
+
+    $functionRegistry = new ReflectionAccessor($ctx->functionRegistry);
+    $functionRegistry->setProperty('globalAliases', []);
+    $functionRegistry->setProperty('moduleFactories', []);
+
+    $result = $runtime->evaluation()->evaluateValue(new FunctionNode('max', [
+        new NumberNode(1),
+        new NumberNode(2),
+    ]), $env);
+
+    expect($result)->toBeInstanceOf(NumberNode::class);
+
+    if (! $result instanceof NumberNode) {
+        throw new RuntimeException('Expected result to be NumberNode.');
+    }
+
+    expect($result->value)->toBe(2.0);
+});
+
+it('compresses fallback hsl() functions to hex colors in compressed mode', function () {
+    $runtime = RuntimeFactory::createRuntime(
+        options: new CompilerOptions(style: Style::COMPRESSED)
+    );
+
+    $env = new Environment();
+    $ctx = (new ReflectionAccessor($runtime))->getProperty('ctx');
+
+    $functionRegistry = new ReflectionAccessor($ctx->functionRegistry);
+    $functionRegistry->setProperty('globalAliases', []);
+    $functionRegistry->setProperty('moduleFactories', []);
+
+    $result = $runtime->evaluation()->evaluateValue(new FunctionNode('hsl', [
+        new NumberNode(0, 'deg'),
+        new NumberNode(100, '%'),
+        new NumberNode(50, '%'),
+    ]), $env);
+
+    expect($result)->toBeInstanceOf(ColorNode::class);
+
+    if (! $result instanceof ColorNode) {
+        throw new RuntimeException('Expected result to be ColorNode.');
+    }
+
+    expect($result->value)->toBe('#f00');
+});
+
+it('returns unchanged nodes for unsupported evaluateValue inputs', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+    $node    = new ColorNode('#abc');
+
+    expect($runtime->evaluation()->evaluateValue($node, $env))->toBe($node);
+});
+
+it('rebuilds compact slash declaration values when an item changes', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+    $env->getCurrentScope()->setVariable('ratio', new NumberNode(16, 'px'));
+
+    $value = new ListNode([
+        new VariableReferenceNode('ratio'),
+        new StringNode('/'),
+        new NumberNode(9, 'px'),
+    ], 'space');
+
+    $result = $runtime->evaluation()->evaluateDeclarationValue($value, 'font', $env);
+
+    expect($result)->toBeInstanceOf(ListNode::class)
+        ->and($result)->not->toBe($value);
+
+    if (! $result instanceof ListNode) {
+        throw new RuntimeException('Expected result to be ListNode.');
+    }
+
+    expect($result->items[0])->toBeInstanceOf(NumberNode::class)
+        ->and($result->items[1])->toBeInstanceOf(StringNode::class);
+
+    /** @var NumberNode $firstItem */
+    $firstItem = $result->items[0];
+    /** @var StringNode $secondItem */
+    $secondItem = $result->items[1];
+
+    expect($firstItem->value)->toBe(16)
+        ->and($secondItem->value)->toBe('/');
+});
+
+it('applies global and module variable declarations', function () {
+    $runtime     = RuntimeFactory::createRuntime();
+    $env         = new Environment();
+    $moduleScope = new Scope();
+
+    $env->getCurrentScope()->addModule('theme', $moduleScope);
+
+    $globalApplied = $runtime->evaluation()->applyVariableDeclaration(
+        new VariableDeclarationNode('spacing', new NumberNode(8, 'px'), true),
+        $env
+    );
+    $moduleApplied = $runtime->evaluation()->applyVariableDeclaration(
+        new ModuleVarDeclarationNode('theme', 'accent', new StringNode('blue')),
+        $env
+    );
+
+    expect($globalApplied)->toBeTrue()
+        ->and($moduleApplied)->toBeTrue()
+        ->and($env->getGlobalScope()->getVariable('spacing'))->toBeInstanceOf(NumberNode::class)
+        ->and($moduleScope->getVariable('accent'))->toBeInstanceOf(StringNode::class);
+
+    /** @var NumberNode $spacing */
+    $spacing = $env->getGlobalScope()->getVariable('spacing');
+    /** @var StringNode $accent */
+    $accent = $moduleScope->getVariable('accent');
+
+    expect($spacing->value)->toBe(8)
+        ->and($accent->value)->toBe('blue');
+});
+
+it('wraps scalar each() iterables in a one-item list', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $value   = new StringNode('single');
+
+    expect($runtime->evaluation()->eachIterableItems($value))->toBe([$value]);
+});
+
+it('re-evaluates formatted slash expressions into strict arithmetic results', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+
+    $result = $runtime->evaluation()->tryEvaluateFormattedDeclarationExpression(
+        'width',
+        new StringNode('(10px / 2)'),
+        $env
+    );
+
+    expect($result)->toBeInstanceOf(NumberNode::class);
+
+    if (! $result instanceof NumberNode) {
+        throw new RuntimeException('Expected result to be NumberNode.');
+    }
+
+    expect($result->value)->toBe(5.0)
+        ->and($result->unit)->toBe('px');
+});
+
+it('returns null when reparsed formatted declarations do not yield a declaration node', function () {
+    $parser = new class () implements ParserInterface {
+        public function setTrackSourceLocations(bool $track): void {}
+
+        public function parse(string $source): RootNode
+        {
+            return new RootNode([
+                new RuleNode('.__tmp__', [new StringNode('not-a-declaration')]),
+            ]);
+        }
+    };
+
+    $runtime = RuntimeFactory::createRuntime(parser: $parser);
+
+    expect($runtime->evaluation()->tryEvaluateFormattedDeclarationExpression(
+        'width',
+        new StringNode('(10px / 2)'),
+        new Environment()
+    ))->toBeNull();
 });

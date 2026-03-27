@@ -5,181 +5,185 @@ declare(strict_types=1);
 use Bugo\SCSS\Utils\SelectorTokenizer;
 
 describe('SelectorTokenizer', function () {
-    it('tokenizeCompound() splits simple element selector', function () {
-        $tokenizer = new SelectorTokenizer();
+    beforeEach(function () {
+        $this->tokenizer = new SelectorTokenizer();
+    });
 
-        expect($tokenizer->tokenizeCompound('div'))->toBe(['div']);
+    it('tokenizeCompound() splits simple element selector', function () {
+        expect($this->tokenizer->tokenizeCompound('div'))->toBe(['div']);
     });
 
     it('tokenizeCompound() splits class and element', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $tokens = $tokenizer->tokenizeCompound('div.foo');
+        $tokens = $this->tokenizer->tokenizeCompound('div.foo');
         expect($tokens)->toContain('div')
             ->and($tokens)->toContain('.foo');
     });
 
     it('tokenizeCompound() handles id selector', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $tokens = $tokenizer->tokenizeCompound('#main');
+        $tokens = $this->tokenizer->tokenizeCompound('#main');
         expect($tokens)->toContain('#main');
     });
 
     it('tokenizeCompound() handles pseudo-class', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $tokens = $tokenizer->tokenizeCompound('a:hover');
+        $tokens = $this->tokenizer->tokenizeCompound('a:hover');
         expect($tokens)->toContain(':hover');
     });
 
     it('tokenizeCompound() handles pseudo-element', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $tokens = $tokenizer->tokenizeCompound('p::before');
+        $tokens = $this->tokenizer->tokenizeCompound('p::before');
         expect($tokens)->toContain('::before');
     });
 
     it('tokenizeCompound() handles attribute selector', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $tokens = $tokenizer->tokenizeCompound('[type="text"]');
+        $tokens = $this->tokenizer->tokenizeCompound('[type="text"]');
         expect($tokens)->toContain('[type="text"]');
     });
 
     it('tokenizeCompound() handles universal selector', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $tokens = $tokenizer->tokenizeCompound('*');
+        $tokens = $this->tokenizer->tokenizeCompound('*');
         expect($tokens)->toContain('*');
     });
 
     it('doesCompoundSatisfy() returns true when candidate matches required', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        expect($tokenizer->doesCompoundSatisfy('div.foo.bar', '.foo'))->toBeTrue();
+        expect($this->tokenizer->doesCompoundSatisfy('div.foo.bar', '.foo'))->toBeTrue();
     });
 
     it('doesCompoundSatisfy() returns false when candidate missing required token', function () {
-        $tokenizer = new SelectorTokenizer();
+        expect($this->tokenizer->doesCompoundSatisfy('div.bar', '.foo'))->toBeFalse();
+    });
 
-        expect($tokenizer->doesCompoundSatisfy('div.bar', '.foo'))->toBeFalse();
+    it('doesCompoundSatisfy() returns false for empty candidate with non-empty requirement', function () {
+        expect($this->tokenizer->doesCompoundSatisfy('', '.foo'))->toBeFalse();
     });
 
     it('doesCompoundSatisfy() returns true for empty required', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        expect($tokenizer->doesCompoundSatisfy('div', ''))->toBeTrue();
+        expect($this->tokenizer->doesCompoundSatisfy('div', ''))->toBeTrue();
     });
 
     it('unifyCompounds() merges two compatible selectors', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $result = $tokenizer->unifyCompounds('.foo', '.bar');
+        $result = $this->tokenizer->unifyCompounds('.foo', '.bar');
         expect($result)->toContain('foo')
             ->and($result)->toContain('bar');
     });
 
-    it('unifyCompounds() returns null for incompatible element types', function () {
-        $tokenizer = new SelectorTokenizer();
+    it('unifyCompounds() returns empty string when both compounds are empty', function () {
+        expect($this->tokenizer->unifyCompounds('', ''))->toBe('');
+    });
 
-        $result = $tokenizer->unifyCompounds('div', 'span');
+    it('unifyCompounds() skips duplicate non-type tokens from the right side', function () {
+        expect($this->tokenizer->unifyCompounds('.foo', '.foo'))->toBe('.foo');
+    });
+
+    it('unifyCompounds() returns empty string when only universal selectors remain', function () {
+        expect($this->tokenizer->unifyCompounds('*', '*'))->toBe('');
+    });
+
+    it('unifyCompounds() returns null for incompatible element types', function () {
+        $result = $this->tokenizer->unifyCompounds('div', 'span');
         expect($result)->toBeNull();
     });
 
     it('unifyCompounds() returns null for different ids', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $result = $tokenizer->unifyCompounds('#foo', '#bar');
+        $result = $this->tokenizer->unifyCompounds('#foo', '#bar');
         expect($result)->toBeNull();
     });
 
     it('hasUnsupportedTopLevelCombinator() detects child combinator', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        expect($tokenizer->hasUnsupportedTopLevelCombinator('div > span'))->toBeTrue();
+        expect($this->tokenizer->hasUnsupportedTopLevelCombinator('div > span'))->toBeTrue();
     });
 
     it('hasUnsupportedTopLevelCombinator() detects adjacent sibling combinator', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        expect($tokenizer->hasUnsupportedTopLevelCombinator('h1 + p'))->toBeTrue();
+        expect($this->tokenizer->hasUnsupportedTopLevelCombinator('h1 + p'))->toBeTrue();
     });
 
     it('hasUnsupportedTopLevelCombinator() returns false for descendant selector', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        expect($tokenizer->hasUnsupportedTopLevelCombinator('div span'))->toBeFalse();
+        expect($this->tokenizer->hasUnsupportedTopLevelCombinator('div span'))->toBeFalse();
     });
 
     it('hasUnsupportedTopLevelCombinator() ignores combinators inside parentheses', function () {
-        $tokenizer = new SelectorTokenizer();
+        expect($this->tokenizer->hasUnsupportedTopLevelCombinator(':is(a > b)'))->toBeFalse();
+    });
 
-        expect($tokenizer->hasUnsupportedTopLevelCombinator(':is(a > b)'))->toBeFalse();
+    it('hasUnsupportedTopLevelCombinator() ignores combinators inside quoted attribute values', function () {
+        expect($this->tokenizer->hasUnsupportedTopLevelCombinator('[data-test="a>b"] span'))->toBeFalse();
     });
 
     it('interleaveSequences() returns both orderings', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $result = $tokenizer->interleaveSequences(['a', 'b'], ['c']);
+        $result = $this->tokenizer->interleaveSequences(['a', 'b'], ['c']);
         expect(count($result))->toBe(2);
     });
 
     it('interleaveSequences() returns single sequence when one side empty', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        expect($tokenizer->interleaveSequences([], ['x']))->toBe([['x']])
-            ->and($tokenizer->interleaveSequences(['y'], []))->toBe([['y']]);
+        expect($this->tokenizer->interleaveSequences([], ['x']))->toBe([['x']])
+            ->and($this->tokenizer->interleaveSequences(['y'], []))->toBe([['y']]);
     });
 
     it('orderTokens() puts ids first, then classes, then pseudos', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $ordered = $tokenizer->orderTokens(['.bar', '#foo', ':hover']);
+        $ordered = $this->tokenizer->orderTokens(['.bar', '#foo', ':hover']);
         expect($ordered[0])->toBe('#foo')
             ->and($ordered[1])->toBe('.bar')
             ->and($ordered[2])->toBe(':hover');
     });
 
-    it('extractTypeToken() returns element name', function () {
-        $tokenizer = new SelectorTokenizer();
-        $tokens = $tokenizer->tokenizeCompound('div.foo');
+    it('orderTokens() places pseudo-elements before other tokens', function () {
+        expect($this->tokenizer->orderTokens(['div', '::before']))->toBe(['::before', 'div']);
+    });
 
-        expect($tokenizer->extractTypeToken($tokens))->toBe('div');
+    it('extractTypeToken() returns element name', function () {
+        $tokens = $this->tokenizer->tokenizeCompound('div.foo');
+
+        expect($this->tokenizer->extractTypeToken($tokens))->toBe('div');
     });
 
     it('extractIdToken() returns id token', function () {
-        $tokenizer = new SelectorTokenizer();
-        $tokens = $tokenizer->tokenizeCompound('#main.foo');
+        $tokens = $this->tokenizer->tokenizeCompound('#main.foo');
 
-        expect($tokenizer->extractIdToken($tokens))->toBe('#main');
+        expect($this->tokenizer->extractIdToken($tokens))->toBe('#main');
     });
 
     it('removeTokensFromCompound() removes matching tokens', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $result = $tokenizer->removeTokensFromCompound('div.foo.bar', ['.foo']);
+        $result = $this->tokenizer->removeTokensFromCompound('div.foo.bar', ['.foo']);
         expect($result)->toBe('div.bar');
     });
 
     it('removeTokensFromCompound() returns null if target token not found', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $result = $tokenizer->removeTokensFromCompound('div.bar', ['.foo']);
+        $result = $this->tokenizer->removeTokensFromCompound('div.bar', ['.foo']);
         expect($result)->toBeNull();
     });
 
-    it('splitAtTopLevel() splits by comma at top level', function () {
-        $tokenizer = new SelectorTokenizer();
+    it('removeTokensFromCompound() returns null for an empty compound', function () {
+        expect($this->tokenizer->removeTokensFromCompound('', ['.foo']))->toBeNull();
+    });
 
-        $result = $tokenizer->splitAtTopLevel('a, b, c', [',']);
+    it('replaceTokensInCompound() returns null for an empty compound', function () {
+        expect($this->tokenizer->replaceTokensInCompound('', ['.foo'], '.bar'))->toBeNull();
+    });
+
+    it('replaceTokensInCompound() returns null when target tokens are not present', function () {
+        expect($this->tokenizer->replaceTokensInCompound('div.bar', ['.foo'], '.baz'))->toBeNull();
+    });
+
+    it('replaceTokensInCompound() returns null when replacement conflicts with remaining type', function () {
+        expect($this->tokenizer->replaceTokensInCompound('div.foo', ['.foo'], 'span'))->toBeNull();
+    });
+
+    it('replaceExtendTargetInStructuredSelector() returns empty array when input is incomplete', function () {
+        expect($this->tokenizer->replaceExtendTargetInStructuredSelector([], ['.foo'], ['.bar']))->toBe([])
+            ->and($this->tokenizer->replaceExtendTargetInStructuredSelector(['div.foo'], ['.foo'], []))->toBe([]);
+    });
+
+    it('splitAtTopLevel() splits by comma at top level', function () {
+        $result = $this->tokenizer->splitAtTopLevel('a, b, c', [',']);
         expect($result)->toBe(['a', 'b', 'c']);
     });
 
     it('splitAtTopLevel() does not split inside parentheses', function () {
-        $tokenizer = new SelectorTokenizer();
-
-        $result = $tokenizer->splitAtTopLevel(':is(a, b), c', [',']);
+        $result = $this->tokenizer->splitAtTopLevel(':is(a, b), c', [',']);
         expect($result)->toBe([':is(a, b)', 'c']);
+    });
+
+    it('splitAtTopLevel() with handleQuotes ignores separators inside quoted strings', function () {
+        $result = $this->tokenizer->splitAtTopLevel('a["x,y"], b', [','], true);
+        expect($result)->toBe(['a["x,y"]', 'b']);
     });
 });

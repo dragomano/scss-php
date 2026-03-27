@@ -56,7 +56,7 @@ describe('Loader', function () {
         });
 
         it('loads directory index file by module name', function () {
-            $tmpDir = sys_get_temp_dir() . '/dart-sass-loader-index-' . uniqid('', true);
+            $tmpDir    = sys_get_temp_dir() . '/dart-sass-loader-index-' . uniqid('', true);
             $moduleDir = $tmpDir . '/foundation';
             mkdir($moduleDir, 0777, true);
 
@@ -89,6 +89,56 @@ describe('Loader', function () {
             expect(fn() => $this->loader->load('missing.scss'))->toThrow(ModuleResolutionException::class);
         });
 
+        it('ignores import-only files when not loading from @import', function () {
+            $tmpDir = sys_get_temp_dir() . '/dart-sass-loader-import-only-' . uniqid('', true);
+            mkdir($tmpDir, 0777, true);
+
+            $path = $tmpDir . '/_theme.import.scss';
+            file_put_contents($path, '$import-only: true;');
+
+            try {
+                $loader = new Loader([$tmpDir]);
+                expect(fn() => $loader->load($path))
+                    ->toThrow(ModuleResolutionException::class);
+            } finally {
+                if (file_exists($path)) {
+                    unlink($path);
+                }
+
+                if (is_dir($tmpDir)) {
+                    rmdir($tmpDir);
+                }
+            }
+        });
+
+        it('returns null when file_get_contents fails for an otherwise readable file path', function () {
+            $tmpDir = sys_get_temp_dir() . '/dart-sass-loader-read-fail-' . uniqid('', true);
+            mkdir($tmpDir, 0777, true);
+
+            $path = $tmpDir . '/broken.scss';
+            file_put_contents($path, '.broken {}');
+
+            try {
+                $loader = new Loader(
+                    [$tmpDir],
+                    fileReader: static fn(string $resolvedPath): string|false => str_ends_with($resolvedPath, 'broken.scss')
+                        ? false
+                        : file_get_contents($resolvedPath)
+                );
+
+                expect(fn() => $loader->load('broken.scss'))
+                    ->toThrow(ModuleResolutionException::class);
+            } finally {
+                if (file_exists($path)) {
+                    unlink($path);
+                }
+
+                if (is_dir($tmpDir)) {
+                    rmdir($tmpDir);
+                }
+            }
+        });
+
         it('rejects path traversal outside configured include paths', function () {
             $tmpDir = sys_get_temp_dir() . '/dart-sass-loader-traversal-' . uniqid('', true);
             mkdir($tmpDir, 0777, true);
@@ -109,9 +159,11 @@ describe('Loader', function () {
                 if (file_exists($victimFile)) {
                     unlink($victimFile);
                 }
+
                 if (is_dir($victimDir)) {
                     rmdir($victimDir);
                 }
+
                 if (is_dir($tmpDir)) {
                     rmdir($tmpDir);
                 }
@@ -125,7 +177,7 @@ describe('Loader', function () {
             mkdir($workDir, 0777, true);
             mkdir($loadDir, 0777, true);
 
-            $cwdPath = $workDir . '/style.scss';
+            $cwdPath  = $workDir . '/style.scss';
             $loadPath = $loadDir . '/style.scss';
 
             file_put_contents($cwdPath, '.from-cwd { color: red; }');
@@ -182,8 +234,8 @@ describe('Loader', function () {
             mkdir($tmpDirB, 0777, true);
 
             $fileName = '_priority.scss';
-            $pathA = $tmpDirA . '/' . $fileName;
-            $pathB = $tmpDirB . '/' . $fileName;
+            $pathA    = $tmpDirA . '/' . $fileName;
+            $pathB    = $tmpDirB . '/' . $fileName;
 
             file_put_contents($pathA, '.from-a { color: red; }');
             file_put_contents($pathB, '.from-b { color: blue; }');
@@ -222,8 +274,8 @@ describe('Loader', function () {
             mkdir($tmpDirB, 0777, true);
 
             $fileName = '_priority.scss';
-            $pathA = $tmpDirA . '/' . $fileName;
-            $pathB = $tmpDirB . '/' . $fileName;
+            $pathA    = $tmpDirA . '/' . $fileName;
+            $pathB    = $tmpDirB . '/' . $fileName;
 
             file_put_contents($pathA, '.from-a { color: red; }');
             file_put_contents($pathB, '.from-b { color: blue; }');
@@ -255,6 +307,32 @@ describe('Loader', function () {
                     rmdir($tmpDirB);
                 }
             }
+        });
+    });
+
+    describe('private search path resolution', function () {
+        it('uses include paths when getcwd() fails', function () {
+            $loader = new Loader(
+                [__DIR__ . '/../fixtures'],
+                workDir: static fn(): string|false => false
+            );
+
+            $result = $loader->load('_theme.scss');
+
+            expect($result['path'])->toContain('tests')
+                ->and(str_replace('\\', '/', $result['path']))->toEndWith('tests/fixtures/_theme.scss');
+        });
+
+        it('loads from cwd when it is already included as a search path', function () {
+            $cwd = getcwd();
+
+            expect($cwd)->not->toBeFalse();
+            /** @var string $cwd */
+
+            $loader = new Loader([$cwd]);
+            $result = $loader->load('composer.json');
+
+            expect(str_replace('\\', '/', $result['path']))->toEndWith('/composer.json');
         });
     });
 });

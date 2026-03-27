@@ -73,4 +73,13 @@ describe('Environment', function () {
 
         expect($this->env->getCurrentScope())->toBe($root);
     });
+
+    it('exitScope() falls back to current scope parent when stack is empty', function () {
+        $root = new Scope();
+        $env = new Environment(new Scope($root));
+
+        $env->exitScope();
+
+        expect($env->getCurrentScope())->toBe($root);
+    });
 });

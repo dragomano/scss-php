@@ -40,4 +40,10 @@ describe('SassString', function () {
 
         expect($string->toCss())->toBe('""');
     });
+
+    it('escapes inner double quotes when double quotes are used', function () {
+        $string = new SassString('say "hi" and it\'s done', quoted: true);
+
+        expect($string->toCss())->toBe('"say \\"hi\\" and it\'s done"');
+    });
 });

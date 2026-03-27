@@ -40,7 +40,6 @@ describe('Context', function () {
         it('does not log when verboseLogging is false and warning is issued', function () {
             $options = new CompilerOptions(verboseLogging: false);
             $service = new Context($this->ctx, $options, $this->logger);
-
             $service->logWarning('something went wrong');
 
             expect($this->logger->records)->toHaveCount(1)
@@ -50,7 +49,6 @@ describe('Context', function () {
         it('logs compact message with file prefix when verboseLogging is false', function () {
             $options = new CompilerOptions(verboseLogging: false);
             $service = new Context($this->ctx, $options, $this->logger);
-
             $service->logWarning('deprecated mixin');
 
             $message = $this->logger->records[0]['message'];
@@ -61,7 +59,6 @@ describe('Context', function () {
         it('includes line number in compact message when line is provided', function () {
             $options = new CompilerOptions(verboseLogging: false);
             $service = new Context($this->ctx, $options, $this->logger);
-
             $service->logWarning('deprecated mixin', 42);
 
             $message = $this->logger->records[0]['message'];
@@ -71,7 +68,6 @@ describe('Context', function () {
         it('omits line number in compact message when line is null', function () {
             $options = new CompilerOptions(verboseLogging: false);
             $service = new Context($this->ctx, $options, $this->logger);
-
             $service->logWarning('deprecated mixin');
 
             $message = $this->logger->records[0]['message'];
@@ -81,7 +77,6 @@ describe('Context', function () {
         it('logs with context array when verboseLogging is true', function () {
             $options = new CompilerOptions(verboseLogging: true);
             $service = new Context($this->ctx, $options, $this->logger);
-
             $service->logWarning('some warning', 10);
 
             $record = $this->logger->records[0];
@@ -93,7 +88,6 @@ describe('Context', function () {
         it('passes null line in context when verboseLogging is true and no line given', function () {
             $options = new CompilerOptions(verboseLogging: true);
             $service = new Context($this->ctx, $options, $this->logger);
-
             $service->logWarning('some warning');
 
             $record = $this->logger->records[0];
