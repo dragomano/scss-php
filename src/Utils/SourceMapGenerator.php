@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Utils;
 use function json_encode;
 use function usort;
 
+use const JSON_UNESCAPED_SLASHES;
 use const PHP_INT_MAX;
 
 final class SourceMapGenerator
@@ -166,8 +167,6 @@ final class SourceMapGenerator
         return [$mapping->original->line, $mapping->original->column];
     }
 
-    /**
-     */
     private function extractSourceIndex(SourceMapMapping $mapping): int
     {
         return $mapping->sourceIndex;

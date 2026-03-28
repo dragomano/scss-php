@@ -51,6 +51,10 @@ final readonly class Selector
      * @param Closure(string): bool $shouldCompressNamedColorForProperty
      * @param Closure(AstNode): AstNode $compressNamedColorsForOutput
      * @param Closure(AstNode, Environment): string $format
+     * @param Closure(string, Environment): bool|null $evaluateFunctionCondition
+     * @param Closure(AstNode, Environment): bool|null $applyVariableDeclaration
+     * @param Closure(AstNode): array<int, AstNode>|null $eachIterableItems
+     * @param Closure(array<int, string>, AstNode, Environment): void|null $assignEachVariables
      */
     public function __construct(
         private CompilerContext $ctx,
@@ -63,14 +67,29 @@ final readonly class Selector
         private Closure $isSassNullValue,
         private Closure $shouldCompressNamedColorForProperty,
         private Closure $compressNamedColorsForOutput,
-        private Closure $format
+        private Closure $format,
+        ?Closure $evaluateFunctionCondition = null,
+        ?Closure $applyVariableDeclaration = null,
+        ?Closure $eachIterableItems = null,
+        ?Closure $assignEachVariables = null
     ) {
+        $evaluateFunctionCondition ??= static fn(string $condition, Environment $env): bool => false;
+        $applyVariableDeclaration  ??= static fn(AstNode $node, Environment $env): bool => false;
+        $eachIterableItems         ??= static fn(AstNode $value): array => [$value];
+        $assignEachVariables       ??= static function (array $variables, AstNode $item, Environment $env): void {};
+
         $this->extends = new ExtendsResolver(
             $this->ctx,
             $this->text,
             $this->tokenizer,
             fn(string $s): array => $this->splitTopLevelSelectorList($s),
             fn(string $s, string $p): string => $this->resolveNestedSelector($s, $p),
+            fn(AstNode $node, Environment $env): AstNode => ($this->evaluateValue)($node, $env),
+            fn(string $condition, Environment $env): bool => $evaluateFunctionCondition($condition, $env),
+            fn(AstNode $node, Environment $env): bool => $applyVariableDeclaration($node, $env),
+            fn(AstNode $value): array => $eachIterableItems($value),
+            fn(array $variables, AstNode $item, Environment $env) => $assignEachVariables($variables, $item, $env),
+            fn(AstNode $node, Environment $env): string => ($this->format)($node, $env),
         );
 
         $this->optimizer = new SelectorRuleOptimizer();
@@ -170,18 +189,6 @@ final readonly class Selector
             foreach ($innerParts as $innerPart) {
                 $innerPart = trim($innerPart);
 
-                if ($outerPart === '') {
-                    $combined[] = $innerPart;
-
-                    continue;
-                }
-
-                if ($innerPart === '') {
-                    $combined[] = $outerPart;
-
-                    continue;
-                }
-
                 $combined[] = $outerPart . ' and ' . $innerPart;
             }
         }
@@ -240,9 +247,9 @@ final readonly class Selector
      */
     public function drainDeferredAtRuleEscapes(): array
     {
-        $outputState      = $this->ctx->outputState;
-        $deferredEscapes  = array_pop($outputState->deferredAtRuleStack) ?? [];
-        $outsideChunks    = [];
+        $outputState     = $this->ctx->outputState;
+        $deferredEscapes = array_pop($outputState->deferredAtRuleStack) ?? [];
+        $outsideChunks   = [];
 
         foreach ($deferredEscapes as $deferredEscape) {
             $levels = $deferredEscape['levels'];
@@ -440,6 +447,7 @@ final readonly class Selector
                 }
 
                 $this->render->appendChunk($output, $line, $child);
+
                 $hasOutput = true;
 
                 continue;

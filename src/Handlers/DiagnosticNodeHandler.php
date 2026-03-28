@@ -31,23 +31,27 @@ final readonly class DiagnosticNodeHandler
 
     public function handleDebug(DebugNode $node, TraversalContext $ctx): string
     {
-        $this->handle('debug', $node->message, $ctx, $node);
+        [$message, $line, $column] = $this->buildPayload('debug', $node->message, $ctx, $node);
+
+        $this->log('debug', $message, $line, $column);
 
         return '';
     }
 
     public function handleWarn(WarnNode $node, TraversalContext $ctx): string
     {
-        $this->handle('warn', $node->message, $ctx, $node);
+        [$message, $line, $column] = $this->buildPayload('warn', $node->message, $ctx, $node);
+
+        $this->log('warn', $message, $line, $column);
 
         return '';
     }
 
-    public function handleError(ErrorNode $node, TraversalContext $ctx): string
+    public function handleError(ErrorNode $node, TraversalContext $ctx): never
     {
-        $this->handle('error', $node->message, $ctx, $node);
+        [$message, $line, $column] = $this->buildPayload('error', $node->message, $ctx, $node);
 
-        return '';
+        $this->logError($message, $line, $column);
     }
 
     public function handleDirective(
@@ -56,15 +60,24 @@ final readonly class DiagnosticNodeHandler
         TraversalContext $ctx,
         ?AstNode $origin = null
     ): void {
-        $this->handle($directive, $messageNode, $ctx, $origin);
+        [$message, $line, $column] = $this->buildPayload($directive, $messageNode, $ctx, $origin);
+
+        if ($directive === 'error') {
+            $this->logError($message, $line, $column);
+        }
+
+        $this->log($directive, $message, $line, $column);
     }
 
-    private function handle(
+    /**
+     * @return array{0: string, 1: int|null, 2: int|null}
+     */
+    private function buildPayload(
         string $directive,
         AstNode $messageNode,
         TraversalContext $ctx,
         ?AstNode $origin = null
-    ): void {
+    ): array {
         $evaluated = $this->evaluateMessage($messageNode, $ctx);
 
         if ($directive === 'debug' && $this->context->options()->style === Style::COMPRESSED) {
@@ -72,12 +85,11 @@ final readonly class DiagnosticNodeHandler
         }
 
         $formatted = $this->render->format($evaluated, $ctx->env);
-
-        $message = $this->extractMessage($directive, $evaluated, $formatted);
+        $message   = $this->extractMessage($directive, $evaluated, $formatted);
 
         [$line, $column] = $this->extractLocation($origin);
 
-        $this->log($directive, $message, $line, $column);
+        return [$message, $line, $column];
     }
 
     private function evaluateMessage(AstNode $messageNode, TraversalContext $ctx): AstNode
@@ -153,9 +165,12 @@ final readonly class DiagnosticNodeHandler
             'warn'  => $this->context->logger()->warning($logMessage, $context),
             default => $this->context->logger()->error($logMessage, $context),
         };
+    }
 
-        if ($directive === 'error') {
-            throw new SassErrorException($message, $sourceFile, $line, $column);
-        }
+    private function logError(string $message, ?int $line, ?int $column): never
+    {
+        $this->log('error', $message, $line, $column);
+
+        throw new SassErrorException($message, $this->context->currentSourceFile(), $line, $column);
     }
 }

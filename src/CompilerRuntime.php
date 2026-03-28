@@ -164,7 +164,18 @@ final class CompilerRuntime
             fn(AstNode $value): bool => $this->evaluation()->isSassNullValue($value),
             fn(string $property): bool => $this->evaluation()->shouldCompressNamedColorForProperty($property),
             fn(AstNode $value): AstNode => $this->evaluation()->compressNamedColorsForOutput($value),
-            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env)
+            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
+            fn(string $condition, Environment $env): bool => $this->evaluation()->evaluateFunctionCondition(
+                $condition,
+                $env
+            ),
+            fn(AstNode $node, Environment $env): bool => $this->evaluation()->applyVariableDeclaration($node, $env),
+            fn(AstNode $value): array => $this->evaluation()->eachIterableItems($value),
+            fn(array $variables, AstNode $item, Environment $env) => $this->evaluation()->assignEachVariables(
+                $variables,
+                $item,
+                $env
+            )
         );
     }
 

@@ -236,12 +236,6 @@ final readonly class Evaluator
                 }
             }
 
-            $comparison = $this->evaluateComparisonList($evaluated, $env);
-
-            if ($comparison !== null) {
-                return $comparison;
-            }
-
             $concatenation = $this->evaluateStringConcatenationList($evaluated, $env);
 
             return $concatenation ?? $evaluated;
@@ -402,7 +396,7 @@ final readonly class Evaluator
                     'warn',
                     new StringNode(implode(' ', [
                         'The Sass if() syntax is deprecated in favor of the modern CSS syntax.',
-                        'Use `' . $suggestion . '` instead.'
+                        'Use `' . $suggestion . '` instead.',
                     ])),
                     $env,
                     $node

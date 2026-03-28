@@ -27,9 +27,9 @@ final class SassList extends AbstractSassValue
         $items = $this->filterNullItems($this->items);
         $items = $this->optimizeBoxItems($items);
 
-        $value             = '';
-        $first             = true;
-        $previousFormatted = '';
+        $value    = '';
+        $first    = true;
+        $previous = '';
 
         foreach ($items as $formatted) {
             if (! $first) {
@@ -39,14 +39,14 @@ final class SassList extends AbstractSassValue
                     $this->separator === 'space'
                     && (
                         (
-                            str_ends_with($previousFormatted, '-')
-                            && $previousFormatted !== '-'
+                            str_ends_with($previous, '-')
+                            && $previous !== '-'
                             && $formatted !== ''
                             && (str_starts_with($formatted, '#{') || ctype_alnum($formatted[0]))
                         )
                         || (
-                            str_ends_with($previousFormatted, '}')
-                            && str_contains($previousFormatted, '#{')
+                            str_ends_with($previous, '}')
+                            && str_contains($previous, '#{')
                             && str_starts_with($formatted, '-')
                         )
                     )
@@ -59,8 +59,8 @@ final class SassList extends AbstractSassValue
 
             $value .= $formatted;
 
-            $first             = false;
-            $previousFormatted = $formatted;
+            $first    = false;
+            $previous = $formatted;
         }
 
         if ($this->bracketed) {
@@ -97,10 +97,6 @@ final class SassList extends AbstractSassValue
         }
 
         if ($count === 4) {
-            if (! isset($items[0], $items[1], $items[2], $items[3])) {
-                return $items;
-            }
-
             $a = $items[0];
             $b = $items[1];
             $c = $items[2];
@@ -122,10 +118,6 @@ final class SassList extends AbstractSassValue
         }
 
         if ($count === 3) {
-            if (! isset($items[0], $items[1], $items[2])) {
-                return $items;
-            }
-
             $a = $items[0];
             $b = $items[1];
             $c = $items[2];

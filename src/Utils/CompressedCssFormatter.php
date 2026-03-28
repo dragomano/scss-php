@@ -141,7 +141,7 @@ final readonly class CompressedCssFormatter
                     $lastOutputChar !== ''
                     && ! $this->isTightPunctuation($lastOutputChar)
                     && ! $this->isTightPunctuation($char)
-                    && ! $this->shouldSkipSpace($lastOutputChar, $next, $parenDepth, $css, $i)
+                    && ! $this->shouldSkipSpace($lastOutputChar, $next, $parenDepth)
                 ) {
                     $result .= ' ';
                 }
@@ -185,12 +185,8 @@ final readonly class CompressedCssFormatter
         return '';
     }
 
-    private function shouldSkipSpace(string $previous, string $next, int $parenDepth, string $css, int $index): bool
+    private function shouldSkipSpace(string $previous, string $next, int $parenDepth): bool
     {
-        if ($next === '/' && $index + 1 < strlen($css) && $css[$index + 1] === '*') {
-            return true;
-        }
-
         if ($previous === ')' && $this->isIdentifierStart($next)) {
             return true;
         }

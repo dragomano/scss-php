@@ -333,21 +333,14 @@ final class Tokenizer
 
             if ($safe > 0) {
                 $value .= substr($this->source, $this->position, $safe);
-                $this->advance($safe);
-            }
 
-            if ($this->position >= $this->length) {
-                break;
+                $this->advance($safe);
             }
 
             $char = $this->source[$this->position];
 
             if ($char === '\\') {
                 $escapeResult = $this->parseEscapeSequence();
-
-                if ($escapeResult === null) {
-                    continue;
-                }
 
                 if ($escapeResult === '\\') {
                     $value .= '\\';
@@ -526,23 +519,15 @@ final class Tokenizer
 
             $normalizedEscape = $this->tokenizeIdentifierEscape();
 
-            if ($normalizedEscape === null) {
-                break;
-            }
-
             $value .= $normalizedEscape;
         }
 
         return new Token(TokenType::IDENTIFIER, $value, $line, $column);
     }
 
-    private function tokenizeIdentifierEscape(): ?string
+    private function tokenizeIdentifierEscape(): string
     {
         $escapeResult = $this->parseEscapeSequence();
-
-        if ($escapeResult === null) {
-            return null;
-        }
 
         if ($escapeResult === '\\') {
             return '\\';
@@ -555,12 +540,8 @@ final class Tokenizer
         return $this->normalizeIdentifierEscapedCodePoint(ord(substr($escapeResult, 1)));
     }
 
-    private function parseEscapeSequence(): ?string
+    private function parseEscapeSequence(): string
     {
-        if ($this->source[$this->position] !== '\\') {
-            return null;
-        }
-
         $this->advance();
 
         if ($this->position >= $this->length) {
@@ -572,6 +553,7 @@ final class Tokenizer
 
             while ($this->position < $this->length && strlen($hex) < 6 && ctype_xdigit($this->source[$this->position])) {
                 $hex .= $this->source[$this->position];
+
                 $this->advance();
             }
 
@@ -745,10 +727,6 @@ final class Tokenizer
         if (! $this->trackPositions) {
             $this->position += $count;
 
-            if ($this->position > $this->length) {
-                $this->position = $this->length;
-            }
-
             return;
         }
 
@@ -769,12 +747,8 @@ final class Tokenizer
         }
 
         // Bulk path: count newlines in the span with a single C-level call
-        $end  = min($this->position + $count, $this->length);
-        $len  = $end - $this->position;
-
-        if ($len <= 0) {
-            return;
-        }
+        $end = min($this->position + $count, $this->length);
+        $len = $end - $this->position;
 
         $chunk    = substr($this->source, $this->position, $len);
         $newlines = substr_count($chunk, "\n");
@@ -795,10 +769,6 @@ final class Tokenizer
     private function isSingleLineCommentStart(): bool
     {
         if ($this->position === 0) {
-            return true;
-        }
-
-        if ($this->position < 2) {
             return true;
         }
 

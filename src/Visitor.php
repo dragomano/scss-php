@@ -62,7 +62,7 @@ interface Visitor
 
     public function visitWarn(WarnNode $node, TraversalContext $ctx): string;
 
-    public function visitError(ErrorNode $node, TraversalContext $ctx): string;
+    public function visitError(ErrorNode $node, TraversalContext $ctx): never;
 
     public function visitComment(CommentNode $node, TraversalContext $ctx): string;
 

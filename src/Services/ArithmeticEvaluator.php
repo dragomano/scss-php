@@ -64,10 +64,6 @@ final readonly class ArithmeticEvaluator
                 return null;
             }
 
-            if (count($items) === 1) {
-                return $items[0];
-            }
-
             $collapsedUnary = $this->collapseUnary($items);
 
             if ($collapsedUnary !== null) {

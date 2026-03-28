@@ -8,6 +8,7 @@ use Bugo\SCSS\CompilerInterface;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Syntax;
 use Psr\SimpleCache\CacheInterface;
+use Psr\SimpleCache\InvalidArgumentException;
 
 use function file_exists;
 use function file_get_contents;
@@ -34,12 +35,16 @@ final readonly class CachingCompiler implements CompilerInterface
         return $this->inner->compileString($source, $syntax, $sourceFile);
     }
 
+    /**
+     * @throws InvalidArgumentException
+     */
     public function compileFile(string $path): string
     {
         $resolvedPath = $this->trackingLoader->load($path)['path'];
-        $key          = $this->buildCacheKey($resolvedPath);
-        /** @var mixed $cached */
-        $cached       = $this->cache->get($key);
+
+        $key    = $this->buildCacheKey($resolvedPath);
+        /** @psalm-suppress MixedAssignment */
+        $cached = $this->cache->get($key);
 
         if ($this->isValidCacheEntry($cached) && $this->isEntryFresh($cached)) {
             $this->restoreSourceMap($cached);
@@ -91,7 +96,7 @@ final readonly class CachingCompiler implements CompilerInterface
 
     /**
      * @param mixed $cached
-     *
+     * @return bool
      * @phpstan-assert-if-true array{
      *     css: string,
      *     source_map: string|null,

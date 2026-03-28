@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bugo\SCSS;
 
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
+use Closure;
 use Symfony\Component\Filesystem\Path;
 
 use function array_unshift;
@@ -13,6 +14,7 @@ use function getcwd;
 use function in_array;
 use function is_file;
 use function is_readable;
+use function is_string;
 use function pathinfo;
 use function realpath;
 use function rtrim;
@@ -26,11 +28,25 @@ final class Loader implements LoaderInterface
     /** @var array<int, string> */
     protected array $includePaths = [];
 
+    /** @var Closure(): (string|false) */
+    private readonly Closure $workDir;
+
+    /** @var Closure(string): (string|false) */
+    private readonly Closure $fileReader;
+
     /**
      * @param array<int, string> $includePaths
+     * @param Closure(): (string|false)|null $workDir
+     * @param Closure(string): (string|false)|null $fileReader
      */
-    public function __construct(array $includePaths = [])
-    {
+    public function __construct(
+        array $includePaths = [],
+        ?Closure $workDir = null,
+        ?Closure $fileReader = null
+    ) {
+        $this->workDir    = $workDir ?? getcwd(...);
+        $this->fileReader = $fileReader ?? file_get_contents(...);
+
         foreach ($includePaths as $path) {
             $real = realpath($path);
 
@@ -103,16 +119,13 @@ final class Loader implements LoaderInterface
                 return null;
             }
 
-            $content = file_get_contents($resolvedPath);
+            $content = ($this->fileReader)($resolvedPath);
 
-            if ($content === false) {
+            if (! is_string($content)) {
                 return null;
             }
 
-            return [
-                'path'    => $resolvedPath,
-                'content' => $content,
-            ];
+            return ['path' => $resolvedPath, 'content' => $content];
         }
 
         return null;
@@ -165,9 +178,9 @@ final class Loader implements LoaderInterface
      */
     private function resolveSearchPaths(): array
     {
-        $cwd = getcwd();
+        $cwd = ($this->workDir)();
 
-        if ($cwd === false) {
+        if (! is_string($cwd)) {
             return $this->includePaths;
         }
 

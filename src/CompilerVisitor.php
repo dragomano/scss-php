@@ -57,9 +57,9 @@ final readonly class CompilerVisitor implements Visitor
         return $this->runtime->declaration()->handle($node, $ctx);
     }
 
-    public function visitError(ErrorNode $node, TraversalContext $ctx): string
+    public function visitError(ErrorNode $node, TraversalContext $ctx): never
     {
-        return $this->runtime->diagnostic()->handleError($node, $ctx);
+        $this->runtime->diagnostic()->handleError($node, $ctx);
     }
 
     public function visitEach(EachNode $node, TraversalContext $ctx): string

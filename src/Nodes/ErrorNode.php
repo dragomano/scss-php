@@ -17,6 +17,6 @@ final class ErrorNode extends StatementNode implements DiagnosticNode
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string
     {
-        return $visitor->visitError($this, $ctx);
+        $visitor->visitError($this, $ctx);
     }
 }

@@ -77,10 +77,6 @@ final class SassNumber extends AbstractSassValue
             $length--;
         }
 
-        if ($length === 0) {
-            return '0';
-        }
-
         $trimmed = substr($formatted, 0, $length);
 
         if ($trimmed === '-0') {

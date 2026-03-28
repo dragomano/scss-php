@@ -10,6 +10,8 @@ use function pathinfo;
 use function str_contains;
 use function strtolower;
 
+use const PATHINFO_EXTENSION;
+
 enum Syntax: string
 {
     case CSS  = 'css';
