@@ -9,13 +9,8 @@
 - `@use`, `@forward`, `@import`, built-in Sass modules, and modern color functions
 - Optional source maps and rule splitting
 - PSR-3 logging for `@debug`, `@warn`, and `@error`
+- PSR-16 support for caching compiled files
 - Replaceable color engine via `ColorBundleInterface`
-
----
-
-## Requirements
-
-- PHP >= 8.2
 
 ---
 

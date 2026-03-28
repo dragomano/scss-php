@@ -9,13 +9,8 @@
 - Поддержка `@use`, `@forward`, `@import`, встроенных Sass-модулей и современных цветовых функций
 - Опциональные source maps и разделение правил
 - PSR-3 логирование для `@debug`, `@warn` и `@error`
+- Поддержка PSR-16 для кэширования скомпилированных файлов
 - Возможность полностью заменить цветовой движок через `ColorBundleInterface`
-
----
-
-## Требования
-
-- PHP >= 8.2
 
 ---
 
@@ -144,16 +139,16 @@ file_put_contents(__DIR__ . '/assets/app.css', $css);
 
 ### Параметры CompilerOptions
 
-| Параметр         | Тип       | По умолчанию      | Описание                                                       |
-|------------------|-----------|-------------------|----------------------------------------------------------------|
-| `style`          | `Style`   | `Style::EXPANDED` | Стиль вывода: `EXPANDED` или `COMPRESSED`                      |
-| `sourceFile`     | `string`  | `'input.scss'`    | Имя исходного файла для source map                             |
-| `outputFile`     | `string`  | `'output.css'`    | Имя выходного файла для source map                             |
-| `sourceMapFile`  | `?string` | `null`            | Путь к файлу source map; `null` отключает генерацию source map |
-| `includeSources` | `bool`    | `false`           | Встроить исходный код в source map (`sourcesContent`)          |
-| `outputHexColors` | `bool`   | `false`           | Нормализовать поддержанные функциональные цвета в hex          |
-| `splitRules`     | `bool`    | `false`           | Разбить правила с несколькими селекторами на отдельные         |
-| `verboseLogging` | `bool`    | `false`           | Логировать все `@debug` (иначе только `@warn`/`@error`)        |
+| Параметр          | Тип       | По умолчанию      | Описание                                                       |
+|-------------------|-----------|-------------------|----------------------------------------------------------------|
+| `style`           | `Style`   | `Style::EXPANDED` | Стиль вывода: `EXPANDED` или `COMPRESSED`                      |
+| `sourceFile`      | `string`  | `'input.scss'`    | Имя исходного файла для source map                             |
+| `outputFile`      | `string`  | `'output.css'`    | Имя выходного файла для source map                             |
+| `sourceMapFile`   | `?string` | `null`            | Путь к файлу source map; `null` отключает генерацию source map |
+| `includeSources`  | `bool`    | `false`           | Встроить исходный код в source map (`sourcesContent`)          |
+| `outputHexColors` | `bool`    | `false`           | Нормализовать поддержанные функциональные цвета в hex          |
+| `splitRules`      | `bool`    | `false`           | Разбить правила с несколькими селекторами на отдельные         |
+| `verboseLogging`  | `bool`    | `false`           | Логировать все `@debug` (иначе только `@warn`/`@error`)        |
 
 ### Логирование `@debug`, `@warn`, `@error` через любой PSR-3 логгер
 
