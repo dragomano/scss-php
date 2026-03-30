@@ -5,15 +5,18 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Handlers;
 
 use Bugo\SCSS\Builtins\FunctionRegistry;
+use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\Handlers\Block\MixinHandler;
 use Bugo\SCSS\NodeDispatcherInterface;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\DiagnosticNode;
 use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
+use Bugo\SCSS\Nodes\ReturnNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
@@ -215,6 +218,8 @@ final readonly class BlockNodeHandler
                     $deferredAtRootCount = count($outputState->deferredAtRootStack[$atRootStackIndex]);
                 }
 
+                $this->assertCompilableRuleChild($child);
+
                 /** @var Visitable $child */
                 $compiled = $this->render->trimTrailingNewlines(
                     $this->dispatcher->compileWithContext($child, $childCtx)
@@ -376,5 +381,12 @@ final readonly class BlockNodeHandler
         }
 
         return $output;
+    }
+
+    private function assertCompilableRuleChild(AstNode $child): void
+    {
+        if ($child instanceof ReturnNode) {
+            throw new SassErrorException('This at-rule is not allowed here.');
+        }
     }
 }
