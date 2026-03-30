@@ -298,23 +298,25 @@ final readonly class SelectorTokenizer
 
     public function hasBogusTopLevelCombinatorSequence(string $selector): bool
     {
-        $lastTokenWasCombinator = false;
+        $state = new class {
+            public bool $lastTokenWasCombinator = false;
+        };
 
         return $this->inspectTopLevelCombinators(
             $selector,
-            static function (string $char) use (&$lastTokenWasCombinator): bool {
+            static function (string $char) use ($state): bool {
                 if (in_array($char, ['>', '+', '~'], true)) {
-                    if ($lastTokenWasCombinator) {
+                    if ($state->lastTokenWasCombinator) {
                         return true;
                     }
 
-                    $lastTokenWasCombinator = true;
+                    $state->lastTokenWasCombinator = true;
 
                     return false;
                 }
 
                 if ($char !== ' ') {
-                    $lastTokenWasCombinator = false;
+                    $state->lastTokenWasCombinator = false;
                 }
 
                 return false;
@@ -593,8 +595,8 @@ final readonly class SelectorTokenizer
      */
     private function shouldNormalizePseudoOrder(array $tokens): bool
     {
-        $hasPseudo     = false;
-        $hasClassLike  = false;
+        $hasPseudo    = false;
+        $hasClassLike = false;
 
         foreach ($tokens as $token) {
             if ($token === '') {
