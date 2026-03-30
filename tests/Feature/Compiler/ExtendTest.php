@@ -589,5 +589,40 @@ describe('Compiler', function () {
 
             expect($this->compiler->compileString($source))->toEqualCss('');
         });
+
+        it('treats private placeholders from other modules as unavailable extend targets', function () {
+            $tmpDir = sys_get_temp_dir() . '/dart-sass-private-placeholder-' . uniqid('', true);
+            mkdir($tmpDir, 0777, true);
+
+            $modulePath = $tmpDir . '/_private.scss';
+            file_put_contents($modulePath, <<<'SCSS'
+            %-hidden {
+              color: red;
+            }
+            SCSS);
+
+            try {
+                $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
+
+                $source = <<<'SCSS'
+                @use 'private';
+
+                .case {
+                  @extend %-hidden;
+                }
+                SCSS;
+
+                expect(fn() => $compiler->compileString($source))
+                    ->toThrow(SassErrorException::class, 'The target selector was not found.');
+            } finally {
+                if (file_exists($modulePath)) {
+                    unlink($modulePath);
+                }
+
+                if (is_dir($tmpDir)) {
+                    rmdir($tmpDir);
+                }
+            }
+        });
     });
 });
