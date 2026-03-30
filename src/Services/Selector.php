@@ -565,6 +565,11 @@ final readonly class Selector
         return $this->optimizer->optimizeAdjacentSiblingRuleBlocks($block);
     }
 
+    public function hasBogusTopLevelCombinatorSequence(string $selector): bool
+    {
+        return $this->tokenizer->hasBogusTopLevelCombinatorSequence($selector);
+    }
+
     private function isValidNestedPropertyName(string $name): bool
     {
         if ($name === '') {

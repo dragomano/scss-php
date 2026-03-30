@@ -290,59 +290,36 @@ final readonly class SelectorTokenizer
 
     public function hasUnsupportedTopLevelCombinator(string $selector): bool
     {
-        $parenDepth   = 0;
-        $bracketDepth = 0;
+        return $this->inspectTopLevelCombinators(
+            $selector,
+            static fn(string $char): bool => in_array($char, ['>', '+', '~'], true)
+        );
+    }
 
-        $quote  = '';
-        $length = strlen($selector);
+    public function hasBogusTopLevelCombinatorSequence(string $selector): bool
+    {
+        $lastTokenWasCombinator = false;
 
-        for ($i = 0; $i < $length; $i++) {
-            $char = $selector[$i];
+        return $this->inspectTopLevelCombinators(
+            $selector,
+            static function (string $char) use (&$lastTokenWasCombinator): bool {
+                if (in_array($char, ['>', '+', '~'], true)) {
+                    if ($lastTokenWasCombinator) {
+                        return true;
+                    }
 
-            if ($quote !== '') {
-                if ($char === $quote) {
-                    $quote = '';
+                    $lastTokenWasCombinator = true;
+
+                    return false;
                 }
 
-                continue;
+                if ($char !== ' ') {
+                    $lastTokenWasCombinator = false;
+                }
+
+                return false;
             }
-
-            if ($char === '"' || $char === "'") {
-                $quote = $char;
-
-                continue;
-            }
-
-            if ($char === '[') {
-                $bracketDepth++;
-
-                continue;
-            }
-
-            if ($char === ']' && $bracketDepth > 0) {
-                $bracketDepth--;
-
-                continue;
-            }
-
-            if ($char === '(') {
-                $parenDepth++;
-
-                continue;
-            }
-
-            if ($char === ')' && $parenDepth > 0) {
-                $parenDepth--;
-
-                continue;
-            }
-
-            if ($parenDepth === 0 && $bracketDepth === 0 && in_array($char, ['>', '+', '~'], true)) {
-                return true;
-            }
-        }
-
-        return false;
+        );
     }
 
     /**
@@ -546,6 +523,69 @@ final readonly class SelectorTokenizer
     private function isIdentifierChar(string $char): bool
     {
         return $char !== '' && (ctype_alnum($char) || $char === '-' || $char === '_');
+    }
+
+    /**
+     * @param callable(string): bool $inspector
+     */
+    private function inspectTopLevelCombinators(string $selector, callable $inspector): bool
+    {
+        $parenDepth   = 0;
+        $bracketDepth = 0;
+        $quote        = '';
+        $length       = strlen($selector);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $selector[$i];
+
+            if ($quote !== '') {
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $bracketDepth++;
+
+                continue;
+            }
+
+            if ($char === ']' && $bracketDepth > 0) {
+                $bracketDepth--;
+
+                continue;
+            }
+
+            if ($char === '(') {
+                $parenDepth++;
+
+                continue;
+            }
+
+            if ($char === ')' && $parenDepth > 0) {
+                $parenDepth--;
+
+                continue;
+            }
+
+            if ($parenDepth !== 0 || $bracketDepth !== 0) {
+                continue;
+            }
+
+            if ($inspector($char)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

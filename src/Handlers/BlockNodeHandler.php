@@ -139,7 +139,8 @@ final readonly class BlockNodeHandler
 
             $parentSelector = $selector;
 
-            $selector = $this->selector->applyExtendsToSelector($selector);
+            $selector          = $this->selector->applyExtendsToSelector($selector);
+            $omitOwnRuleOutput = $this->selector->hasBogusTopLevelCombinatorSequence($selector);
 
             if ($selector === '') {
                 array_pop($outputState->deferredAtRootStack);
@@ -219,7 +220,7 @@ final readonly class BlockNodeHandler
                     $this->dispatcher->compileWithContext($child, $childCtx)
                 );
 
-                if ($compiled !== '') {
+                if ($compiled !== '' && ! $omitOwnRuleOutput) {
                     if (! $hasRenderedChildren) {
                         if ($output !== '') {
                             $this->render->appendChunk($output, "\n");

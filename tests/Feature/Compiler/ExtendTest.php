@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\SassErrorException;
+use Bugo\SCSS\Loader;
 use Tests\ArrayLogger;
 
 describe('Compiler', function () {
@@ -577,6 +578,16 @@ describe('Compiler', function () {
             $css = $this->compiler->compileString($source);
 
             expect($css)->toEqualCss($expected);
+        });
+
+        it('omits invalid repeated combinators from emitted css', function () {
+            $source = <<<'SCSS'
+            div > > .case {
+              color: red;
+            }
+            SCSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss('');
         });
     });
 });
