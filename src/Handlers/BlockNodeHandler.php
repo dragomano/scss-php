@@ -88,7 +88,8 @@ final readonly class BlockNodeHandler
             $outputState->deferredAtRootStack[]   = [];
             $outputState->deferredBubblingStack[] = [];
 
-            $requiresRuleBlockOptimization = false;
+            $requiresRuleBlockOptimization      = false;
+            $containsStandaloneNestedRuleChunks = false;
 
             /** @var array<int, string> $leadingRootChunks */
             $leadingRootChunks  = [];
@@ -198,6 +199,7 @@ final readonly class BlockNodeHandler
                         $selector,
                         $node,
                         $child,
+                        $containsStandaloneNestedRuleChunks,
                         $trailingRootChunks,
                         $ctx
                     );
@@ -219,6 +221,10 @@ final readonly class BlockNodeHandler
 
                 if ($compiled !== '') {
                     if (! $hasRenderedChildren) {
+                        if ($output !== '') {
+                            $this->render->appendChunk($output, "\n");
+                        }
+
                         $this->render->appendChunk($output, $prefix . $selector . ' {', $node);
 
                         $hasRenderedChildren = true;
@@ -239,7 +245,7 @@ final readonly class BlockNodeHandler
                 $this->render->appendChunk($output, "\n" . $prefix . '}');
             }
 
-            if ($requiresRuleBlockOptimization && $output !== '') {
+            if ($requiresRuleBlockOptimization && ! $containsStandaloneNestedRuleChunks && $output !== '') {
                 $output = $this->selector->optimizeRuleBlock($output);
             }
 

@@ -425,6 +425,7 @@ final readonly class DeferredChunkManager
         string $selector,
         RuleNode $node,
         RuleNode $child,
+        bool &$containsStandaloneNestedRuleChunks,
         array &$trailingRootChunks,
         TraversalContext $ctx
     ): void {
@@ -460,7 +461,31 @@ final readonly class DeferredChunkManager
         );
 
         if ($chunk !== '') {
-            $trailingRootChunks[] = $chunk;
+            if ($hasRenderedChildren) {
+                $output = $this->render->trimTrailingNewlines($output);
+
+                $this->render->appendChunk($output, "\n" . $prefix . '}');
+
+                $hasRenderedChildren = false;
+            }
+
+            if ($trailingRootChunks !== []) {
+                if ($output !== '') {
+                    $this->render->appendChunk($output, "\n");
+                }
+
+                $this->render->appendChunk($output, implode("\n", $trailingRootChunks));
+
+                $trailingRootChunks = [];
+            }
+
+            if ($output !== '') {
+                $this->render->appendChunk($output, "\n");
+            }
+
+            $this->render->appendChunk($output, $chunk, $child);
+
+            $containsStandaloneNestedRuleChunks = true;
         }
     }
 
