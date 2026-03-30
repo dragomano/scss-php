@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
+use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 use Bugo\SCSS\Syntax;
 use Tests\ArrayLogger;
@@ -991,6 +992,21 @@ describe('Compiler', function () {
             $this->compiler->compileString($source);
 
             expect($this->logger->records)->toBeEmpty();
+        });
+
+        it('rejects function declarations whose names begin with double hyphens', function () {
+            $source = <<<'SCSS'
+            @function --tool() {
+              @return 10px;
+            }
+
+            .test {
+              width: --tool();
+            }
+            SCSS;
+
+            expect(fn() => $this->compiler->compileString($source))
+                ->toThrow(SassErrorException::class, 'This at-rule is not allowed here.');
         });
 
         it('does not emit a deprecation warning for unrelated function names', function () {

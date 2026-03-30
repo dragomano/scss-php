@@ -108,6 +108,18 @@ describe('SelectorTokenizer', function () {
         expect($this->tokenizer->hasUnsupportedTopLevelCombinator('[data-test="a>b"] span'))->toBeFalse();
     });
 
+    it('hasBogusTopLevelCombinatorSequence() detects repeated top-level combinators', function () {
+        expect($this->tokenizer->hasBogusTopLevelCombinatorSequence('div > + span'))->toBeTrue();
+    });
+
+    it('hasBogusTopLevelCombinatorSequence() ignores nested combinator sequences', function () {
+        expect($this->tokenizer->hasBogusTopLevelCombinatorSequence(':is(div > + span) a'))->toBeFalse();
+    });
+
+    it('hasBogusTopLevelCombinatorSequence() ignores quoted attribute content and still detects top-level repeats', function () {
+        expect($this->tokenizer->hasBogusTopLevelCombinatorSequence('[data-test="a>b"] > + span'))->toBeTrue();
+    });
+
     it('interleaveSequences() returns both orderings', function () {
         $result = $this->tokenizer->interleaveSequences(['a', 'b'], ['c']);
         expect(count($result))->toBe(2);

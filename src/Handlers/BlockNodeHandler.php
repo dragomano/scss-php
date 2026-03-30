@@ -5,15 +5,18 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Handlers;
 
 use Bugo\SCSS\Builtins\FunctionRegistry;
+use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\Handlers\Block\MixinHandler;
 use Bugo\SCSS\NodeDispatcherInterface;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\DiagnosticNode;
 use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
+use Bugo\SCSS\Nodes\ReturnNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
@@ -88,7 +91,8 @@ final readonly class BlockNodeHandler
             $outputState->deferredAtRootStack[]   = [];
             $outputState->deferredBubblingStack[] = [];
 
-            $requiresRuleBlockOptimization = false;
+            $requiresRuleBlockOptimization      = false;
+            $containsStandaloneNestedRuleChunks = false;
 
             /** @var array<int, string> $leadingRootChunks */
             $leadingRootChunks  = [];
@@ -138,7 +142,8 @@ final readonly class BlockNodeHandler
 
             $parentSelector = $selector;
 
-            $selector = $this->selector->applyExtendsToSelector($selector);
+            $selector          = $this->selector->applyExtendsToSelector($selector);
+            $omitOwnRuleOutput = $this->selector->hasBogusTopLevelCombinatorSequence($selector);
 
             if ($selector === '') {
                 array_pop($outputState->deferredAtRootStack);
@@ -198,6 +203,7 @@ final readonly class BlockNodeHandler
                         $selector,
                         $node,
                         $child,
+                        $containsStandaloneNestedRuleChunks,
                         $trailingRootChunks,
                         $ctx
                     );
@@ -212,13 +218,19 @@ final readonly class BlockNodeHandler
                     $deferredAtRootCount = count($outputState->deferredAtRootStack[$atRootStackIndex]);
                 }
 
+                $this->assertCompilableRuleChild($child);
+
                 /** @var Visitable $child */
                 $compiled = $this->render->trimTrailingNewlines(
                     $this->dispatcher->compileWithContext($child, $childCtx)
                 );
 
-                if ($compiled !== '') {
+                if ($compiled !== '' && ! $omitOwnRuleOutput) {
                     if (! $hasRenderedChildren) {
+                        if ($output !== '') {
+                            $this->render->appendChunk($output, "\n");
+                        }
+
                         $this->render->appendChunk($output, $prefix . $selector . ' {', $node);
 
                         $hasRenderedChildren = true;
@@ -239,7 +251,7 @@ final readonly class BlockNodeHandler
                 $this->render->appendChunk($output, "\n" . $prefix . '}');
             }
 
-            if ($requiresRuleBlockOptimization && $output !== '') {
+            if ($requiresRuleBlockOptimization && ! $containsStandaloneNestedRuleChunks && $output !== '') {
                 $output = $this->selector->optimizeRuleBlock($output);
             }
 
@@ -369,5 +381,12 @@ final readonly class BlockNodeHandler
         }
 
         return $output;
+    }
+
+    private function assertCompilableRuleChild(AstNode $child): void
+    {
+        if ($child instanceof ReturnNode) {
+            throw new SassErrorException('This at-rule is not allowed here.');
+        }
     }
 }

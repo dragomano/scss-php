@@ -285,6 +285,62 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('splits outer declarations around nested rules using modern mixed declaration ordering', function () {
+            $source = <<<'SCSS'
+            .case {
+              color: red;
+
+              &--serious {
+                font-weight: bold;
+              }
+
+              font-weight: normal;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .case {
+              color: red;
+            }
+            .case--serious {
+              font-weight: bold;
+            }
+            .case {
+              font-weight: normal;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('preserves source order when a nested parent selector emits the same selector', function () {
+            $source = <<<'SCSS'
+            .case {
+              color: red;
+
+              & {
+                color: blue;
+              }
+
+              color: green;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .case {
+              color: red;
+            }
+            .case {
+              color: blue;
+            }
+            .case {
+              color: green;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
         it('interpolates values in @supports conditions', function () {
             $source = <<<'SCSS'
             $query: "(feature1: val)";

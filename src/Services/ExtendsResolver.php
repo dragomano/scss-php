@@ -22,6 +22,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 use Closure;
@@ -226,6 +227,7 @@ final readonly class ExtendsResolver
             'source'  => $source,
             'context' => $sourceContext,
         ]) {
+            $this->assertExtendTargetExists($target);
             $this->assertExtendContextIsCompatible($target, $sourceContext);
             $this->registerExtend($target, $source);
         }
@@ -779,5 +781,22 @@ final readonly class ExtendsResolver
                 throw new SassErrorException('You may not @extend selectors across media queries.');
             }
         }
+    }
+
+    private function assertExtendTargetExists(string $target): void
+    {
+        if (isset($this->ctx->outputState->selectorContexts[$target])) {
+            return;
+        }
+
+        if (! str_starts_with($target, '%')) {
+            return;
+        }
+
+        if (! NameNormalizer::isPrivate(substr($target, 1))) {
+            return;
+        }
+
+        throw new SassErrorException('The target selector was not found.');
     }
 }
