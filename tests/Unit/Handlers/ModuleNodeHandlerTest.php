@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\ImportNode;
+use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\UseNode;
 use Tests\RuntimeFactory;
 
@@ -25,4 +26,63 @@ it('handles @import, @forward and @use css emission', function () {
         ->and($forwarded)->toContain('.from-forwarded')
         ->and($used)->toContain('.configurable-sample')
         ->and($usedAgain)->toBe('');
+});
+
+it('does not emit forwarded css twice for the same module', function () {
+    $runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);
+    $ctx     = RuntimeFactory::context();
+
+    $node = new ForwardNode('_forwarded.scss');
+
+    $first = $runtime->moduleLoad()->handleForward($node, $ctx);
+    $second = $runtime->moduleLoad()->handleForward($node, $ctx);
+
+    expect($first)->toContain('.from-forwarded')
+        ->and($second)->toBe('');
+});
+
+it('adds newlines between sequential css and sass imports', function () {
+    $runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);
+    $ctx     = RuntimeFactory::context();
+
+    $cssImports = $runtime->moduleLoad()->handleImport(
+        new ImportNode(['"a.css"', '"b.css"']),
+        $ctx
+    );
+
+    $sassImports = $runtime->moduleLoad()->handleImport(
+        new ImportNode(['"_imported.scss"', '"_forwarded.scss"']),
+        $ctx
+    );
+
+    expect($cssImports)->toBe("@import \"a.css\";\n@import \"b.css\";")
+        ->and($sassImports)->toContain(".from-import {\n  value: imported;\n}\n.from-forwarded {");
+});
+
+it('adds a newline between css and sass imports in the same directive', function () {
+    $runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);
+    $ctx     = RuntimeFactory::context();
+
+    $result = $runtime->moduleLoad()->handleImport(
+        new ImportNode(['"a.css"', '"_imported.scss"']),
+        $ctx
+    );
+
+    expect($result)->toContain("@import \"a.css\";\n.from-import {");
+});
+
+it('qualifies imported sass css with the current parent selector', function () {
+    $runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);
+    $ctx     = RuntimeFactory::context();
+    $ctx->env->getCurrentScope()->setVariable('__parent_selector', new StringNode('.wrapper'));
+
+    $result = $runtime->moduleLoad()->handleImport(new ImportNode(['"_imported.scss"']), $ctx);
+
+    expect($result)->toContain('.wrapper .from-import');
+});
+
+it('returns empty css for @use when the module was not loaded through the evaluator', function () {
+    $runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);
+
+    expect($runtime->moduleLoad()->handleUse(new UseNode('_configurable_with_css.scss', 'cfg')))->toBe('');
 });

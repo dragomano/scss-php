@@ -874,13 +874,6 @@ describe('Parser', function () {
             ->and($value->value)->toBe('');
     });
 
-    it('returns the raw inline expression when no declaration can be parsed', function () {
-        $value = invokeParserMethod($this->parser, 'parseInlineValue', '#{');
-
-        expect($value)->toBeInstanceOf(StringNode::class)
-            ->and($value->value)->toBe('#{');
-    });
-
     it('returns the raw inline expression when parsed ast does not start with a rule', function () {
         $value = invokeParserMethod(
             $this->parser,

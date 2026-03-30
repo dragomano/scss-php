@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\ColorNode;
+use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
@@ -179,5 +181,69 @@ describe('CssArgumentEvaluator', function () {
 
         expect($this->evaluator->expandSpreadValue($spread))
             ->toBe([$spread]);
+    });
+
+    it('compresses named colors recursively for output', function () {
+        $value = new FunctionNode('rgb', [
+            new ListNode([
+                new StringNode('red'),
+                new ArgumentListNode(
+                    [new StringNode('blue', true)],
+                    'comma',
+                    false,
+                    ['tone' => new StringNode('green')]
+                ),
+            ], 'comma'),
+            new MapNode([
+                [
+                    'key'   => new StringNode('primary'),
+                    'value' => new NamedArgumentNode('accent', new StringNode('navy')),
+                ],
+            ]),
+        ]);
+
+        $compressed = $this->evaluator->compressNamedColorsForOutput($value);
+
+        expect($compressed)->toBeInstanceOf(FunctionNode::class);
+
+        /** @var FunctionNode $compressed */
+        $arguments = $compressed->arguments;
+
+        expect($arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($arguments[1])->toBeInstanceOf(MapNode::class);
+
+        /** @var ListNode $list */
+        $list = $arguments[0];
+        expect($list->items[0])->toBeInstanceOf(ColorNode::class)
+            ->and($list->items[1])->toBeInstanceOf(ArgumentListNode::class);
+
+        /** @var ColorNode $firstListItem */
+        $firstListItem = $list->items[0];
+        expect($firstListItem->value)->toBe('#f00');
+
+        /** @var ArgumentListNode $argumentList */
+        $argumentList = $list->items[1];
+        expect($argumentList->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($argumentList->keywords['tone'])->toBeInstanceOf(ColorNode::class);
+
+        /** @var StringNode $quotedItem */
+        $quotedItem = $argumentList->items[0];
+        expect($quotedItem->value)->toBe('blue');
+
+        /** @var ColorNode $keywordTone */
+        $keywordTone = $argumentList->keywords['tone'];
+        expect($keywordTone->value)->toBe('#008000');
+
+        /** @var MapNode $map */
+        $map = $arguments[1];
+        expect($map->pairs[0]['value'])->toBeInstanceOf(NamedArgumentNode::class);
+
+        /** @var NamedArgumentNode $named */
+        $named = $map->pairs[0]['value'];
+        expect($named->value)->toBeInstanceOf(ColorNode::class);
+
+        /** @var ColorNode $namedValue */
+        $namedValue = $named->value;
+        expect($namedValue->value)->toBe('#000080');
     });
 });

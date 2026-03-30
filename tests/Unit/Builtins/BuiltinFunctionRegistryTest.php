@@ -15,6 +15,7 @@ use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
+use Tests\ReflectionAccessor;
 
 describe('BuiltinFunctionRegistry', function () {
     beforeEach(function () {
@@ -298,6 +299,45 @@ describe('BuiltinFunctionRegistry', function () {
 
         expect($registry->tryCall('unknown.fn', []))->toBeNull()
             ->and($registry->tryCall('unknown-global', []))->toBeNull();
+    });
+
+    it('returns null for namespaced calls when an alias points to a missing module', function () {
+        $registry = new FunctionRegistry();
+        $accessor = new ReflectionAccessor($registry);
+
+        $accessor->setProperty('moduleAliases', ['broken' => 'missing']);
+
+        expect($registry->tryCall('broken.echo', [new StringNode('ok')]))->toBeNull();
+    });
+
+    it('returns null for global aliases that point to a missing module', function () {
+        $registry = new FunctionRegistry();
+        $accessor = new ReflectionAccessor($registry);
+
+        $accessor->setProperty('globalAliases', ['broken-global' => ['missing', 'echo']]);
+
+        expect($registry->tryCall('broken-global', [new StringNode('ok')]))->toBeNull();
+    });
+
+    it('ignores non-sass and unknown sass @use registrations', function () {
+        $registry = new FunctionRegistry([$this->testModule]);
+
+        $registry->registerUse('test', 'test');
+        $registry->registerUse('sass:unknown', 'unknown');
+
+        expect($registry->isBuiltinAlias('test'))->toBeFalse()
+            ->and($registry->resolveModuleAlias('test'))->toBeNull()
+            ->and($registry->isBuiltinAlias('unknown'))->toBeFalse()
+            ->and($registry->resolveModuleAlias('unknown'))->toBeNull()
+            ->and($registry->tryCall('test.echo', [new StringNode('ok')]))->toBeNull()
+            ->and($registry->tryCall('unknown.echo', [new StringNode('ok')]))->toBeNull();
+    });
+
+    it('returns false for missing functions in a resolved module alias', function () {
+        $registry = new FunctionRegistry();
+        $registry->registerUse('sass:math', null);
+
+        expect($registry->hasFunction('missing-fn', 'math'))->toBeFalse();
     });
 
     it('resets registered aliases from @use', function () {

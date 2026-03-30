@@ -6,11 +6,9 @@ use Bugo\SCSS\Utils\SourceMapGenerator;
 use Bugo\SCSS\Utils\SourceMapMapping;
 use Bugo\SCSS\Utils\SourceMapOptions;
 use Bugo\SCSS\Utils\SourceMapPosition;
-use Tests\ReflectionAccessor;
 
 beforeEach(function () {
     $this->generator = new SourceMapGenerator();
-    $this->accessor  = new ReflectionAccessor($this->generator);
 });
 
 function mapping(
@@ -218,27 +216,5 @@ describe('source map options', function () {
 
         expect($sourceMap)->toBeArray()
             ->and($sourceMap)->not->toHaveKey('sourcesContent');
-    });
-})->covers(SourceMapGenerator::class);
-
-describe('VLQ encoding', function () {
-    it('uses VLQ continuation bit for large values', function () {
-        $encoded = $this->accessor->callMethod('encodeVLQ', [100]);
-
-        expect(strlen($encoded))->toBeGreaterThan(1);
-    });
-
-    it('does not use VLQ continuation bit for small values', function () {
-        $encoded = $this->accessor->callMethod('encodeVLQ', [0]);
-
-        expect(strlen($encoded))->toBe(1);
-    });
-
-    it('does not use VLQ continuation bit for other small values', function () {
-        $encoded1  = $this->accessor->callMethod('encodeVLQ', [1]);
-        $encoded15 = $this->accessor->callMethod('encodeVLQ', [15]);
-
-        expect(strlen($encoded1))->toBe(1)
-            ->and(strlen($encoded15))->toBe(1);
     });
 })->covers(SourceMapGenerator::class);

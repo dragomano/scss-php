@@ -11,12 +11,15 @@ use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
+use Bugo\SCSS\Nodes\ElseIfNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
+use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Runtime\Environment;
@@ -345,6 +348,15 @@ describe('SassMetaModule', function () {
             ->and($result->pairs[0]['value'])->toBeInstanceOf(FunctionNode::class);
     });
 
+    it('throws for unknown namespaces in module export helpers', function () {
+        expect(fn() => $this->module->call('module-functions', [new StringNode('unknown')], [], $this->context))
+            ->toThrow(ModuleResolutionException::class)
+            ->and(fn() => $this->module->call('module-mixins', [new StringNode('unknown')], [], $this->context))
+            ->toThrow(ModuleResolutionException::class)
+            ->and(fn() => $this->module->call('module-variables', [new StringNode('unknown')], [], $this->context))
+            ->toThrow(ModuleResolutionException::class);
+    });
+
     it('evaluates module-mixins', function () {
         $moduleScope = new Scope();
         $moduleScope->defineMixin('highlight', [], []);
@@ -413,11 +425,60 @@ describe('SassMetaModule', function () {
             ->and($exists->value)->toBeTrue();
     });
 
+    it('evaluates accepts-content for namespaced mixin references and missing namespaced mixins', function () {
+        $moduleScope = new Scope();
+        $moduleScope->defineMixin('wrap', [], [new DirectiveNode('content')]);
+        $this->env->getCurrentScope()->addModule('helpers', $moduleScope);
+
+        $existing = $this->module->call('accepts-content', [new StringNode('helpers.wrap')], [], $this->context);
+        $missing  = $this->module->call('accepts-content', [new StringNode('helpers.missing')], [], $this->context);
+
+        expect($existing->value)->toBeTrue()
+            ->and($missing->value)->toBeFalse();
+    });
+
+    it('detects nested content directives in directive if-elseif and rule nodes', function () {
+        $this->env->getCurrentScope()->defineMixin('directive-wrap', [], [
+            new DirectiveNode('media', 'screen', [new DirectiveNode('content')], true),
+        ]);
+        $this->env->getCurrentScope()->defineMixin('if-wrap', [], [
+            new IfNode('false', [], [new ElseIfNode('true', [new DirectiveNode('content')])]),
+        ]);
+        $this->env->getCurrentScope()->defineMixin('rule-wrap', [], [
+            new RuleNode('.child', [new DirectiveNode('content')]),
+        ]);
+
+        $directive = $this->module->call('accepts-content', [new StringNode('directive-wrap')], [], $this->context);
+        $ifElseIf = $this->module->call('accepts-content', [new StringNode('if-wrap')], [], $this->context);
+        $rule = $this->module->call('accepts-content', [new StringNode('rule-wrap')], [], $this->context);
+
+        expect($directive->value)->toBeTrue()
+            ->and($ifElseIf->value)->toBeTrue()
+            ->and($rule->value)->toBeTrue();
+    });
+
     it('validates string and module helper arguments', function () {
         expect(fn() => $this->module->call('get-mixin', [new NumberNode(1)], [], $this->context))
             ->toThrow(MissingFunctionArgumentsException::class)
             ->and(fn() => $this->module->call('get-function', [new StringNode('length')], ['module' => new NumberNode(1)], $this->context))
             ->toThrow(InvalidArgumentTypeException::class);
+    });
+
+    it('formats non-string deprecated meta arguments using their css value', function () {
+        $warnings = [];
+        $context = new BuiltinCallContext(
+            $this->env,
+            $this->registry,
+            static function (string $message) use (&$warnings): void {
+                $warnings[] = $message;
+            },
+            'variable-exists'
+        );
+
+        expect(fn() => $this->module->call('variable-exists', [new NumberNode(12, 'px')], [], $context))
+            ->toThrow(MissingFunctionArgumentsException::class)
+            ->and($warnings)->toHaveCount(1)
+            ->and($warnings[0])->toContain('meta.variable-exists(12px)');
     });
 
     it('requires compiler context for scope-dependent meta functions', function () {

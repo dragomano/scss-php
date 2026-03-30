@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Builtins\SassColorModule;
+use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\BooleanNode;
@@ -156,6 +157,33 @@ describe('SassColorModule', function () {
     it('evaluates hsl', function () {
         $result = $this->module->call('hsl', [new NumberNode(120), new NumberNode(100, '%'), new NumberNode(50, '%')], []);
         expect($result)->toBeInstanceOf(FunctionNode::class)->and($result->name)->toBe('hsl');
+    });
+
+    it('evaluates hsl with missing lightness and normalized hue', function () {
+        $result = $this->module->call('hsl', [new NumberNode(480), new NumberNode(50, '%'), new StringNode('none')], []);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('hsl')
+            ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($result->arguments[0]->items[0])->toBeInstanceOf(NumberNode::class)
+            ->and($result->arguments[0]->items[0]->value)->toBe(120.0)
+            ->and($result->arguments[0]->items[1])->toBeInstanceOf(NumberNode::class)
+            ->and($result->arguments[0]->items[1]->value)->toBe(50.0)
+            ->and($result->arguments[0]->items[1]->unit)->toBe('%')
+            ->and($result->arguments[0]->items[2])->toBeInstanceOf(StringNode::class)
+            ->and($result->arguments[0]->items[2]->value)->toBe('none');
+    });
+
+    it('preserves hsl saturation values above one hundred percent', function () {
+        $result = $this->module->call('hsl', [new NumberNode(120), new NumberNode(120, '%'), new NumberNode(50, '%')], []);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('hsl')
+            ->and($result->arguments[0]->value)->toBe(120.0)
+            ->and($result->arguments[1]->value)->toBe(120.0)
+            ->and($result->arguments[1]->unit)->toBe('%')
+            ->and($result->arguments[2]->value)->toBe(50.0)
+            ->and($result->arguments[2]->unit)->toBe('%');
     });
 
     it('evaluates hsla', function () {
@@ -404,9 +432,62 @@ describe('SassColorModule', function () {
         expect($result)->toBeInstanceOf(FunctionNode::class)->and($result->name)->toBe('rgb');
     });
 
+    it('evaluates rgb with a color and full alpha as a color node', function () {
+        $result = $this->module->call('rgb', [new ColorNode('#112233'), new NumberNode(1)], []);
+
+        expect($result)->toBeInstanceOf(ColorNode::class)
+            ->and($result->value)->toBe('#112233');
+    });
+
+    it('falls back to rgb signature validation when the first rgb argument is not a color', function () {
+        expect(fn() => $this->module->call('rgb', [new StringNode('definitely-not-a-color'), new NumberNode(0.5)], []))
+            ->toThrow(MissingFunctionArgumentsException::class);
+    });
+
     it('evaluates rgba', function () {
         $result = $this->module->call('rgba', [new ColorNode('#ff0000'), new NumberNode(0.5)], []);
         expect($result)->toBeInstanceOf(ColorNode::class)->and($result->value)->toBe('#ff000080');
+    });
+
+    it('defers rgba relative color syntax to css emission', function () {
+        expect(fn() => $this->module->call('rgba', [new StringNode('from')], []))
+            ->toThrow(DeferToCssFunctionException::class, 'rgba() (color module) should be emitted as a CSS function.');
+    });
+
+    it('evaluates rgba with four channel arguments', function () {
+        $result = $this->module->call('rgba', [
+            new NumberNode(255),
+            new NumberNode(0),
+            new NumberNode(0),
+            new NumberNode(0.5),
+        ], []);
+
+        expect($result)->toBeInstanceOf(ColorNode::class)
+            ->and($result->value)->toBe('#ff000080');
+    });
+
+    it('evaluates legacy rgba with four channel arguments and full alpha as a color node', function () {
+        $result = $this->module->call('legacy-rgba', [
+            new NumberNode(17),
+            new NumberNode(34),
+            new NumberNode(51),
+            new NumberNode(1),
+        ], []);
+
+        expect($result)->toBeInstanceOf(ColorNode::class)
+            ->and($result->value)->toBe('#112233');
+    });
+
+    it('returns the original legacy rgba call when the first argument is not a color', function () {
+        $first = new StringNode('definitely-not-a-color');
+        $alpha = new NumberNode(0.5);
+
+        $result = $this->module->call('legacy-rgba', [$first, $alpha], []);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('rgba')
+            ->and($result->arguments[0])->toBe($first)
+            ->and($result->arguments[1])->toBe($alpha);
     });
 
     it('uses global display name with color module suffix in rgba signature errors', function () {
@@ -611,6 +692,29 @@ describe('SassColorModule', function () {
             new StringNode('lch'),
         ], []);
         expect($result)->toBeInstanceOf(FunctionNode::class)->and($result->name)->toBe('lch');
+    });
+
+    it('clamps negative chroma in lch and oklch constructors to zero', function () {
+        $lch = $this->module->call('lch', [
+            new NumberNode(50, '%'),
+            new NumberNode(-10),
+            new NumberNode(30, 'deg'),
+        ], []);
+
+        $oklch = $this->module->call('oklch', [
+            new NumberNode(50, '%'),
+            new NumberNode(-0.2),
+            new NumberNode(30, 'deg'),
+        ], []);
+
+        expect($lch)->toBeInstanceOf(FunctionNode::class)
+            ->and($lch->name)->toBe('lch')
+            ->and($lch->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($lch->arguments[0]->items[1]->value)->toBe(0.0)
+            ->and($oklch)->toBeInstanceOf(FunctionNode::class)
+            ->and($oklch->name)->toBe('oklch')
+            ->and($oklch->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($oklch->arguments[0]->items[1]->value)->toBe(0.0);
     });
 
     it('returns same generic color space unchanged to preserve missing channels', function () {

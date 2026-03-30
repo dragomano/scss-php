@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Contracts\Color\ColorSerializerInterface;
-use Bugo\SCSS\Nodes\ColorNode;
-use Tests\ReflectionAccessor;
 
 describe('Compiler', function () {
     it('accepts custom color serializer through constructor', function () {
@@ -17,10 +15,8 @@ describe('Compiler', function () {
         };
 
         $compiler = new Compiler(colorSerializer: $serializer);
-        $ctx      = (new ReflectionAccessor($compiler))->getProperty('ctx');
+        $css      = $compiler->compileString('.test { color: rgb(255, 0, 0); }');
 
-        expect($ctx->colorSerializer)->toBe($serializer)
-            ->and($ctx->valueFactory->fromAst(new ColorNode('rgb(255, 0, 0)'))->toCss())
-            ->toBe('custom:rgb(255, 0, 0):raw');
+        expect($css)->toBe(".test {\n  color: custom:rgb(255, 0, 0):raw;\n}\n");
     });
 });
