@@ -12,7 +12,6 @@ use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\BooleanNode;
-use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\EachNode;
 use Bugo\SCSS\Nodes\ForNode;
@@ -21,8 +20,6 @@ use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
-use Bugo\SCSS\Nodes\NullNode;
-use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
@@ -33,7 +30,7 @@ use Bugo\SCSS\Runtime\ScopedCallableDefinition;
 use Bugo\SCSS\Runtime\VariableDefinition;
 use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\NameNormalizer;
-use Bugo\SCSS\Values\SassCalculation;
+use Bugo\SCSS\Values\AstValueType;
 use Bugo\SCSS\Values\SassFunctionRef;
 use LogicException;
 
@@ -601,11 +598,7 @@ final class SassMetaModule extends AbstractModule
     private function resolveMixinBody(Scope $scope, string $reference): ?array
     {
         if (NameHelper::hasNamespace($reference)) {
-            $parts = NameHelper::splitQualifiedName($reference);
-
-            if ($parts['member'] === null) {
-                return null;
-            }
+            $parts = NameHelper::splitNamespacedName($reference);
 
             $moduleScope = $scope->getModule($parts['namespace']);
 
@@ -784,47 +777,7 @@ final class SassMetaModule extends AbstractModule
 
     private function astType(AstNode $value): string
     {
-        if ($value instanceof NumberNode) {
-            return 'number';
-        }
-
-        if ($value instanceof ColorNode) {
-            return 'color';
-        }
-
-        if ($value instanceof ArgumentListNode) {
-            return 'arglist';
-        }
-
-        if ($value instanceof ListNode) {
-            return 'list';
-        }
-
-        if ($value instanceof MapNode) {
-            return 'map';
-        }
-
-        if ($value instanceof FunctionNode) {
-            if (SassCalculation::isCalculationFunctionName($value->name)) {
-                return 'calculation';
-            }
-
-            return 'function';
-        }
-
-        if ($value instanceof MixinRefNode) {
-            return 'mixin';
-        }
-
-        if ($value instanceof BooleanNode) {
-            return 'bool';
-        }
-
-        if ($value instanceof NullNode) {
-            return 'null';
-        }
-
-        return 'string';
+        return AstValueType::fromNode($value)->value;
     }
 
     private function optionalModuleName(?AstNode $moduleNode): ?string

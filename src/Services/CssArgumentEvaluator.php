@@ -17,6 +17,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\CssNamedColors;
+use Bugo\SCSS\Values\AstValueTransformer;
 use Closure;
 
 use function in_array;
@@ -179,18 +180,7 @@ final readonly class CssArgumentEvaluator
         }
 
         if ($node instanceof ListNode) {
-            $items   = [];
-            $changed = false;
-
-            foreach ($node->items as $item) {
-                $evaluatedItem = $this->evaluateFallbackCssArgument($item, $env);
-
-                if ($evaluatedItem !== $item) {
-                    $changed = true;
-                }
-
-                $items[] = $evaluatedItem;
-            }
+            [$items, $changed] = $this->evaluateFallbackItems($node->items, $env);
 
             return $changed
                 ? new ListNode($items, $node->separator, $node->bracketed)
@@ -198,52 +188,16 @@ final readonly class CssArgumentEvaluator
         }
 
         if ($node instanceof ArgumentListNode) {
-            $items    = [];
-            $keywords = [];
-            $changed  = false;
+            [$items, $itemsChanged]       = $this->evaluateFallbackItems($node->items, $env);
+            [$keywords, $keywordsChanged] = $this->evaluateFallbackKeywords($node->keywords, $env);
 
-            foreach ($node->items as $item) {
-                $evaluatedItem = $this->evaluateFallbackCssArgument($item, $env);
-
-                if ($evaluatedItem !== $item) {
-                    $changed = true;
-                }
-
-                $items[] = $evaluatedItem;
-            }
-
-            foreach ($node->keywords as $name => $keywordValue) {
-                $evaluatedKeywordValue = $this->evaluateFallbackCssArgument($keywordValue, $env);
-
-                if ($evaluatedKeywordValue !== $keywordValue) {
-                    $changed = true;
-                }
-
-                $keywords[$name] = $evaluatedKeywordValue;
-            }
-
-            return $changed
+            return $itemsChanged || $keywordsChanged
                 ? new ArgumentListNode($items, $node->separator, $node->bracketed, $keywords)
                 : $node;
         }
 
         if ($node instanceof MapNode) {
-            $pairs   = [];
-            $changed = false;
-
-            foreach ($node->pairs as $pair) {
-                $evaluatedKey   = $this->evaluateFallbackCssArgument($pair['key'], $env);
-                $evaluatedValue = $this->evaluateFallbackCssArgument($pair['value'], $env);
-
-                if ($evaluatedKey !== $pair['key'] || $evaluatedValue !== $pair['value']) {
-                    $changed = true;
-                }
-
-                $pairs[] = [
-                    'key'   => $evaluatedKey,
-                    'value' => $evaluatedValue,
-                ];
-            }
+            [$pairs, $changed] = $this->evaluateFallbackPairs($node->pairs, $env);
 
             return $changed ? new MapNode($pairs) : $node;
         }
@@ -267,6 +221,76 @@ final readonly class CssArgumentEvaluator
         }
 
         return $node;
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     * @return array{0: array<int, AstNode>, 1: bool}
+     */
+    private function evaluateFallbackItems(array $items, Environment $env): array
+    {
+        $evaluatedItems = [];
+        $changed        = false;
+
+        foreach ($items as $item) {
+            $evaluatedItem = $this->evaluateFallbackCssArgument($item, $env);
+
+            if ($evaluatedItem !== $item) {
+                $changed = true;
+            }
+
+            $evaluatedItems[] = $evaluatedItem;
+        }
+
+        return [$evaluatedItems, $changed];
+    }
+
+    /**
+     * @param array<string, AstNode> $keywords
+     * @return array{0: array<string, AstNode>, 1: bool}
+     */
+    private function evaluateFallbackKeywords(array $keywords, Environment $env): array
+    {
+        $evaluatedKeywords = [];
+        $changed           = false;
+
+        foreach ($keywords as $name => $keywordValue) {
+            $evaluatedKeywordValue = $this->evaluateFallbackCssArgument($keywordValue, $env);
+
+            if ($evaluatedKeywordValue !== $keywordValue) {
+                $changed = true;
+            }
+
+            $evaluatedKeywords[$name] = $evaluatedKeywordValue;
+        }
+
+        return [$evaluatedKeywords, $changed];
+    }
+
+    /**
+     * @param array<int, array{key: AstNode, value: AstNode}> $pairs
+     * @return array{0: array<int, array{key: AstNode, value: AstNode}>, 1: bool}
+     */
+    private function evaluateFallbackPairs(array $pairs, Environment $env): array
+    {
+        $evaluatedPairs = [];
+        $changed        = false;
+
+        foreach ($pairs as $pair) {
+            $evaluatedKey   = $this->evaluateFallbackCssArgument($pair['key'], $env);
+            $evaluatedValue = $this->evaluateFallbackCssArgument($pair['value'], $env);
+
+            if ($evaluatedKey !== $pair['key'] || $evaluatedValue !== $pair['value']) {
+                $changed = true;
+            }
+
+            $evaluatedPairs[] = [
+                'key'   => $evaluatedKey,
+                'value' => $evaluatedValue,
+            ];
+        }
+
+        return [$evaluatedPairs, $changed];
     }
 
     private function shouldPreserveCssArgument(AstNode $node): bool
@@ -330,112 +354,19 @@ final readonly class CssArgumentEvaluator
 
     public function compressNamedColorsForOutput(AstNode $value): AstNode
     {
-        if ($value instanceof StringNode) {
-            if ($value->quoted || str_contains($value->value, '#{')) {
-                return $value;
+        return AstValueTransformer::map($value, function (AstNode $node): AstNode {
+            if (! $node instanceof StringNode) {
+                return $node;
             }
 
-            $hex = $this->resolveNamedColorHex($value->value);
-
-            return $hex === null ? $value : new ColorNode($hex);
-        }
-
-        if ($value instanceof ListNode) {
-            $items   = [];
-            $changed = false;
-
-            foreach ($value->items as $item) {
-                $compressed = $this->compressNamedColorsForOutput($item);
-
-                if ($compressed !== $item) {
-                    $changed = true;
-                }
-
-                $items[] = $compressed;
+            if ($node->quoted || str_contains($node->value, '#{')) {
+                return $node;
             }
 
-            return $changed
-                ? new ListNode($items, $value->separator, $value->bracketed)
-                : $value;
-        }
+            $hex = $this->resolveNamedColorHex($node->value);
 
-        if ($value instanceof ArgumentListNode) {
-            $items    = [];
-            $keywords = [];
-            $changed  = false;
-
-            foreach ($value->items as $item) {
-                $compressed = $this->compressNamedColorsForOutput($item);
-
-                if ($compressed !== $item) {
-                    $changed = true;
-                }
-
-                $items[] = $compressed;
-            }
-
-            foreach ($value->keywords as $name => $keywordValue) {
-                $compressed = $this->compressNamedColorsForOutput($keywordValue);
-
-                if ($compressed !== $keywordValue) {
-                    $changed = true;
-                }
-
-                $keywords[$name] = $compressed;
-            }
-
-            return $changed
-                ? new ArgumentListNode($items, $value->separator, $value->bracketed, $keywords)
-                : $value;
-        }
-
-        if ($value instanceof MapNode) {
-            $pairs   = [];
-            $changed = false;
-
-            foreach ($value->pairs as $pair) {
-                $compressedKey   = $this->compressNamedColorsForOutput($pair['key']);
-                $compressedValue = $this->compressNamedColorsForOutput($pair['value']);
-
-                if ($compressedKey !== $pair['key'] || $compressedValue !== $pair['value']) {
-                    $changed = true;
-                }
-
-                $pairs[] = [
-                    'key'   => $compressedKey,
-                    'value' => $compressedValue,
-                ];
-            }
-
-            return $changed ? new MapNode($pairs) : $value;
-        }
-
-        if ($value instanceof NamedArgumentNode) {
-            $compressed = $this->compressNamedColorsForOutput($value->value);
-
-            return $compressed === $value->value
-                ? $value
-                : new NamedArgumentNode($value->name, $compressed);
-        }
-
-        if ($value instanceof FunctionNode) {
-            $arguments = [];
-            $changed   = false;
-
-            foreach ($value->arguments as $argument) {
-                $compressed = $this->compressNamedColorsForOutput($argument);
-
-                if ($compressed !== $argument) {
-                    $changed = true;
-                }
-
-                $arguments[] = $compressed;
-            }
-
-            return $changed ? new FunctionNode($value->name, $arguments) : $value;
-        }
-
-        return $value;
+            return $hex === null ? $node : new ColorNode($hex);
+        });
     }
 
     public function resolveNamedColorHex(string $value): ?string

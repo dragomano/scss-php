@@ -65,7 +65,11 @@ final class Scope
             return;
         }
 
-        if ($default && $this->hasVariable($name) && ! $this->isSassNull($this->getVariable($name))) {
+        if (
+            $default
+            && $this->hasVariableNormalized($name)
+            && ! $this->isSassNull($this->getVariableNormalized($name))
+        ) {
             return;
         }
 
@@ -77,7 +81,11 @@ final class Scope
     {
         $name = $this->normalizeName($name);
 
-        if ($default && $this->hasVariable($name) && ! $this->isSassNull($this->getVariable($name))) {
+        if (
+            $default
+            && $this->hasVariableNormalized($name)
+            && ! $this->isSassNull($this->getVariableNormalized($name))
+        ) {
             return;
         }
 
@@ -87,17 +95,7 @@ final class Scope
 
     public function getVariable(string $name): mixed
     {
-        $name = $this->normalizeName($name);
-
-        if (array_key_exists($name, $this->variables)) {
-            return $this->variables[$name];
-        }
-
-        if ($this->parent) {
-            return $this->parent->getVariable($name);
-        }
-
-        throw UndefinedSymbolException::variable($name);
+        return $this->getVariableNormalized($this->normalizeName($name));
     }
 
     public function getAstVariable(string $name): ?AstNode
@@ -158,24 +156,12 @@ final class Scope
 
     public function hasVariable(string $name): bool
     {
-        $name = $this->normalizeName($name);
-
-        if (array_key_exists($name, $this->variables)) {
-            return true;
-        }
-
-        return $this->parent !== null && $this->parent->hasVariable($name);
+        return $this->hasVariableNormalized($this->normalizeName($name));
     }
 
     public function findVariableDefinition(string $name): ?VariableDefinition
     {
-        $name = $this->normalizeName($name);
-
-        if (array_key_exists($name, $this->variables)) {
-            return new VariableDefinition($this, $this->variableLines[$name] ?? 1);
-        }
-
-        return $this->parent?->findVariableDefinition($name);
+        return $this->findVariableDefinitionNormalized($this->normalizeName($name));
     }
 
     public function setMixin(string $name, CallableDefinition $definition, bool $global = false): void
@@ -210,41 +196,17 @@ final class Scope
 
     public function getMixin(string $name): CallableDefinition
     {
-        $name       = $this->normalizeName($name);
-        $definition = $this->mixins->get($name);
-
-        if ($definition !== null) {
-            return $definition;
-        }
-
-        if ($this->parent) {
-            return $this->parent->getMixin($name);
-        }
-
-        throw UndefinedSymbolException::mixin($name);
+        return $this->getMixinNormalized($this->normalizeName($name));
     }
 
     public function hasMixin(string $name): bool
     {
-        $name = $this->normalizeName($name);
-
-        if ($this->mixins->has($name)) {
-            return true;
-        }
-
-        return $this->parent?->hasMixin($name) ?? false;
+        return $this->hasMixinNormalized($this->normalizeName($name));
     }
 
     public function findMixin(string $name): ?ScopedCallableDefinition
     {
-        $name       = $this->normalizeName($name);
-        $definition = $this->mixins->get($name);
-
-        if ($definition !== null) {
-            return new ScopedCallableDefinition($definition, $this);
-        }
-
-        return $this->parent?->findMixin($name);
+        return $this->findMixinNormalized($this->normalizeName($name));
     }
 
     public function getMixins(): CallableDefinitionMap
@@ -284,41 +246,17 @@ final class Scope
 
     public function getFunction(string $name): CallableDefinition
     {
-        $name       = $this->normalizeName($name);
-        $definition = $this->functions->get($name);
-
-        if ($definition !== null) {
-            return $definition;
-        }
-
-        if ($this->parent) {
-            return $this->parent->getFunction($name);
-        }
-
-        throw UndefinedSymbolException::function($name);
+        return $this->getFunctionNormalized($this->normalizeName($name));
     }
 
     public function hasFunction(string $name): bool
     {
-        $name = $this->normalizeName($name);
-
-        if ($this->functions->has($name)) {
-            return true;
-        }
-
-        return $this->parent?->hasFunction($name) ?? false;
+        return $this->hasFunctionNormalized($this->normalizeName($name));
     }
 
     public function findFunction(string $name): ?ScopedCallableDefinition
     {
-        $name       = $this->normalizeName($name);
-        $definition = $this->functions->get($name);
-
-        if ($definition !== null) {
-            return new ScopedCallableDefinition($definition, $this);
-        }
-
-        return $this->parent?->findFunction($name);
+        return $this->findFunctionNormalized($this->normalizeName($name));
     }
 
     public function getFunctions(): CallableDefinitionMap
@@ -341,10 +279,109 @@ final class Scope
         return $this->modules[$namespace] ?? $this->parent?->getModule($namespace);
     }
 
+    private function getVariableNormalized(string $name): mixed
+    {
+        if (array_key_exists($name, $this->variables)) {
+            return $this->variables[$name];
+        }
+
+        if ($this->parent) {
+            return $this->parent->getVariableNormalized($name);
+        }
+
+        throw UndefinedSymbolException::variable($name);
+    }
+
+    private function hasVariableNormalized(string $name): bool
+    {
+        if (array_key_exists($name, $this->variables)) {
+            return true;
+        }
+
+        return $this->parent !== null && $this->parent->hasVariableNormalized($name);
+    }
+
+    private function findVariableDefinitionNormalized(string $name): ?VariableDefinition
+    {
+        if (array_key_exists($name, $this->variables)) {
+            return new VariableDefinition($this, $this->variableLines[$name] ?? 1);
+        }
+
+        return $this->parent?->findVariableDefinitionNormalized($name);
+    }
+
+    private function getMixinNormalized(string $name): CallableDefinition
+    {
+        $definition = $this->mixins->get($name);
+
+        if ($definition !== null) {
+            return $definition;
+        }
+
+        if ($this->parent) {
+            return $this->parent->getMixinNormalized($name);
+        }
+
+        throw UndefinedSymbolException::mixin($name);
+    }
+
+    private function hasMixinNormalized(string $name): bool
+    {
+        if ($this->mixins->has($name)) {
+            return true;
+        }
+
+        return $this->parent?->hasMixinNormalized($name) ?? false;
+    }
+
+    private function findMixinNormalized(string $name): ?ScopedCallableDefinition
+    {
+        $definition = $this->mixins->get($name);
+
+        if ($definition !== null) {
+            return new ScopedCallableDefinition($definition, $this);
+        }
+
+        return $this->parent?->findMixinNormalized($name);
+    }
+
+    private function getFunctionNormalized(string $name): CallableDefinition
+    {
+        $definition = $this->functions->get($name);
+
+        if ($definition !== null) {
+            return $definition;
+        }
+
+        if ($this->parent) {
+            return $this->parent->getFunctionNormalized($name);
+        }
+
+        throw UndefinedSymbolException::function($name);
+    }
+
+    private function hasFunctionNormalized(string $name): bool
+    {
+        if ($this->functions->has($name)) {
+            return true;
+        }
+
+        return $this->parent?->hasFunctionNormalized($name) ?? false;
+    }
+
+    private function findFunctionNormalized(string $name): ?ScopedCallableDefinition
+    {
+        $definition = $this->functions->get($name);
+
+        if ($definition !== null) {
+            return new ScopedCallableDefinition($definition, $this);
+        }
+
+        return $this->parent?->findFunctionNormalized($name);
+    }
+
     private function setVariableForce(string $name, mixed $value, bool $default, int $line): void
     {
-        $name = $this->normalizeName($name);
-
         if ($default && array_key_exists($name, $this->variables)) {
             if (! $this->isSassNull($this->variables[$name])) {
                 return;

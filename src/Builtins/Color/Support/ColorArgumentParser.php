@@ -14,6 +14,7 @@ use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Values\AstValueInspector;
 use Closure;
 
 use function array_merge;
@@ -96,7 +97,8 @@ final readonly class ColorArgumentParser
     public function parseFunctionalColorArguments(
         array $positional,
         string $context,
-        int $minArguments
+        int $minArguments,
+        bool $allowMissingChannels = false
     ): array {
         $arguments = $this->expandSingleSpaceListArgument($positional);
 
@@ -106,7 +108,7 @@ final readonly class ColorArgumentParser
             );
         }
 
-        if ($this->hasUnresolvableArguments($arguments)) {
+        if ($this->hasUnresolvableArguments($arguments, $allowMissingChannels)) {
             throw new DeferToCssFunctionException(
                 $this->callRef($context) . ' should be emitted as a CSS function.'
             );
@@ -311,7 +313,7 @@ final readonly class ColorArgumentParser
 
     public function isMissingChannelNode(AstNode $node): bool
     {
-        return $node instanceof StringNode && strtolower($node->value) === 'none';
+        return AstValueInspector::isNoneKeyword($node);
     }
 
     /**
@@ -327,14 +329,14 @@ final readonly class ColorArgumentParser
     /**
      * @param array<int, AstNode> $arguments
      */
-    public function hasUnresolvableArguments(array $arguments): bool
+    public function hasUnresolvableArguments(array $arguments, bool $allowMissingChannels = false): bool
     {
         foreach ($arguments as $argument) {
             if ($argument instanceof FunctionNode) {
                 return true;
             }
 
-            if ($argument instanceof StringNode && strtolower($argument->value) === 'none') {
+            if (! $allowMissingChannels && AstValueInspector::isNoneKeyword($argument)) {
                 return true;
             }
         }

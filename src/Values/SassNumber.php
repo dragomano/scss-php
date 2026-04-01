@@ -9,11 +9,10 @@ use Bugo\SCSS\Utils\UnitConverter;
 use function is_infinite;
 use function is_int;
 use function is_nan;
+use function rtrim;
 use function sprintf;
 use function str_contains;
 use function str_starts_with;
-use function strlen;
-use function substr;
 
 final class SassNumber extends AbstractSassValue
 {
@@ -66,18 +65,8 @@ final class SassNumber extends AbstractSassValue
             return $this->compressLeadingZero((string) $value);
         }
 
-        $formatted = sprintf('%.10F', $value);
-        $length    = strlen($formatted);
-
-        while ($length > 0 && $formatted[$length - 1] === '0') {
-            $length--;
-        }
-
-        if ($length > 0 && $formatted[$length - 1] === '.') {
-            $length--;
-        }
-
-        $trimmed = substr($formatted, 0, $length);
+        $formatted = rtrim(sprintf('%.10F', $value), '0');
+        $trimmed   = rtrim($formatted, '.');
 
         if ($trimmed === '-0') {
             return '0';

@@ -64,7 +64,7 @@ final readonly class ColorConstructorFunctions
      */
     public function hslFunction(array $positional): AstNode
     {
-        $arguments    = $this->parser->parseFunctionalColorArguments($positional, 'hsl', 3);
+        $arguments    = $this->parser->parseFunctionalColorArguments($positional, 'hsl', 3, true);
         $hueMissing   = $this->parser->isMissingChannelNode($arguments[0]);
         $satMissing   = $this->parser->isMissingChannelNode($arguments[1]);
         $lightMissing = $this->parser->isMissingChannelNode($arguments[2]);
@@ -76,11 +76,11 @@ final readonly class ColorConstructorFunctions
                         $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsl'))
                     ),
                     $satMissing ? new StringNode('none') : new NumberNode(
-                        $this->parser->clamp($this->parser->asPercentage($arguments[1], 'hsl'), 100.0),
+                        $this->parser->asPercentage($arguments[1], 'hsl'),
                         '%'
                     ),
                     $lightMissing ? new StringNode('none') : new NumberNode(
-                        $this->parser->clamp($this->parser->asPercentage($arguments[2], 'hsl'), 100.0),
+                        $this->parser->asPercentage($arguments[2], 'hsl'),
                         '%'
                     ),
                 ], 'space'),
@@ -89,8 +89,8 @@ final readonly class ColorConstructorFunctions
 
         return $this->astWriter->buildHslFunctionNode(
             $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsl')),
-            $this->parser->clamp($this->parser->asPercentage($arguments[1], 'hsl'), 100.0),
-            $this->parser->clamp($this->parser->asPercentage($arguments[2], 'hsl'), 100.0),
+            $this->parser->asPercentage($arguments[1], 'hsl'),
+            $this->parser->asPercentage($arguments[2], 'hsl'),
             $this->parser->parseAlphaOrDefault($arguments, 3, 'hsl')
         );
     }
@@ -104,8 +104,8 @@ final readonly class ColorConstructorFunctions
 
         return $this->astWriter->buildHslFunctionNode(
             $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsla')),
-            $this->parser->clamp($this->parser->asPercentage($arguments[1], 'hsla'), 100.0),
-            $this->parser->clamp($this->parser->asPercentage($arguments[2], 'hsla'), 100.0),
+            $this->parser->asPercentage($arguments[1], 'hsla'),
+            $this->parser->asPercentage($arguments[2], 'hsla'),
             $this->parser->parseAlphaOrDefault($arguments, 3, 'hsla')
         );
     }

@@ -294,7 +294,7 @@ final readonly class ColorSpaceInterop
         }
 
         if ($space === 'rgb' || $space === 'srgb') {
-            $rgb = $this->converter->toRgb($color);
+            $rgb = $this->converter->toUnclampedRgb($color);
 
             if ($nativeSpace === 'oklch') {
                 return $this->toGamutFromOklch($color, $method);

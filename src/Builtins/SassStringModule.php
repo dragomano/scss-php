@@ -10,11 +10,11 @@ use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\ListNode;
-use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Utils\StringHelper;
+use Bugo\SCSS\Values\AstValueInspector;
 
 use function array_map;
 use function implode;
@@ -113,8 +113,8 @@ final class SassStringModule extends AbstractModule
 
         $firstString  = $positional[0] ?? null;
         $secondString = $positional[1] ?? null;
-        $quoted       = ($firstString instanceof StringNode && $firstString->quoted)
-            || ($secondString instanceof StringNode && $secondString->quoted);
+        $quoted       = AstValueInspector::isQuotedString($firstString)
+            || AstValueInspector::isQuotedString($secondString);
 
         if ($index === 0) {
             throw BuiltinArgumentException::mustNotBeZero(
@@ -194,8 +194,7 @@ final class SassStringModule extends AbstractModule
         $end    = isset($positional[2]) ? $this->requireIntegerArg($positional, 2, 'string.slice') : -1;
         $length = strlen($string);
 
-        $firstString = $positional[0] ?? null;
-        $quoted      = $firstString instanceof StringNode && $firstString->quoted;
+        $quoted      = AstValueInspector::isQuotedString($positional[0] ?? null);
         $startOffset = $start > 0 ? $start - 1 : ($start === 0 ? 0 : $length + $start);
 
         if ($startOffset < 0) {
@@ -224,7 +223,7 @@ final class SassStringModule extends AbstractModule
         $this->warnAboutDeprecatedStringFunction($context, 'split', $positional);
 
         $inputNode = $positional[0] ?? null;
-        $quoted    = $inputNode instanceof StringNode && $inputNode->quoted;
+        $quoted    = AstValueInspector::isQuotedString($inputNode);
         $string    = $this->requireStringArg($positional, 0, 'string.split');
         $separator = $this->requireStringArg($positional, 1, 'string.split');
         $limitNode = $named['limit'] ?? ($positional[2] ?? null);
@@ -299,8 +298,7 @@ final class SassStringModule extends AbstractModule
     {
         $this->warnAboutDeprecatedStringFunction($context, 'to-lower-case', $positional);
 
-        $inputNode = $positional[0] ?? null;
-        $quoted    = $inputNode instanceof StringNode && $inputNode->quoted;
+        $quoted = AstValueInspector::isQuotedString($positional[0] ?? null);
 
         return new StringNode(
             strtolower($this->requireStringArg($positional, 0, 'string.to-lower-case')),
@@ -315,8 +313,7 @@ final class SassStringModule extends AbstractModule
     {
         $this->warnAboutDeprecatedStringFunction($context, 'to-upper-case', $positional);
 
-        $inputNode = $positional[0] ?? null;
-        $quoted    = $inputNode instanceof StringNode && $inputNode->quoted;
+        $quoted = AstValueInspector::isQuotedString($positional[0] ?? null);
 
         return new StringNode(
             strtoupper($this->requireStringArg($positional, 0, 'string.to-upper-case')),
@@ -371,7 +368,7 @@ final class SassStringModule extends AbstractModule
      */
     private function deprecatedStringSuggestion(string $name, array $positional): string
     {
-        $arguments = $this->rawArgumentsAvailable() ? $this->rawPositionalArguments() : $positional;
+        $arguments = $this->hasRawArguments() ? $this->rawPositionalArguments() : $positional;
 
         return 'string.' . $name . '(' . implode(', ', $this->describeArguments($arguments)) . ')';
     }
@@ -412,33 +409,6 @@ final class SassStringModule extends AbstractModule
         }
 
         return '';
-    }
-
-    /**
-     * @return array<int, AstNode>
-     */
-    private function rawPositionalArguments(): array
-    {
-        if ($this->activeBuiltinContext === null || $this->activeBuiltinContext->rawArguments === null) {
-            return [];
-        }
-
-        $positional = [];
-
-        foreach ($this->activeBuiltinContext->rawArguments as $argument) {
-            if ($argument instanceof NamedArgumentNode) {
-                continue;
-            }
-
-            $positional[] = $argument;
-        }
-
-        return $positional;
-    }
-
-    private function rawArgumentsAvailable(): bool
-    {
-        return $this->activeBuiltinContext !== null && $this->activeBuiltinContext->rawArguments !== null;
     }
 
     /**
