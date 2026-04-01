@@ -10,7 +10,6 @@ use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
-use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Utils\AstValueComparator;
@@ -145,17 +144,14 @@ final class SassMapModule extends AbstractModule
         $this->warnAboutDeprecatedMapFunction($context, 'get', $positional);
 
         $current = $this->asMap($positional[0], 'map.get');
-        $keys    = array_slice($positional, 1);
+        $keys    = array_slice($positional, 1, -1);
+        $lastKey = $positional[count($positional) - 1];
 
-        foreach ($keys as $index => $key) {
+        foreach ($keys as $key) {
             $value = $this->findByKey($current, $key);
 
             if ($value === null) {
                 return $this->nullNode();
-            }
-
-            if ($index === count($keys) - 1) {
-                return $value;
             }
 
             if (! ($value instanceof MapNode)) {
@@ -165,7 +161,7 @@ final class SassMapModule extends AbstractModule
             $current = $value;
         }
 
-        return $this->nullNode();
+        return $this->findByKey($current, $lastKey) ?? $this->nullNode();
     }
 
     /**
@@ -232,13 +228,6 @@ final class SassMapModule extends AbstractModule
         }
 
         $args = array_slice($positional, 1);
-
-        if (count($args) === 1) {
-            throw new MissingFunctionArgumentsException(
-                $this->builtinErrorContext('map.merge'),
-                'path keys and a map in variadic form'
-            );
-        }
 
         $lastIndex = array_key_last($args);
 
@@ -370,7 +359,7 @@ final class SassMapModule extends AbstractModule
     {
         $arguments = $positional;
 
-        if ($this->rawArgumentsAvailable()) {
+        if ($this->hasRawArguments()) {
             $arguments = $this->rawPositionalArguments();
         }
 
@@ -541,43 +530,6 @@ final class SassMapModule extends AbstractModule
         }
 
         return null;
-    }
-
-    /**
-     * @return array<int, AstNode>
-     */
-    private function rawPositionalArguments(): array
-    {
-        $context = $this->activeBuiltinContext();
-
-        if ($context === null || $context->rawArguments === null) {
-            return [];
-        }
-
-        $arguments  = $context->rawArguments;
-        $positional = [];
-
-        foreach ($arguments as $argument) {
-            if ($argument instanceof NamedArgumentNode) {
-                continue;
-            }
-
-            $positional[] = $argument;
-        }
-
-        return $positional;
-    }
-
-    private function rawArgumentsAvailable(): bool
-    {
-        $context = $this->activeBuiltinContext();
-
-        return $context !== null && $context->rawArguments !== null;
-    }
-
-    private function activeBuiltinContext(): ?BuiltinCallContext
-    {
-        return $this->activeBuiltinContext;
     }
 
     private function asMap(AstNode $value, string $context): MapNode

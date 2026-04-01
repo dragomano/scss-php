@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Bugo\Iris\Spaces\RgbColor;
 use Bugo\SCSS\Builtins\Color\Adapters\IrisConverterAdapter;
 use Bugo\SCSS\Builtins\Color\Adapters\IrisLiteralAdapter;
 use Bugo\SCSS\Builtins\Color\Ast\ColorAstParser;
@@ -112,6 +113,23 @@ describe('ColorSpaceInterop', function () {
             ->and($result->arguments[0]->items[0]->value)->toBe('none');
     });
 
+    it('converts native oklch with present channels to numeric lch lightness and hue', function () {
+        $result = $this->interop->toSpace([
+            new FunctionNode('oklch', [new ListNode([
+                new NumberNode(62.0, '%'),
+                new NumberNode(0.12),
+                new NumberNode(210.0, 'deg'),
+            ], 'space')]),
+            new StringNode('lch'),
+        ]);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('lch')
+            ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($result->arguments[0]->items[0])->toBeInstanceOf(NumberNode::class)
+            ->and($result->arguments[0]->items[2])->toBeInstanceOf(NumberNode::class);
+    });
+
     it('serializes zero-chroma oklch conversions with missing hue', function () {
         $result = $this->interop->toSpace([
             new ColorNode('#808080'),
@@ -159,18 +177,119 @@ describe('ColorSpaceInterop', function () {
     });
 
     it('clips out-of-gamut srgb colors in to-gamut', function () {
+        $color = new FunctionNode('color', [new ListNode([
+            new StringNode('srgb'),
+            new NumberNode(1.2),
+            new NumberNode(0.1),
+            new NumberNode(0.0),
+        ], 'space')]);
+
         $result = $this->interop->toGamut([
-            new FunctionNode('color', [new ListNode([
-                new StringNode('srgb'),
-                new NumberNode(1.2),
-                new NumberNode(0.1),
-                new NumberNode(0.0),
-            ], 'space')]),
+            $color,
             new StringNode('rgb'),
             new StringNode('clip'),
         ], []);
 
-        expect($result)->toBeInstanceOf(FunctionNode::class)
-            ->and($result->name)->toBe('color');
+        expect($result)->toBeInstanceOf(ColorNode::class)
+            ->and($result)->not->toBe($color);
+    });
+
+    it('maps out-of-gamut srgb colors with local-minde', function () {
+        $color = new FunctionNode('color', [new ListNode([
+            new StringNode('srgb'),
+            new NumberNode(1.2),
+            new NumberNode(0.1),
+            new NumberNode(0.0),
+        ], 'space')]);
+
+        $result = $this->interop->toGamut([
+            $color,
+            new StringNode('rgb'),
+            new StringNode('local-minde'),
+        ], []);
+
+        expect($result)->toBeInstanceOf(ColorNode::class)
+            ->and($result)->not->toBe($color);
+    });
+
+    it('serializes rgb colors for original spaces', function () {
+        $rgb = new RgbColor(300.0, 20.0, 10.0, 0.5);
+
+        $srgb = $this->interop->serializeRgbForOriginalSpace('srgb', $rgb);
+        $lab = $this->interop->serializeRgbForOriginalSpace('lab', $rgb);
+        $displayP3 = $this->interop->serializeRgbForOriginalSpace('display-p3', $rgb);
+
+        expect($srgb)->toBeInstanceOf(ColorNode::class)
+            ->and($lab)->toBeInstanceOf(FunctionNode::class)
+            ->and($lab->name)->toBe('lab')
+            ->and($displayP3)->toBeInstanceOf(ColorNode::class);
+    });
+
+    it('converts lch colors to oklch while preserving missing-channel semantics', function () {
+        $result = $this->interop->toOklchPreservingMissingChannels(
+            new FunctionNode('lch', [new ListNode([
+                new StringNode('none'),
+                new NumberNode(30.0),
+                new NumberNode(450.0, 'deg'),
+            ], 'space')])
+        );
+
+        expect($result->lValue())->toBeFloat()
+            ->and($result->cValue())->toBeFloat()
+            ->and($result->hValue())->toBeFloat();
+    });
+
+    it('converts lch colors with explicit lightness to oklch', function () {
+        $result = $this->interop->toOklchPreservingMissingChannels(
+            new FunctionNode('lch', [new ListNode([
+                new NumberNode(40.0, '%'),
+                new NumberNode(30.0),
+                new NumberNode(450.0, 'deg'),
+            ], 'space')])
+        );
+
+        expect($result->lValue())->toBeFloat()
+            ->and($result->cValue())->toBeFloat()
+            ->and($result->hValue())->toBeFloat();
+    });
+
+    it('converts rgb colors to working-space channels and rejects unsupported spaces', function () {
+        $rgb = new RgbColor(12.0, 34.0, 56.0, 0.25);
+
+        $a98 = $this->interop->rgbToWorkingSpaceChannels($rgb, 'a98-rgb');
+        $prophoto = $this->interop->rgbToWorkingSpaceChannels($rgb, 'prophoto-rgb');
+        $rec2020 = $this->interop->rgbToWorkingSpaceChannels($rgb, 'rec2020');
+
+        expect($a98)->toHaveCount(3)
+            ->and($prophoto)->toHaveCount(3)
+            ->and($rec2020)->toHaveCount(3)
+            ->and(fn() => $this->interop->rgbToWorkingSpaceChannels($rgb, 'bogus'))
+            ->toThrow(UnsupportedColorSpaceException::class)
+            ->and(fn() => $this->interop->workingSpaceChannelsToRgb('bogus', [0.1, 0.2, 0.3], 0.25))
+            ->toThrow(UnsupportedColorSpaceException::class);
+    });
+
+    it('handles incomplete and alpha-bearing hsl channel extraction', function () {
+        $incomplete = $this->interop->toHslWithMissingChannels(new FunctionNode('hsl', [
+            new NumberNode(120.0, 'deg'),
+            new NumberNode(50.0, '%'),
+        ]));
+
+        $withAlpha = $this->interop->toHslWithMissingChannels(new FunctionNode('hsl', [new ListNode([
+            new NumberNode(120.0, 'deg'),
+            new NumberNode(50.0, '%'),
+            new NumberNode(25.0, '%'),
+            new NumberNode(0.25),
+        ], 'space')]));
+
+        expect($incomplete)->toBeNull()
+            ->and($withAlpha)->not->toBeNull()
+            ->and($withAlpha?->a)->toBe(0.25);
+    });
+
+    it('returns false when semantic missing lightness is unavailable', function () {
+        $result = $this->interop->isSemanticChannelMissing(new FunctionNode('rgb', []));
+
+        expect($result)->toBeFalse();
     });
 });

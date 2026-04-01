@@ -26,6 +26,19 @@ final class NameHelper
         ];
     }
 
+    /**
+     * @return array{namespace: string, member: string}
+     */
+    public static function splitNamespacedName(string $name): array
+    {
+        $parts = explode('.', $name, 2);
+
+        return [
+            'namespace' => $parts[0],
+            'member'    => $parts[1] ?? '',
+        ];
+    }
+
     public static function hasNamespace(string $name): bool
     {
         return str_contains($name, '.');

@@ -108,15 +108,10 @@ final class FunctionRegistry
         $callContext = $this->withBuiltinDisplayName($context, $name);
 
         if (NameHelper::hasNamespace($name)) {
-            $parts = NameHelper::splitQualifiedName($name);
-
-            if ($parts['member'] === null) {
-                return null;
-            }
+            $parts = NameHelper::splitNamespacedName($name);
 
             $alias    = $parts['namespace'];
-            $function = $parts['member'];
-            $function = $this->normalizeName($function);
+            $function = $this->normalizeName($parts['member']);
 
             $moduleName = $this->moduleAliases[$alias] ?? null;
 

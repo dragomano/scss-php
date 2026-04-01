@@ -7,20 +7,15 @@ namespace Bugo\SCSS\Builtins;
 use Bugo\SCSS\Exceptions\DeprecatedBuiltinFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
-use Bugo\SCSS\Nodes\ColorNode;
-use Bugo\SCSS\Nodes\ListNode;
-use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
-use Bugo\SCSS\Nodes\NumberNode;
-use Bugo\SCSS\Nodes\StringNode;
-use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
+use Bugo\SCSS\Values\AstValueDescriber;
 use Bugo\SCSS\Values\ValueFactory;
 
 use function array_combine;
 use function array_map;
 use function array_merge;
-use function implode;
 use function str_contains;
 use function strtolower;
 
@@ -156,45 +151,7 @@ abstract class AbstractModule implements ModuleInterface
 
     protected function describeBuiltinValue(AstNode $value): string
     {
-        if ($value instanceof VariableReferenceNode) {
-            return '$' . $value->name;
-        }
-
-        if ($value instanceof NumberNode) {
-            return "$value->value" . ($value->unit ?? '');
-        }
-
-        if ($value instanceof StringNode) {
-            return $value->quoted ? '"' . $value->value . '"' : $value->value;
-        }
-
-        if ($value instanceof ListNode) {
-            $items = $this->describeBuiltinArguments($value->items);
-            $glue  = $value->separator === 'comma' ? ', ' : ' ';
-            $text  = implode($glue, $items);
-
-            if ($value->bracketed) {
-                return '[' . $text . ']';
-            }
-
-            return $text;
-        }
-
-        if ($value instanceof MapNode) {
-            $pairs = [];
-
-            foreach ($value->pairs as $pair) {
-                $pairs[] = $this->describeBuiltinValue($pair['key']) . ': ' . $this->describeBuiltinValue($pair['value']);
-            }
-
-            return '(' . implode(', ', $pairs) . ')';
-        }
-
-        if ($value instanceof ColorNode) {
-            return $value->value;
-        }
-
-        return '';
+        return AstValueDescriber::describe($value);
     }
 
     /**
@@ -204,6 +161,34 @@ abstract class AbstractModule implements ModuleInterface
     protected function describeBuiltinArguments(array $arguments): array
     {
         return array_map($this->describeBuiltinValue(...), $arguments);
+    }
+
+    /**
+     * @return array<int, AstNode>
+     */
+    protected function rawPositionalArguments(): array
+    {
+        if ($this->activeBuiltinContext === null || $this->activeBuiltinContext->rawArguments === null) {
+            return [];
+        }
+
+        $positional = [];
+
+        foreach ($this->activeBuiltinContext->rawArguments as $argument) {
+            if ($argument instanceof NamedArgumentNode) {
+                continue;
+            }
+
+            $positional[] = $argument;
+        }
+
+        return $positional;
+    }
+
+    protected function hasRawArguments(): bool
+    {
+        return $this->activeBuiltinContext !== null
+            && $this->activeBuiltinContext->rawArguments !== null;
     }
 
     protected function warnAboutDeprecatedBuiltinFunction(

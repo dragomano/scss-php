@@ -126,6 +126,26 @@ describe('SassSelectorModule', function () {
         expect($result->value)->toBe('.button > .badge');
     });
 
+    it('falls back to plain extend replacement when structured replacement is unavailable', function () {
+        $result = $this->module->call(
+            'extend',
+            [new StringNode('.button .icon'), new StringNode('.icon'), new StringNode('> .badge')],
+            []
+        );
+
+        expect($result->value)->toBe('.button .icon, .button > .badge');
+    });
+
+    it('keeps the selector unchanged when extend fallback does not find the target', function () {
+        $result = $this->module->call(
+            'extend',
+            [new StringNode('.button .label'), new StringNode('.icon'), new StringNode('> .badge')],
+            []
+        );
+
+        expect($result->value)->toBe('.button .label');
+    });
+
     it('requires arguments for replace', function () {
         expect(fn() => $this->module->call('replace', [new StringNode('.button'), new StringNode('.icon')], []))
             ->toThrow(MissingFunctionArgumentsException::class);
@@ -178,6 +198,7 @@ describe('SassSelectorModule', function () {
         $nullSubject = $this->accessor->callMethod('unifySelectorParts', ['div', 'span']);
         $pruned = $this->accessor->callMethod('pruneCoveredCompounds', [['.a'], ['.a.b']]);
         $selectorParts = $this->accessor->callMethod('selectorParts', [':']);
+        $untokenizedCompound = $this->accessor->callMethod('selectorParts', ['#']);
 
         expect($result)->toBeInstanceOf(NullNode::class)
             ->and($emptyTarget)->toBeNull()
@@ -187,6 +208,7 @@ describe('SassSelectorModule', function () {
             ->and($emptyCompounds)->toBe([])
             ->and($nullSubject)->toBe([])
             ->and($pruned)->toBe([])
-            ->and($selectorParts)->toBe([':']);
+            ->and($selectorParts)->toBe([':'])
+            ->and($untokenizedCompound)->toBe(['#']);
     });
 });

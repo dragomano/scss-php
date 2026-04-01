@@ -19,11 +19,11 @@ use ScssPhp\ScssPhp\OutputStyle;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Psr16Cache;
 
-final class CachedBenchmarkCompiler
+final readonly class CachedBenchmarkCompiler
 {
     public function __construct(
-        private readonly CachingCompiler $compiler,
-        private readonly string $entryPath
+        private CachingCompiler $compiler,
+        private string $entryPath
     ) {}
 
     public function compileString(string $scss): string

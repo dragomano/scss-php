@@ -127,6 +127,18 @@ describe('ColorFunctionEvaluator', function () {
             ->and($legacyRgb)->toBeInstanceOf(ColorNode::class);
     });
 
+    it('adjusts lab modifications for non-native colors when the modifier is not a direct change', function () {
+        $result = $this->evaluatorAccessor->callMethod('applyInLabSpace', [
+            new ColorNode('#336699'),
+            ['lightness' => new NumberNode(10, '%')],
+            static fn(float $current, float $value): float => $current + $value,
+            false,
+        ]);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('rgb');
+    });
+
     it('returns zero scale suggestions when no channel range remains', function () {
         $hint = $this->evaluatorAccessor->callMethod('buildScaleSuggestion', [
             new ColorNode('#112233'),

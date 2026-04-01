@@ -9,7 +9,6 @@ use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
-use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Utils\SelectorHelper;
@@ -464,38 +463,11 @@ final class SassSelectorModule extends AbstractModule
     {
         $arguments = $positional;
 
-        if ($this->rawArgumentsAvailable()) {
+        if ($this->hasRawArguments()) {
             $arguments = $this->rawPositionalArguments();
         }
 
         return 'selector.' . $name . '(' . implode(', ', $this->describeBuiltinArguments($arguments)) . ')';
-    }
-
-    /**
-     * @return array<int, AstNode>
-     */
-    private function rawPositionalArguments(): array
-    {
-        if ($this->activeBuiltinContext === null || $this->activeBuiltinContext->rawArguments === null) {
-            return [];
-        }
-
-        $positional = [];
-
-        foreach ($this->activeBuiltinContext->rawArguments as $argument) {
-            if ($argument instanceof NamedArgumentNode) {
-                continue;
-            }
-
-            $positional[] = $argument;
-        }
-
-        return $positional;
-    }
-
-    private function rawArgumentsAvailable(): bool
-    {
-        return $this->activeBuiltinContext !== null && $this->activeBuiltinContext->rawArguments !== null;
     }
 
     /**

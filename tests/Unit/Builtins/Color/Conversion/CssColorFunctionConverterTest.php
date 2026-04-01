@@ -55,6 +55,10 @@ describe('CssColorFunctionConverter', function () {
             ->toBeNull()
             ->and($this->converter->tryConvertToXyzD65(new FunctionNode('rgb', [new StringNode('oops')])))
             ->toBeNull()
+            ->and($this->converter->tryConvertToXyzD65(new FunctionNode('color', [
+                new StringNode('srgb'),
+                new NumberNode(0.1),
+            ])))->toBeNull()
             ->and($this->converter->tryConvertToXyzD50(new FunctionNode('rgb', [new StringNode('oops')])))
             ->toBeNull();
     });

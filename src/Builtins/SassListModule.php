@@ -18,6 +18,7 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Utils\AstValueComparator;
+use Bugo\SCSS\Values\AstValueSuggestionDescriber;
 
 use function abs;
 use function array_map;
@@ -433,58 +434,12 @@ final class SassListModule extends AbstractModule
      */
     private function describeArguments(array $arguments): array
     {
-        return array_map($this->describeValue(...), $arguments);
+        return AstValueSuggestionDescriber::describeArguments($arguments);
     }
 
     private function describeValue(?AstNode $value): string
     {
-        if ($value === null) {
-            return '';
-        }
-
-        if ($value instanceof NumberNode) {
-            return "$value->value" . ($value->unit ?? '');
-        }
-
-        if ($value instanceof StringNode) {
-            return $value->quoted ? '"' . $value->value . '"' : $value->value;
-        }
-
-        if ($value instanceof ListNode || $value instanceof ArgumentListNode) {
-            $items = $this->describeArguments($value->items);
-            $glue  = match ($value->separator) {
-                'comma' => ', ',
-                'slash' => ' / ',
-                default => ' ',
-            };
-            $text = implode($glue, $items);
-
-            if ($value->bracketed) {
-                return '[' . $text . ']';
-            }
-
-            if ($value->items === []) {
-                return '()';
-            }
-
-            if ($value->separator !== 'space') {
-                return '(' . $text . ')';
-            }
-
-            return $text;
-        }
-
-        if ($value instanceof MapNode) {
-            $pairs = [];
-
-            foreach ($value->pairs as $pair) {
-                $pairs[] = $this->describeValue($pair['key']) . ': ' . $this->describeValue($pair['value']);
-            }
-
-            return '(' . implode(', ', $pairs) . ')';
-        }
-
-        return '';
+        return AstValueSuggestionDescriber::describe($value);
     }
 
     private function requireInteger(AstNode $value, string $context): int

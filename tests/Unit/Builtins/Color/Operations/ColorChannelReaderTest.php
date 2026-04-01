@@ -227,4 +227,16 @@ describe('ColorChannelReader', function () {
             ->and($lch->value)->toBeTrue()
             ->and($oklch->value)->toBeTrue();
     });
+
+    it('detects powerless hwb hue for colors resolved through explicit hwb space', function () {
+        $result = $this->reader->isPowerless([
+            new ColorNode('#ffffff'),
+            new StringNode('hue'),
+        ], [
+            'space' => new StringNode('hwb'),
+        ]);
+
+        expect($result)->toBeInstanceOf(BooleanNode::class)
+            ->and($result->value)->toBeTrue();
+    });
 });

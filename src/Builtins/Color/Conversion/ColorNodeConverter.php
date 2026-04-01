@@ -19,6 +19,7 @@ use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Values\AstValueInspector;
 use Closure;
 
 use function in_array;
@@ -136,6 +137,38 @@ final readonly class ColorNodeConverter
         return $this->colorSpaceConverter->rgbToHslColor($this->toRgb($color));
     }
 
+    public function toUnclampedRgb(AstNode $color): RgbColor
+    {
+        if ($color instanceof FunctionNode && strtolower($color->name) === 'color') {
+            $space = $this->detectGenericColorSpace($color);
+
+            if ($space === 'srgb') {
+                $channels = $this->extractChannelNodes($color);
+                $red      = $channels[1] ?? null;
+                $green    = $channels[2] ?? null;
+                $blue     = $channels[3] ?? null;
+
+                if (
+                    $red instanceof NumberNode
+                    && $green instanceof NumberNode
+                    && $blue instanceof NumberNode
+                    && ($red->unit === null || $red->unit === '' || $red->unit === '%')
+                    && ($green->unit === null || $green->unit === '' || $green->unit === '%')
+                    && ($blue->unit === null || $blue->unit === '' || $blue->unit === '%')
+                ) {
+                    return new RgbColor(
+                        r: $this->genericSrgbChannelToByte($red),
+                        g: $this->genericSrgbChannelToByte($green),
+                        b: $this->genericSrgbChannelToByte($blue),
+                        a: $this->toAlpha($color)
+                    );
+                }
+            }
+        }
+
+        return $this->toRgb($color);
+    }
+
     public function toHwb(AstNode $color): HwbColor
     {
         $rgb = $this->toRgb($color);
@@ -238,7 +271,7 @@ final readonly class ColorNodeConverter
                 continue;
             }
 
-            if ($node instanceof StringNode && strtolower($node->value) === 'none') {
+            if (AstValueInspector::isNoneKeyword($node)) {
                 continue;
             }
 
@@ -287,5 +320,16 @@ final readonly class ColorNodeConverter
         }
 
         return false;
+    }
+
+    private function genericSrgbChannelToByte(NumberNode $channel): float
+    {
+        $value = (float) $channel->value;
+
+        if ($channel->unit === '%') {
+            return $value * 255.0 / 100.0;
+        }
+
+        return $value * 255.0;
     }
 }

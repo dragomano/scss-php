@@ -12,7 +12,6 @@ use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\SassThrowable;
 use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
-use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -725,7 +724,7 @@ final class SassMathModule extends AbstractModule
      */
     private function deprecatedMathSuggestion(string $name, array $positional): string
     {
-        $arguments = $this->rawArgumentsAvailable() ? $this->rawPositionalArguments() : $positional;
+        $arguments = $this->hasRawArguments() ? $this->rawPositionalArguments() : $positional;
 
         return 'math.' . $name . '(' . implode(', ', $this->describeArguments($arguments)) . ')';
     }
@@ -762,33 +761,6 @@ final class SassMathModule extends AbstractModule
         }
 
         return '';
-    }
-
-    /**
-     * @return array<int, AstNode>
-     */
-    private function rawPositionalArguments(): array
-    {
-        if ($this->activeBuiltinContext === null || $this->activeBuiltinContext->rawArguments === null) {
-            return [];
-        }
-
-        $positional = [];
-
-        foreach ($this->activeBuiltinContext->rawArguments as $argument) {
-            if ($argument instanceof NamedArgumentNode) {
-                continue;
-            }
-
-            $positional[] = $argument;
-        }
-
-        return $positional;
-    }
-
-    private function rawArgumentsAvailable(): bool
-    {
-        return $this->activeBuiltinContext !== null && $this->activeBuiltinContext->rawArguments !== null;
     }
 
     private function toRadians(NumberNode $number): float

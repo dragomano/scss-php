@@ -8,6 +8,8 @@ use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\NumberNode;
+use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Runtime\BuiltinCallContext;
 
 describe('SassMathModule', function () {
     beforeEach(function () {
@@ -192,6 +194,15 @@ describe('SassMathModule', function () {
         expect($result->value)->toBe(1);
     });
 
+    it('rethrows missing-argument errors for max and missing-or-unitful unitless arguments', function () {
+        expect(fn() => $this->module->call('max', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'expects at least one number')
+            ->and(fn() => $this->module->call('sqrt', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'expects required number argument')
+            ->and(fn() => $this->module->call('sqrt', [new NumberNode(9, 'px')], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'expects a unitless number');
+    });
+
     it('evaluates percentage', function () {
         $result = $this->module->call('percentage', [new NumberNode(0.25)], []);
         expect($result->value)->toBe(25.0)->and($result->unit)->toBe('%');
@@ -249,5 +260,36 @@ describe('SassMathModule', function () {
     it('evaluates unit', function () {
         $result = $this->module->call('unit', [new NumberNode(10, 'px')], []);
         expect($result->value)->toBe('px');
+    });
+
+    it('uses raw arguments when formatting deprecated global math suggestions', function () {
+        $warnings = [];
+        $context = new BuiltinCallContext(
+            logWarning: static function (string $message) use (&$warnings): void {
+                $warnings[] = $message;
+            },
+            rawArguments: [new StringNode('quoted', true), new BooleanNode(true)]
+        );
+
+        $this->module->call('max', [new NumberNode(1), new NumberNode(2)], [], $context);
+
+        expect($warnings)->toHaveCount(1)
+            ->and($warnings[0])->toContain('max() is deprecated')
+            ->and($warnings[0])->toContain('math.max("quoted", 1)');
+    });
+
+    it('converts unitless turn and grad angles to radians for trig functions', function () {
+        $unitless = $this->module->call('cos', [new NumberNode(M_PI)], []);
+        $turn = $this->module->call('sin', [new NumberNode(0.25, 'turn')], []);
+        $grad = $this->module->call('sin', [new NumberNode(100, 'grad')], []);
+
+        expect($unitless->value)->toBeCloseTo(-1.0, 0.001)
+            ->and($turn->value)->toBeCloseTo(1.0, 0.001)
+            ->and($grad->value)->toBeCloseTo(1.0, 0.001);
+    });
+
+    it('throws for unsupported trig units', function () {
+        expect(fn() => $this->module->call('tan', [new NumberNode(1, 'px')], []))
+            ->toThrow(BuiltinArgumentException::class, 'unitless, deg, rad, grad, or turn');
     });
 });

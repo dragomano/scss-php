@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Values;
 
 use function str_contains;
-use function strlen;
+use function str_replace;
 
 final class SassString extends AbstractSassValue
 {
@@ -41,19 +41,6 @@ final class SassString extends AbstractSassValue
 
     private function escapeQuotedValue(string $quote): string
     {
-        $result = '';
-        $length = strlen($this->value);
-
-        for ($index = 0; $index < $length; $index++) {
-            $char = $this->value[$index];
-
-            if ($char === $quote) {
-                $result .= '\\';
-            }
-
-            $result .= $char;
-        }
-
-        return $result;
+        return str_replace($quote, '\\' . $quote, $this->value);
     }
 }

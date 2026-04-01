@@ -1445,6 +1445,30 @@ describe('Sass Color Module Feature', function () {
                 expect($css)->toEqualCss($expected);
             });
 
+            it('normalizes hue while preserving missing lightness', function () {
+                $css = $this->compiler->compileString('.a { color: hsl(480 50% none); }');
+
+                $expected = /** @lang text */ <<<'CSS'
+                .a {
+                  color: hsl(120 50% none);
+                }
+                CSS;
+
+                expect($css)->toEqualCss($expected);
+            });
+
+            it('preserves saturation values above one hundred percent', function () {
+                $css = $this->compiler->compileString('.a { color: hsl(120, 120%, 50%); }');
+
+                $expected = /** @lang text */ <<<'CSS'
+                .a {
+                  color: hsl(120, 120%, 50%);
+                }
+                CSS;
+
+                expect($css)->toEqualCss($expected);
+            });
+
             it('converts to hex when outputHexColors is enabled', function () {
                 $compiler = new Compiler(new CompilerOptions(outputHexColors: true));
                 $css = $compiler->compileString('.a { color: hsl(210deg 40% 50%); }');

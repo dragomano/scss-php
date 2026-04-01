@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Builtins\Color\Adapters\IrisConverterAdapter;
 use Bugo\SCSS\Builtins\Color\Support\ColorValueFormatter;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
@@ -31,5 +32,11 @@ describe('ColorValueFormatter', function () {
         ]);
 
         expect($this->formatter->describeValue($value))->toBe('color(srgb 0.1 0.2 0.3)');
+    });
+
+    it('returns an empty string for unsupported ast nodes', function () {
+        $value = new class () extends AstNode {};
+
+        expect($this->formatter->describeValue($value))->toBe('');
     });
 });

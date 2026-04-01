@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Values;
 
+use function array_flip;
 use function implode;
-use function in_array;
 use function is_string;
 use function strtolower;
 
@@ -46,7 +46,14 @@ final class SassCalculation extends AbstractSassValue
 
     public static function isCalculationFunctionName(string $name): bool
     {
-        return in_array(strtolower($name), self::SUPPORTED_FUNCTIONS, true);
+        /** @var array<string, int>|null $set */
+        static $set = null;
+
+        if ($set === null) {
+            $set = array_flip(self::SUPPORTED_FUNCTIONS);
+        }
+
+        return isset($set[strtolower($name)]);
     }
 
     public function toCss(): string

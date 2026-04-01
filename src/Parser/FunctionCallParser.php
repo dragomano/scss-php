@@ -110,7 +110,7 @@ final readonly class FunctionCallParser
 
         $this->stream->skipWhitespace();
 
-        $name = ($this->parseSingleValue)();
+        $name = $this->parseSingleValueNode();
 
         if ($name !== null) {
             $arguments[] = $name;
@@ -242,7 +242,7 @@ final readonly class FunctionCallParser
             $this->stream->skipWhitespace();
 
             $savedPos     = $this->stream->getPosition();
-            $potentialArg = ($this->parseSingleValue)();
+            $potentialArg = $this->parseSingleValueNode();
 
             if ($potentialArg !== null) {
                 $this->stream->skipWhitespace();
@@ -252,7 +252,7 @@ final readonly class FunctionCallParser
                     $this->stream->advance();
                     $this->stream->skipWhitespace();
 
-                    $rightSide = ($this->parseSingleValue)();
+                    $rightSide = $this->parseSingleValueNode();
 
                     if ($rightSide !== null) {
                         // Convert both sides to strings and combine with =
@@ -314,6 +314,11 @@ final readonly class FunctionCallParser
         }
 
         return new FunctionNode($name, $arguments, $line);
+    }
+
+    private function parseSingleValueNode(): ?AstNode
+    {
+        return ($this->parseSingleValue)();
     }
 
     private function parseFunctionArgument(): ?AstNode

@@ -298,7 +298,7 @@ final readonly class SelectorTokenizer
 
     public function hasBogusTopLevelCombinatorSequence(string $selector): bool
     {
-        $state = new class {
+        $state = new class () {
             public bool $lastTokenWasCombinator = false;
         };
 

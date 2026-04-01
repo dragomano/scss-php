@@ -103,6 +103,20 @@ describe('Module service', function () {
             ->toThrow(ModuleResolutionException::class);
     });
 
+    it('handleUse() throws when configuring a non-default module variable', function () {
+        $env = new Environment();
+
+        $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
+
+        expect(fn() => $this->module->handleUse(
+            new UseNode('theme', 'theme', ['color' => new StringNode('red')]),
+            $env
+        ))->toThrow(
+            ModuleResolutionException::class,
+            "This variable isn't declared with !default in the target stylesheet, so it can't be configured: \$color (in module '/tmp/_theme.scss')."
+        );
+    });
+
     it('handleUse() reuses already loaded modules by file id', function () {
         $env   = new Environment();
         $scope = new Scope();

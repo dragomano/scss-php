@@ -507,10 +507,9 @@ final readonly class Evaluator
 
     public function shouldUseCompactSlashSpacing(string $property): bool
     {
-        return in_array(strtolower($property), [
-            'aspect-ratio',
-            'font',
-        ], true);
+        $lower = strtolower($property);
+
+        return $lower === 'aspect-ratio' || $lower === 'font';
     }
 
     public function containsSlashToken(ListNode $value, bool $topLevelOnly = false): bool

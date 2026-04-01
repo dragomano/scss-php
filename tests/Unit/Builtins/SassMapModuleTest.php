@@ -11,6 +11,7 @@ use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Tests\ReflectionAccessor;
 
 describe('SassMapModule', function () {
@@ -170,6 +171,12 @@ describe('SassMapModule', function () {
         expect($result)->toBeInstanceOf(NullNode::class);
     });
 
+    it('returns null when get() misses an intermediate nested key', function () {
+        $result = $this->module->call('get', [$this->map, new StringNode('missing'), new StringNode('x')], []);
+
+        expect($result)->toBeInstanceOf(NullNode::class);
+    });
+
     it('returns key and value lists preserving map order', function () {
         $keys   = $this->module->call('keys', [$this->map], []);
         $values = $this->module->call('values', [$this->map], []);
@@ -209,5 +216,101 @@ describe('SassMapModule', function () {
             'path' => new StringNode('nested'),
             'patch' => $patch,
         ], null]))->toThrow(MissingFunctionArgumentsException::class);
+    });
+
+    it('returns the original map when deep-remove receives an empty path', function () {
+        $result = $this->accessor->callMethod('removeNested', [$this->map, []]);
+
+        expect($result)->toBeInstanceOf(MapNode::class)
+            ->and($result)->toEqual($this->map);
+    });
+
+    it('returns the original map when deep-remove cannot descend into a scalar or missing path', function () {
+        $scalarPathResult = $this->module->call('deep-remove', [$this->map, new StringNode('a'), new StringNode('x')], []);
+        $missingPathResult = $this->module->call('deep-remove', [$this->map, new StringNode('missing')], []);
+
+        expect($scalarPathResult)->toBeInstanceOf(MapNode::class)
+            ->and($scalarPathResult)->toEqual($this->map)
+            ->and($missingPathResult)->toBeInstanceOf(MapNode::class)
+            ->and($missingPathResult)->toEqual($this->map);
+    });
+
+    it('returns the original map when modifyNested is called with an empty path and non-map result', function () {
+        $result = $this->accessor->callMethod('modifyNested', [
+            $this->map,
+            [],
+            static fn(MapNode $map): NumberNode => new NumberNode(99),
+            true,
+        ]);
+
+        expect($result)->toBeInstanceOf(MapNode::class)
+            ->and($result)->toEqual($this->map);
+    });
+
+    it('preserves the map when modifyNested misses a path and nesting is disabled', function () {
+        $result = $this->accessor->callMethod('modifyNested', [
+            $this->map,
+            [new StringNode('missing'), new StringNode('leaf')],
+            static fn(AstNode $existing): NumberNode => new NumberNode(10),
+            false,
+        ]);
+
+        expect($result)->toBeInstanceOf(MapNode::class)
+            ->and($result)->toEqual($this->map);
+    });
+
+    it('preserves the map when modifyNested hits a scalar before the tail and nesting is disabled', function () {
+        $result = $this->accessor->callMethod('modifyNested', [
+            $this->map,
+            [new StringNode('a'), new StringNode('leaf')],
+            static fn(AstNode $existing): NumberNode => new NumberNode(10),
+            false,
+        ]);
+
+        expect($result)->toBeInstanceOf(MapNode::class)
+            ->and($result)->toEqual($this->map);
+    });
+
+    it('creates nested maps when set() descends through a scalar or missing key', function () {
+        $throughScalar = $this->module->call('set', [
+            $this->map,
+            new StringNode('a'),
+            new StringNode('x'),
+            new NumberNode(5),
+        ], []);
+
+        $throughMissing = $this->module->call('set', [
+            $this->map,
+            new StringNode('new'),
+            new StringNode('leaf'),
+            new NumberNode(8),
+        ], []);
+
+        expect($throughScalar)->toBeInstanceOf(MapNode::class)
+            ->and($throughScalar->pairs[0]['value'])->toBeInstanceOf(MapNode::class)
+            ->and($throughScalar->pairs[0]['value']->pairs[0]['key']->value)->toBe('x')
+            ->and($throughScalar->pairs[0]['value']->pairs[0]['value']->value)->toBe(5)
+            ->and($throughMissing)->toBeInstanceOf(MapNode::class)
+            ->and($throughMissing->pairs[2]['key']->value)->toBe('new')
+            ->and($throughMissing->pairs[2]['value'])->toBeInstanceOf(MapNode::class)
+            ->and($throughMissing->pairs[2]['value']->pairs[0]['key']->value)->toBe('leaf')
+            ->and($throughMissing->pairs[2]['value']->pairs[0]['value']->value)->toBe(8);
+    });
+
+    it('uses raw arguments in global alias deprecation suggestions', function () {
+        $warnings = [];
+        $context = new BuiltinCallContext(
+            logWarning: static function (string $message) use (&$warnings): void {
+                $warnings[] = $message;
+            },
+            builtinDisplayName: 'map-get',
+            rawArguments: [new StringNode('raw-map'), new StringNode('raw-key')]
+        );
+
+        $this->module->call('get', [$this->map, new StringNode('a')], [], $context);
+
+        expect($warnings)->toHaveCount(1)
+            ->and($warnings[0])->toContain('map-get() is deprecated')
+            ->and($warnings[0])->toContain('map.get(raw-map, raw-key)');
     });
 });

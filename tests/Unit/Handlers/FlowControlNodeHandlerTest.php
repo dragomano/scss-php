@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
+use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\EachNode;
 use Bugo\SCSS\Nodes\ElseIfNode;
@@ -61,4 +63,42 @@ it('handles each for and while loops', function () {
     expect($each)->toBe("  value: a;\n  value: b;")
         ->and($for)->toBe("  step: 1;\n  step: 2;")
         ->and($while)->toBe("  count: 1;\n  count: 2;");
+});
+
+it('throws when flow control loops exceed the iteration limit', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+
+    expect(fn() => $runtime->flow()->handleFor(
+        new ForNode('i', new NumberNode(1), new NumberNode(10001), true, []),
+        $ctx
+    ))->toThrow(MaxIterationsExceededException::class)
+        ->and(fn() => $runtime->flow()->handleWhile(
+            new WhileNode('true', []),
+            $ctx
+        ))->toThrow(MaxIterationsExceededException::class);
+});
+
+it('throws for non-numeric loop boundaries', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+
+    expect(fn() => $runtime->flow()->handleFor(
+        new ForNode('i', new StringNode('abc'), new NumberNode(2), true, []),
+        $ctx
+    ))->toThrow(InvalidLoopBoundaryException::class);
+});
+
+it('accepts numeric string loop boundaries', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context(indent: 1);
+
+    $result = $runtime->flow()->handleFor(
+        new ForNode('i', new StringNode('1'), new StringNode('2'), true, [
+            new DeclarationNode('step', new VariableReferenceNode('i')),
+        ]),
+        $ctx
+    );
+
+    expect($result)->toBe("  step: 1;\n  step: 2;");
 });

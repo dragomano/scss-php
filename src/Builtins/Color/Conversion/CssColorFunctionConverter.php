@@ -14,6 +14,7 @@ use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Values\AstValueInspector;
 
 use function abs;
 use function count;
@@ -634,6 +635,6 @@ final readonly class CssColorFunctionConverter
 
     private function isMissingChannelToken(AstNode $node): bool
     {
-        return $node instanceof StringNode && strtolower($node->value) === 'none';
+        return AstValueInspector::isNoneKeyword($node);
     }
 }
