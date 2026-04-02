@@ -12,6 +12,7 @@ use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\BooleanNode;
+use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DiagnosticNode;
 use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\IncludeNode;
@@ -220,24 +221,65 @@ final readonly class BlockNodeHandler
 
                 $this->assertCompilableRuleChild($child);
 
+                $savedPosition = null;
+
+                if ($this->render->collectSourceMappings() && ! $child instanceof DeclarationNode) {
+                    $savedPosition = $this->render->savePosition();
+                }
+
                 /** @var Visitable $child */
-                $compiled = $this->render->trimTrailingNewlines(
+                $compiled = $this->render->trimAndAdjustState(
                     $this->dispatcher->compileWithContext($child, $childCtx)
                 );
 
                 if ($compiled !== '' && ! $omitOwnRuleOutput) {
-                    if (! $hasRenderedChildren) {
-                        if ($output !== '') {
-                            $this->render->appendChunk($output, "\n");
+                    if ($child instanceof DeclarationNode) {
+                        if (! $hasRenderedChildren) {
+                            if ($output !== '') {
+                                $this->render->appendChunk($output, "\n");
+                            }
+
+                            $this->render->appendChunk($output, $prefix . $selector . ' {', $node);
+
+                            $hasRenderedChildren = true;
                         }
 
-                        $this->render->appendChunk($output, $prefix . $selector . ' {', $node);
+                        $this->render->appendChunk($output, "\n");
+                        $this->render->appendChunk($output, $compiled, $child);
+                    } else {
+                        if ($savedPosition !== null) {
+                            $deferredChunk = $this->render->createDeferredChunk($compiled, $savedPosition);
 
-                        $hasRenderedChildren = true;
+                            $this->render->restorePosition($savedPosition);
+
+                            if (! $hasRenderedChildren) {
+                                if ($output !== '') {
+                                    $this->render->appendChunk($output, "\n");
+                                }
+
+                                $this->render->appendChunk($output, $prefix . $selector . ' {', $node);
+
+                                $hasRenderedChildren = true;
+                            }
+
+                            $this->render->appendChunk($output, "\n");
+                            $this->render->appendDeferredChunk($output, $deferredChunk);
+                        } else {
+                            if (! $hasRenderedChildren) {
+                                if ($output !== '') {
+                                    $this->render->appendChunk($output, "\n");
+                                }
+
+                                $this->render->appendChunk($output, $prefix . $selector . ' {', $node);
+
+                                $hasRenderedChildren = true;
+                            }
+
+                            $this->render->appendChunk($output, "\n");
+
+                            $output .= $compiled;
+                        }
                     }
-
-                    $this->render->appendChunk($output, "\n");
-                    $this->render->appendChunk($output, $compiled, $child);
                 }
 
                 if ($child instanceof IncludeNode && $deferredAtRootCount !== null) {
@@ -251,7 +293,12 @@ final readonly class BlockNodeHandler
                 $this->render->appendChunk($output, "\n" . $prefix . '}');
             }
 
-            if ($requiresRuleBlockOptimization && ! $containsStandaloneNestedRuleChunks && $output !== '') {
+            if (
+                $requiresRuleBlockOptimization
+                && ! $containsStandaloneNestedRuleChunks
+                && $output !== ''
+                && ! $this->render->collectSourceMappings()
+            ) {
                 $output = $this->selector->optimizeRuleBlock($output);
             }
 
@@ -323,8 +370,12 @@ final readonly class BlockNodeHandler
                     continue;
                 }
 
+                if ($collectMappings) {
+                    $this->render->appendChunk($output, "\n");
+                }
+
                 /** @var Visitable $child */
-                $compiled = $this->render->trimTrailingNewlines(
+                $compiled = $this->render->trimAndAdjustState(
                     $this->dispatcher->compileWithContext($child, $childCtx)
                 );
 
@@ -333,8 +384,7 @@ final readonly class BlockNodeHandler
                 }
 
                 if ($collectMappings) {
-                    $this->render->appendChunk($output, "\n");
-                    $this->render->appendChunk($output, $compiled, $child);
+                    $output .= $compiled;
                 } else {
                     $bodyChunks[] = $compiled;
                 }
@@ -377,6 +427,12 @@ final readonly class BlockNodeHandler
         }
 
         if ($this->context->options()->style === Style::EXPANDED) {
+            if ($this->render->collectSourceMappings()) {
+                $dummy = '';
+
+                $this->render->appendChunk($dummy, "\n");
+            }
+
             return $output . "\n";
         }
 

@@ -167,7 +167,7 @@ final readonly class FlowControlNodeHandler
                 $this->render->appendChunk($output, "\n");
             }
 
-            $this->render->appendChunk($output, $compiled, $child);
+            $output .= $compiled;
 
             $first = false;
         }

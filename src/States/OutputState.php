@@ -4,15 +4,27 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\States;
 
+use Bugo\SCSS\Utils\SourceMapMapping;
+
 final class OutputState
 {
     /** @var array<string, array<int, string>> */
     public array $extendMap = [];
 
-    /** @var array<int, array<int, string>> */
+    /** @var array<int, array<int, array{
+     *     chunk:string,
+     *     baseLine:int,
+     *     baseColumn:int,
+     *     mappings:array<int, SourceMapMapping>
+     * }|string>> */
     public array $deferredAtRootStack = [];
 
-    /** @var array<int, array<int, string>> */
+    /** @var array<int, array<int, array{
+     *     chunk:string,
+     *     baseLine:int,
+     *     baseColumn:int,
+     *     mappings:array<int, SourceMapMapping>
+     * }|string>> */
     public array $deferredBubblingStack = [];
 
     /** @var array<int, array<int, array{levels: int, chunk: string}>> */

@@ -15,6 +15,7 @@ use Bugo\SCSS\Values\ValueFactory;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
+use function basename;
 use function file_put_contents;
 
 final class Compiler implements CompilerInterface
@@ -46,7 +47,7 @@ final class Compiler implements CompilerInterface
     {
         $this->resetState();
 
-        $this->ctx->currentSourceFile = $sourceFile ?: $this->options->sourceFile;
+        $this->ctx->currentSourceFile = basename($sourceFile ?: $this->options->sourceFile);
 
         try {
             $syntax ??= Syntax::SCSS;
@@ -65,7 +66,11 @@ final class Compiler implements CompilerInterface
     {
         $loaded = $this->loader->load($path);
 
-        return $this->compileString($loaded['content'], Syntax::fromPath($path, $loaded['content']), $path);
+        $sourceFile = $this->options->sourceFile !== 'input.scss'
+            ? $this->options->sourceFile
+            : $path;
+
+        return $this->compileString($loaded['content'], Syntax::fromPath($path, $loaded['content']), $sourceFile);
     }
 
     private function createContext(): CompilerContext
