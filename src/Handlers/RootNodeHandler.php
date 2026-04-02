@@ -21,24 +21,29 @@ final readonly class RootNodeHandler
 
     public function handle(RootNode $node, TraversalContext $ctx): string
     {
-        $output          = '';
-        $first           = true;
-        $endsWithNewline = false;
+        $output        = '';
+        $nextSeparator = '';
 
         foreach ($node->children as $child) {
+            $savedPosition = null;
+
+            if ($nextSeparator !== '' && $this->render->collectSourceMappings()) {
+                $savedPosition = $this->render->savePosition();
+
+                $dummy = '';
+
+                $this->render->appendChunk($dummy, $nextSeparator);
+            }
+
             /** @var Visitable $child */
             $compiled = $this->dispatcher->compileWithContext($child, $ctx);
 
             if ($compiled !== '') {
-                if (! $first && ! $endsWithNewline) {
-                    $this->render->appendChunk($output, "\n");
-                }
+                $output .= $nextSeparator . $compiled;
 
-                $this->render->appendChunk($output, $compiled, $child);
-
-                $compiledLength  = strlen($compiled);
-                $endsWithNewline = $compiled[$compiledLength - 1] === "\n";
-                $first           = false;
+                $nextSeparator = $compiled[strlen($compiled) - 1] === "\n" ? '' : "\n";
+            } elseif ($savedPosition !== null) {
+                $this->render->restorePosition($savedPosition);
             }
         }
 

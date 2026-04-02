@@ -52,6 +52,7 @@ it('replaces declaration value with non-strict arithmetic result when available'
 
     $render = mock(Render::class);
     $render->shouldReceive('indentPrefix')->once()->with(0)->andReturn('');
+    $render->shouldReceive('collectSourceMappings')->once()->andReturn(false);
 
     $text = mock(Text::class);
 
@@ -79,6 +80,7 @@ it('interpolates formatted declaration values that still contain interpolation m
 
     $render = mock(Render::class);
     $render->shouldReceive('indentPrefix')->once()->with(0)->andReturn('');
+    $render->shouldReceive('collectSourceMappings')->once()->andReturn(false);
 
     $text = mock(Text::class);
     $text->shouldReceive('interpolateText')->once()->with('#{$name}', $env)->andReturn('blue');

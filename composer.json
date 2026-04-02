@@ -37,6 +37,7 @@
     "symfony/filesystem": "^7.4|^8.0"
   },
   "require-dev": {
+    "axy/sourcemap": "^1.1",
     "bugo/sass-embedded-php": "dev-main",
     "bugo/scss-benchmark-utils": "dev-main",
     "dg/bypass-finals": "^1.9",

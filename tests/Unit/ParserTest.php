@@ -640,19 +640,19 @@ describe('Parser', function () {
                     new DeclarationNode('color', new VariableReferenceNode('color'), 5, 5),
                     new DeclarationNode('border', new ListNode([
                         new NumberNode(1, 'px'),
-                        new StringNode('solid'),
+                        new StringNode('solid', line: 6, column: 17),
                         new VariableReferenceNode('color'),
                     ]), 6, 5),
                     new IfNode('$color == #333', [
                         new DeclarationNode('outline', new ListNode([
                             new NumberNode(1, 'px'),
-                            new StringNode('solid'),
+                            new StringNode('solid', line: 8, column: 22),
                             new ColorNode('#333'),
                         ]), 8, 9),
                     ], [], [
                         new DeclarationNode('outline', new ListNode([
                             new NumberNode(1, 'px'),
-                            new StringNode('solid'),
+                            new StringNode('solid', line: 10, column: 22),
                             new VariableReferenceNode('color'),
                         ]), 10, 9),
                     ]),
@@ -683,11 +683,11 @@ describe('Parser', function () {
                         new IncludeNode('functions', 'pointer'),
                         new DeclarationNode('height', new NumberNode(96, '%'), 28, 9),
                         new DeclarationNode('transition', new ListNode([
-                            new StringNode('all'),
+                            new StringNode('all', line: 29, column: 21),
                             new NumberNode(0.2, 's'),
                         ]), 29, 9),
-                        new DeclarationNode('text-align', new StringNode('center'), 30, 9),
-                        new DeclarationNode('overflow', new StringNode('hidden'), 31, 9),
+                        new DeclarationNode('text-align', new StringNode('center', line: 30, column: 21), 30, 9),
+                        new DeclarationNode('overflow', new StringNode('hidden', line: 31, column: 19), 31, 9),
                         new RuleNode('&:hover', [
                             new DeclarationNode('box-shadow', new ListNode([
                                 new NumberNode(0),
@@ -706,7 +706,7 @@ describe('Parser', function () {
                             new DeclarationNode('margin', new NumberNode(10, 'px'), 39, 13),
                         ], 37, 9),
                         new RuleNode('p', [
-                            new DeclarationNode('text-align', new StringNode('left'), 43, 13),
+                            new DeclarationNode('text-align', new StringNode('left', line: 43, column: 25), 43, 13),
                             new DeclarationNode('font-size', new NumberNode(14, 'px'), 44, 13),
                         ], 42, 9),
                     ], 26, 5),
@@ -716,12 +716,12 @@ describe('Parser', function () {
                     new DeclarationNode('margin', new NumberNode(10, 'px'), 52, 5),
                     new DeclarationNode('padding', new NumberNode(10, 'px'), 53, 5),
                     new DeclarationNode('border', new ListNode([
-                        new StringNode('thick'),
-                        new StringNode('double'),
+                        new StringNode('thick', line: 54, column: 13),
+                        new StringNode('double', line: 54, column: 19),
                         new ColorNode('#32a1ce'),
                     ]), 54, 5),
                     new IncludeNode('functions', 'bRadius'),
-                    new DeclarationNode('overflow', new StringNode('auto'), 56, 5),
+                    new DeclarationNode('overflow', new StringNode('auto', line: 56, column: 15), 56, 5),
                     new IncludeNode(null, 'test-mixin', [
                         new ColorNode('#333'),
                     ]),

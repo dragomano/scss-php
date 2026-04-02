@@ -59,7 +59,7 @@ describe('source map generation', function () {
         expect($sourceMap)->toHaveKey('version')
             ->and($sourceMap)->toHaveKey('sources')
             ->and($sourceMap)->toHaveKey('mappings')
-            ->and($sourceMap['mappings'])->toBe(';AACA')
+            ->and($sourceMap['mappings'])->toBe('AAAA')
             ->and($sourceMap)->not->toHaveKey('sourcesContent');
     });
 
@@ -98,6 +98,24 @@ describe('mappings generation', function () {
 
         expect($sourceMap)->toBeArray()
             ->and($sourceMap['mappings'])->toContain(',');
+    });
+
+    it('encodes large column deltas using continuation VLQ digits', function () {
+        $mappings = [
+            mapping(1, 0, 1, 0),
+            mapping(1, 32, 1, 32),
+        ];
+
+        $result = $this->generator->generate(
+            $mappings,
+            'source.scss',
+            'output.css',
+            sourceMapOptions()
+        );
+        $sourceMap = json_decode($result, true);
+
+        expect($sourceMap)->toBeArray()
+            ->and($sourceMap['mappings'])->toBe('AAAA,gCAAgC');
     });
 
     it('handles multiple mappings on same line after empty lines', function () {
@@ -196,7 +214,7 @@ describe('mappings generation', function () {
         $sourceMap = json_decode($result, true);
 
         expect($sourceMap)->toBeArray()
-            ->and($sourceMap['mappings'])->toBe(';AACA;;');
+            ->and($sourceMap['mappings'])->toBe('AAAA;;');
     });
 })->covers(SourceMapGenerator::class);
 

@@ -27,13 +27,18 @@ final readonly class CommentNodeHandler
         $comment = str_contains($node->value, '#{')
             ? $this->evaluation->interpolateText($node->value, $ctx->env)
             : $node->value;
+        $output  = '';
 
         if ($node->isPreserved) {
-            return $prefix . '/*! ' . $comment . ' */';
+            $this->render->appendChunk($output, $prefix . '/*! ' . $comment . ' */', $node);
+
+            return $output;
         }
 
         if ($this->context->options()->style === Style::EXPANDED) {
-            return $prefix . '/* ' . $comment . ' */';
+            $this->render->appendChunk($output, $prefix . '/* ' . $comment . ' */', $node);
+
+            return $output;
         }
 
         return '';

@@ -14,6 +14,7 @@ use Bugo\SCSS\Compiler as SassCompiler;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Loader;
 use Bugo\SCSS\Style;
+use ScssPhp\ScssPhp\CompilationResult;
 use ScssPhp\ScssPhp\Compiler as ScssCompiler;
 use ScssPhp\ScssPhp\OutputStyle;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
@@ -34,6 +35,29 @@ final readonly class CachedBenchmarkCompiler
 
         return $this->compiler->compileFile($this->entryPath);
     }
+}
+
+function parseBoolCliOption(array $args, string $name, bool $default): bool
+{
+    $prefix = '--' . $name . '=';
+
+    foreach ($args as $arg) {
+        if (! str_starts_with($arg, $prefix)) {
+            continue;
+        }
+
+        $value = substr($arg, strlen($prefix));
+
+        if ($value === '1') {
+            return true;
+        }
+
+        if ($value === '0') {
+            return false;
+        }
+    }
+
+    return $default;
 }
 
 $args = $_SERVER['argv'] ?? [];
@@ -58,8 +82,8 @@ if (! $forceRegenerate && file_exists($scssFile)) {
 
 echo 'SCSS size: ' . strlen($scss) . " bytes\n";
 
-$minimize     = false;
-$sourceMap    = true;
+$sourceMap    = parseBoolCliOption($args, 'source-map', false);
+$minimize     = parseBoolCliOption($args, 'minimize', false);
 $singleRuns   = 10;
 $warmupRuns   = 2;
 $outputDir    = __DIR__;
@@ -84,7 +108,7 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
                 sourceFile: 'generated.scss',
                 outputFile: 'result-bugo-scss-php.css',
                 sourceMapFile: $sourceMap ? 'result-bugo-scss-php.css.map' : null,
-                includeSources: true,
+                includeSources: false,
                 outputHexColors: true,
             );
 
@@ -95,7 +119,7 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
                 style: $minimize ? Style::COMPRESSED : Style::EXPANDED,
                 outputFile: 'result-bugo-scss-php-cache.css',
                 sourceMapFile: $sourceMap ? 'result-bugo-scss-php-cache.css.map' : null,
-                includeSources: true,
+                includeSources: false,
                 outputHexColors: true,
             );
 
@@ -114,7 +138,7 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
             $compiler = new EmbeddedCompiler();
             $compiler->setOptions(new Options(
                 style: $minimize ? 'compressed' : 'expanded',
-                includeSources: true,
+                includeSources: false,
                 removeEmptyLines: true,
                 sourceMapPath: $sourceMap ? 'result-sass-embedded-php.css.map' : null,
                 sourceFile: 'generated.scss',
@@ -123,17 +147,30 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
 
             return $compiler;
         })
-        ->addCompiler('scssphp/scssphp', function () use ($sourceMap, $minimize) {
+        ->addCompiler('scssphp/scssphp', function () use ($scssFile, $sourceMap, $minimize) {
             $compiler = new ScssCompiler();
             $compiler->setOutputStyle($minimize ? OutputStyle::COMPRESSED : OutputStyle::EXPANDED);
             $compiler->setSourceMap($sourceMap ? ScssCompiler::SOURCE_MAP_FILE : ScssCompiler::SOURCE_MAP_NONE);
             $compiler->setSourceMapOptions($sourceMap ? [
-                'sourceMapFilename' => 'generated.scss',
+                'sourceMapFilename' => 'result-scssphp-scssphp.css',
                 'sourceMapURL'      => 'result-scssphp-scssphp.css.map',
+                'sourceMapBasepath' => __DIR__,
                 'outputSourceFiles' => true,
             ] : []);
 
-            return $compiler;
+            // BenchmarkRunner calls compileString(), but scssphp only tracks the source URL
+            // when compiling from a file — so we delegate to compileFile() instead.
+            return new class ($compiler, $scssFile) {
+                public function __construct(
+                    private readonly ScssCompiler $inner,
+                    private readonly string $scssFile
+                ) {}
+
+                public function compileString(string $source): CompilationResult
+                {
+                    return $this->inner->compileFile($this->scssFile);
+                }
+            };
         })
         ->run();
 
@@ -210,5 +247,6 @@ foreach ($aggregate as $compilerName => $stats) {
 }
 
 echo PHP_EOL . 'Iterations: ' . $benchmarkRuns . ', runs per iteration: ' . $singleRuns . ', warmup: ' . $warmupRuns . PHP_EOL;
+echo 'Options: sourceMap=' . ($sourceMap ? '1' : '0') . ', minimize=' . ($minimize ? '1' : '0') . PHP_EOL;
 
 BenchmarkRunner::updateMarkdownFile('benchmark.md', $results);

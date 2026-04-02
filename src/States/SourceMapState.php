@@ -11,6 +11,9 @@ final class SourceMapState
     /** @var array<int, SourceMapMapping> */
     public array $mappings = [];
 
+    /** @var array<int, array{offset: int, line: int, column: int, owner: object}> */
+    public array $pendingValueMappings = [];
+
     public bool $collectMappings = false;
 
     public int $generatedLine = 1;
@@ -31,9 +34,10 @@ final class SourceMapState
 
     public function reset(): void
     {
-        $this->collectMappings = false;
-        $this->generatedLine   = 1;
-        $this->generatedColumn = 0;
-        $this->mappings        = [];
+        $this->collectMappings      = false;
+        $this->generatedLine        = 1;
+        $this->generatedColumn      = 0;
+        $this->mappings             = [];
+        $this->pendingValueMappings = [];
     }
 }

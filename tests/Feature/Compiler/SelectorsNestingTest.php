@@ -270,13 +270,13 @@ describe('Compiler', function () {
             SCSS;
 
             $expected = /** @lang text */ <<<'CSS'
-            .banner {
-              position: fixed;
-            }
             @supports (position: sticky) {
               .banner {
                 position: sticky;
               }
+            }
+            .banner {
+              position: fixed;
             }
             CSS;
 

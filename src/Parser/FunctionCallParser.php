@@ -50,6 +50,7 @@ final readonly class FunctionCallParser
 
     public function parseIdentifierOrFunction(): AstNode
     {
+        $startToken = $this->stream->current();
         $identifier = StreamUtils::parseQualifiedIdentifier($this->stream);
 
         if ($this->stream->is(TokenType::LPAREN)) {
@@ -99,7 +100,7 @@ final readonly class FunctionCallParser
             return new NullNode();
         }
 
-        return new StringNode($identifier);
+        return new StringNode($identifier, false, $startToken->line, $startToken->column);
     }
 
     public function parseVarFunction(): FunctionNode

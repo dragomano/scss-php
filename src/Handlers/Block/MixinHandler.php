@@ -9,6 +9,7 @@ use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
@@ -234,6 +235,12 @@ final readonly class MixinHandler
                     continue;
                 }
 
+                $savedPosition = null;
+
+                if ($this->render->collectSourceMappings() && ! $child instanceof DeclarationNode) {
+                    $savedPosition = $this->render->savePosition();
+                }
+
                 /** @var Visitable $child */
                 $compiled = $this->dispatcher->compileWithContext($child, $childCtx);
 
@@ -241,11 +248,33 @@ final readonly class MixinHandler
                     continue;
                 }
 
-                if (! $first) {
-                    $this->render->appendChunk($output, "\n");
-                }
+                if ($child instanceof DeclarationNode) {
+                    if (! $first) {
+                        $this->render->appendChunk($output, "\n");
+                    }
 
-                $this->render->appendChunk($output, $compiled, $child);
+                    $this->render->appendChunk($output, $compiled, $child);
+                } else {
+                    $compiled = $this->render->trimAndAdjustState($compiled);
+
+                    if ($savedPosition !== null) {
+                        $deferredChunk = $this->render->createDeferredChunk($compiled, $savedPosition);
+
+                        $this->render->restorePosition($savedPosition);
+
+                        if (! $first) {
+                            $this->render->appendChunk($output, "\n");
+                        }
+
+                        $this->render->appendDeferredChunk($output, $deferredChunk);
+                    } else {
+                        if (! $first) {
+                            $this->render->appendChunk($output, "\n");
+                        }
+
+                        $output .= $compiled;
+                    }
+                }
 
                 $first = false;
             }

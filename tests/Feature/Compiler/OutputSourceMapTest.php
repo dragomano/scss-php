@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use axy\sourcemap\SourceMap as AxySourceMap;
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Loader;
@@ -84,6 +85,89 @@ describe('Compiler', function () {
                     ->and(file_exists($mapFile))->toBeTrue()
                     ->and($map)->toBeArray()
                     ->and($map['mappings'] ?? '')->not->toBe('');
+            } finally {
+                if (file_exists($mapFile)) {
+                    unlink($mapFile);
+                }
+
+                if (is_dir($tmpDir)) {
+                    rmdir($tmpDir);
+                }
+            }
+        });
+
+        it('generates expected mappings for variable and separated blocks', function () {
+            $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+
+            mkdir($tmpDir, 0777, true);
+
+            $mapFile = $tmpDir . '/output.css.map';
+
+            $source = <<<'SCSS'
+            $red: red;
+
+            .block {
+              color: $red;
+            }
+
+            body {
+              background: black;
+            }
+            SCSS;
+
+            $compiler  = new Compiler(new CompilerOptions(sourceMapFile: $mapFile));
+            $compiler2 = new Compiler(new CompilerOptions(sourceMapFile: $mapFile, splitRules: true));
+
+            try {
+                $compiler->compileString($source);
+                $map = json_decode((string) file_get_contents($mapFile), true);
+
+                $compiler2->compileString($source);
+                $map2 = json_decode((string) file_get_contents($mapFile), true);
+
+                expect($map)->toBeArray()
+                    ->and($map['mappings'] ?? null)->toBe('AAEA;EACE,OAHI;;AAMN;EACE')
+                    ->and($map2)->toBeArray()
+                    ->and($map2['mappings'] ?? null)->toBe('AAEA;EACE,OAHI;;;AAMN;EACE');
+            } finally {
+                if (file_exists($mapFile)) {
+                    unlink($mapFile);
+                }
+
+                if (is_dir($tmpDir)) {
+                    rmdir($tmpDir);
+                }
+            }
+        });
+
+        it('generates mappings for @media block with no long semicolon runs', function () {
+            $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+
+            mkdir($tmpDir, 0777, true);
+
+            $mapFile = $tmpDir . '/output.css.map';
+
+            $source = <<<'SCSS'
+            @media screen {
+              .block { color: red; }
+            }
+            body { background: black; }
+            SCSS;
+
+            $compiler = new Compiler(new CompilerOptions(sourceMapFile: $mapFile));
+
+            try {
+                $compiler->compileString($source);
+                $map = json_decode((string) file_get_contents($mapFile), true);
+
+                $mappings = $map['mappings'] ?? '';
+
+                preg_match_all('/;+/', $mappings, $m);
+                $maxRun = $m[0] !== [] ? max(array_map('strlen', $m[0])) : 0;
+
+                expect($map)->toBeArray()
+                    ->and($mappings)->not->toBe('')
+                    ->and($maxRun)->toBeLessThanOrEqual(3);
             } finally {
                 if (file_exists($mapFile)) {
                     unlink($mapFile);
@@ -285,8 +369,10 @@ describe('Compiler', function () {
     });
 
     it('source map contains non-empty sources field', function () {
-        $tmpDir  = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+        $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+
         mkdir($tmpDir, 0777, true);
+
         $mapFile = $tmpDir . '/output.css.map';
 
         $options  = new CompilerOptions(sourceFile: 'input.scss', sourceMapFile: $mapFile);
@@ -303,6 +389,7 @@ describe('Compiler', function () {
             if (file_exists($mapFile)) {
                 unlink($mapFile);
             }
+
             if (is_dir($tmpDir)) {
                 rmdir($tmpDir);
             }
@@ -310,8 +397,10 @@ describe('Compiler', function () {
     });
 
     it('source map embeds sourcesContent when includeSources is enabled', function () {
-        $tmpDir  = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+        $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+
         mkdir($tmpDir, 0777, true);
+
         $mapFile = $tmpDir . '/output.css.map';
 
         $source  = '.a { color: red; }';
@@ -333,6 +422,76 @@ describe('Compiler', function () {
             if (file_exists($mapFile)) {
                 unlink($mapFile);
             }
+
+            if (is_dir($tmpDir)) {
+                rmdir($tmpDir);
+            }
+        }
+    });
+
+    it('produces decoded positions matching an expected map built with axy/sourcemap', function () {
+        $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        $inputFile = $tmpDir . '/input.scss';
+        $mapFile   = $tmpDir . '/output.css.map';
+        $source = <<<'SCSS'
+        .block {
+          color: red;
+          background: blue;
+        }
+        SCSS;
+
+        file_put_contents($inputFile, $source);
+
+        $compiler = new Compiler(
+            options: new CompilerOptions(sourceMapFile: $mapFile),
+            loader: new Loader([$tmpDir]),
+        );
+
+        try {
+            $compiler->compileFile('input.scss');
+
+            $ourMap = new AxySourceMap(json_decode((string) file_get_contents($mapFile), true));
+            $axyMap = new AxySourceMap([
+                'version'  => 3,
+                'file'     => 'output.css',
+                'sources'  => ['input.scss'],
+                'mappings' => '',
+            ]);
+
+            foreach ([
+                ['generated' => ['line' => 0, 'column' => 0], 'source' => ['file' => 'input.scss', 'line' => 0, 'column' => 0]],
+                ['generated' => ['line' => 1, 'column' => 2], 'source' => ['file' => 'input.scss', 'line' => 1, 'column' => 2]],
+                ['generated' => ['line' => 2, 'column' => 2], 'source' => ['file' => 'input.scss', 'line' => 2, 'column' => 2]],
+            ] as $position) {
+                $axyMap->addPosition($position);
+            }
+
+            $ourPositions = $ourMap->find();
+            $axyPositions = $axyMap->find();
+
+            expect(count($ourPositions))->toBe(count($axyPositions))->toBeGreaterThan(0);
+
+            foreach ($ourPositions as $i => $ourPos) {
+                expect($ourPos->generated->line)->toBe($axyPositions[$i]->generated->line)
+                    ->and($ourPos->generated->column)->toBe($axyPositions[$i]->generated->column)
+                    ->and($ourPos->source->line)->toBe($axyPositions[$i]->source->line)
+                    ->and($ourPos->source->column)->toBe($axyPositions[$i]->source->column);
+            }
+
+            $firstPos = $ourMap->getPosition(0, 0);
+            expect($firstPos)->not->toBeNull()
+                ->and($firstPos->source->line)->toBe(0)
+                ->and($firstPos->source->column)->toBe(0);
+        } finally {
+            foreach ([$inputFile, $mapFile] as $f) {
+                if (file_exists($f)) {
+                    unlink($f);
+                }
+            }
+
             if (is_dir($tmpDir)) {
                 rmdir($tmpDir);
             }
@@ -375,9 +534,41 @@ describe('Compiler', function () {
             }
         });
 
+        it('uses custom sourceFile option instead of path when compiling file', function () {
+            $tmpDir  = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+            $filePath = $tmpDir . '/styles.scss';
+
+            mkdir($tmpDir, 0777, true);
+            file_put_contents($filePath, '.foo { color: red; }');
+
+            try {
+                $compiler = new Compiler(
+                    options: new CompilerOptions(sourceFile: 'custom.scss'),
+                    loader: new Loader([$tmpDir]),
+                );
+
+                $css = $compiler->compileFile($filePath);
+
+                expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+                .foo {
+                  color: red;
+                }
+                CSS);
+            } finally {
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                }
+
+                if (is_dir($tmpDir)) {
+                    rmdir($tmpDir);
+                }
+            }
+        });
+
         it('resolves compileFile module from current directory before loadPaths', function () {
             $workDir = sys_get_temp_dir() . '/dart-sass-compilefile-cwd-' . uniqid('', true);
             $loadDir = sys_get_temp_dir() . '/dart-sass-compilefile-loadpath-' . uniqid('', true);
+
             mkdir($workDir, 0777, true);
             mkdir($loadDir, 0777, true);
 

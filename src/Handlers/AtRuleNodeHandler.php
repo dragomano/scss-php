@@ -16,9 +16,9 @@ use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
+use Bugo\SCSS\Utils\SourceMapMapping;
 
 use function count;
-use function implode;
 use function strtolower;
 use function trim;
 
@@ -33,11 +33,14 @@ final readonly class AtRuleNodeHandler
 
     public function handleAtRoot(AtRootNode $node, TraversalContext $ctx): string
     {
-        $atRootResult = $this->selector->compileAtRootBody($node, $ctx->env);
-
-        $chunk = $atRootResult['chunk'];
+        $saved         = $this->render->savePosition();
+        $atRootResult  = $this->selector->compileAtRootBody($node, $ctx->env);
+        $chunk         = $atRootResult['chunk'];
+        $deferredChunk = $this->render->createDeferredChunk($chunk, $saved);
 
         if ($chunk === '') {
+            $this->render->restorePosition($saved);
+
             return '';
         }
 
@@ -46,6 +49,8 @@ final readonly class AtRuleNodeHandler
             $atRuleStackIndex = count($outputState->deferredAtRuleStack) - 1;
 
             if ($atRuleStackIndex >= 0) {
+                $this->render->restorePosition($saved);
+
                 $outputState->deferredAtRuleStack[$atRuleStackIndex][] = [
                     'levels' => $atRootResult['escapeLevels'],
                     'chunk'  => $chunk,
@@ -63,7 +68,9 @@ final readonly class AtRuleNodeHandler
         $stackIndex  = count($outputState->deferredAtRootStack) - 1;
 
         if ($stackIndex >= 0) {
-            $outputState->deferredAtRootStack[$stackIndex][] = $chunk;
+            $this->render->restorePosition($saved);
+
+            $outputState->deferredAtRootStack[$stackIndex][] = $deferredChunk;
 
             return '';
         }
@@ -90,7 +97,9 @@ final readonly class AtRuleNodeHandler
         }
 
         if (! $node->hasBlock) {
-            return $prefix . '@' . $node->name . $prelude . ';';
+            $this->render->appendChunk($output, $prefix . '@' . $node->name . $prelude . ';', $node);
+
+            return $output;
         }
 
         $this->render->appendChunk($output, $prefix . '@' . $node->name . $prelude . ' {', $node);
@@ -137,6 +146,7 @@ final readonly class AtRuleNodeHandler
                     $parentPrelude = trim($resolvedPrelude);
                     $mergedPrelude = $this->selector->combineMediaQueryPreludes($parentPrelude, $childPrelude);
                     $mergedNode    = new DirectiveNode('media', $mergedPrelude, $child->body, true);
+                    $saved         = $this->render->savePosition();
 
                     $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $parentAtRuleStack);
 
@@ -144,17 +154,23 @@ final readonly class AtRuleNodeHandler
                         $this->dispatcher->compileWithContext($mergedNode, $mergedCtx)
                     );
 
+                    $deferredMergedChunk = $this->render->createDeferredChunk($mergedChunk, $saved);
+
                     $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $currentAtRuleStack);
 
+                    $this->render->restorePosition($saved);
+
                     if ($mergedChunk !== '') {
-                        $deferredMergedMediaChunks[] = $mergedChunk;
+                        $deferredMergedMediaChunks[] = $deferredMergedChunk;
                     }
 
                     continue;
                 }
 
+                $this->render->appendChunk($output, "\n");
+
                 /** @var Visitable $child */
-                $compiled = $this->render->trimTrailingNewlines(
+                $compiled = $this->render->trimAndAdjustState(
                     $this->dispatcher->compileWithContext($child, $bodyCtx)
                 );
 
@@ -162,9 +178,7 @@ final readonly class AtRuleNodeHandler
                     continue;
                 }
 
-                $this->render->appendChunk($output, "\n");
-                /** @var Visitable $child */
-                $this->render->appendChunk($output, $compiled, $child);
+                $output .= $compiled;
 
                 $first = false;
             }
@@ -180,27 +194,63 @@ final readonly class AtRuleNodeHandler
             }
 
             $separator = $this->render->outputSeparator();
+            $result    = '';
 
-            return implode($separator, $outsideChunks);
+            foreach ($outsideChunks as $index => $chunk) {
+                if ($index > 0) {
+                    $this->render->appendChunk($result, $separator);
+                }
+
+                $this->appendResolvedChunk($result, $chunk);
+            }
+
+            return $result;
         }
 
-        $output = $this->selector->optimizeAdjacentSiblingRuleBlocks($output);
+        if (! $this->render->collectSourceMappings()) {
+            $output = $this->selector->optimizeAdjacentSiblingRuleBlocks($output);
+        }
 
         $this->render->appendChunk($output, "\n" . $prefix . '}');
 
         if ($outsideChunks !== []) {
             $separator = $this->render->outputSeparator();
 
-            $output .= $separator . implode($separator, $outsideChunks);
+            foreach ($outsideChunks as $chunk) {
+                $this->render->appendChunk($output, $separator);
+                $this->appendResolvedChunk($output, $chunk);
+            }
         }
 
         if ($deferredMergedMediaChunks !== []) {
             $separator = $this->render->outputSeparator();
 
-            $output .= $separator . implode($separator, $deferredMergedMediaChunks);
+            foreach ($deferredMergedMediaChunks as $chunk) {
+                $this->render->appendChunk($output, $separator);
+                $this->appendResolvedChunk($output, $chunk);
+            }
         }
 
         return $output;
+    }
+
+    /**
+     * @param array{
+     *     chunk:string,
+     *     baseLine:int,
+     *     baseColumn:int,
+     *     mappings:array<int, SourceMapMapping>
+     * }|string $chunk
+     */
+    private function appendResolvedChunk(string &$output, array|string $chunk): void
+    {
+        if (is_string($chunk)) {
+            $this->render->appendChunk($output, $chunk);
+
+            return;
+        }
+
+        $this->render->appendDeferredChunk($output, $chunk);
     }
 
     private function compileContentDirective(DirectiveNode $node, TraversalContext $ctx): string

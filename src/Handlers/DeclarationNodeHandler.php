@@ -7,12 +7,15 @@ namespace Bugo\SCSS\Handlers;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Text;
 
 use function str_contains;
+use function strlen;
 
 final readonly class DeclarationNodeHandler
 {
@@ -30,6 +33,15 @@ final readonly class DeclarationNodeHandler
             : $node->property;
 
         $evaluatedValue = $this->evaluation->evaluateDeclarationValue($node->value, $property, $ctx->env);
+
+        $valueOrigin = null;
+        if ($this->render->collectSourceMappings()
+            && $node->value instanceof VariableReferenceNode
+            && $evaluatedValue instanceof StringNode
+            && $evaluatedValue->line > 0
+        ) {
+            $valueOrigin = $evaluatedValue;
+        }
 
         if (
             $evaluatedValue instanceof ListNode
@@ -71,6 +83,15 @@ final readonly class DeclarationNodeHandler
         }
 
         $important = $node->important ? ' !important' : '';
+
+        if ($valueOrigin !== null) {
+            $this->render->addPendingValueMapping(
+                strlen($prefix . $property . ': '),
+                $valueOrigin->line,
+                $valueOrigin->column,
+                $node
+            );
+        }
 
         return $prefix . $property . ': ' . $val . $important . ';';
     }

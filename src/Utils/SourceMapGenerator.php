@@ -93,9 +93,9 @@ final class SourceMapGenerator
 
         $result        = '';
         $lineSegments  = '';
-        $lastGenLine   = 0;
+        $lastGenLine   = 1;
         $lastGenCol    = 0;
-        $lastOrigLine  = 0; // 0-based indexing
+        $lastOrigLine  = 1;
         $lastOrigCol   = 0;
         $lastSourceIdx = 0;
 

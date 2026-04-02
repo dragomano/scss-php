@@ -6,5 +6,10 @@ namespace Bugo\SCSS\Nodes;
 
 final class StringNode extends AstNode
 {
-    public function __construct(public string $value, public bool $quoted = false) {}
+    public function __construct(
+        public string $value,
+        public bool $quoted = false,
+        public int $line = 0,
+        public int $column = 0
+    ) {}
 }

@@ -24,6 +24,7 @@ use function max;
 use function min;
 use function property_exists;
 use function rtrim;
+use function str_ends_with;
 use function str_repeat;
 use function strlen;
 use function strrpos;
@@ -77,7 +78,34 @@ final readonly class Render
         }
 
         if ($origin !== null) {
+            $indent = 0;
+            while ($indent < strlen($chunk) && $chunk[$indent] === ' ') {
+                $indent++;
+            }
+
+            $baseColumn = $sourceMapState->generatedColumn;
+
+            $sourceMapState->generatedColumn = $baseColumn + $indent;
+
             $this->appendMapping($origin);
+
+            if ($sourceMapState->pendingValueMappings !== []) {
+                $remaining = [];
+
+                foreach ($sourceMapState->pendingValueMappings as $pending) {
+                    if ($pending['owner'] === $origin) {
+                        $sourceMapState->generatedColumn = $baseColumn + $pending['offset'];
+
+                        $this->appendRawMapping($pending['line'], $pending['column']);
+                    } else {
+                        $remaining[] = $pending;
+                    }
+                }
+
+                $sourceMapState->pendingValueMappings = $remaining;
+            }
+
+            $sourceMapState->generatedColumn = $baseColumn;
         }
 
         $output .= $chunk;
@@ -116,6 +144,27 @@ final readonly class Render
         return rtrim($value, "\n");
     }
 
+    public function trimAndAdjustState(string $value): string
+    {
+        $trimmed = $this->trimTrailingNewlines($value);
+
+        if ($trimmed === $value || ! $this->ctx->sourceMapState->collectMappings) {
+            return $trimmed;
+        }
+
+        $state   = $this->ctx->sourceMapState;
+        $removed = strlen($value) - strlen($trimmed);
+
+        $state->generatedLine -= $removed;
+
+        $lastNl = strrpos($trimmed, "\n");
+        $state->generatedColumn = $lastNl === false
+            ? strlen($trimmed)
+            : strlen($trimmed) - $lastNl - 1;
+
+        return $trimmed;
+    }
+
     public function indentLines(string $text, string $prefix): string
     {
         if ($text === '' || $prefix === '') {
@@ -145,12 +194,108 @@ final readonly class Render
         return $this->ctx->sourceMapState->collectMappings;
     }
 
+    /**
+     * @return array{0: int, 1: int, 2: int}
+     */
+    public function savePosition(): array
+    {
+        $state = $this->ctx->sourceMapState;
+
+        return [$state->generatedLine, $state->generatedColumn, count($state->mappings)];
+    }
+
+    /**
+     * @param array{0: int, 1: int, 2: int} $saved
+     */
+    public function restorePosition(array $saved): void
+    {
+        $state = $this->ctx->sourceMapState;
+
+        $state->generatedLine   = $saved[0];
+        $state->generatedColumn = $saved[1];
+
+        if (count($state->mappings) > $saved[2]) {
+            array_splice($state->mappings, $saved[2]);
+        }
+    }
+
+    public function addPendingValueMapping(int $offset, int $sourceLine, int $sourceColumn, object $owner): void
+    {
+        if (! $this->ctx->sourceMapState->collectMappings) {
+            return;
+        }
+
+        $this->ctx->sourceMapState->pendingValueMappings[] = [
+            'offset' => $offset,
+            'line'   => $sourceLine,
+            'column' => $sourceColumn,
+            'owner'  => $owner,
+        ];
+    }
+
+    /**
+     * @param array{0: int, 1: int, 2: int} $saved
+     * @return array{
+     *     chunk: string,
+     *     baseLine: int,
+     *     baseColumn: int,
+     *     mappings: array<int, SourceMapMapping>
+     * }
+     */
+    public function createDeferredChunk(string $chunk, array $saved): array
+    {
+        return [
+            'chunk'      => $chunk,
+            'baseLine'   => $saved[0],
+            'baseColumn' => $saved[1],
+            'mappings'   => array_slice($this->ctx->sourceMapState->mappings, $saved[2]),
+        ];
+    }
+
+    /**
+     * @param array{
+     *     chunk: string,
+     *     baseLine: int,
+     *     baseColumn: int,
+     *     mappings: array<int, SourceMapMapping>
+     * } $deferred
+     */
+    public function appendDeferredChunk(string &$output, array $deferred): void
+    {
+        $startLine   = $this->ctx->sourceMapState->generatedLine;
+        $startColumn = $this->ctx->sourceMapState->generatedColumn;
+
+        $this->appendChunk($output, $deferred['chunk']);
+
+        if (! $this->ctx->sourceMapState->collectMappings || $deferred['mappings'] === []) {
+            return;
+        }
+
+        foreach ($deferred['mappings'] as $mapping) {
+            $generated = $mapping->generated;
+            $lineDelta = $generated->line - $deferred['baseLine'];
+            $column    = $lineDelta === 0
+                ? $startColumn + ($generated->column - $deferred['baseColumn'])
+                : $generated->column;
+
+            $this->ctx->sourceMapState->mappings[] = $mapping->withGeneratedPosition(
+                new SourceMapPosition($startLine + $lineDelta, $column)
+            );
+        }
+    }
+
     public function buildSourceMap(string $compiled, string $source): string
     {
         $mappings = $this->ctx->sourceMapState->mappings;
 
+        $outputLines = substr_count($compiled, "\n") + 1;
+
+        if ($compiled !== '' && str_ends_with($compiled, "\n")) {
+            $outputLines--;
+        }
+
         $options = new SourceMapOptions(
-            outputLines:    substr_count($compiled, "\n") + 1,
+            outputLines:    $outputLines,
             sourceContent:  $this->options->includeSources ? $source : '',
             includeSources: $this->options->includeSources
         );
@@ -188,6 +333,21 @@ final readonly class Render
         }
 
         return true;
+    }
+
+    private function appendRawMapping(int $sourceLine, int $sourceColumn): void
+    {
+        $this->ctx->sourceMapState->mappings[] = new SourceMapMapping(
+            new SourceMapPosition(
+                $this->ctx->sourceMapState->generatedLine,
+                $this->ctx->sourceMapState->generatedColumn,
+            ),
+            new SourceMapPosition(
+                max(1, $sourceLine),
+                max(0, $sourceColumn - 1),
+            ),
+            0
+        );
     }
 
     private function appendMapping(Visitable $origin): void
