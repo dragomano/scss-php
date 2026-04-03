@@ -16,6 +16,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\CssArgumentEvaluator;
+use Tests\ReflectionAccessor;
 
 describe('CssArgumentEvaluator', function () {
     beforeEach(function () {
@@ -27,11 +28,9 @@ describe('CssArgumentEvaluator', function () {
 
                 return $node;
             },
-            function (string $name, Environment $env): AstNode {
-                return $env->getCurrentScope()->getVariable($name);
-            },
             static fn(string $name, array $arguments): array => $arguments
         );
+        $this->accessor = new ReflectionAccessor($this->evaluator);
     });
 
     it('expands css spread arguments and evaluates fallback positional and named values', function () {
@@ -245,5 +244,157 @@ describe('CssArgumentEvaluator', function () {
         /** @var ColorNode $namedValue */
         $namedValue = $named->value;
         expect($namedValue->value)->toBe('#000080');
+    });
+
+    it('evaluates fallback css arguments across argument lists maps functions and variable references', function () {
+        $env = new Environment();
+        $env->getCurrentScope()->setVariable('fallback', new StringNode('resolved'));
+
+        $argumentList = new ArgumentListNode(
+            [new ListNode([
+                new VariableReferenceNode('fallback'),
+                new StringNode('and'),
+                new StringNode('literal'),
+            ], 'space')],
+            'comma',
+            true,
+            ['tone' => new ListNode([
+                new VariableReferenceNode('fallback'),
+                new StringNode('or'),
+                new StringNode('literal'),
+            ], 'space')]
+        );
+        $map = new MapNode([
+            [
+                'key' => new ListNode([
+                    new VariableReferenceNode('fallback'),
+                    new StringNode('and'),
+                    new StringNode('literal'),
+                ], 'space'),
+                'value' => new ListNode([
+                    new VariableReferenceNode('fallback'),
+                    new StringNode('or'),
+                    new StringNode('literal'),
+                ], 'space'),
+            ],
+        ]);
+        $named = new NamedArgumentNode('accent', new ListNode([
+            new VariableReferenceNode('fallback'),
+            new StringNode('and'),
+            new StringNode('literal'),
+        ], 'space'));
+        $function = new FunctionNode('calc', [
+            new ListNode([
+                new VariableReferenceNode('fallback'),
+                new StringNode('and'),
+                new StringNode('literal'),
+            ], 'space'),
+        ]);
+        $reference = new VariableReferenceNode('fallback');
+        $plain = new NumberNode(3);
+
+        $evaluatedArgumentList = $this->accessor->callMethod('evaluateFallbackCssArgument', [$argumentList, $env]);
+        $evaluatedMap = $this->accessor->callMethod('evaluateFallbackCssArgument', [$map, $env]);
+        $evaluatedNamed = $this->accessor->callMethod('evaluateFallbackCssArgument', [$named, $env]);
+        $evaluatedFunction = $this->accessor->callMethod('evaluateFallbackCssArgument', [$function, $env]);
+        $evaluatedReference = $this->accessor->callMethod('evaluateFallbackCssArgument', [$reference, $env]);
+        $evaluatedPlain = $this->accessor->callMethod('evaluateFallbackCssArgument', [$plain, $env]);
+
+        expect($evaluatedArgumentList)->toBeInstanceOf(ArgumentListNode::class)
+            ->and($evaluatedArgumentList->items[0])->toBeInstanceOf(ListNode::class)
+            ->and($evaluatedArgumentList->items[0]->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($evaluatedArgumentList->items[0]->items[0]->value)->toBe('resolved')
+            ->and($evaluatedArgumentList->keywords['tone'])->toBeInstanceOf(ListNode::class)
+            ->and($evaluatedArgumentList->keywords['tone']->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($evaluatedArgumentList->keywords['tone']->items[0]->value)->toBe('resolved')
+            ->and($evaluatedMap)->toBeInstanceOf(MapNode::class)
+            ->and($evaluatedMap->pairs[0]['key'])->toBeInstanceOf(ListNode::class)
+            ->and($evaluatedMap->pairs[0]['key']->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($evaluatedMap->pairs[0]['key']->items[0]->value)->toBe('resolved')
+            ->and($evaluatedMap->pairs[0]['value'])->toBeInstanceOf(ListNode::class)
+            ->and($evaluatedMap->pairs[0]['value']->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($evaluatedMap->pairs[0]['value']->items[0]->value)->toBe('resolved')
+            ->and($evaluatedNamed)->toBeInstanceOf(NamedArgumentNode::class)
+            ->and($evaluatedNamed->value)->toBeInstanceOf(ListNode::class)
+            ->and($evaluatedNamed->value->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($evaluatedNamed->value->items[0]->value)->toBe('resolved')
+            ->and($evaluatedFunction)->toBeInstanceOf(FunctionNode::class)
+            ->and($evaluatedFunction->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($evaluatedFunction->arguments[0]->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($evaluatedFunction->arguments[0]->items[0]->value)->toBe('resolved')
+            ->and($evaluatedReference)->toBeInstanceOf(StringNode::class)
+            ->and($evaluatedReference->value)->toBe('resolved')
+            ->and($evaluatedPlain)->toBe($plain);
+    });
+
+    it('keeps fallback css arguments unchanged when nested values do not change', function () {
+        $env = new Environment();
+        $argumentList = new ArgumentListNode(
+            [new StringNode('alpha')],
+            'comma',
+            false,
+            ['tone' => new StringNode('beta')]
+        );
+        $map = new MapNode([
+            ['key' => new StringNode('alpha'), 'value' => new StringNode('beta')],
+        ]);
+        $named = new NamedArgumentNode('accent', new ListNode([new StringNode('or')], 'space'));
+
+        expect($this->accessor->callMethod('evaluateFallbackCssArgument', [$argumentList, $env]))
+            ->toBe($argumentList)
+            ->and($this->accessor->callMethod('evaluateFallbackCssArgument', [$map, $env]))
+            ->toBe($map)
+            ->and($this->accessor->callMethod('evaluateFallbackCssArgument', [$named, $env]))
+            ->toBe($named);
+    });
+
+    it('detects css-preserving arguments recursively across nested node types', function () {
+        $list = new ListNode([
+            new StringNode('literal'),
+            new ListNode([
+                new StringNode('left'),
+                new StringNode('and'),
+                new StringNode('right'),
+            ], 'space'),
+        ], 'comma');
+        $function = new FunctionNode('calc', [
+            new ListNode([new StringNode('or')], 'space'),
+        ]);
+        $argumentList = new ArgumentListNode(
+            [new StringNode('plain')],
+            'comma',
+            false,
+            ['tone' => new ListNode([new StringNode('value'), new StringNode('and')], 'space')]
+        );
+        $named = new NamedArgumentNode('accent', new ListNode([new StringNode('or')], 'space'));
+        $map = new MapNode([
+            ['key' => new ListNode([new StringNode('and')], 'space'), 'value' => new StringNode('plain')],
+        ]);
+
+        expect($this->accessor->callMethod('shouldPreserveCssArgument', [$list]))->toBeTrue()
+            ->and($this->accessor->callMethod('shouldPreserveCssArgument', [$function]))->toBeTrue()
+            ->and($this->accessor->callMethod('shouldPreserveCssArgument', [$argumentList]))->toBeTrue()
+            ->and($this->accessor->callMethod('shouldPreserveCssArgument', [$named]))->toBeTrue()
+            ->and($this->accessor->callMethod('shouldPreserveCssArgument', [$map]))->toBeTrue();
+    });
+
+    it('evaluates fallback pair helper changes and keeps rebuilt pair structure', function () {
+        $env = new Environment();
+        $env->getCurrentScope()->setVariable('key', new StringNode('resolved-key'));
+        $env->getCurrentScope()->setVariable('value', new StringNode('resolved-value'));
+
+        [$pairs, $changed] = $this->accessor->callMethod('evaluateFallbackPairs', [[
+            ['key' => new VariableReferenceNode('key'), 'value' => new VariableReferenceNode('value')],
+        ], $env]);
+
+        expect($changed)->toBeTrue()
+            ->and($pairs[0]['key'])->toBeInstanceOf(StringNode::class)
+            ->and($pairs[0]['key']->value)->toBe('resolved-key')
+            ->and($pairs[0]['value'])->toBeInstanceOf(StringNode::class)
+            ->and($pairs[0]['value']->value)->toBe('resolved-value');
+    });
+
+    it('returns null for empty named colors', function () {
+        expect($this->evaluator->resolveNamedColorHex(''))->toBeNull();
     });
 });

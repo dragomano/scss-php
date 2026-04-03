@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
@@ -113,6 +114,7 @@ describe('Selector service', function () {
             expect($this->selector->combineNestedSelectorWithParent('span', '.nav'))
                 ->toBe('.nav span');
         });
+
     });
 
     describe('splitTopLevelSelectorList()', function () {
@@ -254,7 +256,8 @@ describe('Selector service', function () {
             expect($this->selector->parseNestedPropertyBlockSelector('-foo: bar'))->toBe([
                 'property' => '-foo',
                 'value' => 'bar',
-            ])->and($this->selector->parseNestedPropertyBlockSelector('foo!: bar'))->toBeNull();
+            ])->and($this->selector->parseNestedPropertyBlockSelector('foo!: bar'))->toBeNull()
+                ->and($this->selector->parseNestedPropertyBlockSelector('-: bar'))->toBeNull();
         });
     });
 
@@ -352,6 +355,61 @@ describe('Selector service', function () {
             $entry = ['type' => 'supports', 'condition' => '(display: grid)'];
 
             expect($this->accessor->callMethod('matchesAtRootQueryRule', [$entry, ['supports']]))->toBeTrue();
+        });
+
+        it('handles at-root rule matching and rule context flags', function () {
+            expect($this->accessor->callMethod('matchesAtRootQueryRule', [
+                ['type' => 'other'],
+                ['supports'],
+            ]))->toBeFalse()
+                ->and($this->accessor->callMethod('matchesAtRootQueryRule', [
+                    ['type' => 'directive', 'name' => 'media'],
+                    ['media'],
+                ]))->toBeTrue()
+                ->and($this->accessor->callMethod('matchesAtRootQueryRule', [
+                    ['type' => 'directive', 'name' => 'font-face'],
+                    ['supports'],
+                ]))->toBeFalse()
+                ->and($this->accessor->callMethod('shouldKeepAtRootRuleContext', ['with', [' ', '']]))->toBeFalse()
+                ->and($this->accessor->callMethod('shouldKeepAtRootRuleContext', ['invalid', ['rule']]))->toBeFalse();
+        });
+
+        it('normalizes at-root children and wraps nodes with at-rule stack entries', function () {
+            $rule = new RuleNode('.child', []);
+            $atRoot = new AtRootNode([]);
+            $decl = new DeclarationNode('color', new StringNode('red'));
+
+            $normalizedRule = $this->accessor->callMethod('normalizeAtRootChild', [$rule, '.parent', true]);
+            $normalizedAtRoot = $this->accessor->callMethod('normalizeAtRootChild', [$atRoot, '.parent', true]);
+            $wrappedDecl = $this->accessor->callMethod('normalizeAtRootChild', [$decl, '.parent', true]);
+            $wrappedStack = $this->accessor->callMethod('wrapNodeWithAtRuleStack', [$decl, [
+                ['type' => 'supports', 'condition' => '(display: grid)'],
+            ]]);
+
+            expect($normalizedRule)->toBe($rule)
+                ->and($normalizedAtRoot)->toBe($atRoot)
+                ->and($wrappedDecl)->toBeInstanceOf(RuleNode::class)
+                ->and($wrappedDecl->selector)->toBe('.parent')
+                ->and($wrappedStack)->toBeInstanceOf(SupportsNode::class)
+                ->and($wrappedStack->condition)->toBe('(display: grid)')
+                ->and($wrappedStack->body[0])->toBe($decl);
+        });
+
+        it('normalizes bubbling children and parent selector attachment decisions', function () {
+            $rule = new RuleNode('.child', []);
+            $unchangedRule = $this->accessor->callMethod('normalizeBubblingChild', [$rule, '.parent', false]);
+            $wrappedDeclaration = $this->accessor->callMethod('normalizeBubblingChild', [
+                new DeclarationNode('color', new StringNode('red')),
+                '.parent',
+                true,
+            ]);
+
+            expect($unchangedRule)->toBe($rule)
+                ->and($wrappedDeclaration)->toBeInstanceOf(RuleNode::class)
+                ->and($wrappedDeclaration->selector)->toBe('.parent')
+                ->and($this->accessor->callMethod('shouldAttachParentSelectorToBubbledBody', [
+                    new StringNode('plain'),
+                ]))->toBeFalse();
         });
     });
 });

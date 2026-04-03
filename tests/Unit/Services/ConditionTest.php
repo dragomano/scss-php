@@ -131,6 +131,80 @@ describe('Condition', function () {
             ->and($this->condition->compare(new NumberNode(1.12345678906), '==', new NumberNode(1.1234567891), $this->env))->toBeTrue();
     });
 
+    it('returns false for list and map mismatches at each comparison guard', function () {
+        expect($this->condition->compare(
+            new ListNode([new StringNode('a')], 'space'),
+            '==',
+            new ListNode([new StringNode('a')], 'comma'),
+            $this->env
+        ))->toBeFalse()
+            ->and($this->condition->compare(
+                new ListNode([new StringNode('a')], 'space'),
+                '==',
+                new ListNode([new StringNode('a'), new StringNode('b')], 'space'),
+                $this->env
+            ))->toBeFalse()
+            ->and($this->condition->compare(
+                new ListNode([new StringNode('a')], 'space'),
+                '==',
+                new ListNode([new StringNode('b')], 'space'),
+                $this->env
+            ))->toBeFalse()
+            ->and($this->condition->compare(
+                new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]),
+                '==',
+                new MapNode([
+                    ['key' => new StringNode('a'), 'value' => new NumberNode(1)],
+                    ['key' => new StringNode('b'), 'value' => new NumberNode(2)],
+                ]),
+                $this->env
+            ))->toBeFalse()
+            ->and($this->condition->compare(
+                new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]),
+                '==',
+                new MapNode([['key' => new StringNode('b'), 'value' => new NumberNode(1)]]),
+                $this->env
+            ))->toBeFalse();
+    });
+
+    it('handles numeric inequality branches for incompatible and compatible values', function () {
+        expect($this->condition->compare(new NumberNode(1, 'px'), '!=', new NumberNode(1, 'deg'), $this->env))->toBeTrue()
+            ->and($this->condition->compare(new NumberNode(2), '==', new NumberNode(2), $this->env))->toBeTrue()
+            ->and($this->condition->compare(new NumberNode(2), '!=', new NumberNode(2), $this->env))->toBeFalse();
+    });
+
+    it('evaluates compareNumbers branches for incompatible and equal numeric values directly', function () {
+        $accessor = new ReflectionAccessor($this->condition);
+
+        expect($accessor->callMethod('compareNumbers', [
+            new NumberNode(1, 'px'),
+            '!=',
+            new NumberNode(1, 'deg'),
+        ]))->toBeTrue()
+            ->and($accessor->callMethod('compareNumbers', [
+                new NumberNode(1, 'px'),
+                '==',
+                new NumberNode(1, 'deg'),
+            ]))->toBeFalse()
+            ->and($accessor->callMethod('compareNumbers', [
+                new NumberNode(2),
+                '==',
+                new NumberNode(2),
+            ]))->toBeTrue()
+            ->and($accessor->callMethod('compareNumbers', [
+                new NumberNode(2),
+                '!=',
+                new NumberNode(2),
+            ]))->toBeFalse();
+    });
+
+    it('evaluates direct scalar compareValues equality branches', function () {
+        $accessor = new ReflectionAccessor($this->condition);
+
+        expect($accessor->callMethod('compareValues', ['same', '==', 'same']))->toBeTrue()
+            ->and($accessor->callMethod('compareValues', ['same', '!=', 'same']))->toBeFalse();
+    });
+
     it('resolves literal values and caches split comparisons', function () {
         $accessor = new ReflectionAccessor($this->condition);
         $ctx      = (new ReflectionAccessor($this->runtime))->getProperty('ctx');

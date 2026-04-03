@@ -233,6 +233,28 @@ describe('StreamUtils', function () {
             expect($result)->toBe('func(a; b)');
         });
 
+        it('respects bracket depth and does not stop inside brackets', function () {
+            $stream = makeStream('[a; b]; done;');
+
+            $result = StreamUtils::readRawUntil(
+                $stream,
+                fn(Token $t): bool => $t->type === TokenType::SEMICOLON
+            );
+
+            expect($result)->toBe('[a; b]');
+        });
+
+        it('decrements bracket depth when closing brackets are encountered', function () {
+            $stream = makeStream('[a[b]c]; done;');
+
+            $result = StreamUtils::readRawUntil(
+                $stream,
+                fn(Token $t): bool => $t->type === TokenType::SEMICOLON
+            );
+
+            expect($result)->toBe('[a[b]c]');
+        });
+
         it('trims surrounding whitespace from result', function () {
             $stream = makeStream('  hello  ;');
 

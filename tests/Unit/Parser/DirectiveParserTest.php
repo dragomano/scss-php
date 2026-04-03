@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Lexer\Tokenizer;
+use Bugo\SCSS\Lexer\TokenStream;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\DebugNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
@@ -15,10 +17,12 @@ use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\MixinNode;
 use Bugo\SCSS\Nodes\ReturnNode;
+use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Parser;
+use Tests\ReflectionAccessor;
 
 describe('DirectiveParser', function () {
     beforeEach(function () {
@@ -201,6 +205,34 @@ describe('DirectiveParser', function () {
             expect($node)->toBeInstanceOf(AtRootNode::class)
                 ->and($node->queryMode)->toBe('with');
         });
+
+        it('parses @at-root query with multiple rules separated by commas and whitespace', function () {
+            $ast = $this->parser->parse('.a { @at-root (with: rule, media tabs_and_spaces) { color: red; } }');
+            $node = $ast->children[0]->children[0];
+
+            expect($node)->toBeInstanceOf(AtRootNode::class)
+                ->and($node->queryMode)->toBe('with')
+                ->and($node->queryRules)->toBe(['rule', 'media', 'tabs_and_spaces']);
+        });
+
+        it('falls back to selector form for invalid queries', function (string $source, string $selector) {
+            $ast = $this->parser->parse($source);
+            $node = $ast->children[0]->children[0];
+
+            expect($node)->toBeInstanceOf(AtRootNode::class)
+                ->and($node->queryMode)->toBeNull()
+                ->and($node->queryRules)->toBe([])
+                ->and($node->body)->toHaveCount(1)
+                ->and($node->body[0])->toBeInstanceOf(RuleNode::class)
+                ->and($node->body[0]->selector)->toBe($selector);
+        })->with([
+            ['.a { @at-root () { color: red; } }', '()'],
+            ['.a { @at-root (media) { color: red; } }', '(media)'],
+            ['.a { @at-root (inside: media) { color: red; } }', '(inside: media)'],
+            ['.a { @at-root (with:) { color: red; } }', '(with:)'],
+            ['.a { @at-root (with: media!) { color: red; } }', '(with: media!)'],
+            ['.a { @at-root (with: ,) { color: red; } }', '(with: ,)'],
+        ]);
     });
 
     describe('@if / @else', function () {
@@ -255,6 +287,24 @@ describe('DirectiveParser', function () {
                 ->and($node->variable)->toBe('i')
                 ->and($node->inclusive)->toBeTrue();
         });
+
+        it('falls back to a generic directive for invalid @for syntax', function (
+            string $source,
+            string $prelude,
+            bool $hasBlock
+        ) {
+            $ast = $this->parser->parse($source);
+            $node = $ast->children[0];
+
+            expect($node)->toBeInstanceOf(DirectiveNode::class)
+                ->and($node->name)->toBe('for')
+                ->and($node->prelude)->toBe($prelude)
+                ->and($node->hasBlock)->toBe($hasBlock);
+        })->with([
+            ['@for i from 1 to 5 { }', 'i from 1 to 5', true],
+            ['@for $i 1 to 5 { }', '1 to 5', true],
+            ['@for $i from 1 5 { }', '', false],
+        ]);
     });
 
     describe('@each', function () {
@@ -273,6 +323,20 @@ describe('DirectiveParser', function () {
             expect($node)->toBeInstanceOf(EachNode::class)
                 ->and($node->variables)->toBe(['key', 'value']);
         });
+
+        it('falls back to a generic directive for invalid @each syntax', function (string $source, string $prelude) {
+            $ast = $this->parser->parse($source);
+            $node = $ast->children[0];
+
+            expect($node)->toBeInstanceOf(DirectiveNode::class)
+                ->and($node->name)->toBe('each')
+                ->and($node->prelude)->toBe($prelude)
+                ->and($node->hasBlock)->toBeTrue();
+        })->with([
+            ['@each color in red, green { }', 'color in red, green'],
+            ['@each $key, value in $map { }', ', value in $map'],
+            ['@each $color red, green { }', 'red, green'],
+        ]);
     });
 
     describe('@while', function () {
@@ -361,6 +425,35 @@ describe('DirectiveParser', function () {
 
             expect($node)->toBeInstanceOf(DirectiveNode::class)
                 ->and($node->name)->toBe('layer');
+        });
+
+        it('parses generic directives without semicolon or block at eof', function () {
+            $ast = $this->parser->parse('@media screen');
+            $node = $ast->children[0];
+
+            expect($node)->toBeInstanceOf(DirectiveNode::class)
+                ->and($node->name)->toBe('media')
+                ->and($node->prelude)->toBe('screen')
+                ->and($node->body)->toBe([])
+                ->and($node->hasBlock)->toBeFalse();
+        });
+    });
+
+    describe('direct parser access', function () {
+        it('returns null when parseDirective is called outside an at-rule', function () {
+            $accessor = new ReflectionAccessor($this->parser);
+
+            /** @var Tokenizer $tokenizer */
+            $tokenizer = $accessor->getProperty('tokenizer');
+
+            $accessor->setProperty('stream', new TokenStream($tokenizer->tokenize('')));
+            $accessor->setProperty('blockDepth', 0);
+            $accessor->callMethod('initSubParsers');
+
+            $directives = $accessor->getProperty('directives');
+            $node = (new ReflectionAccessor($directives))->callMethod('parseDirective');
+
+            expect($node)->toBeNull();
         });
     });
 });

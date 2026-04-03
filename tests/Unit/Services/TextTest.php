@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Nodes\NumberNode;
+use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\Text;
 use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
@@ -144,6 +147,18 @@ describe('Text service', function () {
             expect($result)->toBe('(not (display: grid)) and (color: red)');
         });
 
+        it('adds parentheses around unwrapped not supports expressions inside boolean groups', function () {
+            $result = $this->text->resolveSupportsCondition('not display and (color: red)', $this->env);
+
+            expect($result)->toBe('(not display) and (color: red)');
+        });
+
+        it('adds parentheses around nested and supports expressions inside or groups', function () {
+            $result = $this->text->resolveSupportsCondition('a or b and c', $this->env);
+
+            expect($result)->toBe('a or (b and c)');
+        });
+
         it('returns empty string for empty interpolation expressions', function () {
             $result = $this->text->interpolateText('#{}', $this->env);
 
@@ -154,6 +169,64 @@ describe('Text service', function () {
             $result = $this->text->interpolateText('#{1 + 2}', $this->env);
 
             expect($result)->toBe('3');
+        });
+
+        it('returns interpolation expression as is when parser root does not contain a rule', function () {
+            $text = new Text(
+                new class () implements ParserInterface {
+                    public function setTrackSourceLocations(bool $track): void {}
+
+                    public function parse(string $source): RootNode
+                    {
+                        return new RootNode([new StringNode('ignored')]);
+                    }
+                },
+                static fn($node, $env) => new StringNode('unused'),
+                static fn($node, $env): string => 'unused'
+            );
+            $accessor = new ReflectionAccessor($text);
+
+            expect($accessor->callMethod('resolveInterpolationExpression', ['literal-token', $this->env]))
+                ->toBe('literal-token');
+        });
+
+        it('formats slash-separated bracketed interpolation lists', function () {
+            $result = $this->accessor->callMethod('formatInterpolationValue', [
+                new Bugo\SCSS\Nodes\ListNode(
+                    [new StringNode('alpha'), new StringNode('beta')],
+                    'slash',
+                    true
+                ),
+                $this->env,
+            ]);
+
+            expect($result)->toBe('[alpha / beta]');
+        });
+
+        it('formats space-separated interpolation lists with the default separator', function () {
+            $result = $this->accessor->callMethod('formatInterpolationValue', [
+                new Bugo\SCSS\Nodes\ListNode(
+                    [new StringNode('alpha'), new StringNode('beta')],
+                    'space'
+                ),
+                $this->env,
+            ]);
+
+            expect($result)->toBe('alpha beta');
+        });
+
+        it('keeps plus concatenation unchanged when the right side is not a variable name token', function () {
+            $result = $this->accessor->callMethod('collapsePlusConcatenation', ['foo + !bar']);
+
+            expect($result)->toBe('foo + !bar');
+        });
+
+        it('rejects empty variable names', function () {
+            expect($this->accessor->callMethod('isVariableName', ['']))->toBeFalse();
+        });
+
+        it('rejects variable names with unsupported characters', function () {
+            expect($this->accessor->callMethod('isVariableName', ['foo!']))->toBeFalse();
         });
     });
 });

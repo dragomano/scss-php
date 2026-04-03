@@ -88,6 +88,17 @@ describe('ColorFunctionEvaluator', function () {
             ->and($result->name)->toBe('hsl');
     });
 
+    it('returns null from hsl-space mixing when either color cannot provide hsl channels', function () {
+        $result = $this->evaluatorAccessor->callMethod('mixInHslSpace', [
+            new FunctionNode('device-cmyk', [new NumberNode(0.1)]),
+            new ColorNode('#000'),
+            0.5,
+            null,
+        ]);
+
+        expect($result)->toBeNull();
+    });
+
     it('changes native lab colors and can serialize them as float rgb for legacy callers', function () {
         $lab = new FunctionNode('lab', [new NumberNode(40, '%'), new NumberNode(30), new NumberNode(40)]);
 

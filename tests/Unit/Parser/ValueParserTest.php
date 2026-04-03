@@ -22,6 +22,7 @@ use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Parser;
 use Bugo\SCSS\Parser\ValueParser;
+use Tests\ReflectionAccessor;
 
 describe('ValueParser', function () {
     beforeEach(function () {
@@ -109,6 +110,30 @@ describe('ValueParser', function () {
 
             expect($value)->toBeInstanceOf(StringNode::class)
                 ->and($value->value)->toBe('#{foo}');
+        });
+
+        it('parses nested hash interpolation preserving inner braces', function () {
+            $stream = new TokenStream([
+                new Token(TokenType::HASH, '#', 1, 1),
+                new Token(TokenType::LBRACE, '{', 1, 2),
+                new Token(TokenType::IDENTIFIER, 'a', 1, 3),
+                new Token(TokenType::LBRACE, '{', 1, 4),
+                new Token(TokenType::IDENTIFIER, 'b', 1, 5),
+                new Token(TokenType::RBRACE, '}', 1, 6),
+                new Token(TokenType::RBRACE, '}', 1, 7),
+                new Token(TokenType::EOF, '', 1, 8),
+            ]);
+
+            $valueParser = new ValueParser(
+                $stream,
+                static fn(string $expression): AstNode => new StringNode($expression)
+            );
+
+            /* @var $value StringNode */
+            $value = $valueParser->parseSingleValue();
+
+            expect($value)->toBeInstanceOf(StringNode::class)
+                ->and($value->value)->toBe('#{a{b}}');
         });
     });
 
@@ -315,6 +340,16 @@ describe('ValueParser', function () {
             ])
                 ->and($stream->current()->type)->toBe(TokenType::EXCLAMATION);
         });
+
+        it('parses chained value modifiers directly', function () {
+            [$valueParser] = ($this->createValueParser)('!default !global !important');
+
+            expect($valueParser->parseValueModifiers())->toBe([
+                'default' => true,
+                'global' => true,
+                'important' => true,
+            ]);
+        });
     });
 
     describe('direct parser helpers', function () {
@@ -328,6 +363,15 @@ describe('ValueParser', function () {
             [$valueParser] = ($this->createValueParser)('');
 
             expect($valueParser->parseSingleValue())->toBeNull();
+        });
+
+        it('returns css variable tokens as plain strings in single-value mode', function () {
+            [$valueParser] = ($this->createValueParser)('--primary');
+
+            $value = $valueParser->parseSingleValue();
+
+            expect($value)->toBeInstanceOf(StringNode::class)
+                ->and($value->value)->toBe('--primary');
         });
 
         it('parses sign-only number tokens as zero', function () {
@@ -362,6 +406,44 @@ describe('ValueParser', function () {
             $spreadValue = $spread->value;
 
             expect($spreadValue->value)->toBe('items');
+        });
+
+        it('returns an empty string when consumeIdentifier is called away from identifiers', function () {
+            [$valueParser] = ($this->createValueParser)('42');
+
+            expect($valueParser->consumeIdentifier())->toBe('');
+        });
+
+        it('returns null for empty grouped values in buildListFromGroups', function () {
+            [$valueParser] = ($this->createValueParser)('');
+
+            $result = (new ReflectionAccessor($valueParser))->callMethod('buildListFromGroups', [[]]);
+
+            expect($result)->toBeNull();
+        });
+
+        it('restores stream position when tryParseModuleVariable has no member identifier', function () {
+            $stream = new TokenStream([
+                new Token(TokenType::IDENTIFIER, 'theme', 1, 1),
+                new Token(TokenType::DOT, '.', 1, 6),
+                new Token(TokenType::DOLLAR, '$', 1, 7),
+                new Token(TokenType::EOF, '', 1, 8),
+            ]);
+            $valueParser = new ValueParser($stream, static fn(string $expression): AstNode => new StringNode($expression));
+            $accessor = new ReflectionAccessor($valueParser);
+
+            $result = $accessor->callMethod('tryParseModuleVariable');
+
+            expect($result)->toBeNull()
+                ->and($stream->getPosition())->toBe(0);
+        });
+
+        it('returns 0 as numeric prefix length for empty strings', function () {
+            [$valueParser] = ($this->createValueParser)('');
+
+            $length = (new ReflectionAccessor($valueParser))->callMethod('readNumericPrefixLength', ['']);
+
+            expect($length)->toBe(0);
         });
     });
 

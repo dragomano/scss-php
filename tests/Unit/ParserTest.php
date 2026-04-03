@@ -197,6 +197,15 @@ describe('Parser', function () {
                 ]);
         });
 
+        it('keeps bracketed raw @import fragments intact', function () {
+            $source = '@import url(theme) [foo, bar];';
+
+            $ast = $this->parser->parse($source);
+
+            expect($ast->children[0])->toBeInstanceOf(ImportNode::class)
+                ->and($ast->children[0]->imports)->toBe(['url(theme) [foo, bar]']);
+        });
+
         it('parses @forward directives', function () {
             $source = '@forward "_forwarded.scss";';
 
@@ -238,6 +247,18 @@ describe('Parser', function () {
                 ->and($ast->children[0]->members)->toBe(['$forward-color', 'forwarded-mixin']);
         });
 
+        it('parses @forward directives with visibility and configuration', function () {
+            $source = '@forward "_forwarded.scss" show $public with ($primary: blue !default);';
+
+            $ast = $this->parser->parse($source);
+
+            expect($ast->children[0])->toBeInstanceOf(ForwardNode::class)
+                ->and($ast->children[0]->visibility)->toBe('show')
+                ->and($ast->children[0]->members)->toBe(['$public'])
+                ->and($ast->children[0]->configuration)->toHaveKey('primary')
+                ->and($ast->children[0]->configuration['primary']['default'])->toBeTrue();
+        });
+
         it('parses @forward directives with configuration and !default', function () {
             $source = '@forward "code" with ($black: #222 !default, $radius: 1rem);';
 
@@ -250,6 +271,16 @@ describe('Parser', function () {
                 ->and($ast->children[0]->configuration['radius']['default'])->toBeFalse()
                 ->and($ast->children[0]->configuration['black']['value'])->toBeInstanceOf(ColorNode::class)
                 ->and($ast->children[0]->configuration['radius']['value'])->toBeInstanceOf(NumberNode::class);
+        });
+
+        it('returns empty configuration when @use with is not followed by parentheses', function () {
+            $source = '@use "functions" with;';
+
+            $ast = $this->parser->parse($source);
+
+            expect($ast->children[0])->toBeInstanceOf(UseNode::class)
+                ->and($ast->children[0]->path)->toBe('functions')
+                ->and($ast->children[0]->configuration)->toBe([]);
         });
 
         it('parses @include directives', function () {
@@ -293,6 +324,22 @@ describe('Parser', function () {
                 ->and($ast->children[0]->contentArguments[0])->toBeInstanceOf(ArgumentNode::class)
                 ->and($ast->children[0]->contentArguments[0]->name)->toBe('type')
                 ->and($ast->children[0]->contentBlock)->toHaveCount(1);
+        });
+
+        it('parses bare identifiers in @include using() content arguments', function () {
+            $source = <<<'SCSS'
+            @include media(screen) using (type) {
+              h1 { font-size: 40px; }
+            }
+            SCSS;
+
+            $ast = $this->parser->parse($source);
+
+            expect($ast->children[0])->toBeInstanceOf(IncludeNode::class)
+                ->and($ast->children[0]->contentArguments)->toHaveCount(1)
+                ->and($ast->children[0]->contentArguments[0])->toBeInstanceOf(ArgumentNode::class)
+                ->and($ast->children[0]->contentArguments[0]->name)->toBe('type')
+                ->and($ast->children[0]->contentArguments[0]->defaultValue)->toBeNull();
         });
 
         it('parses @extend directives inside rules', function () {

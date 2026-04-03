@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
+use Bugo\SCSS\Exceptions\ModuleResolutionException;
+use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Nodes\ArgumentListNode;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MixinRefNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
@@ -227,6 +231,31 @@ it('returns comparison results directly from list evaluation', function () {
     expect($runtime->evaluation()->format($result, $env))->toBe('true');
 });
 
+it('returns null for malformed comparison lists', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+
+    expect($runtime->evaluation()->evaluateComparisonList(new ListNode([
+        new StringNode('<'),
+        new NumberNode(2.0),
+    ], 'space'), $env))->toBeNull()
+        ->and($runtime->evaluation()->evaluateComparisonList(new ListNode([
+            new NumberNode(1.0),
+            new NumberNode(2.0),
+            new StringNode('<'),
+        ], 'space'), $env))->toBeNull()
+        ->and($runtime->evaluation()->evaluateComparisonList(new ListNode([
+            new NumberNode(1.0),
+            new StringNode('between'),
+            new NumberNode(2.0),
+        ], 'space'), $env))->toBeNull()
+        ->and($runtime->evaluation()->evaluateComparisonList(new ListNode([
+            new NumberNode(1.0),
+            new StringNode('<'),
+            new NumberNode(2.0),
+        ], 'comma'), $env))->toBeNull();
+});
+
 it('evaluates argument list items and keywords lazily', function () {
     $runtime = RuntimeFactory::createRuntime();
 
@@ -419,6 +448,125 @@ it('returns unchanged nodes for unsupported evaluateValue inputs', function () {
     expect($runtime->evaluation()->evaluateValue($node, $env))->toBe($node);
 });
 
+it('returns the original function node when css fallback reparsing does not apply', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+    $node    = new class () extends AstNode {};
+
+    expect($runtime->evaluation()->evaluateValue($node, $env))->toBe($node);
+});
+
+it('reparses formatted declaration expressions conservatively', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+
+    $unchanged = $runtime->evaluation()->tryEvaluateFormattedDeclarationExpression(
+        'width',
+        new NumberNode(3, 'px'),
+        $env
+    );
+
+    expect($unchanged)->toBeNull();
+});
+
+it('returns null when reparsing formatted declaration expressions fails or does not yield a declaration', function () {
+    $badParser = new class () implements ParserInterface {
+        public function setTrackSourceLocations(bool $track): void {}
+
+        public function parse(string $source): RootNode
+        {
+            throw new SassErrorException('bad parse');
+        }
+    };
+
+    $runtimeWithBadParser = RuntimeFactory::createRuntime(parser: $badParser);
+
+    $nullFromException = $runtimeWithBadParser->evaluation()->tryEvaluateFormattedDeclarationExpression(
+        'width',
+        new StringNode('calc(1px / )'),
+        new Environment()
+    );
+
+    $nonDeclarationParser = new class () implements ParserInterface {
+        public function setTrackSourceLocations(bool $track): void {}
+
+        public function parse(string $source): RootNode
+        {
+            return new RootNode([
+                new RuleNode('.__tmp__', [new StringNode('not-a-declaration')]),
+            ]);
+        }
+    };
+
+    $runtimeWithoutDeclaration = RuntimeFactory::createRuntime(parser: $nonDeclarationParser);
+
+    $nullFromMissingDeclaration = $runtimeWithoutDeclaration->evaluation()->tryEvaluateFormattedDeclarationExpression(
+        'width',
+        new StringNode('calc(1px / 2px)'),
+        new Environment()
+    );
+
+    expect($nullFromException)->toBeNull()
+        ->and($nullFromMissingDeclaration)->toBeNull();
+});
+
+it('returns null when reparsed formatted declarations do not start with a rule node', function () {
+    $parser = new class () implements ParserInterface {
+        public function setTrackSourceLocations(bool $track): void {}
+
+        public function parse(string $source): RootNode
+        {
+            return new RootNode([new StringNode('not-a-rule')]);
+        }
+    };
+
+    $runtime = RuntimeFactory::createRuntime(parser: $parser);
+
+    expect($runtime->evaluation()->tryEvaluateFormattedDeclarationExpression(
+        'width',
+        new StringNode('(10px / 2)'),
+        new Environment()
+    ))->toBeNull();
+});
+
+it('formats variable references parent selectors mixin refs and named arguments', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+    $scope   = $env->getCurrentScope();
+
+    $scope->setVariable('value', new StringNode('resolved'));
+    $scope->setVariable('__parent_selector', new StringNode('.parent'));
+
+    expect($runtime->evaluation()->format(new VariableReferenceNode('value'), $env))->toBe('resolved')
+        ->and($runtime->evaluation()->format(new StringNode('&'), $env))->toBe('.parent')
+        ->and($runtime->evaluation()->format(new MixinRefNode('theme-mixin'), $env))->toBe('theme-mixin')
+        ->and($runtime->evaluation()->format(
+            new NamedArgumentNode('tone', new StringNode('red')),
+            $env
+        ))->toBe('$tone: red');
+});
+
+it('falls back to plain string formatting when no parent selector is set', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+
+    expect($runtime->evaluation()->format(new StringNode('&'), $env))->toBe('&');
+});
+
+it('throws when resolving malformed or missing namespaced variables', function () {
+    $runtime  = RuntimeFactory::createRuntime();
+    $env      = new Environment();
+    $accessor = new ReflectionAccessor($runtime->evaluation());
+
+    expect(fn() => $accessor->callMethod('resolveVariable', ['theme.color', $env]))
+        ->toThrow(ModuleResolutionException::class)
+        ->and(fn() => $accessor->callMethod('resolveVariable', ['theme.', $env]))
+        ->toThrow(
+            LogicException::class,
+            'Qualified variable reference must include a member name.'
+        );
+});
+
 it('rebuilds compact slash declaration values when an item changes', function () {
     $runtime = RuntimeFactory::createRuntime();
     $env     = new Environment();
@@ -506,6 +654,14 @@ it('re-evaluates formatted slash expressions into strict arithmetic results', fu
 
     expect($result->value)->toBe(5.0)
         ->and($result->unit)->toBe('px');
+});
+
+it('formats unsupported ast nodes as an empty string', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+    $node    = new class () extends AstNode {};
+
+    expect($runtime->evaluation()->format($node, $env))->toBe('');
 });
 
 it('returns null when reparsed formatted declarations do not yield a declaration node', function () {

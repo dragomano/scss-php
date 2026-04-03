@@ -6,6 +6,8 @@ use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 use Bugo\SCSS\LoaderInterface;
+use Bugo\SCSS\Nodes\ForwardNode;
+use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -141,5 +143,94 @@ describe('Module service', function () {
 
         expect(fn() => $this->module->handleUse(new UseNode('theme', 'theme'), $env))
             ->toThrow(ModuleResolutionException::class);
+    });
+
+    it('handleImport() throws when @import is mixed with a top-level @use', function () {
+        $env = new Environment();
+
+        $this->ctx->moduleState->hasUseDirective = true;
+
+        expect(fn() => $this->module->handleImport(new ImportNode(['theme']), $env))
+            ->toThrow(ModuleResolutionException::class);
+    });
+
+    it('resolveImport() returns css import for empty input', function () {
+        expect($this->module->resolveImport(''))->toBe(['type' => 'css', 'raw' => '']);
+    });
+
+    it('resolveImport() keeps unterminated quoted imports as raw css', function () {
+        expect($this->module->resolveImport('"theme'))->toBe(['type' => 'css', 'raw' => '"theme']);
+    });
+
+    it('resolveImport() keeps unquoted imports with media queries as css', function () {
+        expect($this->module->resolveImport('theme screen and (color)'))
+            ->toBe(['type' => 'css', 'raw' => 'theme screen and (color)']);
+    });
+
+    it('resolveImport() keeps unquoted css paths as css', function () {
+        expect($this->module->resolveImport('theme.css'))
+            ->toBe(['type' => 'css', 'raw' => 'theme.css']);
+    });
+
+    it('resolveImport() resolves plain unquoted sass imports as sass', function () {
+        expect($this->module->resolveImport('theme'))
+            ->toBe(['type' => 'sass', 'path' => 'theme']);
+    });
+
+    it('resolveImport() resolves unquoted sass imports with trailing whitespace as sass', function () {
+        expect($this->module->resolveImport('theme '))
+            ->toBe(['type' => 'sass', 'path' => 'theme']);
+    });
+
+    it('resolveImport() keeps https imports as raw css', function () {
+        expect($this->module->resolveImport('https://cdn.example.com/theme'))
+            ->toBe(['type' => 'css', 'raw' => 'https://cdn.example.com/theme']);
+    });
+
+    it('loadAndEvaluateModule() throws for circular dependencies during import evaluation', function () {
+        $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
+        $this->ctx->moduleState->loadingFiles['/tmp/_theme.scss'] = true;
+
+        expect(fn() => $this->module->loadAndEvaluateModule('theme', fromImport: true))
+            ->toThrow(ModuleResolutionException::class);
+    });
+
+    it('resolveImportForwardConfiguration() returns configuration unchanged when prefix is empty', function () {
+        $env = new Environment();
+        $config = ['color' => new StringNode('red')];
+
+        $resolved = $this->module->resolveImportForwardConfiguration(
+            new ForwardNode('theme'),
+            $env,
+            $config
+        );
+
+        expect($resolved)->toBe($config);
+    });
+
+    it('resolveImportForwardConfiguration() pulls matching prefixed variables from the environment', function () {
+        $env = new Environment();
+        $env->getCurrentScope()->setVariable('theme-color', new StringNode('red'));
+        $env->getCurrentScope()->setVariable('theme-gap', new StringNode('1rem'));
+        $env->getCurrentScope()->setVariable('other-value', new StringNode('ignored'));
+
+        $resolved = $this->module->resolveImportForwardConfiguration(
+            new ForwardNode('theme', 'theme-'),
+            $env,
+            ['gap' => new StringNode('preset')]
+        );
+
+        expect($resolved)->toHaveKey('color')
+            ->and($resolved['color'])->toBeInstanceOf(StringNode::class)
+            ->and($resolved['color']->value)->toBe('red')
+            ->and($resolved['gap'])->toBeInstanceOf(StringNode::class)
+            ->and($resolved['gap']->value)->toBe('preset')
+            ->and($resolved)->not->toHaveKey('value');
+    });
+
+    it('isCssImportPath() returns false for empty trimmed paths', function () {
+        $accessor = new ReflectionAccessor($this->module);
+
+        expect($accessor->callMethod('isCssImportPath', ['   ']))->toBeFalse();
     });
 });

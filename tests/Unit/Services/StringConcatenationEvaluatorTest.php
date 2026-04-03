@@ -8,6 +8,7 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\StringConcatenationEvaluator;
+use Tests\ReflectionAccessor;
 
 describe('StringConcatenationEvaluator', function () {
     beforeEach(function () {
@@ -18,6 +19,7 @@ describe('StringConcatenationEvaluator', function () {
                 default                     => '',
             }
         );
+        $this->accessor = new ReflectionAccessor($this->evaluator);
     });
 
     describe('evaluate()', function () {
@@ -125,6 +127,16 @@ describe('StringConcatenationEvaluator', function () {
             ], 'space');
 
             expect($this->evaluator->evaluate($list))->toBeNull();
+        });
+
+        it('covers string concatenation numeric and unit helper edge cases', function () {
+            expect($this->accessor->callMethod('isUnitSuffix', ['%']))->toBeTrue()
+                ->and($this->accessor->callMethod('isUnitSuffix', ['']))->toBeFalse()
+                ->and($this->accessor->callMethod('isUnitSuffix', ['p2']))->toBeFalse()
+                ->and($this->accessor->callMethod('isNumericLikeString', ['']))->toBeFalse()
+                ->and($this->accessor->callMethod('isNumericLikeString', ['12px']))->toBeTrue()
+                ->and($this->accessor->callMethod('isNumericLikeString', ['.5rem']))->toBeTrue()
+                ->and($this->accessor->callMethod('isNumericLikeString', ['-.5rem']))->toBeTrue();
         });
     });
 });
