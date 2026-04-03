@@ -82,13 +82,13 @@ final readonly class Evaluator
         private Text $text,
         private Condition $condition,
         private Closure $assignModuleVariable,
-        private Closure $handleDiagnosticDirective
+        private Closure $handleDiagnosticDirective,
     ) {
         $this->hexColorConverter = new HexColorConverter();
         $this->arithmetic        = new ArithmeticEvaluator();
 
         $this->concatenation = new StringConcatenationEvaluator(
-            fn(AstNode $node, Environment $env): string => $this->format($node, $env)
+            fn(AstNode $node, Environment $env): string => $this->format($node, $env),
         );
 
         $this->userFunction = new UserFunctionExecutor(
@@ -98,7 +98,7 @@ final readonly class Evaluator
             fn(AstNode $value): array => $this->eachIterableItems($value),
             fn(array $vars, AstNode $item, Environment $env) => $this->assignEachVariables($vars, $item, $env),
             fn(AstNode $node, Environment $env): AstNode => $this->evaluateValueWithSlashDivision($node, $env),
-            $this->handleDiagnosticDirective
+            $this->handleDiagnosticDirective,
         );
 
         $this->calculation = new CalculationEvaluator(
@@ -106,13 +106,13 @@ final readonly class Evaluator
             fn(ListNode $node, bool $strict, Environment $env): ?AstNode => $this->evaluateArithmeticList(
                 $node,
                 $strict,
-                $env
+                $env,
             ),
             /** @param callable(AstNode): string $innerFormat */
             fn(AstNode $node, callable $innerFormat): SassValue => $this->ctx->valueFactory->fromAst(
                 $node,
-                $innerFormat
-            )
+                $innerFormat,
+            ),
         );
 
         $this->conditional = new ConditionalEvaluator(
@@ -122,19 +122,19 @@ final readonly class Evaluator
             fn(AstNode $node, Environment $env): string => $this->format($node, $env),
             fn(ListNode $node, Environment $env): ?AstNode => $this->evaluateComparisonList($node, $env),
             fn(bool $value): AstNode => $this->createBooleanNode($value),
-            fn(): AstNode => $this->ctx->valueFactory->createNullNode()
+            fn(): AstNode => $this->ctx->valueFactory->createNullNode(),
         );
 
         $this->cssArgument = new CssArgumentEvaluator(
             fn(AstNode $node, Environment $env): AstNode => $this->evaluateValue($node, $env),
-            fn(string $name, array $args): array => $this->calculation->normalizeArguments($name, $args)
+            fn(string $name, array $args): array => $this->calculation->normalizeArguments($name, $args),
         );
 
         $this->callArguments = new CallArgumentResolver(
             $this->parser,
             $this->cssArgument,
             $this->userFunction,
-            fn(AstNode $node, Environment $env): AstNode => $this->evaluateValue($node, $env)
+            fn(AstNode $node, Environment $env): AstNode => $this->evaluateValue($node, $env),
         );
     }
 
@@ -176,7 +176,7 @@ final readonly class Evaluator
 
             return new StringNode(
                 $this->text->replaceInterpolations($node->value, $env),
-                $node->quoted
+                $node->quoted,
             );
         }
 
@@ -279,7 +279,7 @@ final readonly class Evaluator
                 $items ?? $node->items,
                 $node->separator,
                 $node->bracketed,
-                $keywords ?? $node->keywords
+                $keywords ?? $node->keywords,
             );
         }
 
@@ -353,7 +353,7 @@ final readonly class Evaluator
             if ($userFunction !== null) {
                 [$positionalArguments, $namedArguments] = $this->resolveCallArguments(
                     $node->arguments,
-                    $env
+                    $env,
                 );
 
                 if (++$this->ctx->moduleState->callDepth > 100) {
@@ -368,7 +368,7 @@ final readonly class Evaluator
                         $userFunction,
                         $positionalArguments,
                         $namedArguments,
-                        $env
+                        $env,
                     );
                 } finally {
                     $this->ctx->moduleState->callDepth--;
@@ -423,7 +423,7 @@ final readonly class Evaluator
                 fn(string $msg) => ($this->handleDiagnosticDirective)('warn', new StringNode($msg), $env, $node),
                 null,
                 $node->arguments,
-                $node->line
+                $node->line,
             );
 
             $preferBuiltin = in_array(strtolower($node->name), ['max', 'min', 'clamp'], true);
@@ -450,7 +450,7 @@ final readonly class Evaluator
 
             $fallback = new FunctionNode(
                 $node->name,
-                $this->calculation->normalizeArguments($node->name, $fallbackArguments)
+                $this->calculation->normalizeArguments($node->name, $fallbackArguments),
             );
 
             if ($this->options->style === Style::COMPRESSED) {
@@ -582,13 +582,13 @@ final readonly class Evaluator
                     $node->name,
                     $evaluatedValue,
                     true,
-                    $node->default
+                    $node->default,
                 );
             } else {
                 $currentScope->setVariableLocal(
                     $node->name,
                     $evaluatedValue,
-                    $node->default
+                    $node->default,
                 );
             }
 
@@ -651,7 +651,7 @@ final readonly class Evaluator
         foreach ($variables as $index => $name) {
             $env->getCurrentScope()->setVariable(
                 $name,
-                $values[$index] ?? $this->ctx->valueFactory->createNullNode()
+                $values[$index] ?? $this->ctx->valueFactory->createNullNode(),
             );
         }
     }
@@ -670,7 +670,7 @@ final readonly class Evaluator
     public function tryEvaluateFormattedDeclarationExpression(
         string $property,
         AstNode $value,
-        Environment $env
+        Environment $env,
     ): ?AstNode {
         if ($value instanceof FunctionNode && strtolower($value->name) === 'calc') {
             return null;
@@ -786,7 +786,7 @@ final readonly class Evaluator
 
             $formatted = $this->ctx->valueFactory->fromAst(
                 $value,
-                fn(AstNode $inner): string => $this->format($inner, $env)
+                fn(AstNode $inner): string => $this->format($inner, $env),
             )->toCss();
 
             if (in_array($value->name, ['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'color'], true)) {
@@ -895,7 +895,7 @@ final readonly class Evaluator
         array $parameters,
         array $resolvedPositional,
         array $resolvedNamed,
-        Scope $scope
+        Scope $scope,
     ): void {
         $this->callArguments->bindParametersToCurrentScope($parameters, $resolvedPositional, $resolvedNamed, $scope);
     }

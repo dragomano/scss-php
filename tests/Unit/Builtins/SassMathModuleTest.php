@@ -268,7 +268,7 @@ describe('SassMathModule', function () {
             logWarning: static function (string $message) use (&$warnings): void {
                 $warnings[] = $message;
             },
-            rawArguments: [new StringNode('quoted', true), new BooleanNode(true)]
+            rawArguments: [new StringNode('quoted', true), new BooleanNode(true)],
         );
 
         $this->module->call('max', [new NumberNode(1), new NumberNode(2)], [], $context);

@@ -173,7 +173,7 @@ describe('Text service', function () {
 
         it('returns interpolation expression as is when parser root does not contain a rule', function () {
             $text = new Text(
-                new class () implements ParserInterface {
+                new class implements ParserInterface {
                     public function setTrackSourceLocations(bool $track): void {}
 
                     public function parse(string $source): RootNode
@@ -182,7 +182,7 @@ describe('Text service', function () {
                     }
                 },
                 static fn($node, $env) => new StringNode('unused'),
-                static fn($node, $env): string => 'unused'
+                static fn($node, $env): string => 'unused',
             );
             $accessor = new ReflectionAccessor($text);
 
@@ -195,7 +195,7 @@ describe('Text service', function () {
                 new Bugo\SCSS\Nodes\ListNode(
                     [new StringNode('alpha'), new StringNode('beta')],
                     'slash',
-                    true
+                    true,
                 ),
                 $this->env,
             ]);
@@ -207,7 +207,7 @@ describe('Text service', function () {
             $result = $this->accessor->callMethod('formatInterpolationValue', [
                 new Bugo\SCSS\Nodes\ListNode(
                     [new StringNode('alpha'), new StringNode('beta')],
-                    'space'
+                    'space',
                 ),
                 $this->env,
             ]);

@@ -31,7 +31,7 @@ final readonly class ModuleDirectiveParser
         private Closure $parseString,
         private Closure $consumeIdentifier,
         private Closure $parseValueUntil,
-        private Closure $parseValueModifiers
+        private Closure $parseValueModifiers,
     ) {}
 
     public function parseUseDirective(): UseNode
@@ -154,7 +154,7 @@ final readonly class ModuleDirectiveParser
 
         return array_filter(
             $rawConfiguration,
-            fn(AstNode|array $value): bool => $value instanceof AstNode
+            fn(AstNode|array $value): bool => $value instanceof AstNode,
         );
     }
 

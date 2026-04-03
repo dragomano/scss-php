@@ -41,7 +41,7 @@ final class SassCalculation extends AbstractSassValue
      */
     public function __construct(
         private readonly string $name,
-        private readonly array $arguments = []
+        private readonly array $arguments = [],
     ) {}
 
     public static function isCalculationFunctionName(string $name): bool

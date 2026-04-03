@@ -39,7 +39,7 @@ final readonly class ColorNodeConverter
         private ColorConverterInterface $colorSpaceConverter,
         private ColorLiteralInterface $colorLiteralConverter,
         private ColorAstParser $colorAstParser,
-        private Closure $errorCtx
+        private Closure $errorCtx,
     ) {}
 
     public function toRgb(AstNode $color): RgbColor
@@ -59,7 +59,7 @@ final readonly class ColorNodeConverter
                 r: $rgba->rValue() * 255.0,
                 g: $rgba->gValue() * 255.0,
                 b: $rgba->bValue() * 255.0,
-                a: $rgba->a
+                a: $rgba->a,
             );
         }
 
@@ -160,7 +160,7 @@ final readonly class ColorNodeConverter
                         r: $this->genericSrgbChannelToByte($red),
                         g: $this->genericSrgbChannelToByte($green),
                         b: $this->genericSrgbChannelToByte($blue),
-                        a: $this->toAlpha($color)
+                        a: $this->toAlpha($color),
                     );
                 }
             }
@@ -184,7 +184,7 @@ final readonly class ColorNodeConverter
             h: $this->colorSpaceConverter->hueFromNormalizedRgb($r, $g, $b, $max, $min, $delta),
             w: $min * 100.0,
             b: (1.0 - $max) * 100.0,
-            a: $rgb->a
+            a: $rgb->a,
         );
     }
 

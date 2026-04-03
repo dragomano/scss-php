@@ -23,7 +23,7 @@ final readonly class ColorBundleAdapter implements ColorBundleInterface
         private SpaceRouter $spaceRouter = new SpaceRouter(),
         private LiteralSerializer $literalSerializer = new LiteralSerializer(),
         private LiteralParser $literalConverter = new LiteralParser(),
-        private IrisColorManipulator $manipulator = new IrisColorManipulator()
+        private IrisColorManipulator $manipulator = new IrisColorManipulator(),
     ) {}
 
     public function getConverter(): ColorConverterInterface

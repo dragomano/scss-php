@@ -21,7 +21,7 @@ it('renders indentation and trims trailing newlines', function () {
 
 it('collects source mappings and builds a source map', function () {
     $runtime = RuntimeFactory::createRuntime(
-        options: new CompilerOptions(sourceMapFile: 'output.css.map', includeSources: true)
+        options: new CompilerOptions(sourceMapFile: 'output.css.map', includeSources: true),
     );
 
     $render = $runtime->render();
@@ -45,7 +45,7 @@ it('collects source mappings and builds a source map', function () {
 
 it('handles render edge cases for chunks source maps and remapping helpers', function () {
     $runtime = RuntimeFactory::createRuntime(
-        options: new CompilerOptions(sourceMapFile: 'output.css.map')
+        options: new CompilerOptions(sourceMapFile: 'output.css.map'),
     );
     $render   = $runtime->render();
     $ctx      = (new ReflectionAccessor($runtime))->getProperty('ctx');
@@ -73,27 +73,27 @@ it('handles render edge cases for chunks source maps and remapping helpers', fun
     $ctx->sourceMapState->mappings = array_fill(0, 20001, 1);
     expect($accessor->callMethod(
         'shouldRemapMappingsAfterOptimization',
-        [str_repeat('a', 150000), str_repeat('b', 150000)]
+        [str_repeat('a', 150000), str_repeat('b', 150000)],
     ))
         ->toBeTrue();
 
     $ctx->sourceMapState->mappings = array_fill(0, 75001, 1);
     expect($accessor->callMethod(
         'shouldRemapMappingsAfterOptimization',
-        [str_repeat('a', 150001), str_repeat('b', 156002)]
+        [str_repeat('a', 150001), str_repeat('b', 156002)],
     ))
         ->toBeFalse();
 
     $ctx->sourceMapState->mappings = array_fill(0, 30000, 1);
     expect($accessor->callMethod(
         'shouldRemapMappingsAfterOptimization',
-        [str_repeat('a', 150001), str_repeat('b', 150002)]
+        [str_repeat('a', 150001), str_repeat('b', 150002)],
     ))
         ->toBeTrue();
 
     $ctx->sourceMapState->mappings = [];
 
-    $invalidOrigin = new class () implements Visitable {
+    $invalidOrigin = new class implements Visitable {
         public string $line = 'x';
 
         public string $column = 'y';
@@ -120,7 +120,7 @@ it('handles render edge cases for chunks source maps and remapping helpers', fun
 
 it('tracks generated positions for multiline chunks', function () {
     $runtime = RuntimeFactory::createRuntime(
-        options: new CompilerOptions(sourceMapFile: 'output.css.map')
+        options: new CompilerOptions(sourceMapFile: 'output.css.map'),
     );
     $render = $runtime->render();
     $ctx    = (new ReflectionAccessor($runtime))->getProperty('ctx');

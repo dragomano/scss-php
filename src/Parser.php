@@ -45,7 +45,7 @@ final class Parser implements ParserInterface
     {
         $this->values = new ValueParser(
             $this->stream,
-            fn(string $expr): AstNode => $this->parseInlineValue($expr)
+            fn(string $expr): AstNode => $this->parseInlineValue($expr),
         );
 
         $this->rules = new RuleParser(
@@ -57,9 +57,9 @@ final class Parser implements ParserInterface
             fn(string $selector, int $line, int $column): RuleNode => $this->parseRuleFromSelector(
                 $selector,
                 $line,
-                $column
+                $column,
             ),
-            $this->trackSourceLocations
+            $this->trackSourceLocations,
         );
 
         $this->directives = new DirectiveParser(
@@ -75,7 +75,7 @@ final class Parser implements ParserInterface
             fn(string $selector, int $line, int $column): RuleNode => $this->parseRuleFromSelector(
                 $selector,
                 $line,
-                $column
+                $column,
             ),
             fn(string $expr): AstNode => $this->parseInlineValue($expr),
             function (): void {
@@ -83,7 +83,7 @@ final class Parser implements ParserInterface
             },
             function (): void {
                 $this->blockDepth--;
-            }
+            },
         );
     }
 
@@ -139,7 +139,7 @@ final class Parser implements ParserInterface
                     trim($token->value),
                     $token->type === TokenType::COMMENT_PRESERVED,
                     $token->line,
-                    $token->column
+                    $token->column,
                 );
 
                 $this->stream->advance();
@@ -237,7 +237,7 @@ final class Parser implements ParserInterface
                     trim($token->value),
                     $token->type === TokenType::COMMENT_PRESERVED,
                     $token->line,
-                    $token->column
+                    $token->column,
                 );
 
                 $this->stream->advance();

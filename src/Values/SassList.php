@@ -19,7 +19,7 @@ final class SassList extends AbstractSassValue
         private readonly array $items,
         private readonly string $separator = 'space',
         private readonly bool $bracketed = false,
-        private readonly bool $shorthand = true
+        private readonly bool $shorthand = true,
     ) {}
 
     public function toCss(): string

@@ -16,7 +16,7 @@ describe('ValueFactory', function () {
     });
 
     it('uses formatter for unsupported ast nodes', function () {
-        $node = new class () extends AstNode {};
+        $node = new class extends AstNode {};
 
         $value = $this->factory->fromAst($node, static fn(AstNode $node): string => $node::class);
 
@@ -25,7 +25,7 @@ describe('ValueFactory', function () {
     });
 
     it('returns true for unsupported ast nodes without formatter', function () {
-        $value = $this->factory->fromAst(new class () extends AstNode {});
+        $value = $this->factory->fromAst(new class extends AstNode {});
 
         expect($value)->toBeInstanceOf(SassBoolean::class)
             ->and($value->toCss())->toBe('true')

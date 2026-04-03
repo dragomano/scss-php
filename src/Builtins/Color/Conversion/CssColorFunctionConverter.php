@@ -28,7 +28,7 @@ final readonly class CssColorFunctionConverter
     use ColorChannelSplitterTrait;
 
     public function __construct(
-        private ColorConverterInterface $colorSpaceConverter = new IrisConverterAdapter()
+        private ColorConverterInterface $colorSpaceConverter = new IrisConverterAdapter(),
     ) {}
 
     public function tryConvertToRgba(FunctionNode $function): ?RgbColor
@@ -110,7 +110,7 @@ final readonly class CssColorFunctionConverter
             $function,
             $this->parseRgbChannelValue(...),
             $this->parseRgbChannelValue(...),
-            $this->parseRgbChannelValue(...)
+            $this->parseRgbChannelValue(...),
         );
 
         if ($parsed === null) {
@@ -131,7 +131,7 @@ final readonly class CssColorFunctionConverter
                 [$r, $g, $b] = $this->colorSpaceConverter->hslToRgb($hue, $saturation, $lightness);
 
                 return new RgbColor($r, $g, $b, $opacity);
-            }
+            },
         );
     }
 
@@ -146,7 +146,7 @@ final readonly class CssColorFunctionConverter
                 [$r, $g, $b] = $this->colorSpaceConverter->hwbToRgb($hue, $whiteness, $blackness);
 
                 return new RgbColor($r, $g, $b, $opacity);
-            }
+            },
         );
     }
 
@@ -159,13 +159,13 @@ final readonly class CssColorFunctionConverter
                 $function,
                 fn(float $l, float $a, float $b, float $opacity): RgbColor
                     => $this->colorSpaceConverter->oklabChannelsToSrgba($l / 100.0, $a, $b, $opacity),
-                0.4
+                0.4,
             ),
             'oklch' => $this->parseCssLchLike(
                 $function,
                 fn(float $l, float $c, float $h, float $opacity): RgbColor
                     => $this->colorSpaceConverter->oklchChannelsToSrgba($l / 100.0, $c, $h, $opacity),
-                0.4
+                0.4,
             ),
             default => null,
         };
@@ -220,7 +220,7 @@ final readonly class CssColorFunctionConverter
             'srgb',
             $rgba->rValue(),
             $rgba->gValue(),
-            $rgba->bValue()
+            $rgba->bValue(),
         );
     }
 
@@ -233,7 +233,7 @@ final readonly class CssColorFunctionConverter
             $function,
             $this->parseLabLightness(...),
             fn(AstNode $node): ?float => $this->parseAbsoluteChannel($node, $channelPercentMax),
-            fn(AstNode $node): ?float => $this->parseAbsoluteChannel($node, $channelPercentMax)
+            fn(AstNode $node): ?float => $this->parseAbsoluteChannel($node, $channelPercentMax),
         );
 
         if ($parsed === null) {
@@ -258,7 +258,7 @@ final readonly class CssColorFunctionConverter
             fn(AstNode $node): ?float => $this->parseAbsoluteChannel($node, $name === 'lab' ? 125.0 : 150.0),
             $name === 'lab'
                 ? fn(AstNode $node): ?float => $this->parseAbsoluteChannel($node, 125.0)
-                : $this->parseHueDegrees(...)
+                : $this->parseHueDegrees(...),
         );
 
         if ($parsed === null) {
@@ -289,7 +289,7 @@ final readonly class CssColorFunctionConverter
             fn(AstNode $node): ?float => $this->parseAbsoluteChannel($node, $chromaPercentMax),
             $this->parseHueDegrees(...),
             fn(float $lightness, float $chroma, float $hue, float $opacity): RgbColor
-                => $converter($lightness, $chroma, $hue, $opacity)
+                => $converter($lightness, $chroma, $hue, $opacity),
         );
     }
 
@@ -306,7 +306,7 @@ final readonly class CssColorFunctionConverter
             fn(AstNode $node): ?float => $this->parseAbsoluteChannel($node, 0.4),
             $name === 'oklab'
                 ? fn(AstNode $node): ?float => $this->parseAbsoluteChannel($node, 0.4)
-                : $this->parseHueDegrees(...)
+                : $this->parseHueDegrees(...),
         );
 
         if ($parsed === null) {
@@ -329,7 +329,7 @@ final readonly class CssColorFunctionConverter
     private function extractThreeChannels(FunctionNode $function): ?array
     {
         [$channels, $alpha] = $this->splitChannelsAndAlpha(
-            $this->expandArguments($function)
+            $this->expandArguments($function),
         );
 
         if (count($channels) !== 3) {
@@ -349,7 +349,7 @@ final readonly class CssColorFunctionConverter
         FunctionNode $function,
         callable $parser1,
         callable $parser2,
-        callable $parser3
+        callable $parser3,
     ): ?array {
         $result = $this->extractThreeChannels($function);
 
@@ -373,7 +373,7 @@ final readonly class CssColorFunctionConverter
         callable $parser1,
         callable $parser2,
         callable $parser3,
-        callable $callback
+        callable $callback,
     ): ?RgbColor {
         $parsed = $this->parseFunctionThreeChannels($function, $parser1, $parser2, $parser3);
 
@@ -391,7 +391,7 @@ final readonly class CssColorFunctionConverter
     {
         [$channelsWithSpace, $alpha] = $this->splitChannelsAndAlpha(
             $this->expandArguments($function),
-            false
+            false,
         );
 
         if (count($channelsWithSpace) !== 4 || ! ($channelsWithSpace[0] instanceof StringNode)) {
@@ -423,7 +423,7 @@ final readonly class CssColorFunctionConverter
         ?AstNode $alpha,
         callable $parser1,
         callable $parser2,
-        callable $parser3
+        callable $parser3,
     ): ?array {
         $value1  = $parser1($channels[0]);
         $value2  = $parser2($channels[1]);
@@ -624,7 +624,7 @@ final readonly class CssColorFunctionConverter
             r: (float) ($rNibble * 17) / 255.0,
             g: (float) ($gNibble * 17) / 255.0,
             b: (float) ($bNibble * 17) / 255.0,
-            a: $rgba->a
+            a: $rgba->a,
         );
     }
 

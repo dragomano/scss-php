@@ -11,7 +11,7 @@ final class SassString extends AbstractSassValue
 {
     public function __construct(
         private readonly string $value,
-        private readonly bool $quoted = false
+        private readonly bool $quoted = false,
     ) {}
 
     public function toCss(): string

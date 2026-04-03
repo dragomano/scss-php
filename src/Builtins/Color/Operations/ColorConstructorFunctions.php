@@ -56,7 +56,7 @@ final readonly class ColorConstructorFunctions
         private ColorArgumentParser $parser,
         private ColorNodeConverter $converter,
         private ColorAstWriter $astWriter,
-        private Closure $errorCtx
+        private Closure $errorCtx,
     ) {}
 
     /**
@@ -73,15 +73,15 @@ final readonly class ColorConstructorFunctions
             return new FunctionNode('hsl', [
                 new ListNode([
                     $hueMissing ? new StringNode('none') : new NumberNode(
-                        $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsl'))
+                        $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsl')),
                     ),
                     $satMissing ? new StringNode('none') : new NumberNode(
                         $this->parser->asPercentage($arguments[1], 'hsl'),
-                        '%'
+                        '%',
                     ),
                     $lightMissing ? new StringNode('none') : new NumberNode(
                         $this->parser->asPercentage($arguments[2], 'hsl'),
-                        '%'
+                        '%',
                     ),
                 ], 'space'),
             ]);
@@ -91,7 +91,7 @@ final readonly class ColorConstructorFunctions
             $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsl')),
             $this->parser->asPercentage($arguments[1], 'hsl'),
             $this->parser->asPercentage($arguments[2], 'hsl'),
-            $this->parser->parseAlphaOrDefault($arguments, 3, 'hsl')
+            $this->parser->parseAlphaOrDefault($arguments, 3, 'hsl'),
         );
     }
 
@@ -106,7 +106,7 @@ final readonly class ColorConstructorFunctions
             $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsla')),
             $this->parser->asPercentage($arguments[1], 'hsla'),
             $this->parser->asPercentage($arguments[2], 'hsla'),
-            $this->parser->parseAlphaOrDefault($arguments, 3, 'hsla')
+            $this->parser->parseAlphaOrDefault($arguments, 3, 'hsla'),
         );
     }
 
@@ -130,7 +130,7 @@ final readonly class ColorConstructorFunctions
                     new NumberNode($rgb->bValue()),
                     new NumberNode($alpha),
                 ]);
-            } catch (MissingFunctionArgumentsException | UnsupportedColorValueException) {
+            } catch (MissingFunctionArgumentsException|UnsupportedColorValueException) {
                 // the first argument is not the color
             }
         }
@@ -164,7 +164,7 @@ final readonly class ColorConstructorFunctions
     {
         if ($this->parser->isRelativeColorSyntax($positional)) {
             throw new DeferToCssFunctionException(
-                $this->parser->callRef('rgba') . ' should be emitted as a CSS function.'
+                $this->parser->callRef('rgba') . ' should be emitted as a CSS function.',
             );
         }
 
@@ -176,7 +176,7 @@ final readonly class ColorConstructorFunctions
                 r: $rgb->r,
                 g: $rgb->g,
                 b: $rgb->b,
-                a: $alpha
+                a: $alpha,
             ));
         }
 
@@ -188,7 +188,7 @@ final readonly class ColorConstructorFunctions
             r: $this->parser->asByte($positional[0], 'rgba'),
             g: $this->parser->asByte($positional[1], 'rgba'),
             b: $this->parser->asByte($positional[2], 'rgba'),
-            a: $this->parser->clamp($this->parser->asNumber($positional[3], 'rgba'), 1.0)
+            a: $this->parser->clamp($this->parser->asNumber($positional[3], 'rgba'), 1.0),
         ));
     }
 
@@ -221,7 +221,7 @@ final readonly class ColorConstructorFunctions
 
         try {
             $rgb = $this->converter->toRgb($this->parser->requireColor($positional, 0, 'rgba'));
-        } catch (MissingFunctionArgumentsException | UnsupportedColorValueException) {
+        } catch (MissingFunctionArgumentsException|UnsupportedColorValueException) {
             return new FunctionNode('rgba', $positional);
         }
 
@@ -358,7 +358,7 @@ final readonly class ColorConstructorFunctions
             (int) round($rgb->a * 255.0),
             (int) round($rgb->rValue()),
             (int) round($rgb->gValue()),
-            (int) round($rgb->bValue())
+            (int) round($rgb->bValue()),
         ));
     }
 }

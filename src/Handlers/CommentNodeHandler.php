@@ -18,7 +18,7 @@ final readonly class CommentNodeHandler
     public function __construct(
         private Context $context,
         private Evaluator $evaluation,
-        private Render $render
+        private Render $render,
     ) {}
 
     public function handle(CommentNode $node, TraversalContext $ctx): string

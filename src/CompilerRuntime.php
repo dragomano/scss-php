@@ -71,7 +71,7 @@ final class CompilerRuntime
         private readonly CompilerOptions $options,
         private readonly LoaderInterface $loader,
         private readonly ParserInterface $parser,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
     ) {
         $this->dispatcher = new CompilerDispatcher();
         $this->dispatcher->setVisitor(new CompilerVisitor($this));
@@ -97,7 +97,7 @@ final class CompilerRuntime
             $ast,
             $this->evaluation(),
             $this->selector(),
-            $this->dispatcher
+            $this->dispatcher,
         );
 
         $ast->setModule($this->module);
@@ -130,13 +130,13 @@ final class CompilerRuntime
                 string $directive,
                 AstNode $messageNode,
                 Environment $env,
-                ?AstNode $origin = null
+                ?AstNode $origin = null,
             ) => $this->diagnostic()->handleDirective(
                 $directive,
                 $messageNode,
                 new TraversalContext($env, 0),
-                $origin
-            )
+                $origin,
+            ),
         );
     }
 
@@ -147,7 +147,7 @@ final class CompilerRuntime
             $this->parser,
             $this->text(),
             fn(AstNode $node, Environment $env): AstNode => $this->evaluation()->evaluateValue($node, $env),
-            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env)
+            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
         );
     }
 
@@ -167,15 +167,15 @@ final class CompilerRuntime
             fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
             fn(string $condition, Environment $env): bool => $this->evaluation()->evaluateFunctionCondition(
                 $condition,
-                $env
+                $env,
             ),
             fn(AstNode $node, Environment $env): bool => $this->evaluation()->applyVariableDeclaration($node, $env),
             fn(AstNode $value): array => $this->evaluation()->eachIterableItems($value),
             fn(array $variables, AstNode $item, Environment $env) => $this->evaluation()->assignEachVariables(
                 $variables,
                 $item,
-                $env
-            )
+                $env,
+            ),
         );
     }
 
@@ -184,7 +184,7 @@ final class CompilerRuntime
         return $this->text ??= new Text(
             $this->parser,
             fn(AstNode $node, Environment $env): AstNode => $this->evaluation()->evaluateValue($node, $env),
-            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env)
+            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
         );
     }
 
@@ -193,7 +193,7 @@ final class CompilerRuntime
         return $this->render ??= new Render(
             $this->ctx,
             $this->options,
-            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env)
+            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
         );
     }
 
@@ -207,7 +207,7 @@ final class CompilerRuntime
         return $this->commentHandler ??= new CommentNodeHandler(
             $this->context(),
             $this->evaluation(),
-            $this->render()
+            $this->render(),
         );
     }
 
@@ -217,7 +217,7 @@ final class CompilerRuntime
             $this->dispatcher,
             $this->evaluation(),
             $this->render(),
-            $this->selector()
+            $this->selector(),
         );
     }
 
@@ -230,7 +230,7 @@ final class CompilerRuntime
             $this->ctx->functionRegistry,
             $this->module(),
             $this->render(),
-            $this->selector()
+            $this->selector(),
         );
     }
 
@@ -239,7 +239,7 @@ final class CompilerRuntime
         return $this->declarationHandler ??= new DeclarationNodeHandler(
             $this->evaluation(),
             $this->render(),
-            $this->text()
+            $this->text(),
         );
     }
 
@@ -248,7 +248,7 @@ final class CompilerRuntime
         return $this->definitionHandler ??= new DefinitionNodeHandler(
             $this->evaluation(),
             $this->module(),
-            $this->context()
+            $this->context(),
         );
     }
 
@@ -257,7 +257,7 @@ final class CompilerRuntime
         return $this->diagnosticHandler ??= new DiagnosticNodeHandler(
             $this->context(),
             $this->evaluation(),
-            $this->render()
+            $this->render(),
         );
     }
 
@@ -266,7 +266,7 @@ final class CompilerRuntime
         return $this->flowControlHandler ??= new FlowControlNodeHandler(
             $this->dispatcher,
             $this->evaluation(),
-            $this->render()
+            $this->render(),
         );
     }
 
@@ -276,7 +276,7 @@ final class CompilerRuntime
             $this->evaluation(),
             $this->module(),
             $this->render(),
-            $this->selector()
+            $this->selector(),
         );
     }
 

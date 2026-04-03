@@ -22,7 +22,7 @@ final readonly class DeclarationNodeHandler
     public function __construct(
         private Evaluator $evaluation,
         private Render $render,
-        private Text $text
+        private Text $text,
     ) {}
 
     public function handle(DeclarationNode $node, TraversalContext $ctx): string
@@ -68,7 +68,7 @@ final readonly class DeclarationNodeHandler
         $reparsedValue = $this->evaluation->tryEvaluateFormattedDeclarationExpression(
             $property,
             $evaluatedValue,
-            $ctx->env
+            $ctx->env,
         );
 
         if ($reparsedValue instanceof AstNode) {
@@ -89,7 +89,7 @@ final readonly class DeclarationNodeHandler
                 strlen($prefix . $property . ': '),
                 $valueOrigin->line,
                 $valueOrigin->column,
-                $node
+                $node,
             );
         }
 

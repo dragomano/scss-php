@@ -12,7 +12,7 @@ final class SassColor extends AbstractSassValue
     public function __construct(
         private readonly string $value,
         private readonly bool $outputHexColors = false,
-        private readonly ColorSerializerInterface $colorSerializer = new ColorSerializerAdapter()
+        private readonly ColorSerializerInterface $colorSerializer = new ColorSerializerAdapter(),
     ) {}
 
     public function toCss(): string

@@ -10,6 +10,6 @@ final class StringNode extends AstNode
         public string $value,
         public bool $quoted = false,
         public int $line = 0,
-        public int $column = 0
+        public int $column = 0,
     ) {}
 }

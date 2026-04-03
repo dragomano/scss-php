@@ -15,7 +15,7 @@ final class UseNode extends StatementNode
     public function __construct(
         public string $path,
         public ?string $namespace = null,
-        public array $configuration = []
+        public array $configuration = [],
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

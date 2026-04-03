@@ -232,23 +232,23 @@ describe('SassListModule', function () {
         $bracketed = $this->accessor->callMethod('describeValue', [new ListNode(
             [new NumberNode(1)],
             'space',
-            true
+            true,
         )]);
         $emptyList = $this->accessor->callMethod('describeValue', [new ListNode([], 'space')]);
         $commaList = $this->accessor->callMethod('describeValue', [new ListNode(
             [new NumberNode(1), new NumberNode(2)],
-            'comma'
+            'comma',
         )]);
         $spaceList = $this->accessor->callMethod('describeValue', [new ListNode(
             [new StringNode('a'), new StringNode('b')],
-            'space'
+            'space',
         )]);
 
         $map = $this->accessor->callMethod('describeValue', [new MapNode([
             ['key' => new StringNode('k'), 'value' => new NumberNode(1)],
         ])]);
 
-        $fallback = $this->accessor->callMethod('describeValue', [new class () extends AstNode {}]);
+        $fallback = $this->accessor->callMethod('describeValue', [new class extends AstNode {}]);
 
         expect($empty)->toBe('')
             ->and($quoted)->toBe('"quoted"')

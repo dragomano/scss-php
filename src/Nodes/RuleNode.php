@@ -16,7 +16,7 @@ final class RuleNode extends StatementNode
         public string $selector,
         public array $children = [],
         public int $line = 1,
-        public int $column = 1
+        public int $column = 1,
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

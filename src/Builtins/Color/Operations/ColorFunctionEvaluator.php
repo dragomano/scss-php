@@ -55,7 +55,7 @@ final readonly class ColorFunctionEvaluator
         private ColorValueFormatter $formatter,
         private ColorConverterInterface $colorSpaceConverter,
         private Closure $warn,
-        private ColorMixResolver $colorMixResolver = new ColorMixResolver()
+        private ColorMixResolver $colorMixResolver = new ColorMixResolver(),
     ) {}
 
     /**
@@ -68,7 +68,7 @@ final readonly class ColorFunctionEvaluator
             $positional,
             $named,
             $context,
-            fn(float $current, float $delta): float => $current + $delta
+            fn(float $current, float $delta): float => $current + $delta,
         );
     }
 
@@ -82,7 +82,7 @@ final readonly class ColorFunctionEvaluator
             $positional,
             $named,
             'change-color',
-            fn(float $current, float $value): float => $value
+            fn(float $current, float $value): float => $value,
         );
     }
 
@@ -129,18 +129,18 @@ final readonly class ColorFunctionEvaluator
             l: $this->colorSpaceConverter->scaleLinear(
                 $oklch->lValue(),
                 $this->parseScalePercentage($named, 'lightness') ?? 0.0,
-                100.0
+                100.0,
             ),
             c: $this->colorSpaceConverter->scaleLinear(
                 $oklch->cValue(),
                 $this->parseScalePercentage($named, 'chroma') ?? 0.0,
-                0.4
+                0.4,
             ),
             h: $oklch->h,
             a: $this->colorSpaceConverter->scaleLinear(
                 $oklch->a,
                 $this->parseScalePercentage($named, 'alpha') ?? 0.0,
-                1.0
+                1.0,
             ),
         );
 
@@ -165,7 +165,7 @@ final readonly class ColorFunctionEvaluator
         if ($this->converter->isLegacyColor($color)) {
             $adjustedColor = $this->manipulator->spin(
                 new IrisColorValue($this->converter->toRgb($color)),
-                $degrees
+                $degrees,
             );
 
             /** @var ColorValueInterface<RgbColor> $adjustedColor */
@@ -182,7 +182,7 @@ final readonly class ColorFunctionEvaluator
         array $positional,
         int $direction,
         string $context,
-        ?BuiltinCallContext $callContext
+        ?BuiltinCallContext $callContext,
     ): AstNode {
         $color  = $this->parser->requireColor($positional, 0, $context);
         $amount = $this->parser->asNumber($positional[1] ?? null, $context) * (float) $direction;
@@ -217,7 +217,7 @@ final readonly class ColorFunctionEvaluator
         int $direction,
         string $context,
         bool $allowCssDefer = false,
-        ?BuiltinCallContext $callContext = null
+        ?BuiltinCallContext $callContext = null,
     ): AstNode {
         $color = $allowCssDefer
             ? $this->parser->requireColorOrDefer($positional, $context)
@@ -273,7 +273,7 @@ final readonly class ColorFunctionEvaluator
         if ($space === null && $this->converter->isLegacyColor($color)) {
             $adjustedColor = $this->manipulator->spin(
                 new IrisColorValue($this->converter->toRgb($color)),
-                180.0
+                180.0,
             );
 
             /** @var ColorValueInterface<RgbColor> $adjustedColor */
@@ -286,7 +286,7 @@ final readonly class ColorFunctionEvaluator
             [$color],
             $named,
             'complement',
-            fn(float $current, float $delta): float => $current + $delta
+            fn(float $current, float $delta): float => $current + $delta,
         );
     }
 
@@ -315,9 +315,9 @@ final readonly class ColorFunctionEvaluator
                     l: $oklch->l,
                     c: 0.0,
                     h: $oklch->h,
-                    a: 1.0
+                    a: 1.0,
                 ),
-                true
+                true,
             );
         }
 
@@ -344,7 +344,7 @@ final readonly class ColorFunctionEvaluator
         $methodNode = $named['method'] ?? ($positional[3] ?? null);
         $weight     = $this->parser->asPercentage(
             $named['weight'] ?? ($positional[2] ?? new NumberNode(50)),
-            'mix'
+            'mix',
         );
 
         ['space' => $method, 'hue' => $hueMethod] = $this->resolveMixMethod($named, $positional);
@@ -406,13 +406,13 @@ final readonly class ColorFunctionEvaluator
         $space = strtolower(
             $this->parser->asString(
                 $named['space'] ?? new StringNode('rgb'),
-                'invert'
-            )
+                'invert',
+            ),
         );
 
         $weight = $this->parser->asPercentage(
             $named['weight'] ?? ($positional[1] ?? new NumberNode(100)),
-            'invert'
+            'invert',
         );
 
         $p   = $this->parser->clamp($weight / 100.0, 1.0);
@@ -429,7 +429,7 @@ final readonly class ColorFunctionEvaluator
             $mixed3 = $this->colorSpaceConverter->mixChannel($channels[2], $inverted3, 1.0 - $p);
 
             return $this->astWriter->serializeRgbResult(
-                $this->spaceInterop->workingSpaceChannelsToRgb($space, [$mixed1, $mixed2, $mixed3], $rgb->a)
+                $this->spaceInterop->workingSpaceChannelsToRgb($space, [$mixed1, $mixed2, $mixed3], $rgb->a),
             );
         }
 
@@ -455,7 +455,7 @@ final readonly class ColorFunctionEvaluator
         array $positional,
         array $named,
         string $context,
-        callable $modify
+        callable $modify,
     ): AstNode {
         $requestedSpace = null;
 
@@ -560,7 +560,7 @@ final readonly class ColorFunctionEvaluator
 
         $lab = $this->colorSpaceConverter->xyzD50ToLabColor(
             $this->converter->toXyzD50($color),
-            $this->converter->toAlpha($color)
+            $this->converter->toAlpha($color),
         );
 
         $newLabColor = $this->isDirectChange($modify)
@@ -584,14 +584,14 @@ final readonly class ColorFunctionEvaluator
         string $function,
         AstNode $color,
         string $channel,
-        string $formattedAmount
+        string $formattedAmount,
     ): string {
         return sprintf(
             '%s(%s, $%s: %s)',
             $function,
             $this->formatter->describeValue($color),
             $channel,
-            $formattedAmount
+            $formattedAmount,
         );
     }
 
@@ -677,8 +677,8 @@ final readonly class ColorFunctionEvaluator
                 r: $rgb->rValue() / 255.0,
                 g: $rgb->gValue() / 255.0,
                 b: $rgb->bValue() / 255.0,
-                a: $rgb->a
-            )
+                a: $rgb->a,
+            ),
         );
     }
 
@@ -716,7 +716,7 @@ final readonly class ColorFunctionEvaluator
             'color.scale',
             $color,
             $channel,
-            $this->formatter->formatSignedPercentage($direction > 0 ? $scale : -$scale)
+            $this->formatter->formatSignedPercentage($direction > 0 ? $scale : -$scale),
         );
     }
 
@@ -751,8 +751,8 @@ final readonly class ColorFunctionEvaluator
         $parts = array_values(
             array_filter(
                 explode(' ', strtolower(trim($methodText))),
-                static fn(string $part): bool => $part !== ''
-            )
+                static fn(string $part): bool => $part !== '',
+            ),
         );
 
         if ($parts === []) {
@@ -775,7 +775,7 @@ final readonly class ColorFunctionEvaluator
         float $right,
         bool $leftMissing,
         bool $rightMissing,
-        float $p
+        float $p,
     ): array {
         if ($leftMissing && $rightMissing) {
             return ['value' => 0.0, 'missing' => true];
@@ -799,7 +799,7 @@ final readonly class ColorFunctionEvaluator
         bool $leftMissing,
         bool $rightMissing,
         float $p,
-        ?string $method
+        ?string $method,
     ): array {
         if ($leftMissing && $rightMissing) {
             return ['value' => 0.0, 'missing' => true];
@@ -846,7 +846,7 @@ final readonly class ColorFunctionEvaluator
 
             $mixed[] = $this->colorSpaceConverter->trimFloat(
                 $this->colorSpaceConverter->mixChannel($left, $right, $p),
-                10
+                10,
             );
         }
 
@@ -902,7 +902,7 @@ final readonly class ColorFunctionEvaluator
             new OklchColor(0.0, 0.0, $h1),
             new OklchColor(0.0, 0.0, $h2),
             $p,
-            $method ?? 'shorter'
+            $method ?? 'shorter',
         )->hValue();
     }
 
@@ -928,7 +928,7 @@ final readonly class ColorFunctionEvaluator
             new HslColor($h1, $hsl1->s, $hsl1->l, $hsl1->a),
             new HslColor($h2, $hsl2->s, $hsl2->l, $hsl2->a),
             $p,
-            $hueMethod ?? 'shorter'
+            $hueMethod ?? 'shorter',
         );
 
         $hue = $mixedHsl->hValue();
@@ -949,7 +949,7 @@ final readonly class ColorFunctionEvaluator
             $oklch2['l'],
             $oklch1['l_missing'],
             $oklch2['l_missing'],
-            $p
+            $p,
         );
 
         $chroma = $this->mixPossiblyMissingChannel(
@@ -957,7 +957,7 @@ final readonly class ColorFunctionEvaluator
             $oklch2['c'],
             $oklch1['c_missing'],
             $oklch2['c_missing'],
-            $p
+            $p,
         );
 
         $hue = $this->mixPossiblyMissingHue(
@@ -966,7 +966,7 @@ final readonly class ColorFunctionEvaluator
             $oklch1['h_missing'],
             $oklch2['h_missing'],
             $p,
-            $hueMethod
+            $hueMethod,
         );
 
         $mix = new OklchColor(

@@ -154,7 +154,7 @@ final class SassMetaModule extends AbstractModule
         if (count($positional) < 1 || ! ($positional[0] instanceof FunctionNode)) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.calc-args'),
-                'a calculation function value'
+                'a calculation function value',
             );
         }
 
@@ -169,7 +169,7 @@ final class SassMetaModule extends AbstractModule
         if (count($positional) < 1 || ! ($positional[0] instanceof FunctionNode)) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.calc-name'),
-                'a calculation function value'
+                'a calculation function value',
             );
         }
 
@@ -184,7 +184,7 @@ final class SassMetaModule extends AbstractModule
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.call'),
-                'a function value and optional arguments'
+                'a function value and optional arguments',
             );
         }
 
@@ -193,7 +193,7 @@ final class SassMetaModule extends AbstractModule
         if ($name === null || $context === null || $context->registry === null) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.call'),
-                'a function value'
+                'a function value',
             );
         }
 
@@ -230,7 +230,7 @@ final class SassMetaModule extends AbstractModule
         if (count($positional) < 1 || ! ($positional[0] instanceof StringNode)) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.feature-exists'),
-                'a feature name string'
+                'a feature name string',
             );
         }
 
@@ -239,7 +239,7 @@ final class SassMetaModule extends AbstractModule
         return $this->boolNode(in_array(
             NameNormalizer::normalize($positional[0]->value),
             self::SUPPORTED_FEATURES,
-            true
+            true,
         ));
     }
 
@@ -294,7 +294,7 @@ final class SassMetaModule extends AbstractModule
                 throw ModuleResolutionException::callableNotFound(
                     $this->builtinErrorContext('meta.get-function'),
                     $name,
-                    $module
+                    $module,
                 );
             }
 
@@ -309,7 +309,7 @@ final class SassMetaModule extends AbstractModule
         if (! $hasBuiltin && ! $hasUser) {
             throw ModuleResolutionException::callableNotFound(
                 $this->builtinErrorContext('meta.get-function'),
-                $name
+                $name,
             );
         }
 
@@ -339,7 +339,7 @@ final class SassMetaModule extends AbstractModule
                 throw ModuleResolutionException::callableNotFound(
                     $this->builtinErrorContext('meta.get-mixin'),
                     $name,
-                    $module
+                    $module,
                 );
             }
 
@@ -349,7 +349,7 @@ final class SassMetaModule extends AbstractModule
         if (! $scope->hasMixin($name)) {
             throw ModuleResolutionException::callableNotFound(
                 $this->builtinErrorContext('meta.get-mixin'),
-                $name
+                $name,
             );
         }
 
@@ -385,7 +385,7 @@ final class SassMetaModule extends AbstractModule
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.inspect'),
-                'a value argument'
+                'a value argument',
             );
         }
 
@@ -400,7 +400,7 @@ final class SassMetaModule extends AbstractModule
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.keywords'),
-                'an argument list value'
+                'an argument list value',
             );
         }
 
@@ -545,7 +545,7 @@ final class SassMetaModule extends AbstractModule
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.type-of'),
-                'a value argument'
+                'a value argument',
             );
         }
 
@@ -579,7 +579,7 @@ final class SassMetaModule extends AbstractModule
     private function warnAboutDeprecatedMetaFunction(
         ?BuiltinCallContext $context,
         string $name,
-        array $positional
+        array $positional,
     ): void {
         if (! $this->isGlobalBuiltinCall()) {
             return;
@@ -588,7 +588,7 @@ final class SassMetaModule extends AbstractModule
         $this->warnAboutDeprecatedBuiltinFunctionWithSingleSuggestion(
             $context,
             'meta.' . $name . '(' . implode(', ', $this->describeArguments($positional)) . ')',
-            'meta.' . $name
+            'meta.' . $name,
         );
     }
 
@@ -678,7 +678,7 @@ final class SassMetaModule extends AbstractModule
         if (! isset($positional[0]) || ! ($positional[0] instanceof StringNode)) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext($context),
-                'a string argument'
+                'a string argument',
             );
         }
 
@@ -752,7 +752,7 @@ final class SassMetaModule extends AbstractModule
     private function isDeclaredBeforeCall(
         ScopedCallableDefinition|VariableDefinition|null $definition,
         ?BuiltinCallContext $context,
-        bool $allowCapturedScope = false
+        bool $allowCapturedScope = false,
     ): bool {
         if ($definition === null) {
             return false;
@@ -790,7 +790,7 @@ final class SassMetaModule extends AbstractModule
             throw new InvalidArgumentTypeException(
                 'meta module argument',
                 'string',
-                get_debug_type($moduleNode)
+                get_debug_type($moduleNode),
             );
         }
 

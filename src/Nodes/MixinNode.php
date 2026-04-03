@@ -17,7 +17,7 @@ final class MixinNode extends StatementNode
         public string $name,
         public array $arguments = [],
         public array $body = [],
-        public int $line = 1
+        public int $line = 1,
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

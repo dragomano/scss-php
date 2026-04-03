@@ -24,7 +24,7 @@ describe('ColorChannelReader', function () {
     beforeEach(function () {
         $irisConverter = new IrisConverterAdapter();
         $hexConverter = new HexColorConverter();
-        $state = new class () {
+        $state = new class {
             public bool $isGlobal = false;
 
             /** @var list<string> */
@@ -51,7 +51,7 @@ describe('ColorChannelReader', function () {
             fn(): bool => $state->isGlobal,
             function ($context, string $message) use ($state): void {
                 $state->warnings[] = $message;
-            }
+            },
         );
     });
 

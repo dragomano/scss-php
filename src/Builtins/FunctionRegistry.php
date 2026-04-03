@@ -48,7 +48,7 @@ final class FunctionRegistry
      */
     public function __construct(
         iterable $modules = [],
-        private readonly ColorBundleInterface $colorBundle = new ColorBundleAdapter()
+        private readonly ColorBundleInterface $colorBundle = new ColorBundleAdapter(),
     ) {
         foreach (self::DEFAULT_MODULE_CLASSES as $moduleName => $class) {
             $this->moduleFactories[$moduleName] = $class;

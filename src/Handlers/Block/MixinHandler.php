@@ -37,7 +37,7 @@ final readonly class MixinHandler
         private Module $module,
         private Render $render,
         private Selector $selector,
-        private DeferredChunkManager $chunks
+        private DeferredChunkManager $chunks,
     ) {}
 
     public function handleInclude(IncludeNode $node, TraversalContext $ctx): string
@@ -53,7 +53,7 @@ final readonly class MixinHandler
         [$mixin, $moduleScopeForInclude] = $this->resolveMixin(
             $node->namespace,
             $node->name,
-            $ctx->env->getCurrentScope()
+            $ctx->env->getCurrentScope(),
         );
 
         if ($mixin === null) {
@@ -69,7 +69,7 @@ final readonly class MixinHandler
             $resolvedNamed,
             $node->contentBlock,
             $node->contentArguments,
-            $ctx
+            $ctx,
         );
     }
 
@@ -114,7 +114,7 @@ final readonly class MixinHandler
             $resolvedNamed,
             $node->contentBlock,
             $node->contentArguments,
-            $ctx
+            $ctx,
         );
     }
 
@@ -128,7 +128,7 @@ final readonly class MixinHandler
 
         $css = $this->module->loadAndEvaluateModule(
             $resolvedPositional[0]->value,
-            $this->metaLoadCssConfiguration($resolvedNamed['with'] ?? null)
+            $this->metaLoadCssConfiguration($resolvedNamed['with'] ?? null),
         )['css'];
 
         if ($css === '') {
@@ -163,7 +163,7 @@ final readonly class MixinHandler
         array $resolvedNamed,
         array $contentBlock,
         array $contentArguments,
-        TraversalContext $ctx
+        TraversalContext $ctx,
     ): string {
         $this->module->incrementCallDepth();
 
@@ -196,7 +196,7 @@ final readonly class MixinHandler
 
             $executionScope->setVariableLocal(
                 '__meta_content_exists',
-                $this->evaluation->createBooleanNode($contentBlock !== [])
+                $this->evaluation->createBooleanNode($contentBlock !== []),
             );
 
             $executionScope->setVariableLocal('__meta_content_block', $contentBlock);
@@ -207,7 +207,7 @@ final readonly class MixinHandler
                 $mixin->arguments,
                 $resolvedPositional,
                 $resolvedNamed,
-                $executionScope
+                $executionScope,
             );
 
             $first = true;

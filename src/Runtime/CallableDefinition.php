@@ -17,6 +17,6 @@ final readonly class CallableDefinition
         public array $arguments,
         public array $body,
         public Scope $closureScope,
-        public int $line
+        public int $line,
     ) {}
 }

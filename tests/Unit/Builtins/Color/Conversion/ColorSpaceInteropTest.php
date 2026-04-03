@@ -231,7 +231,7 @@ describe('ColorSpaceInterop', function () {
                 new StringNode('none'),
                 new NumberNode(30.0),
                 new NumberNode(450.0, 'deg'),
-            ], 'space')])
+            ], 'space')]),
         );
 
         expect($result->lValue())->toBeFloat()
@@ -245,7 +245,7 @@ describe('ColorSpaceInterop', function () {
                 new NumberNode(40.0, '%'),
                 new NumberNode(30.0),
                 new NumberNode(450.0, 'deg'),
-            ], 'space')])
+            ], 'space')]),
         );
 
         expect($result->lValue())->toBeFloat()

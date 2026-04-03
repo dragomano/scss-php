@@ -22,7 +22,7 @@ final readonly class IrisColorManipulator implements ColorManipulatorInterface
         private LegacyManipulator $legacy = new LegacyManipulator(),
         private PerceptualManipulator $perceptual = new PerceptualManipulator(),
         private SrgbManipulator $srgb = new SrgbManipulator(),
-        private ModelConverter $model = new ModelConverter()
+        private ModelConverter $model = new ModelConverter(),
     ) {}
 
     /** @return IrisColorValue<HslColor> */

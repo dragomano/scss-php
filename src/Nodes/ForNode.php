@@ -17,7 +17,7 @@ final class ForNode extends StatementNode
         public AstNode $from,
         public AstNode $to,
         public bool $inclusive,
-        public array $body = []
+        public array $body = [],
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

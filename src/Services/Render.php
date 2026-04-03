@@ -38,7 +38,7 @@ final readonly class Render
     public function __construct(
         private CompilerContext $ctx,
         private CompilerOptions $options,
-        private Closure $format
+        private Closure $format,
     ) {}
 
     public function indentPrefix(int $indent): string
@@ -275,7 +275,7 @@ final readonly class Render
                 : $generated->column;
 
             $this->ctx->sourceMapState->mappings[] = $mapping->withGeneratedPosition(
-                new SourceMapPosition($startLine + $lineDelta, $column)
+                new SourceMapPosition($startLine + $lineDelta, $column),
             );
         }
     }
@@ -291,16 +291,16 @@ final readonly class Render
         }
 
         $options = new SourceMapOptions(
-            outputLines:    $outputLines,
-            sourceContent:  $this->options->includeSources ? $source : '',
-            includeSources: $this->options->includeSources
+            outputLines: $outputLines,
+            sourceContent: $this->options->includeSources ? $source : '',
+            includeSources: $this->options->includeSources,
         );
 
         return $this->ctx->sourceMapGenerator->generate(
             $mappings,
             $this->ctx->currentSourceFile,
             $this->options->outputFile,
-            $options
+            $options,
         );
     }
 
@@ -342,7 +342,7 @@ final readonly class Render
                 max(1, $sourceLine),
                 max(0, $sourceColumn - 1),
             ),
-            0
+            0,
         );
     }
 
@@ -369,7 +369,7 @@ final readonly class Render
                 max(1, (int) $originLine),
                 max(0, (int) $originColumn - 1),
             ),
-            0
+            0,
         );
     }
 
@@ -394,7 +394,7 @@ final readonly class Render
             [$newLine, $newColumn] = $this->offsetToLineColumnUsingLineStarts($afterLineStarts, $newOffset);
 
             $this->ctx->sourceMapState->mappings[$index] = $mapping->withGeneratedPosition(
-                new SourceMapPosition($newLine, $newColumn)
+                new SourceMapPosition($newLine, $newColumn),
             );
         }
     }

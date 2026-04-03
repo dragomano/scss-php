@@ -39,7 +39,7 @@ final class RuleParser
         private readonly Closure $parseCustomPropertyValue,
         private readonly Closure $isInsideBraces,
         private readonly Closure $parseRuleFromSelector,
-        private bool $trackSourceLocations = true
+        private bool $trackSourceLocations = true,
     ) {}
 
     public function setTrackSourceLocations(bool $track): void
@@ -205,7 +205,7 @@ final class RuleParser
                 $this->stream,
                 $selector,
                 $interpolationDepth,
-                $token
+                $token,
             )) {
                 continue;
             }

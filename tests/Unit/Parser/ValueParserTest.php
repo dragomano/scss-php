@@ -126,7 +126,7 @@ describe('ValueParser', function () {
 
             $valueParser = new ValueParser(
                 $stream,
-                static fn(string $expression): AstNode => new StringNode($expression)
+                static fn(string $expression): AstNode => new StringNode($expression),
             );
 
             /* @var $value StringNode */

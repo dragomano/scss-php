@@ -16,7 +16,7 @@ final readonly class RootNodeHandler
 {
     public function __construct(
         private NodeDispatcherInterface $dispatcher,
-        private Render $render
+        private Render $render,
     ) {}
 
     public function handle(RootNode $node, TraversalContext $ctx): string

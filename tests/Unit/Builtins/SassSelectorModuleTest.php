@@ -74,11 +74,11 @@ describe('SassSelectorModule', function () {
                 new StringNode('.info'),
                 new StringNode('.content nav.sidebar'),
             ],
-            []
+            [],
         );
 
         expect($result->value)->toBe(
-            'p.info, .guide .info, .guide .content nav.sidebar, .content .guide nav.sidebar, main.content .info, main.content nav.sidebar'
+            'p.info, .guide .info, .guide .content nav.sidebar, .content .guide nav.sidebar, main.content .info, main.content nav.sidebar',
         );
     });
 
@@ -120,7 +120,7 @@ describe('SassSelectorModule', function () {
         $result = $this->module->call(
             'replace',
             [new StringNode('.button > .icon'), new StringNode('> .icon'), new StringNode('> .badge')],
-            []
+            [],
         );
 
         expect($result->value)->toBe('.button > .badge');
@@ -130,7 +130,7 @@ describe('SassSelectorModule', function () {
         $result = $this->module->call(
             'extend',
             [new StringNode('.button .icon'), new StringNode('.icon'), new StringNode('> .badge')],
-            []
+            [],
         );
 
         expect($result->value)->toBe('.button .icon, .button > .badge');
@@ -140,7 +140,7 @@ describe('SassSelectorModule', function () {
         $result = $this->module->call(
             'extend',
             [new StringNode('.button .label'), new StringNode('.icon'), new StringNode('> .badge')],
-            []
+            [],
         );
 
         expect($result->value)->toBe('.button .label');

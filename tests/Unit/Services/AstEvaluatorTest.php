@@ -44,6 +44,6 @@ it('throws when module service is requested before initialization', function () 
 
     expect(fn() => $evaluator->evaluate(new UseNode('_functions.scss', null), $env))->toThrow(
         LogicException::class,
-        'Module service is not initialized.'
+        'Module service is not initialized.',
     );
 });

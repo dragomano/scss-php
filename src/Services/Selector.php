@@ -71,7 +71,7 @@ final readonly class Selector
         ?Closure $evaluateFunctionCondition = null,
         ?Closure $applyVariableDeclaration = null,
         ?Closure $eachIterableItems = null,
-        ?Closure $assignEachVariables = null
+        ?Closure $assignEachVariables = null,
     ) {
         $evaluateFunctionCondition ??= static fn(string $condition, Environment $env): bool => false;
         $applyVariableDeclaration  ??= static fn(AstNode $node, Environment $env): bool => false;
@@ -218,8 +218,8 @@ final readonly class Selector
                 $node->condition,
                 array_map(
                     fn(AstNode $child): AstNode => $this->normalizeBubblingChild($child, $selector, $attachParentSelector),
-                    $node->body
-                )
+                    $node->body,
+                ),
             );
         }
 
@@ -231,11 +231,11 @@ final readonly class Selector
                     fn(AstNode $child): AstNode => $this->normalizeBubblingChild(
                         $child,
                         $selector,
-                        $attachParentSelector
+                        $attachParentSelector,
                     ),
-                    $node->body
+                    $node->body,
                 ),
-                true
+                true,
             );
         }
 
@@ -305,7 +305,7 @@ final readonly class Selector
                 $keepRuleContext,
                 $stack,
                 $rootCtx,
-                $env
+                $env,
             );
 
             if ($compiled !== '') {
@@ -395,7 +395,7 @@ final readonly class Selector
         Environment $env,
         int $indent,
         string $baseProperty,
-        ?string $baseValue = null
+        ?string $baseValue = null,
     ): string {
         $output    = '';
         $prefix    = $this->render->indentPrefix($indent);
@@ -412,7 +412,7 @@ final readonly class Selector
                     $child->name,
                     ($this->evaluateValue)($child->value, $env),
                     $child->global,
-                    $child->default
+                    $child->default,
                 );
 
                 continue;
@@ -471,7 +471,7 @@ final readonly class Selector
                 $env,
                 $indent,
                 $nestedBase,
-                $nestedProperty['value']
+                $nestedProperty['value'],
             );
 
             if ($chunk === '') {
@@ -757,7 +757,7 @@ final readonly class Selector
         bool $keepRuleContext,
         array $stack,
         TraversalContext $rootCtx,
-        Environment $env
+        Environment $env,
     ): string {
         $rootChild        = $this->normalizeAtRootChild($child, $parentSelector, $keepRuleContext);
         $wrappedRootChild = $this->wrapNodeWithAtRuleStack($rootChild, $stack);
@@ -766,7 +766,7 @@ final readonly class Selector
         $env->getCurrentScope()->setVariableLocal('__at_root_context', $this->ctx->valueFactory->createBooleanNode(true));
 
         $compiled = $this->render->trimTrailingNewlines(
-            $this->dispatcher->compileWithContext($wrappedRootChild, $rootCtx)
+            $this->dispatcher->compileWithContext($wrappedRootChild, $rootCtx),
         );
 
         $env->exitScope();
@@ -796,7 +796,7 @@ final readonly class Selector
                 $entry['name'] ?? '',
                 $entry['prelude'] ?? '',
                 [$wrapped],
-                true
+                true,
             );
         }
 
@@ -806,7 +806,7 @@ final readonly class Selector
     private function isBubblingDirective(DirectiveNode $node): bool
     {
         // match compiles to O(1) hash lookup vs in_array's O(n) linear search
-        return match(strtolower($node->name)) {
+        return match (strtolower($node->name)) {
             'container',
             'media',
             'keyframes',
@@ -832,7 +832,7 @@ final readonly class Selector
                 $resolvedSelector,
                 $child->children,
                 $child->line,
-                $child->column
+                $child->column,
             );
         }
 

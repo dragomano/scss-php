@@ -27,7 +27,7 @@ final readonly class FlowControlNodeHandler
     public function __construct(
         private NodeDispatcherInterface $dispatcher,
         private Evaluator $evaluation,
-        private Render $render
+        private Render $render,
     ) {}
 
     public function handleIf(IfNode $node, TraversalContext $ctx): string

@@ -14,6 +14,6 @@ final class ArgumentListNode extends AstNode
         public array $items = [],
         public string $separator = 'comma',
         public bool $bracketed = false,
-        public array $keywords = []
+        public array $keywords = [],
     ) {}
 }

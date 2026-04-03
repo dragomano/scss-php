@@ -9,7 +9,7 @@ final readonly class SourceMapMapping
     public function __construct(
         public SourceMapPosition $generated,
         public SourceMapPosition $original,
-        public int $sourceIndex = 0
+        public int $sourceIndex = 0,
     ) {}
 
     public function withGeneratedPosition(SourceMapPosition $generated): self

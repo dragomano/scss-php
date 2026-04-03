@@ -22,7 +22,7 @@ it('joins compiled root children with line breaks', function () {
 
 it('restores source-map position when a following root child compiles to an empty string', function () {
     $runtime = RuntimeFactory::createRuntime(
-        options: new CompilerOptions(style: Style::COMPRESSED, sourceMapFile: 'output.css.map')
+        options: new CompilerOptions(style: Style::COMPRESSED, sourceMapFile: 'output.css.map'),
     );
     $ctx  = RuntimeFactory::context();
     $node = new RootNode([

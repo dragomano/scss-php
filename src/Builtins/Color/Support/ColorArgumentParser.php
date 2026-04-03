@@ -34,7 +34,7 @@ final readonly class ColorArgumentParser
      */
     public function __construct(
         private ColorConverterInterface $colorSpaceConverter,
-        private Closure $errorCtx
+        private Closure $errorCtx,
     ) {}
 
     /**
@@ -67,7 +67,7 @@ final readonly class ColorArgumentParser
                 throw new DeferToCssFunctionException(
                     $missingFunctionArgumentsException->getMessage(),
                     0,
-                    $missingFunctionArgumentsException
+                    $missingFunctionArgumentsException,
                 );
             }
 
@@ -98,19 +98,19 @@ final readonly class ColorArgumentParser
         array $positional,
         string $context,
         int $minArguments,
-        bool $allowMissingChannels = false
+        bool $allowMissingChannels = false,
     ): array {
         $arguments = $this->expandSingleSpaceListArgument($positional);
 
         if ($this->isRelativeColorSyntax($arguments)) {
             throw new DeferToCssFunctionException(
-                $this->callRef($context) . ' should be emitted as a CSS function.'
+                $this->callRef($context) . ' should be emitted as a CSS function.',
             );
         }
 
         if ($this->hasUnresolvableArguments($arguments, $allowMissingChannels)) {
             throw new DeferToCssFunctionException(
-                $this->callRef($context) . ' should be emitted as a CSS function.'
+                $this->callRef($context) . ' should be emitted as a CSS function.',
             );
         }
 
@@ -133,7 +133,7 @@ final readonly class ColorArgumentParser
             if ($argument instanceof StringNode && $argument->value === '/') {
                 return array_merge(
                     array_slice($arguments, 0, $i),
-                    array_slice($arguments, $i + 1)
+                    array_slice($arguments, $i + 1),
                 );
             }
         }

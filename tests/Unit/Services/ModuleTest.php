@@ -20,7 +20,7 @@ use Tests\RuntimeFactory;
 
 describe('Module service', function () {
     beforeEach(function () {
-        $this->loader = new class () implements LoaderInterface {
+        $this->loader = new class implements LoaderInterface {
             public array $files = [];
 
             public array $paths = [];
@@ -36,7 +36,7 @@ describe('Module service', function () {
             }
         };
 
-        $this->parser = new class () implements ParserInterface {
+        $this->parser = new class implements ParserInterface {
             public function setTrackSourceLocations(bool $track): void {}
 
             public function parse(string $source): RootNode
@@ -47,7 +47,7 @@ describe('Module service', function () {
 
         $this->runtime = RuntimeFactory::createRuntime(
             loader: $this->loader,
-            parser: $this->parser
+            parser: $this->parser,
         );
 
         $this->module = $this->runtime->module();
@@ -59,7 +59,7 @@ describe('Module service', function () {
 
         expect(fn() => $this->module->assignModuleVariable(
             new ModuleVarDeclarationNode('missing', 'color', new StringNode('red')),
-            $env
+            $env,
         ))->toThrow(ModuleResolutionException::class);
     });
 
@@ -69,7 +69,7 @@ describe('Module service', function () {
 
         expect(fn() => $this->module->assignModuleVariable(
             new ModuleVarDeclarationNode('theme', '-secret', new StringNode('red')),
-            $env
+            $env,
         ))->toThrow(UndefinedSymbolException::class);
     });
 
@@ -112,10 +112,10 @@ describe('Module service', function () {
 
         expect(fn() => $this->module->handleUse(
             new UseNode('theme', 'theme', ['color' => new StringNode('red')]),
-            $env
+            $env,
         ))->toThrow(
             ModuleResolutionException::class,
-            "This variable isn't declared with !default in the target stylesheet, so it can't be configured: \$color (in module '/tmp/_theme.scss')."
+            "This variable isn't declared with !default in the target stylesheet, so it can't be configured: \$color (in module '/tmp/_theme.scss').",
         );
     });
 
@@ -202,7 +202,7 @@ describe('Module service', function () {
         $resolved = $this->module->resolveImportForwardConfiguration(
             new ForwardNode('theme'),
             $env,
-            $config
+            $config,
         );
 
         expect($resolved)->toBe($config);
@@ -217,7 +217,7 @@ describe('Module service', function () {
         $resolved = $this->module->resolveImportForwardConfiguration(
             new ForwardNode('theme', 'theme-'),
             $env,
-            ['gap' => new StringNode('preset')]
+            ['gap' => new StringNode('preset')],
         );
 
         expect($resolved)->toHaveKey('color')

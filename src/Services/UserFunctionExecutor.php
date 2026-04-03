@@ -46,7 +46,7 @@ final readonly class UserFunctionExecutor
         private Closure $eachIterableItems,
         private Closure $assignEachVariables,
         private Closure $evaluateValueWithSlashDivision,
-        private Closure $handleDiagnosticDirective
+        private Closure $handleDiagnosticDirective,
     ) {}
 
     /**
@@ -58,7 +58,7 @@ final readonly class UserFunctionExecutor
         CallableDefinition $function,
         array $positional,
         array $named,
-        Environment $env
+        Environment $env,
     ): AstNode {
         $env->enterScope($function->closureScope);
 
@@ -78,7 +78,7 @@ final readonly class UserFunctionExecutor
                     }
 
                     throw MissingFunctionArgumentsException::required($name, $argName);
-                }
+                },
             );
 
             $result = $this->runStatements($function->body, $env);
@@ -102,7 +102,7 @@ final readonly class UserFunctionExecutor
         array $parameters,
         array $resolvedPositional,
         array $resolvedNamed,
-        Scope $scope
+        Scope $scope,
     ): void {
         $this->bindArguments(
             $parameters,
@@ -113,7 +113,7 @@ final readonly class UserFunctionExecutor
                 if ($defaultValue !== null) {
                     $scope->setVariableLocal($name, $defaultValue);
                 }
-            }
+            },
         );
     }
 
@@ -127,7 +127,7 @@ final readonly class UserFunctionExecutor
         array $resolvedPositional,
         array $resolvedNamed,
         Scope $scope,
-        callable $resolveDefault
+        callable $resolveDefault,
     ): void {
         $parameterNameSet = null;
 
@@ -160,9 +160,9 @@ final readonly class UserFunctionExecutor
                         array_filter(
                             $resolvedNamed,
                             fn(string $name): bool => ! isset($parameterNameSet[$name]),
-                            ARRAY_FILTER_USE_KEY
-                        )
-                    )
+                            ARRAY_FILTER_USE_KEY,
+                        ),
+                    ),
                 );
 
                 continue;

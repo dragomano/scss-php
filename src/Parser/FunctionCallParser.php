@@ -45,7 +45,7 @@ final readonly class FunctionCallParser
         private Closure $parseSingleValue,
         private Closure $parseValueUntil,
         private Closure $parseVariableReference,
-        private Closure $parseCommaSeparatedValue
+        private Closure $parseCommaSeparatedValue,
     ) {}
 
     public function parseIdentifierOrFunction(): AstNode

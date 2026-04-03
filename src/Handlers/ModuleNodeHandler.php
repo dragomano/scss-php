@@ -24,7 +24,7 @@ final readonly class ModuleNodeHandler
         private Evaluator $evaluation,
         private Module $module,
         private Render $render,
-        private Selector $selector
+        private Selector $selector,
     ) {}
 
     public function handleForward(ForwardNode $node, TraversalContext $ctx): string
@@ -37,7 +37,7 @@ final readonly class ModuleNodeHandler
             $resolvedConfiguration = $this->module->resolveImportForwardConfiguration(
                 $node,
                 $ctx->env,
-                $resolvedConfiguration
+                $resolvedConfiguration,
             );
         }
 
@@ -46,7 +46,7 @@ final readonly class ModuleNodeHandler
         if (! isset($moduleState->forwardedModules[$forwardKey])) {
             $moduleState->forwardedModules[$forwardKey] = $this->module->loadAndEvaluateModule(
                 $path,
-                $resolvedConfiguration
+                $resolvedConfiguration,
             );
         }
 
@@ -101,7 +101,7 @@ final readonly class ModuleNodeHandler
                 [],
                 true,
                 true,
-                $this->module->extractAstVariables($ctx->env->getCurrentScope()->getVariables())
+                $this->module->extractAstVariables($ctx->env->getCurrentScope()->getVariables()),
             );
 
             $css = $data['css'];
@@ -118,7 +118,7 @@ final readonly class ModuleNodeHandler
 
                 if ($stackIndex >= 0) {
                     $outputState->deferredAtRootStack[$stackIndex][] = $this->render->trimTrailingNewlines(
-                        $qualifiedCss
+                        $qualifiedCss,
                     );
 
                     continue;

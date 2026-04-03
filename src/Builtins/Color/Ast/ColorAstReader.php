@@ -24,7 +24,7 @@ final readonly class ColorAstReader
         private ColorArgumentParser $parser,
         private ColorNodeConverter $converter,
         private HexColorConverter $hexColorConverter,
-        private ColorConverterInterface $colorSpaceConverter
+        private ColorConverterInterface $colorSpaceConverter,
     ) {}
 
     public function readNativeOklch(FunctionNode $color): OklchColor
@@ -35,7 +35,7 @@ final readonly class ColorAstReader
             l: $this->parser->asPercentage($channels[0] ?? null, 'color'),
             c: $this->parser->asNumber($channels[1] ?? null, 'color'),
             h: $this->parser->asNumber($channels[2] ?? null, 'color'),
-            a: 1.0
+            a: 1.0,
         );
     }
 
@@ -47,7 +47,7 @@ final readonly class ColorAstReader
             l: $this->parser->asPercentage($channels[0] ?? null, 'color'),
             a: $this->parser->asNumber($channels[1] ?? null, 'color'),
             b: $this->parser->asNumber($channels[2] ?? null, 'color'),
-            alpha: 1.0
+            alpha: 1.0,
         );
     }
 
@@ -112,7 +112,7 @@ final readonly class ColorAstReader
                 l: $this->parseLightness($channels[0] ?? null, $context),
                 c: $this->parseChroma($channels[1] ?? null, $context),
                 h: $this->parseHue($channels[2] ?? null, $context),
-                a: $this->parseAlpha($alpha, $context)
+                a: $this->parseAlpha($alpha, $context),
             );
         }
 

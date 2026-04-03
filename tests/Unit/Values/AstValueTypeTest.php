@@ -31,6 +31,6 @@ describe('AstValueType', function () {
     });
 
     it('falls back to string for unsupported nodes', function () {
-        expect(AstValueType::fromNode(new class () extends AstNode {})->value)->toBe('string');
+        expect(AstValueType::fromNode(new class extends AstNode {})->value)->toBe('string');
     });
 });

@@ -25,7 +25,7 @@ final readonly class ValueFactory
 {
     public function __construct(
         private bool $outputHexColors = false,
-        private ColorSerializerInterface $colorSerializer = new ColorSerializerAdapter()
+        private ColorSerializerInterface $colorSerializer = new ColorSerializerAdapter(),
     ) {}
 
     /**

@@ -39,7 +39,7 @@ final readonly class ColorChannelReader
         private ColorChannelSchema $channelSchema,
         private Closure $errorCtx,
         private Closure $isGlobalBuiltinCall,
-        private Closure $warn
+        private Closure $warn,
     ) {}
 
     /**
@@ -223,7 +223,7 @@ final readonly class ColorChannelReader
         string $space,
         string $channelName,
         string $context,
-        ?BuiltinCallContext $callContext
+        ?BuiltinCallContext $callContext,
     ): NumberNode {
         $color = $this->parser->requireColor($positional, 0, $context);
 
@@ -252,7 +252,7 @@ final readonly class ColorChannelReader
                 throw new DeferToCssFunctionException(
                     $unsupportedColorValueException->getMessage(),
                     0,
-                    $unsupportedColorValueException
+                    $unsupportedColorValueException,
                 );
             }
 
@@ -316,8 +316,8 @@ final readonly class ColorChannelReader
         $space = strtolower(
             $this->parser->asString(
                 $named['space'] ?? ($positional[2] ?? new StringNode('hsl')),
-                'is-powerless'
-            )
+                'is-powerless',
+            ),
         );
 
         $powerless = false;

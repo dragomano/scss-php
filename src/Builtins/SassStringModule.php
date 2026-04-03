@@ -119,7 +119,7 @@ final class SassStringModule extends AbstractModule
         if ($index === 0) {
             throw BuiltinArgumentException::mustNotBeZero(
                 $this->builtinCallReference('string.insert'),
-                'index'
+                'index',
             );
         }
 
@@ -134,7 +134,7 @@ final class SassStringModule extends AbstractModule
 
         return new StringNode(
             substr($string, 0, $offset) . $insert . substr($string, $offset),
-            $quoted
+            $quoted,
         );
     }
 
@@ -178,7 +178,7 @@ final class SassStringModule extends AbstractModule
 
         return new StringNode(
             $this->stripQuotes($this->requireStringArg($positional, 0, 'string.quote')),
-            true
+            true,
         );
     }
 
@@ -231,7 +231,7 @@ final class SassStringModule extends AbstractModule
         if ($limitNode !== null && (! ($limitNode instanceof NumberNode) || ! is_int($limitNode->value))) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('string.split'),
-                'an integer argument'
+                'an integer argument',
             );
         }
 
@@ -240,7 +240,7 @@ final class SassStringModule extends AbstractModule
         if ($limit !== null && $limit < 1) {
             throw BuiltinArgumentException::mustBePositiveInteger(
                 $this->builtinCallReference('string.split'),
-                'limit'
+                'limit',
             );
         }
 
@@ -287,7 +287,7 @@ final class SassStringModule extends AbstractModule
         return new ListNode(
             array_map(fn(string $part): AstNode => new StringNode($part, $quoted), $parts),
             'comma',
-            true
+            true,
         );
     }
 
@@ -302,7 +302,7 @@ final class SassStringModule extends AbstractModule
 
         return new StringNode(
             strtolower($this->requireStringArg($positional, 0, 'string.to-lower-case')),
-            $quoted
+            $quoted,
         );
     }
 
@@ -317,7 +317,7 @@ final class SassStringModule extends AbstractModule
 
         return new StringNode(
             strtoupper($this->requireStringArg($positional, 0, 'string.to-upper-case')),
-            $quoted
+            $quoted,
         );
     }
 
@@ -339,8 +339,8 @@ final class SassStringModule extends AbstractModule
 
         return new StringNode(
             StringHelper::unescapeQuotedContent(
-                $this->stripQuotes($this->requireStringArg($positional, 0, 'string.unquote'))
-            )
+                $this->stripQuotes($this->requireStringArg($positional, 0, 'string.unquote')),
+            ),
         );
     }
 
@@ -350,7 +350,7 @@ final class SassStringModule extends AbstractModule
     private function warnAboutDeprecatedStringFunction(
         ?BuiltinCallContext $context,
         string $name,
-        array $positional = []
+        array $positional = [],
     ): void {
         if (! $this->isGlobalBuiltinCall()) {
             return;
@@ -359,7 +359,7 @@ final class SassStringModule extends AbstractModule
         $this->warnAboutDeprecatedBuiltinFunctionWithSingleSuggestion(
             $context,
             $this->deprecatedStringSuggestion($name, $positional),
-            'string.' . $name
+            'string.' . $name,
         );
     }
 
@@ -419,7 +419,7 @@ final class SassStringModule extends AbstractModule
         if (! isset($positional[$index])) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext($context),
-                'required argument'
+                'required argument',
             );
         }
 
@@ -435,7 +435,7 @@ final class SassStringModule extends AbstractModule
 
         throw new MissingFunctionArgumentsException(
             $this->builtinErrorContext($context),
-            'a string argument'
+            'a string argument',
         );
     }
 
@@ -451,7 +451,7 @@ final class SassStringModule extends AbstractModule
         ) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext($context),
-                'an integer argument'
+                'an integer argument',
             );
         }
 

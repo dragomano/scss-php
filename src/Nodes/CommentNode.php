@@ -13,7 +13,7 @@ final class CommentNode extends StatementNode
         public string $value,
         public bool $isPreserved = false,
         public int $line = 1,
-        public int $column = 1
+        public int $column = 1,
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

@@ -304,7 +304,7 @@ describe('SassMapModule', function () {
                 $warnings[] = $message;
             },
             builtinDisplayName: 'map-get',
-            rawArguments: [new StringNode('raw-map'), new StringNode('raw-key')]
+            rawArguments: [new StringNode('raw-map'), new StringNode('raw-key')],
         );
 
         $this->module->call('get', [$this->map, new StringNode('a')], [], $context);

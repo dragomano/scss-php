@@ -55,7 +55,7 @@ final readonly class Condition
         private ParserInterface $parser,
         private Text $text,
         private Closure $evaluateValue,
-        private Closure $format
+        private Closure $format,
     ) {}
 
     public function evaluate(string $condition, Environment $env): bool
@@ -85,7 +85,7 @@ final readonly class Condition
         return $this->compareValues(
             $this->toSassValueForFormatting($left, $env)->toCss(),
             $operator,
-            $this->toSassValueForFormatting($right, $env)->toCss()
+            $this->toSassValueForFormatting($right, $env)->toCss(),
         );
     }
 
@@ -378,7 +378,7 @@ final readonly class Condition
 
         if ($left->unit !== $right->unit) {
             $rightValue = $this->normalizeNumberPrecision(
-                UnitConverter::convert($rightValue, $right->unit, $left->unit)
+                UnitConverter::convert($rightValue, $right->unit, $left->unit),
             );
         }
 
@@ -456,7 +456,7 @@ final readonly class Condition
             if (in_array($operator, ['>', '>=', '<', '<='], true)) {
                 throw new IncompatibleUnitsException(
                     (string) new SassNumber($left->value, $left->unit),
-                    (string) new SassNumber($right->value, $right->unit)
+                    (string) new SassNumber($right->value, $right->unit),
                 );
             }
 
@@ -469,7 +469,7 @@ final readonly class Condition
 
         if ($left->unit !== $right->unit) {
             $rightValue = $this->normalizeNumberPrecision(
-                UnitConverter::convert($rightValue, $right->unit, $left->unit)
+                UnitConverter::convert($rightValue, $right->unit, $left->unit),
             );
         }
 
@@ -516,7 +516,7 @@ final readonly class Condition
     {
         return $this->ctx->valueFactory->fromAst(
             $node,
-            fn(AstNode $inner): string => ($this->format)($inner, $env)
+            fn(AstNode $inner): string => ($this->format)($inner, $env),
         );
     }
 

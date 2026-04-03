@@ -543,7 +543,7 @@ describe('Sass Meta Module Feature', function () {
         it('logs function reference as get-function() call', function () {
             $compiler = new Compiler(
                 loader: new Loader([__DIR__ . '/../../../fixtures']),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $scss = <<<'SCSS'
@@ -589,7 +589,7 @@ describe('Sass Meta Module Feature', function () {
         it('logs mixin reference as get-mixin() call', function () {
             $compiler = new Compiler(
                 loader: new Loader([__DIR__ . '/../../../fixtures']),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $scss = <<<'SCSS'

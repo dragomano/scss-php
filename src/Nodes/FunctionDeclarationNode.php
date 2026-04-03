@@ -18,7 +18,7 @@ final class FunctionDeclarationNode extends StatementNode
         public array $arguments = [],
         public array $body = [],
         public int $line = 1,
-        public int $column = 1
+        public int $column = 1,
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

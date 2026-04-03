@@ -39,7 +39,7 @@ describe('CachingCompiler', function () {
             }
         };
 
-        $this->makeMutableCache = static fn() => new class () implements CacheInterface {
+        $this->makeMutableCache = static fn() => new class implements CacheInterface {
             /** @var array<string, mixed> */
             private array $items = [];
 
@@ -48,7 +48,7 @@ describe('CachingCompiler', function () {
                 return $this->items[$key] ?? $default;
             }
 
-            public function set(string $key, mixed $value, null|int|\DateInterval $ttl = null): bool
+            public function set(string $key, mixed $value, int|\DateInterval|null $ttl = null): bool
             {
                 $this->items[$key] = $value;
 
@@ -80,7 +80,7 @@ describe('CachingCompiler', function () {
                 return $values;
             }
 
-            public function setMultiple(iterable $values, null|int|\DateInterval $ttl = null): bool
+            public function setMultiple(iterable $values, int|\DateInterval|null $ttl = null): bool
             {
                 foreach ($values as $key => $value) {
                     $this->set((string) $key, $value, $ttl);

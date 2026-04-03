@@ -472,7 +472,7 @@ describe('SassMetaModule', function () {
             static function (string $message) use (&$warnings): void {
                 $warnings[] = $message;
             },
-            'variable-exists'
+            'variable-exists',
         );
 
         expect(fn() => $this->module->call('variable-exists', [new NumberNode(12, 'px')], [], $context))

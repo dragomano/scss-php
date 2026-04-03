@@ -26,7 +26,7 @@ final readonly class ColorAstWriter
 {
     public function __construct(
         private ColorConverterInterface $colorSpaceConverter,
-        private ColorLiteralInterface $colorLiteralSerializer
+        private ColorLiteralInterface $colorLiteralSerializer,
     ) {}
 
     public function fromRgb(RgbColor $rgb): ColorNode
@@ -47,22 +47,22 @@ final readonly class ColorAstWriter
         $r = new NumberNode(
             (float) $this->colorSpaceConverter->trimFloat(
                 $this->colorSpaceConverter->clamp($rgb->r, 255.0),
-                10
-            )
+                10,
+            ),
         );
 
         $g = new NumberNode(
             (float) $this->colorSpaceConverter->trimFloat(
                 $this->colorSpaceConverter->clamp($rgb->g, 255.0),
-                10
-            )
+                10,
+            ),
         );
 
         $b = new NumberNode(
             (float) $this->colorSpaceConverter->trimFloat(
                 $this->colorSpaceConverter->clamp($rgb->b, 255.0),
-                10
-            )
+                10,
+            ),
         );
 
         if (abs($rgb->a - 1.0) < 0.0000001) {
@@ -72,8 +72,8 @@ final readonly class ColorAstWriter
         $alpha = new NumberNode(
             (float) $this->colorSpaceConverter->trimFloat(
                 $this->colorSpaceConverter->clamp($rgb->a, 1.0),
-                10
-            )
+                10,
+            ),
         );
 
         return new FunctionNode('rgba', [$r, $g, $b, $alpha]);
@@ -91,7 +91,7 @@ final readonly class ColorAstWriter
 
         return new FunctionNode(
             'rgba',
-            [$r, $g, $b, new NumberNode($this->colorSpaceConverter->roundFloat($rgb->a))]
+            [$r, $g, $b, new NumberNode($this->colorSpaceConverter->roundFloat($rgb->a))],
         );
     }
 
@@ -120,7 +120,7 @@ final readonly class ColorAstWriter
             $rgb->rValue() * 255.0,
             $rgb->gValue() * 255.0,
             $rgb->bValue() * 255.0,
-            $rgb->a
+            $rgb->a,
         );
     }
 
@@ -201,7 +201,7 @@ final readonly class ColorAstWriter
         if (abs($alpha - 1.0) >= 0.000001) {
             return new FunctionNode(
                 'hsla',
-                [$arguments[0], $arguments[1], $arguments[2], $this->buildAlphaNode($alpha)]
+                [$arguments[0], $arguments[1], $arguments[2], $this->buildAlphaNode($alpha)],
             );
         }
 
@@ -215,7 +215,7 @@ final readonly class ColorAstWriter
         if (abs($alpha - 1.0) >= 0.000001) {
             return new FunctionNode(
                 'rgba',
-                [$arguments[0], $arguments[1], $arguments[2], new NumberNode($alpha)]
+                [$arguments[0], $arguments[1], $arguments[2], new NumberNode($alpha)],
             );
         }
 
@@ -227,7 +227,7 @@ final readonly class ColorAstWriter
     {
         return new FunctionNode(
             $name,
-            [new ListNode($this->appendSlashAlphaTail($channels, $alpha), 'space')]
+            [new ListNode($this->appendSlashAlphaTail($channels, $alpha), 'space')],
         );
     }
 

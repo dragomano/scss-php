@@ -24,7 +24,7 @@ final readonly class CachedBenchmarkCompiler
 {
     public function __construct(
         private CachingCompiler $compiler,
-        private string $entryPath
+        private string $entryPath,
     ) {}
 
     public function compileString(string $scss): string
@@ -163,7 +163,7 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
             return new class ($compiler, $scssFile) {
                 public function __construct(
                     private readonly ScssCompiler $inner,
-                    private readonly string $scssFile
+                    private readonly string $scssFile,
                 ) {}
 
                 public function compileString(string $source): CompilationResult

@@ -63,7 +63,7 @@ it('parses content call arguments and concatenates strings', function () {
 
     $arguments    = $runtime->evaluation()->parseContentCallArguments('(10px, $tone: red)');
     $concatenated = $runtime->evaluation()->evaluateStringConcatenationList(
-        new ListNode([new StringNode('foo'), new StringNode('+'), new StringNode('bar')], 'space')
+        new ListNode([new StringNode('foo'), new StringNode('+'), new StringNode('bar')], 'space'),
     );
 
     expect(count($arguments))->toBe(2)
@@ -270,7 +270,7 @@ it('evaluates argument list items and keywords lazily', function () {
         [
             'primary' => new VariableReferenceNode('named'),
             'secondary' => new StringNode('kept'),
-        ]
+        ],
     ), $env);
 
     expect($result)->toBeInstanceOf(ArgumentListNode::class);
@@ -356,7 +356,7 @@ it('rebuilds named arguments when their value changes', function () {
 
     $result = $runtime->evaluation()->evaluateValue(
         new NamedArgumentNode('tone', new VariableReferenceNode('tone')),
-        $env
+        $env,
     );
 
     expect($result)->toBeInstanceOf(NamedArgumentNode::class);
@@ -415,7 +415,7 @@ it('returns simplified max() calls when builtins defer to css', function () {
 
 it('compresses fallback hsl() functions to hex colors in compressed mode', function () {
     $runtime = RuntimeFactory::createRuntime(
-        options: new CompilerOptions(style: Style::COMPRESSED)
+        options: new CompilerOptions(style: Style::COMPRESSED),
     );
 
     $env = new Environment();
@@ -451,7 +451,7 @@ it('returns unchanged nodes for unsupported evaluateValue inputs', function () {
 it('returns the original function node when css fallback reparsing does not apply', function () {
     $runtime = RuntimeFactory::createRuntime();
     $env     = new Environment();
-    $node    = new class () extends AstNode {};
+    $node    = new class extends AstNode {};
 
     expect($runtime->evaluation()->evaluateValue($node, $env))->toBe($node);
 });
@@ -463,14 +463,14 @@ it('reparses formatted declaration expressions conservatively', function () {
     $unchanged = $runtime->evaluation()->tryEvaluateFormattedDeclarationExpression(
         'width',
         new NumberNode(3, 'px'),
-        $env
+        $env,
     );
 
     expect($unchanged)->toBeNull();
 });
 
 it('returns null when reparsing formatted declaration expressions fails or does not yield a declaration', function () {
-    $badParser = new class () implements ParserInterface {
+    $badParser = new class implements ParserInterface {
         public function setTrackSourceLocations(bool $track): void {}
 
         public function parse(string $source): RootNode
@@ -484,10 +484,10 @@ it('returns null when reparsing formatted declaration expressions fails or does 
     $nullFromException = $runtimeWithBadParser->evaluation()->tryEvaluateFormattedDeclarationExpression(
         'width',
         new StringNode('calc(1px / )'),
-        new Environment()
+        new Environment(),
     );
 
-    $nonDeclarationParser = new class () implements ParserInterface {
+    $nonDeclarationParser = new class implements ParserInterface {
         public function setTrackSourceLocations(bool $track): void {}
 
         public function parse(string $source): RootNode
@@ -503,7 +503,7 @@ it('returns null when reparsing formatted declaration expressions fails or does 
     $nullFromMissingDeclaration = $runtimeWithoutDeclaration->evaluation()->tryEvaluateFormattedDeclarationExpression(
         'width',
         new StringNode('calc(1px / 2px)'),
-        new Environment()
+        new Environment(),
     );
 
     expect($nullFromException)->toBeNull()
@@ -511,7 +511,7 @@ it('returns null when reparsing formatted declaration expressions fails or does 
 });
 
 it('returns null when reparsed formatted declarations do not start with a rule node', function () {
-    $parser = new class () implements ParserInterface {
+    $parser = new class implements ParserInterface {
         public function setTrackSourceLocations(bool $track): void {}
 
         public function parse(string $source): RootNode
@@ -525,7 +525,7 @@ it('returns null when reparsed formatted declarations do not start with a rule n
     expect($runtime->evaluation()->tryEvaluateFormattedDeclarationExpression(
         'width',
         new StringNode('(10px / 2)'),
-        new Environment()
+        new Environment(),
     ))->toBeNull();
 });
 
@@ -542,7 +542,7 @@ it('formats variable references parent selectors mixin refs and named arguments'
         ->and($runtime->evaluation()->format(new MixinRefNode('theme-mixin'), $env))->toBe('theme-mixin')
         ->and($runtime->evaluation()->format(
             new NamedArgumentNode('tone', new StringNode('red')),
-            $env
+            $env,
         ))->toBe('$tone: red');
 });
 
@@ -563,7 +563,7 @@ it('throws when resolving malformed or missing namespaced variables', function (
         ->and(fn() => $accessor->callMethod('resolveVariable', ['theme.', $env]))
         ->toThrow(
             LogicException::class,
-            'Qualified variable reference must include a member name.'
+            'Qualified variable reference must include a member name.',
         );
 });
 
@@ -608,11 +608,11 @@ it('applies global and module variable declarations', function () {
 
     $globalApplied = $runtime->evaluation()->applyVariableDeclaration(
         new VariableDeclarationNode('spacing', new NumberNode(8, 'px'), true),
-        $env
+        $env,
     );
     $moduleApplied = $runtime->evaluation()->applyVariableDeclaration(
         new ModuleVarDeclarationNode('theme', 'accent', new StringNode('blue')),
-        $env
+        $env,
     );
 
     expect($globalApplied)->toBeTrue()
@@ -643,7 +643,7 @@ it('re-evaluates formatted slash expressions into strict arithmetic results', fu
     $result = $runtime->evaluation()->tryEvaluateFormattedDeclarationExpression(
         'width',
         new StringNode('(10px / 2)'),
-        $env
+        $env,
     );
 
     expect($result)->toBeInstanceOf(NumberNode::class);
@@ -659,13 +659,13 @@ it('re-evaluates formatted slash expressions into strict arithmetic results', fu
 it('formats unsupported ast nodes as an empty string', function () {
     $runtime = RuntimeFactory::createRuntime();
     $env     = new Environment();
-    $node    = new class () extends AstNode {};
+    $node    = new class extends AstNode {};
 
     expect($runtime->evaluation()->format($node, $env))->toBe('');
 });
 
 it('returns null when reparsed formatted declarations do not yield a declaration node', function () {
-    $parser = new class () implements ParserInterface {
+    $parser = new class implements ParserInterface {
         public function setTrackSourceLocations(bool $track): void {}
 
         public function parse(string $source): RootNode
@@ -681,6 +681,6 @@ it('returns null when reparsed formatted declarations do not yield a declaration
     expect($runtime->evaluation()->tryEvaluateFormattedDeclarationExpression(
         'width',
         new StringNode('(10px / 2)'),
-        new Environment()
+        new Environment(),
     ))->toBeNull();
 });

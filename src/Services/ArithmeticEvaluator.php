@@ -71,7 +71,7 @@ final readonly class ArithmeticEvaluator
             }
 
             return new ListNode($items, $node->separator, $node->bracketed);
-        } catch (IncompatibleUnitsException | DivisionByZeroException $exception) {
+        } catch (IncompatibleUnitsException|DivisionByZeroException $exception) {
             if ($strict) {
                 return null;
             }
@@ -86,7 +86,7 @@ final readonly class ArithmeticEvaluator
             if (! UnitConverter::compatible($left->unit, $right->unit)) {
                 throw new IncompatibleUnitsException(
                     (string) new SassNumber($left->value, $left->unit),
-                    (string) new SassNumber($right->value, $right->unit)
+                    (string) new SassNumber($right->value, $right->unit),
                 );
             }
 
@@ -112,7 +112,7 @@ final readonly class ArithmeticEvaluator
             if (! UnitConverter::compatible($left->unit, $right->unit)) {
                 throw new IncompatibleUnitsException(
                     (string) new SassNumber($left->value, $left->unit),
-                    (string) new SassNumber($right->value, $right->unit)
+                    (string) new SassNumber($right->value, $right->unit),
                 );
             }
 
@@ -121,7 +121,7 @@ final readonly class ArithmeticEvaluator
             return new NumberNode(
                 fmod((float) $left->value, $rightValue),
                 $left->unit ?? $right->unit,
-                false
+                false,
             );
         }
 

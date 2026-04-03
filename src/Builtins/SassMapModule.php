@@ -101,13 +101,13 @@ final class SassMapModule extends AbstractModule
         if (count($positional) < 2) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('map.deep-merge'),
-                'two map arguments'
+                'two map arguments',
             );
         }
 
         return $this->deepMergeMaps(
             $this->asMap($positional[0], 'map.deep-merge'),
-            $this->asMap($positional[1], 'map.deep-merge')
+            $this->asMap($positional[1], 'map.deep-merge'),
         );
     }
 
@@ -119,13 +119,13 @@ final class SassMapModule extends AbstractModule
         if (count($positional) < 2) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('map.deep-remove'),
-                'map and key path'
+                'map and key path',
             );
         }
 
         return $this->removeNested(
             $this->asMap($positional[0], 'map.deep-remove'),
-            array_slice($positional, 1)
+            array_slice($positional, 1),
         );
     }
 
@@ -137,7 +137,7 @@ final class SassMapModule extends AbstractModule
         if (count($positional) < 2) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('map.get'),
-                'map and key arguments'
+                'map and key arguments',
             );
         }
 
@@ -172,7 +172,7 @@ final class SassMapModule extends AbstractModule
         if (count($positional) < 2) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('map.has-key'),
-                'map and key arguments'
+                'map and key arguments',
             );
         }
 
@@ -191,7 +191,7 @@ final class SassMapModule extends AbstractModule
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('map.keys'),
-                'a map argument'
+                'a map argument',
             );
         }
 
@@ -202,7 +202,7 @@ final class SassMapModule extends AbstractModule
         return new ListNode(array_map(
             /** @param MapPair $pair */
             fn(array $pair): AstNode => $pair['key'],
-            $map->pairs
+            $map->pairs,
         ), 'comma');
     }
 
@@ -215,7 +215,7 @@ final class SassMapModule extends AbstractModule
             throw MissingFunctionArgumentsException::count(
                 $this->builtinErrorContext('map.merge'),
                 2,
-                true
+                true,
             );
         }
 
@@ -234,7 +234,7 @@ final class SassMapModule extends AbstractModule
         if (! is_int($lastIndex)) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('map.merge'),
-                'path keys and a map in variadic form'
+                'path keys and a map in variadic form',
             );
         }
 
@@ -258,7 +258,7 @@ final class SassMapModule extends AbstractModule
         if (count($positional) < 1) {
             throw MissingFunctionArgumentsException::required(
                 $this->builtinErrorContext('map.remove'),
-                'map'
+                'map',
             );
         }
 
@@ -283,7 +283,7 @@ final class SassMapModule extends AbstractModule
                 }
 
                 return true;
-            }
+            },
         );
 
         return new MapNode(array_values($result));
@@ -297,7 +297,7 @@ final class SassMapModule extends AbstractModule
         if (count($positional) < 3) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('map.set'),
-                'map, key path and value'
+                'map, key path and value',
             );
         }
 
@@ -318,7 +318,7 @@ final class SassMapModule extends AbstractModule
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('map.values'),
-                'a map argument'
+                'a map argument',
             );
         }
 
@@ -329,7 +329,7 @@ final class SassMapModule extends AbstractModule
         return new ListNode(array_map(
             /** @param MapPair $pair */
             fn(array $pair): AstNode => $pair['value'],
-            $map->pairs
+            $map->pairs,
         ), 'comma');
     }
 
@@ -339,7 +339,7 @@ final class SassMapModule extends AbstractModule
     private function warnAboutDeprecatedMapFunction(
         ?BuiltinCallContext $context,
         string $name,
-        array $positional
+        array $positional,
     ): void {
         if (! $this->isGlobalBuiltinCall()) {
             return;
@@ -348,7 +348,7 @@ final class SassMapModule extends AbstractModule
         $this->warnAboutDeprecatedBuiltinFunctionWithSingleSuggestion(
             $context,
             $this->deprecatedMapSuggestion($name, $positional),
-            'map.' . $name
+            'map.' . $name,
         );
     }
 
@@ -538,7 +538,7 @@ final class SassMapModule extends AbstractModule
             throw new InvalidArgumentTypeException(
                 $this->builtinErrorContext($context),
                 'map',
-                get_debug_type($value)
+                get_debug_type($value),
             );
         }
 

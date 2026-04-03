@@ -21,7 +21,7 @@ final readonly class BuiltinCallContext
         public ?Closure $logWarning = null,
         public ?string $builtinDisplayName = null,
         public ?array $rawArguments = null,
-        public ?int $callLine = null
+        public ?int $callLine = null,
     ) {}
 
     public function warn(string $message): void
@@ -39,7 +39,7 @@ final readonly class BuiltinCallContext
             $this->logWarning,
             $builtinDisplayName,
             $this->rawArguments,
-            $this->callLine
+            $this->callLine,
         );
     }
 }

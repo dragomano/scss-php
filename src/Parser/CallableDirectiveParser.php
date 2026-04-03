@@ -47,7 +47,7 @@ final readonly class CallableDirectiveParser
         private Closure $consumeIdentifier,
         private Closure $parseRuleFromSelector,
         private Closure $incrementBlockDepth,
-        private Closure $decrementBlockDepth
+        private Closure $decrementBlockDepth,
     ) {}
 
     public function parseIncludeDirective(): IncludeNode

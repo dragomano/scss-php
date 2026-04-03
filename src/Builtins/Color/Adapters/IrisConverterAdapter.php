@@ -22,10 +22,10 @@ final readonly class IrisConverterAdapter implements ColorConverterInterface
     public function __construct(
         private SpaceConverter $spaceConverter = new SpaceConverter(),
         private SpaceRouter $spaceRouter = new SpaceRouter(),
-        private ModelConverter $modelConverter = new ModelConverter()
+        private ModelConverter $modelConverter = new ModelConverter(),
     ) {}
 
-    public function clamp(float|null $value, float $max): float
+    public function clamp(?float $value, float $max): float
     {
         return $this->spaceConverter->clamp($value, $max);
     }
@@ -79,7 +79,7 @@ final readonly class IrisConverterAdapter implements ColorConverterInterface
             a: 1.0,
             max: $max,
             min: $min,
-            delta: $delta
+            delta: $delta,
         ));
     }
 
@@ -138,7 +138,7 @@ final readonly class IrisConverterAdapter implements ColorConverterInterface
         return $this->spaceConverter->scaleLinear($current, $amountPercent, $maxValue);
     }
 
-    public function mixChannel(float|null $a, float|null $b, float $p): float
+    public function mixChannel(?float $a, ?float $b, float $p): float
     {
         return $this->spaceConverter->mixChannel($a, $b, $p);
     }
@@ -173,7 +173,7 @@ final readonly class IrisConverterAdapter implements ColorConverterInterface
         return $this->spaceConverter->xyzD65ToOklabColor($xyz, $alpha);
     }
 
-    public function srgbToLinearUnclamped(float|null $value): float
+    public function srgbToLinearUnclamped(?float $value): float
     {
         return $this->spaceConverter->srgbToLinearUnclamped($value);
     }

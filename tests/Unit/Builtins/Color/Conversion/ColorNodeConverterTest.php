@@ -137,7 +137,7 @@ describe('ColorNodeConverter', function () {
     it('treats unknown string functions as non-legacy colors', function () {
         $unknown = new StringNode('color(display-p3 1 0 0)');
         $legacyRgb = new StringNode('rgba(1, 2, 3, 0.5)');
-        $otherNode = new class () extends AstNode {};
+        $otherNode = new class extends AstNode {};
 
         expect($this->converter->isLegacyColor($unknown))->toBeFalse()
             ->and($this->converter->isInGamut($unknown))->toBeTrue()

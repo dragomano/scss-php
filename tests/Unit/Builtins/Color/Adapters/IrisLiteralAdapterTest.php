@@ -8,7 +8,7 @@ use Bugo\SCSS\Contracts\Color\ColorValueInterface;
 describe('IrisLiteralAdapter', function () {
     it('throws when serialize() receives a non-rgb wrapped value', function () {
         $adapter = new IrisLiteralAdapter();
-        $color = new class () implements ColorValueInterface {
+        $color = new class implements ColorValueInterface {
             public function getSpace(): string
             {
                 return 'fake';
@@ -32,7 +32,7 @@ describe('IrisLiteralAdapter', function () {
 
         expect(fn() => $adapter->serialize($color))->toThrow(
             LogicException::class,
-            'Expected RgbColor inside IrisColorValue, got stdClass'
+            'Expected RgbColor inside IrisColorValue, got stdClass',
         );
     });
 });

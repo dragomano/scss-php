@@ -33,7 +33,7 @@ function createCalculationEvaluator(?Closure $evaluateArithmetic = null): Calcul
         if ($node instanceof FunctionNode) {
             $arguments = array_map(
                 static fn(AstNode $argument): string => $format($argument, $env),
-                $node->arguments
+                $node->arguments,
             );
 
             return $node->name . '(' . implode(', ', $arguments) . ')';
@@ -44,7 +44,7 @@ function createCalculationEvaluator(?Closure $evaluateArithmetic = null): Calcul
 
             return implode($separator, array_map(
                 static fn(AstNode $item): string => $format($item, $env),
-                $node->items
+                $node->items,
             ));
         }
 
@@ -54,7 +54,7 @@ function createCalculationEvaluator(?Closure $evaluateArithmetic = null): Calcul
     return new CalculationEvaluator(
         $format,
         $evaluateArithmetic ?? static fn(ListNode $node, bool $inCalc, Environment $env): ?AstNode => null,
-        static fn(AstNode $node, callable $format): SassString => new SassString($format($node))
+        static fn(AstNode $node, callable $format): SassString => new SassString($format($node)),
     );
 }
 
@@ -75,7 +75,7 @@ describe('CalculationEvaluator', function () {
 
     it('collapses calc lists through arithmetic evaluation when division shortcut does not apply', function () {
         $evaluator = createCalculationEvaluator(
-            static fn(ListNode $node, bool $inCalc, Environment $env): ?AstNode => new NumberNode(42, 'px')
+            static fn(ListNode $node, bool $inCalc, Environment $env): ?AstNode => new NumberNode(42, 'px'),
         );
 
         $result = $evaluator->simplifyFunction('calc', [

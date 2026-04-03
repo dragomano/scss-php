@@ -23,7 +23,7 @@ it('handles if branches', function () {
     $node    = new IfNode(
         '1 > 2',
         [new DeclarationNode('color', new StringNode('red'))],
-        [new ElseIfNode('2 > 1', [new DeclarationNode('color', new StringNode('blue'))])]
+        [new ElseIfNode('2 > 1', [new DeclarationNode('color', new StringNode('blue'))])],
     );
 
     expect($runtime->flow()->handleIf($node, $ctx))->toBe('  color: blue;');
@@ -39,25 +39,25 @@ it('handles each for and while loops', function () {
         new EachNode(['item'], new ListNode([new StringNode('a'), new StringNode('b')], 'space'), [
             new DeclarationNode('value', new VariableReferenceNode('item')),
         ]),
-        $ctx
+        $ctx,
     );
 
     $for = $runtime->flow()->handleFor(
         new ForNode('i', new NumberNode(1), new NumberNode(2), true, [
             new DeclarationNode('step', new VariableReferenceNode('i')),
         ]),
-        $ctx
+        $ctx,
     );
 
     $while = $runtime->flow()->handleWhile(
         new WhileNode('$i < 2', [
             new VariableDeclarationNode('i', new ListNode(
                 [new VariableReferenceNode('i'), new StringNode('+'), new NumberNode(1)],
-                'space'
+                'space',
             )),
             new DeclarationNode('count', new VariableReferenceNode('i')),
         ]),
-        $ctx
+        $ctx,
     );
 
     expect($each)->toBe("  value: a;\n  value: b;")
@@ -71,11 +71,11 @@ it('throws when flow control loops exceed the iteration limit', function () {
 
     expect(fn() => $runtime->flow()->handleFor(
         new ForNode('i', new NumberNode(1), new NumberNode(10001), true, []),
-        $ctx
+        $ctx,
     ))->toThrow(MaxIterationsExceededException::class)
         ->and(fn() => $runtime->flow()->handleWhile(
             new WhileNode('true', []),
-            $ctx
+            $ctx,
         ))->toThrow(MaxIterationsExceededException::class);
 });
 
@@ -85,7 +85,7 @@ it('throws for non-numeric loop boundaries', function () {
 
     expect(fn() => $runtime->flow()->handleFor(
         new ForNode('i', new StringNode('abc'), new NumberNode(2), true, []),
-        $ctx
+        $ctx,
     ))->toThrow(InvalidLoopBoundaryException::class);
 });
 
@@ -97,7 +97,7 @@ it('accepts numeric string loop boundaries', function () {
         new ForNode('i', new StringNode('1'), new StringNode('2'), true, [
             new DeclarationNode('step', new VariableReferenceNode('i')),
         ]),
-        $ctx
+        $ctx,
     );
 
     expect($result)->toBe("  step: 1;\n  step: 2;");

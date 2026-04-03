@@ -37,7 +37,7 @@ final readonly class Text
     public function __construct(
         private ParserInterface $parser,
         private Closure $evaluateValue,
-        private Closure $format
+        private Closure $format,
     ) {}
 
     public function interpolateText(string $text, Environment $env): string

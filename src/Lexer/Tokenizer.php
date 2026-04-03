@@ -141,7 +141,7 @@ final class Tokenizer
             return $this->tokenizeOptionalDoubleCharOperator(
                 '=',
                 TokenType::GREATER_THAN_EQUALS,
-                TokenType::GREATER_THAN
+                TokenType::GREATER_THAN,
             );
         }
 
@@ -668,7 +668,7 @@ final class Tokenizer
     private function tokenizeOptionalDoubleCharOperator(
         string $nextChar,
         TokenType $doubleType,
-        TokenType $singleType
+        TokenType $singleType,
     ): Token {
         $char = $this->source[$this->position];
 

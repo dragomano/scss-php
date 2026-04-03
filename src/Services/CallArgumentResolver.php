@@ -31,7 +31,7 @@ final readonly class CallArgumentResolver
         private ParserInterface $parser,
         private CssArgumentEvaluator $cssArgument,
         private UserFunctionExecutor $userFunction,
-        private Closure $evaluateValue
+        private Closure $evaluateValue,
     ) {}
 
     /**
@@ -78,7 +78,7 @@ final readonly class CallArgumentResolver
 
         return array_values(array_filter(
             $value,
-            static fn(mixed $node): bool => $node instanceof AstNode
+            static fn(mixed $node): bool => $node instanceof AstNode,
         ));
     }
 
@@ -94,7 +94,7 @@ final readonly class CallArgumentResolver
 
         return array_values(array_filter(
             $value,
-            static fn(mixed $node): bool => $node instanceof ArgumentNode
+            static fn(mixed $node): bool => $node instanceof ArgumentNode,
         ));
     }
 
@@ -145,7 +145,7 @@ final readonly class CallArgumentResolver
         array $parameters,
         array $resolvedPositional,
         array $resolvedNamed,
-        Scope $scope
+        Scope $scope,
     ): void {
         $this->userFunction->bindParametersToCurrentScope($parameters, $resolvedPositional, $resolvedNamed, $scope);
     }

@@ -32,7 +32,7 @@ final class SourceMapGenerator
         array $mappings,
         string $sourceFile,
         string $outputFile,
-        SourceMapOptions $options
+        SourceMapOptions $options,
     ): string {
         $sourceMap = [
             'version'    => 3,

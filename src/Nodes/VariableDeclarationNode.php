@@ -14,7 +14,7 @@ final class VariableDeclarationNode extends StatementNode
         public AstNode $value,
         public bool $global = false,
         public bool $default = false,
-        public int $line = 1
+        public int $line = 1,
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

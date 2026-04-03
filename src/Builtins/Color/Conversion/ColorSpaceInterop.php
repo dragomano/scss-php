@@ -41,7 +41,7 @@ final readonly class ColorSpaceInterop
         private ColorConverterInterface $colorSpaceConverter,
         private ColorChannelSchema $channelSchema,
         private Closure $errorCtx,
-        private GamutMapper $gamutMapper = new GamutMapper()
+        private GamutMapper $gamutMapper = new GamutMapper(),
     ) {}
 
     /**
@@ -75,7 +75,7 @@ final readonly class ColorSpaceInterop
                     l: $oklch['l'],
                     c: $oklch['c'],
                     h: $oklch['h'],
-                    a: $oklch['a']
+                    a: $oklch['a'],
                 ));
 
                 $lightnessNode = $oklch['l_missing']
@@ -136,8 +136,8 @@ final readonly class ColorSpaceInterop
             return $this->astWriter->buildLabColorNode(
                 $this->colorSpaceConverter->xyzD50ToLabColor(
                     $this->converter->toXyzD50($color),
-                    $this->converter->toAlpha($color)
-                )
+                    $this->converter->toAlpha($color),
+                ),
             );
         }
 
@@ -145,8 +145,8 @@ final readonly class ColorSpaceInterop
             return $this->astWriter->buildOklabColorNode(
                 $this->colorSpaceConverter->xyzD65ToOklabColor(
                     $this->converter->toXyzD65($color),
-                    $this->converter->toAlpha($color)
-                )
+                    $this->converter->toAlpha($color),
+                ),
             );
         }
 
@@ -156,7 +156,7 @@ final readonly class ColorSpaceInterop
             return $this->astWriter->buildGenericColorFunctionNode(
                 'xyz-d50',
                 [$xyz->x, $xyz->y, $xyz->z],
-                $this->converter->toAlpha($color)
+                $this->converter->toAlpha($color),
             );
         }
 
@@ -166,7 +166,7 @@ final readonly class ColorSpaceInterop
             return $this->astWriter->buildGenericColorFunctionNode(
                 $space,
                 [$xyz->x, $xyz->y, $xyz->z],
-                $this->converter->toAlpha($color)
+                $this->converter->toAlpha($color),
             );
         }
 
@@ -216,12 +216,12 @@ final readonly class ColorSpaceInterop
 
         $space = strtolower($this->parser->asString(
             $named['space'] ?? ($positional[1] ?? new StringNode('rgb')),
-            'to-gamut'
+            'to-gamut',
         ));
 
         $method = strtolower($this->parser->asString(
             $named['method'] ?? ($positional[2] ?? new StringNode('local-minde')),
-            'to-gamut'
+            'to-gamut',
         ));
 
         $nativeSpace = $this->converter->detectNativeColorSpace($color);
@@ -250,7 +250,7 @@ final readonly class ColorSpaceInterop
                     r: $this->parser->clamp($rgb->rValue(), 255.0),
                     g: $this->parser->clamp($rgb->gValue(), 255.0),
                     b: $this->parser->clamp($rgb->bValue(), 255.0),
-                    a: $rgb->a
+                    a: $rgb->a,
                 ));
             }
 
@@ -262,7 +262,7 @@ final readonly class ColorSpaceInterop
                 r: $this->parser->clamp($finalRgb->rValue() * 255.0, 255.0),
                 g: $this->parser->clamp($finalRgb->gValue() * 255.0, 255.0),
                 b: $this->parser->clamp($finalRgb->bValue() * 255.0, 255.0),
-                a: $finalRgb->a
+                a: $finalRgb->a,
             ));
         }
 
@@ -303,16 +303,16 @@ final readonly class ColorSpaceInterop
                 ? 0.0
                 : $this->parser->clamp(
                     $this->parser->asPercentage($channels[0] ?? null, 'to-space'),
-                    100.0
+                    100.0,
                 );
 
             $chroma = $this->parser->asAbsoluteChannel($channels[1] ?? null, 'to-space', 150.0);
             $hue    = $this->parser->normalizeHue(
-                $this->parser->asHueAngle($channels[2] ?? null, 'to-space')
+                $this->parser->asHueAngle($channels[2] ?? null, 'to-space'),
             );
 
             return $this->colorSpaceConverter->xyzD65ToOklch(
-                $this->colorSpaceConverter->lchChannelsToXyzD65($lightness, $chroma, $hue)
+                $this->colorSpaceConverter->lchChannelsToXyzD65($lightness, $chroma, $hue),
             );
         }
 
@@ -352,7 +352,7 @@ final readonly class ColorSpaceInterop
                 $channels[0],
                 $channels[1],
                 $channels[2],
-                1.0
+                1.0,
             );
         } catch (UnsupportedColorSpace) {
             throw new UnsupportedColorSpaceException($space, ($this->errorCtx)('invert'));
@@ -362,7 +362,7 @@ final readonly class ColorSpaceInterop
             r: $rgba->rValue() * 255.0,
             g: $rgba->gValue() * 255.0,
             b: $rgba->bValue() * 255.0,
-            a: $alpha
+            a: $alpha,
         );
     }
 
@@ -383,7 +383,7 @@ final readonly class ColorSpaceInterop
                 h: $hsl->h,
                 s: $hsl->s,
                 l: $hsl->l,
-                a: $hsl->a
+                a: $hsl->a,
             );
         }
 
@@ -408,12 +408,12 @@ final readonly class ColorSpaceInterop
 
         $sat = $sNone ? null : $this->parser->clamp(
             $this->parser->asPercentage($channels[1], 'mix'),
-            100.0
+            100.0,
         );
 
         $lig = $lNone ? null : $this->parser->clamp(
             $this->parser->asPercentage($channels[2], 'mix'),
-            100.0
+            100.0,
         );
 
         $alp = 1.0;

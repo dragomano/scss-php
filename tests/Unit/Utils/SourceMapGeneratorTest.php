@@ -16,7 +16,7 @@ function mapping(
     int $generatedColumn,
     int $originalLine,
     int $originalColumn,
-    int $sourceIndex = 0
+    int $sourceIndex = 0,
 ): SourceMapMapping {
     return new SourceMapMapping(
         new SourceMapPosition($generatedLine, $generatedColumn),
@@ -30,7 +30,7 @@ function sourceMapOptions(
     bool $includeSources = false,
     string $sourceContent = '',
     string $sourceMapRoot = '',
-    array $sources = []
+    array $sources = [],
 ): SourceMapOptions {
     return new SourceMapOptions(
         outputLines: $outputLines,
@@ -51,7 +51,7 @@ describe('source map generation', function () {
             $mappings,
             'input.scss',
             'output.css',
-            sourceMapOptions()
+            sourceMapOptions(),
         );
 
         $sourceMap = json_decode($result, true);
@@ -71,7 +71,7 @@ describe('source map generation', function () {
             $mappings,
             'input.scss',
             'output.css',
-            sourceMapOptions(includeSources: true)
+            sourceMapOptions(includeSources: true),
         );
 
         $sourceMap = json_decode($result, true);
@@ -92,7 +92,7 @@ describe('mappings generation', function () {
             $mappings,
             'source.scss',
             'output.css',
-            sourceMapOptions()
+            sourceMapOptions(),
         );
         $sourceMap = json_decode($result, true);
 
@@ -110,7 +110,7 @@ describe('mappings generation', function () {
             $mappings,
             'source.scss',
             'output.css',
-            sourceMapOptions()
+            sourceMapOptions(),
         );
         $sourceMap = json_decode($result, true);
 
@@ -129,7 +129,7 @@ describe('mappings generation', function () {
             $mappings,
             'source.scss',
             'output.css',
-            sourceMapOptions()
+            sourceMapOptions(),
         );
         $sourceMap = json_decode($result, true);
 
@@ -152,13 +152,13 @@ describe('mappings generation', function () {
             $sortedMappings,
             'source.scss',
             'output.css',
-            sourceMapOptions()
+            sourceMapOptions(),
         );
         $unsortedResult = $this->generator->generate(
             $unsortedMappings,
             'source.scss',
             'output.css',
-            sourceMapOptions()
+            sourceMapOptions(),
         );
 
         $sortedMap = json_decode($sortedResult, true);
@@ -183,13 +183,13 @@ describe('mappings generation', function () {
             $sortedMappings,
             'source.scss',
             'output.css',
-            sourceMapOptions()
+            sourceMapOptions(),
         );
         $unsortedResult = $this->generator->generate(
             $unsortedMappings,
             'source.scss',
             'output.css',
-            sourceMapOptions()
+            sourceMapOptions(),
         );
 
         $sortedMap = json_decode($sortedResult, true);
@@ -209,7 +209,7 @@ describe('mappings generation', function () {
             $mappings,
             'source.scss',
             'output.css',
-            sourceMapOptions(outputLines: 4)
+            sourceMapOptions(outputLines: 4),
         );
         $sourceMap = json_decode($result, true);
 
@@ -228,7 +228,7 @@ describe('source map options', function () {
             $mappings,
             'source.scss',
             'output.css',
-            sourceMapOptions()
+            sourceMapOptions(),
         );
         $sourceMap = json_decode($result, true);
 

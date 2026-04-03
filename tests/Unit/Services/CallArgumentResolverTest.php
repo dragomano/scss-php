@@ -29,7 +29,7 @@ describe('CallArgumentResolver', function () {
 
     it('returns an empty list when content call parsing does not start with a rule node', function () {
         $resolver = new CallArgumentResolver(
-            new class () implements ParserInterface {
+            new class implements ParserInterface {
                 public function setTrackSourceLocations(bool $track): void {}
 
                 public function parse(string $source): RootNode
@@ -39,7 +39,7 @@ describe('CallArgumentResolver', function () {
             },
             $this->cssArg,
             $this->userFn,
-            $this->evaluate
+            $this->evaluate,
         );
 
         expect($resolver->parseContentCallArguments('(1, 2)'))->toBe([]);
@@ -47,7 +47,7 @@ describe('CallArgumentResolver', function () {
 
     it('returns an empty list when content call parsing does not produce the expected declaration', function () {
         $resolver = new CallArgumentResolver(
-            new class () implements ParserInterface {
+            new class implements ParserInterface {
                 public function setTrackSourceLocations(bool $track): void {}
 
                 public function parse(string $source): RootNode
@@ -59,7 +59,7 @@ describe('CallArgumentResolver', function () {
             },
             $this->cssArg,
             $this->userFn,
-            $this->evaluate
+            $this->evaluate,
         );
 
         expect($resolver->parseContentCallArguments('(1, 2)'))->toBe([]);

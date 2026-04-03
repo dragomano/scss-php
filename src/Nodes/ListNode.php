@@ -12,6 +12,6 @@ final class ListNode extends AstNode
     public function __construct(
         public array $items = [],
         public string $separator = 'space',
-        public bool $bracketed = false
+        public bool $bracketed = false,
     ) {}
 }

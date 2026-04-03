@@ -9,7 +9,7 @@ final class DeprecatedBuiltinFunctionException extends SassException
     public function __construct(
         public readonly string $reference,
         public readonly string $suggestions,
-        public readonly bool $multipleSuggestions = false
+        public readonly bool $multipleSuggestions = false,
     ) {
         parent::__construct($this->buildMessage());
     }

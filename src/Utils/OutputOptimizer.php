@@ -16,7 +16,7 @@ use function trim;
 final readonly class OutputOptimizer
 {
     public function __construct(
-        private CompressedCssFormatter $compressedCssFormatter = new CompressedCssFormatter()
+        private CompressedCssFormatter $compressedCssFormatter = new CompressedCssFormatter(),
     ) {}
 
     public function optimize(string $css, CompilerOptions $options): string

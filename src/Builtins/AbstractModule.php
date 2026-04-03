@@ -45,7 +45,7 @@ abstract class AbstractModule implements ModuleInterface
         string $name,
         array $positional,
         array $named,
-        ?BuiltinCallContext $context
+        ?BuiltinCallContext $context,
     ): AstNode;
 
     /**
@@ -195,7 +195,7 @@ abstract class AbstractModule implements ModuleInterface
         ?BuiltinCallContext $context,
         string $suggestions,
         string $fallback,
-        bool $multipleSuggestions = false
+        bool $multipleSuggestions = false,
     ): void {
         if ($context === null) {
             return;
@@ -204,14 +204,14 @@ abstract class AbstractModule implements ModuleInterface
         $context->warn((new DeprecatedBuiltinFunctionException(
             $this->deprecatedBuiltinFunctionReference($fallback),
             $suggestions,
-            $multipleSuggestions
+            $multipleSuggestions,
         ))->getMessage());
     }
 
     protected function warnAboutDeprecatedBuiltinFunctionWithSingleSuggestion(
         ?BuiltinCallContext $context,
         string $suggestion,
-        string $fallback
+        string $fallback,
     ): void {
         $this->warnAboutDeprecatedBuiltinFunction($context, $suggestion, $fallback);
     }

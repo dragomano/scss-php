@@ -16,7 +16,7 @@ final class EachNode extends StatementNode
     public function __construct(
         public array $variables,
         public AstNode $list,
-        public array $body = []
+        public array $body = [],
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

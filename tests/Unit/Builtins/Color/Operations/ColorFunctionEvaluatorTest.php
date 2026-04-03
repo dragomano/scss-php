@@ -47,7 +47,7 @@ describe('ColorFunctionEvaluator', function () {
             [new ColorNode('#112233'), new NumberNode(10, '%')],
             'whiteness',
             1,
-            'whiteness'
+            'whiteness',
         );
 
         expect($result)->toBeInstanceOf(ColorNode::class)

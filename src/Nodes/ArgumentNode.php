@@ -9,6 +9,6 @@ final class ArgumentNode extends AstNode
     public function __construct(
         public string $name,
         public ?AstNode $defaultValue = null,
-        public bool $rest = false
+        public bool $rest = false,
     ) {}
 }

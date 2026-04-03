@@ -10,7 +10,7 @@ final class SassErrorException extends SassException
         string $message,
         private readonly ?string $sourceFile = null,
         private readonly ?int $sourceLine = null,
-        private readonly ?int $sourceColumn = null
+        private readonly ?int $sourceColumn = null,
     ) {
         parent::__construct('@error: ' . $message);
     }

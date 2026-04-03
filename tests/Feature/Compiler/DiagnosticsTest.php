@@ -19,7 +19,7 @@ describe('Compiler', function () {
         it('logs @debug and @warn messages via psr logger', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -57,7 +57,7 @@ describe('Compiler', function () {
         it('evaluates inline if() expressions in @debug messages', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -83,7 +83,7 @@ describe('Compiler', function () {
         it('partially evaluates inline if() conditions when sass and css conditions are mixed', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SASS'
@@ -111,7 +111,7 @@ describe('Compiler', function () {
         it('applies sass number precision for debug output and comparison', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -134,7 +134,7 @@ describe('Compiler', function () {
         it('logs @debug directives in sass syntax with inline comments', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SASS'
@@ -153,7 +153,7 @@ describe('Compiler', function () {
         it('keeps quoted string case conversion unquoted in @debug output while preserving CSS quotes', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -198,7 +198,7 @@ describe('Compiler', function () {
         it('keeps unquoted interpolated identifier fragments in @debug output', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -222,7 +222,7 @@ describe('Compiler', function () {
         it('handles missing color channels for mix and to-space debug output', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -245,7 +245,7 @@ describe('Compiler', function () {
         it('keeps unicode range token with dash as unquoted string', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -262,7 +262,7 @@ describe('Compiler', function () {
         it('formats lists in @debug output', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -282,7 +282,7 @@ describe('Compiler', function () {
         it('formats maps in @debug output', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -298,7 +298,7 @@ describe('Compiler', function () {
         it('formats booleans in @debug output', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -316,7 +316,7 @@ describe('Compiler', function () {
         it('converts named colors to hex in @debug output in compressed style', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(style: Style::COMPRESSED, verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -336,7 +336,7 @@ describe('Compiler', function () {
         it('logs empty message for @warn when inline if() resolves to null', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -355,7 +355,7 @@ describe('Compiler', function () {
         it('logs and throws for @error directive', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
             $caught = false;
 
@@ -383,7 +383,7 @@ describe('Compiler', function () {
         it('supports @debug in user-defined functions', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -615,7 +615,7 @@ describe('Compiler', function () {
         it('normalizes escapes in unquoted strings', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -640,7 +640,7 @@ describe('Compiler', function () {
         it('normalizes newline escape in unquoted strings', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'
@@ -661,7 +661,7 @@ describe('Compiler', function () {
         it('supports special unquoted css-like value forms', function () {
             $compiler = new Compiler(
                 options: new CompilerOptions(verboseLogging: true),
-                logger: $this->logger
+                logger: $this->logger,
             );
 
             $source = <<<'SCSS'

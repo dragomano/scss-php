@@ -23,11 +23,11 @@ it('registers functions mixins and variables in scope', function () {
     $runtime->definition()->handleMixin(new MixinNode('box'), $ctx);
     $runtime->definition()->handleVariableDeclaration(
         new VariableDeclarationNode('gap', new NumberNode(12, 'px')),
-        $ctx
+        $ctx,
     );
     $runtime->definition()->handleModuleVarDeclaration(
         new ModuleVarDeclarationNode('theme', 'tone', new NumberNode(3)),
-        $ctx
+        $ctx,
     );
 
     expect($ctx->env->getCurrentScope()->hasFunction('size'))->toBeTrue()

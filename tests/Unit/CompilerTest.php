@@ -7,7 +7,7 @@ use Bugo\SCSS\Contracts\Color\ColorSerializerInterface;
 
 describe('Compiler', function () {
     it('accepts custom color serializer through constructor', function () {
-        $serializer = new class () implements ColorSerializerInterface {
+        $serializer = new class implements ColorSerializerInterface {
             public function serialize(string $value, bool $outputHexColors): string
             {
                 return 'custom:' . $value . ':' . ($outputHexColors ? 'hex' : 'raw');

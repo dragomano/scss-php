@@ -27,7 +27,7 @@ final readonly class CachingCompiler implements CompilerInterface
         private CacheInterface $cache,
         private TrackingLoader $trackingLoader,
         private CompilerOptions $options = new CompilerOptions(),
-        private int $ttl = 0
+        private int $ttl = 0,
     ) {}
 
     public function compileString(string $source, ?Syntax $syntax = null, string $sourceFile = ''): string

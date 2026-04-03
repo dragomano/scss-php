@@ -30,7 +30,7 @@ describe('ExtendsResolver', function () {
         $this->iterationValues = [];
         $this->conditionResults = [];
 
-        $parser = new class () implements ParserInterface {
+        $parser = new class implements ParserInterface {
             public function setTrackSourceLocations(bool $track): void {}
 
             public function parse(string $source): RootNode
@@ -77,7 +77,7 @@ describe('ExtendsResolver', function () {
             },
             static fn(AstNode $node): array => [],
             static function (array $variables, AstNode $item, Environment $env): void {},
-            $format
+            $format,
         );
 
         $this->accessor = new ReflectionAccessor($this->resolver);
@@ -86,7 +86,7 @@ describe('ExtendsResolver', function () {
     it('adjusts exclusive for loop bounds before collecting children', function () {
         $this->resolver->collectExtends(
             new ForNode('i', new NumberNode(1), new NumberNode(3), false, [new StringNode('tick')]),
-            new Environment()
+            new Environment(),
         );
 
         expect($this->iterationValues)->toBe([1, 2]);
@@ -97,11 +97,11 @@ describe('ExtendsResolver', function () {
 
         expect(fn() => $this->resolver->collectExtends(
             new ForNode('i', new NumberNode(1), new NumberNode(10002), true),
-            new Environment()
+            new Environment(),
         ))->toThrow(MaxIterationsExceededException::class)
             ->and(fn() => $this->resolver->collectExtends(
                 new WhileNode('forever'),
-                new Environment()
+                new Environment(),
             ))->toThrow(MaxIterationsExceededException::class);
     });
 
@@ -113,7 +113,7 @@ describe('ExtendsResolver', function () {
             'if',
             [new RuleNode('.if', [new ExtendNode('%if-target')])],
             [new ElseIfNode('elseif', [new RuleNode('.picked', [new ExtendNode('%picked-target')])])],
-            [new RuleNode('.else', [new ExtendNode('%else-target')])]
+            [new RuleNode('.else', [new ExtendNode('%else-target')])],
         );
 
         $this->resolver->collectExtends($node, new Environment());

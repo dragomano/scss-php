@@ -17,7 +17,7 @@ describe('StringConcatenationEvaluator', function () {
                 $node instanceof NumberNode => "$node->value" . ($node->unit ?? ''),
                 $node instanceof StringNode => $node->value,
                 default                     => '',
-            }
+            },
         );
         $this->accessor = new ReflectionAccessor($this->evaluator);
     });

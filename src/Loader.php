@@ -42,7 +42,7 @@ final class Loader implements LoaderInterface
     public function __construct(
         array $includePaths = [],
         ?Closure $workDir = null,
-        ?Closure $fileReader = null
+        ?Closure $fileReader = null,
     ) {
         $this->workDir    = $workDir ?? getcwd(...);
         $this->fileReader = $fileReader ?? file_get_contents(...);

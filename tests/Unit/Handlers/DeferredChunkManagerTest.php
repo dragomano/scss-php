@@ -22,7 +22,7 @@ describe('DeferredChunkManager', function () {
             $this->runtime->context(),
             $this->runtime->evaluation(),
             $this->runtime->render(),
-            $this->runtime->selector()
+            $this->runtime->selector(),
         );
     });
 
@@ -59,7 +59,7 @@ describe('DeferredChunkManager', function () {
             '.host',
             $scope,
             $child,
-            $this->ctx
+            $this->ctx,
         );
 
         expect($leading)->toHaveCount(1)
@@ -97,7 +97,7 @@ describe('DeferredChunkManager', function () {
             '.host',
             $scope,
             $child,
-            $this->ctx
+            $this->ctx,
         );
 
         expect($leading)->toBe([])
@@ -131,7 +131,7 @@ describe('DeferredChunkManager', function () {
             '.host',
             $scope,
             $child,
-            $this->ctx
+            $this->ctx,
         );
 
         expect($leading)->toBe([])
@@ -347,7 +347,7 @@ describe('DeferredChunkManager', function () {
             $child,
             $containsStandaloneNestedRuleChunks,
             $trailingRootChunks,
-            $this->ctx
+            $this->ctx,
         );
 
         expect($output)->toContain(".host {\n  color: red;\n}\n}\n.outside")
@@ -387,7 +387,7 @@ describe('DeferredChunkManager', function () {
 
         expect($accessor->callMethod(
             'shouldDeferBubblingChunkToTrailingRoot',
-            [new SupportsNode('(display: grid)')]
+            [new SupportsNode('(display: grid)')],
         ))->toBeTrue();
     });
 });

@@ -42,7 +42,7 @@ final readonly class ConditionalEvaluator
         private Closure $format,
         private Closure $evaluateComparisonList,
         private Closure $createBooleanNode,
-        private Closure $createNullNode
+        private Closure $createNullNode,
     ) {}
 
     /**

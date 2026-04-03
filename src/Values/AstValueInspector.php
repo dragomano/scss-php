@@ -18,7 +18,7 @@ final class AstValueInspector
             && strtolower(trim($node->value)) === 'none';
     }
 
-    public static function isQuotedString(AstNode|null $node): bool
+    public static function isQuotedString(?AstNode $node): bool
     {
         return $node instanceof StringNode && $node->quoted;
     }

@@ -11,6 +11,6 @@ final class OutputRenderer
      */
     public function __construct(
         public array $indentCache = [0 => ''],
-        public string $separator = "\n"
+        public string $separator = "\n",
     ) {}
 }

@@ -14,6 +14,6 @@ final readonly class CompilerOptions
         public bool $includeSources = false,
         public bool $outputHexColors = false,
         public bool $splitRules = false,
-        public bool $verboseLogging = false
+        public bool $verboseLogging = false,
     ) {}
 }

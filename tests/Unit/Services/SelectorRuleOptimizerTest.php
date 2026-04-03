@@ -38,9 +38,9 @@ describe('SelectorRuleOptimizer', function () {
 
     it('rejects incomplete simple sibling rule starts and mismatched selectors', function () {
         expect($this->accessor->callMethod('isSimpleSiblingRuleStart', [[
-                '.a {',
-                '',
-            ], 0]))->toBeFalse()
+            '.a {',
+            '',
+        ], 0]))->toBeFalse()
             ->and($this->accessor->callMethod('isMatchingSimpleSiblingRuleStart', [[
                 '.a {',
                 '  color: red;',

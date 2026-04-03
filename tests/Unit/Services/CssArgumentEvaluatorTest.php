@@ -28,7 +28,7 @@ describe('CssArgumentEvaluator', function () {
 
                 return $node;
             },
-            static fn(string $name, array $arguments): array => $arguments
+            static fn(string $name, array $arguments): array => $arguments,
         );
         $this->accessor = new ReflectionAccessor($this->evaluator);
     });
@@ -55,7 +55,7 @@ describe('CssArgumentEvaluator', function () {
                         new StringNode('or'),
                         new StringNode('fallback'),
                     ], 'space'),
-                ]
+                ],
             )),
         ], $env);
 
@@ -132,7 +132,7 @@ describe('CssArgumentEvaluator', function () {
             [new StringNode('alpha'), new StringNode('beta')],
             'comma',
             false,
-            ['tone' => new StringNode('red')]
+            ['tone' => new StringNode('red')],
         ));
 
         expect($expanded)->toHaveCount(3)
@@ -190,7 +190,7 @@ describe('CssArgumentEvaluator', function () {
                     [new StringNode('blue', true)],
                     'comma',
                     false,
-                    ['tone' => new StringNode('green')]
+                    ['tone' => new StringNode('green')],
                 ),
             ], 'comma'),
             new MapNode([
@@ -262,7 +262,7 @@ describe('CssArgumentEvaluator', function () {
                 new VariableReferenceNode('fallback'),
                 new StringNode('or'),
                 new StringNode('literal'),
-            ], 'space')]
+            ], 'space')],
         );
         $map = new MapNode([
             [
@@ -333,7 +333,7 @@ describe('CssArgumentEvaluator', function () {
             [new StringNode('alpha')],
             'comma',
             false,
-            ['tone' => new StringNode('beta')]
+            ['tone' => new StringNode('beta')],
         );
         $map = new MapNode([
             ['key' => new StringNode('alpha'), 'value' => new StringNode('beta')],
@@ -364,7 +364,7 @@ describe('CssArgumentEvaluator', function () {
             [new StringNode('plain')],
             'comma',
             false,
-            ['tone' => new ListNode([new StringNode('value'), new StringNode('and')], 'space')]
+            ['tone' => new ListNode([new StringNode('value'), new StringNode('and')], 'space')],
         );
         $named = new NamedArgumentNode('accent', new ListNode([new StringNode('or')], 'space'));
         $map = new MapNode([

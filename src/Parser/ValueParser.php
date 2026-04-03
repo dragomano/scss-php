@@ -70,7 +70,7 @@ final readonly class ValueParser
             foreach ($stopTokens as $tokenType) {
                 if ($this->stream->is($tokenType)) {
                     return $this->buildListFromGroups(
-                        $currentGroup !== [] ? [...$groups, $currentGroup] : $groups
+                        $currentGroup !== [] ? [...$groups, $currentGroup] : $groups,
                     );
                 }
             }
@@ -130,7 +130,7 @@ final readonly class ValueParser
             TokenType::MINUS,
             TokenType::STAR,
             TokenType::SLASH,
-            TokenType::PERCENT
+            TokenType::PERCENT,
         )) {
             $value = $this->stream->current()->value;
 

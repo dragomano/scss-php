@@ -55,7 +55,7 @@ final class Scope
         AstNode $value,
         bool $global = false,
         bool $default = false,
-        int $line = 1
+        int $line = 1,
     ): void {
         $name = $this->normalizeName($name);
 
@@ -185,12 +185,12 @@ final class Scope
         array $body,
         bool $global = false,
         ?Scope $closureScope = null,
-        int $line = 1
+        int $line = 1,
     ): void {
         $this->setMixin(
             $name,
             new CallableDefinition($arguments, $body, $closureScope ?? $this, $line),
-            $global
+            $global,
         );
     }
 
@@ -235,12 +235,12 @@ final class Scope
         array $body,
         bool $global = false,
         ?Scope $closureScope = null,
-        int $line = 1
+        int $line = 1,
     ): void {
         $this->setFunction(
             $name,
             new CallableDefinition($arguments, $body, $closureScope ?? $this, $line),
-            $global
+            $global,
         );
     }
 

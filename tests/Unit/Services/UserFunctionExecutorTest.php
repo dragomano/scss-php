@@ -48,7 +48,7 @@ describe('UserFunctionExecutor', function () {
             $evaluateValue,
             function (string $kind, AstNode $message, Environment $env, ?AstNode $statement): void {
                 $this->diagnostics[] = $kind;
-            }
+            },
         );
     });
 
@@ -182,7 +182,7 @@ describe('UserFunctionExecutor', function () {
                 'first' => new StringNode('named-first'),
                 'extra' => new StringNode('named-extra'),
             ],
-            $scope
+            $scope,
         );
 
         $rest = $scope->getAstVariable('rest');

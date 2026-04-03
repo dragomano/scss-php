@@ -35,7 +35,7 @@ describe('ColorValueFormatter', function () {
     });
 
     it('returns an empty string for unsupported ast nodes', function () {
-        $value = new class () extends AstNode {};
+        $value = new class extends AstNode {};
 
         expect($this->formatter->describeValue($value))->toBe('');
     });

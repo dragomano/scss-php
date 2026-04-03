@@ -292,13 +292,13 @@ final readonly class SelectorTokenizer
     {
         return $this->inspectTopLevelCombinators(
             $selector,
-            static fn(string $char): bool => in_array($char, ['>', '+', '~'], true)
+            static fn(string $char): bool => in_array($char, ['>', '+', '~'], true),
         );
     }
 
     public function hasBogusTopLevelCombinatorSequence(string $selector): bool
     {
-        $state = new class () {
+        $state = new class {
             public bool $lastTokenWasCombinator = false;
         };
 
@@ -320,7 +320,7 @@ final readonly class SelectorTokenizer
                 }
 
                 return false;
-            }
+            },
         );
     }
 
@@ -626,7 +626,7 @@ final readonly class SelectorTokenizer
     public function replaceExtendTargetInStructuredSelector(
         array $partCompounds,
         array $targetTokens,
-        array $replacementCompounds
+        array $replacementCompounds,
     ): array {
         if ($partCompounds === [] || $replacementCompounds === []) {
             return [];

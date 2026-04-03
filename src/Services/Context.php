@@ -13,7 +13,7 @@ final readonly class Context
     public function __construct(
         private CompilerContext $ctx,
         private CompilerOptions $options,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
     ) {}
 
     public function options(): CompilerOptions

@@ -9,6 +9,6 @@ final class NumberNode extends AstNode
     public function __construct(
         public float|int $value,
         public ?string $unit = null,
-        public bool $isLiteral = true
+        public bool $isLiteral = true,
     ) {}
 }

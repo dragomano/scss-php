@@ -56,13 +56,13 @@ final readonly class Module
         private AstEvaluator $ast,
         private Evaluator $evaluation,
         private Selector $selector,
-        private NodeDispatcherInterface $dispatcher
+        private NodeDispatcherInterface $dispatcher,
     ) {}
 
     public function assignModuleVariable(
         ModuleVarDeclarationNode $node,
         Environment $env,
-        bool $evaluateValue = true
+        bool $evaluateValue = true,
     ): void {
         if ($this->ctx->functionRegistry->isBuiltinAlias($node->module)) {
             throw new CannotModifyBuiltInVariableException();
@@ -189,7 +189,7 @@ final readonly class Module
 
         $moduleSource = $this->ctx->normalizerPipeline->process(
             $file['content'],
-            Syntax::fromPath($file['path'], $file['content'])
+            Syntax::fromPath($file['path'], $file['content']),
         );
 
         $moduleAst = $this->parser->parse($moduleSource);
@@ -209,7 +209,7 @@ final readonly class Module
         foreach ($node->configuration as $name => $valueNode) {
             $moduleEnv->getCurrentScope()->setVariable(
                 $name,
-                $this->evaluation->evaluateValue($valueNode, $env)
+                $this->evaluation->evaluateValue($valueNode, $env),
             );
         }
 
@@ -288,7 +288,7 @@ final readonly class Module
                 [],
                 true,
                 false,
-                $this->extractAstVariables($env->getCurrentScope()->getVariables())
+                $this->extractAstVariables($env->getCurrentScope()->getVariables()),
             );
 
             $this->mergeScopeExports($data['scope'], $env->getCurrentScope());
@@ -319,7 +319,7 @@ final readonly class Module
             $env->getCurrentScope(),
             $node->prefix,
             $node->visibility,
-            $node->members
+            $node->members,
         );
     }
 
@@ -387,7 +387,7 @@ final readonly class Module
         array $configuration = [],
         bool $fromImport = false,
         bool $compileCss = true,
-        array $initialVariables = []
+        array $initialVariables = [],
     ): array {
         $file = $this->loader->load($path, $fromImport);
 
@@ -395,7 +395,7 @@ final readonly class Module
 
         $moduleSource = $this->ctx->normalizerPipeline->process(
             $file['content'],
-            Syntax::fromPath($file['path'], $file['content'])
+            Syntax::fromPath($file['path'], $file['content']),
         );
 
         $moduleAst = $this->parser->parse($moduleSource);
@@ -513,7 +513,7 @@ final readonly class Module
     public function resolveImportForwardConfiguration(
         ForwardNode $node,
         Environment $env,
-        array $resolvedConfiguration
+        array $resolvedConfiguration,
     ): array {
         $prefix = $node->prefix ?? '';
 
@@ -553,7 +553,7 @@ final readonly class Module
 
         $normalized = array_map(
             fn(AstNode $value): string => $this->evaluation->format($value, $env),
-            $configuration
+            $configuration,
         );
 
         ksort($normalized);
@@ -574,7 +574,7 @@ final readonly class Module
         Scope $to,
         ?string $prefix = null,
         ?string $visibility = null,
-        array $members = []
+        array $members = [],
     ): void {
         $normalizedMembers = $this->normalizeForwardMembers($members);
 
@@ -593,7 +593,7 @@ final readonly class Module
 
             $to->setMixin(
                 $this->prefixExportName($name, $prefix),
-                $mixin
+                $mixin,
             );
         }
 
@@ -604,7 +604,7 @@ final readonly class Module
 
             $to->setFunction(
                 $this->prefixExportName($name, $prefix),
-                $function
+                $function,
             );
         }
     }
@@ -654,7 +654,7 @@ final readonly class Module
         string $name,
         bool $isVariable,
         ?string $visibility,
-        array $members
+        array $members,
     ): bool {
         if ($visibility !== 'show' && $visibility !== 'hide') {
             return true;

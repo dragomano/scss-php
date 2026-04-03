@@ -16,7 +16,7 @@ final class AtRootNode extends StatementNode
     public function __construct(
         public array $body = [],
         public ?string $queryMode = null,
-        public array $queryRules = []
+        public array $queryRules = [],
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

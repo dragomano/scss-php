@@ -12,7 +12,7 @@ final class DebugNode extends StatementNode implements DiagnosticNode
     public function __construct(
         public AstNode $message,
         public int $line = 1,
-        public int $column = 1
+        public int $column = 1,
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

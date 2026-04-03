@@ -29,7 +29,7 @@ final readonly class HexColorConverter
     public function __construct(
         private HexEncoder $hexColorEncoder = new HexEncoder(),
         private HexShortener $hexColorShortener = new HexShortener(),
-        private CssColorFunctionConverter $cssColorFunctionConverter = new CssColorFunctionConverter()
+        private CssColorFunctionConverter $cssColorFunctionConverter = new CssColorFunctionConverter(),
     ) {}
 
     public function tryConvert(FunctionNode $function): ?ColorNode

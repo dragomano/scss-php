@@ -169,7 +169,7 @@ describe('SassStringModule', function () {
                 new ListNode([new StringNode('a'), new NumberNode(2)], 'space'),
                 new ColorNode('#112233'),
                 new FunctionNode('noop'),
-            ]
+            ],
         );
 
         $this->module->call('length', [new StringNode('hello')], [], $context);
@@ -187,7 +187,7 @@ describe('SassStringModule', function () {
             builtinDisplayName: 'str-length',
             rawArguments: [
                 new ListNode([new StringNode('a'), new StringNode('b')], 'comma', true),
-            ]
+            ],
         );
 
         $this->module->call('length', [new StringNode('hello')], [], $context);

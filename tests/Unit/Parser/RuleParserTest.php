@@ -20,7 +20,7 @@ function ruleParserTestToken(
     TokenType $type,
     string $value = '',
     int $line = 1,
-    int $column = 1
+    int $column = 1,
 ): Token {
     return new Token($type, $value, $line, $column);
 }
@@ -47,7 +47,7 @@ function createRuleParserForTest(array $tokens, array $overrides = []): array
             $selector,
             [],
             $line,
-            $column
+            $column,
         );
 
     return [
@@ -57,7 +57,7 @@ function createRuleParserForTest(array $tokens, array $overrides = []): array
             $parseValueModifiers,
             $parseCustomPropertyValue,
             $isInsideBraces,
-            $parseRuleFromSelector
+            $parseRuleFromSelector,
         ),
         $stream,
     ];

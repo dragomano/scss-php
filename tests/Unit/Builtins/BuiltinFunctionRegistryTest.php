@@ -19,7 +19,7 @@ use Tests\ReflectionAccessor;
 
 describe('BuiltinFunctionRegistry', function () {
     beforeEach(function () {
-        $this->testModule = new class () implements ModuleInterface {
+        $this->testModule = new class implements ModuleInterface {
             public function getName(): string
             {
                 return 'test';

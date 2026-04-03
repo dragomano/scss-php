@@ -50,14 +50,14 @@ final readonly class BlockNodeHandler
         FunctionRegistry $registry,
         private Module $module,
         private Render $render,
-        private Selector $selector
+        private Selector $selector,
     ) {
         $this->chunks = new DeferredChunkManager(
             $this->dispatcher,
             $this->context,
             $this->evaluation,
             $this->render,
-            $this->selector
+            $this->selector,
         );
 
         $this->mixin = new MixinHandler(
@@ -67,7 +67,7 @@ final readonly class BlockNodeHandler
             $this->module,
             $this->render,
             $this->selector,
-            $this->chunks
+            $this->chunks,
         );
     }
 
@@ -190,7 +190,7 @@ final readonly class BlockNodeHandler
                         $selector,
                         $scope,
                         $child,
-                        $ctx
+                        $ctx,
                     );
 
                     continue;
@@ -206,7 +206,7 @@ final readonly class BlockNodeHandler
                         $child,
                         $containsStandaloneNestedRuleChunks,
                         $trailingRootChunks,
-                        $ctx
+                        $ctx,
                     );
 
                     continue;
@@ -229,7 +229,7 @@ final readonly class BlockNodeHandler
 
                 /** @var Visitable $child */
                 $compiled = $this->render->trimAndAdjustState(
-                    $this->dispatcher->compileWithContext($child, $childCtx)
+                    $this->dispatcher->compileWithContext($child, $childCtx),
                 );
 
                 if ($compiled !== '' && ! $omitOwnRuleOutput) {
@@ -358,7 +358,7 @@ final readonly class BlockNodeHandler
                         $child->name,
                         $this->evaluation->evaluateValue($child->value, $ctx->env),
                         $child->global,
-                        $child->default
+                        $child->default,
                     );
 
                     continue;
@@ -376,7 +376,7 @@ final readonly class BlockNodeHandler
 
                 /** @var Visitable $child */
                 $compiled = $this->render->trimAndAdjustState(
-                    $this->dispatcher->compileWithContext($child, $childCtx)
+                    $this->dispatcher->compileWithContext($child, $childCtx),
                 );
 
                 if ($compiled === '') {

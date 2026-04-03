@@ -30,7 +30,7 @@ final class Compiler implements CompilerInterface
         protected ParserInterface $parser = new Parser(),
         protected LoggerInterface $logger = new NullLogger(),
         protected ColorSerializerInterface $colorSerializer = new ColorSerializerAdapter(),
-        protected ColorBundleInterface $colorBundle = new ColorBundleAdapter()
+        protected ColorBundleInterface $colorBundle = new ColorBundleAdapter(),
     ) {
         $this->ctx = $this->createContext();
 
@@ -39,7 +39,7 @@ final class Compiler implements CompilerInterface
             $this->options,
             $this->loader,
             $this->parser,
-            $this->logger
+            $this->logger,
         );
     }
 
@@ -78,10 +78,10 @@ final class Compiler implements CompilerInterface
         return new CompilerContext(
             valueFactory: new ValueFactory(
                 outputHexColors: $this->options->outputHexColors,
-                colorSerializer: $this->colorSerializer
+                colorSerializer: $this->colorSerializer,
             ),
             colorSerializer: $this->colorSerializer,
-            colorBundle: $this->colorBundle
+            colorBundle: $this->colorBundle,
         );
     }
 

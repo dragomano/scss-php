@@ -87,7 +87,7 @@ final class StreamUtils
     public static function appendTokenToBuffer(
         string &$buffer,
         Token $token,
-        bool $quoteStringToken = false
+        bool $quoteStringToken = false,
     ): void {
         if ($token->type === TokenType::WHITESPACE) {
             $buffer .= ' ';
@@ -108,7 +108,7 @@ final class StreamUtils
         TokenStream $stream,
         string &$buffer,
         int &$interpolationDepth,
-        Token $token
+        Token $token,
     ): bool {
         if ($token->type === TokenType::HASH && $stream->peek()->type === TokenType::LBRACE) {
             $buffer .= '#{';
@@ -179,7 +179,7 @@ final class StreamUtils
         return self::readRawUntil(
             $stream,
             fn(Token $token): bool => $token->type === TokenType::IDENTIFIER
-                && in_array($token->value, $keywords, true)
+                && in_array($token->value, $keywords, true),
         );
     }
 

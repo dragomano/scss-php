@@ -26,7 +26,7 @@ final readonly class DiagnosticNodeHandler
     public function __construct(
         private Context $context,
         private Evaluator $evaluation,
-        private Render $render
+        private Render $render,
     ) {}
 
     public function handleDebug(DebugNode $node, TraversalContext $ctx): string
@@ -58,7 +58,7 @@ final readonly class DiagnosticNodeHandler
         string $directive,
         AstNode $messageNode,
         TraversalContext $ctx,
-        ?AstNode $origin = null
+        ?AstNode $origin = null,
     ): void {
         [$message, $line, $column] = $this->buildPayload($directive, $messageNode, $ctx, $origin);
 
@@ -76,7 +76,7 @@ final readonly class DiagnosticNodeHandler
         string $directive,
         AstNode $messageNode,
         TraversalContext $ctx,
-        ?AstNode $origin = null
+        ?AstNode $origin = null,
     ): array {
         $evaluated = $this->evaluateMessage($messageNode, $ctx);
 

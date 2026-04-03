@@ -216,7 +216,7 @@ describe('StreamUtils', function () {
 
             $result = StreamUtils::readRawUntil(
                 $stream,
-                fn(Token $t): bool => $t->type === TokenType::SEMICOLON
+                fn(Token $t): bool => $t->type === TokenType::SEMICOLON,
             );
 
             expect($result)->toBe('hello world');
@@ -227,7 +227,7 @@ describe('StreamUtils', function () {
 
             $result = StreamUtils::readRawUntil(
                 $stream,
-                fn(Token $t): bool => $t->type === TokenType::SEMICOLON
+                fn(Token $t): bool => $t->type === TokenType::SEMICOLON,
             );
 
             expect($result)->toBe('func(a; b)');
@@ -238,7 +238,7 @@ describe('StreamUtils', function () {
 
             $result = StreamUtils::readRawUntil(
                 $stream,
-                fn(Token $t): bool => $t->type === TokenType::SEMICOLON
+                fn(Token $t): bool => $t->type === TokenType::SEMICOLON,
             );
 
             expect($result)->toBe('[a; b]');
@@ -249,7 +249,7 @@ describe('StreamUtils', function () {
 
             $result = StreamUtils::readRawUntil(
                 $stream,
-                fn(Token $t): bool => $t->type === TokenType::SEMICOLON
+                fn(Token $t): bool => $t->type === TokenType::SEMICOLON,
             );
 
             expect($result)->toBe('[a[b]c]');
@@ -260,7 +260,7 @@ describe('StreamUtils', function () {
 
             $result = StreamUtils::readRawUntil(
                 $stream,
-                fn(Token $t): bool => $t->type === TokenType::SEMICOLON
+                fn(Token $t): bool => $t->type === TokenType::SEMICOLON,
             );
 
             expect($result)->toBe('hello');

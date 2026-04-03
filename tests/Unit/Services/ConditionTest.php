@@ -87,32 +87,32 @@ describe('Condition', function () {
                 new ListNode([new StringNode('a'), new NumberNode(1)], 'space'),
                 '==',
                 new ListNode([new StringNode('a'), new NumberNode(1)], 'space'),
-                $this->env
+                $this->env,
             ))->toBeTrue()
             ->and($this->condition->compare(
                 new ListNode([new StringNode('a')], 'space', true),
                 '==',
                 new ListNode([new StringNode('a')], 'space', false),
-                $this->env
+                $this->env,
             ))->toBeFalse()
             ->and($this->condition->compare(
                 new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]),
                 '==',
                 new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]),
-                $this->env
+                $this->env,
             ))->toBeTrue()
             ->and($this->condition->compare(
                 new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]),
                 '==',
                 new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(2)]]),
-                $this->env
+                $this->env,
             ))->toBeFalse()
             ->and($this->condition->compare($sharedFunction, '==', $sharedFunction, $this->env))->toBeTrue()
             ->and($this->condition->compare(
                 new FunctionNode('rgb', [new NumberNode(255), new NumberNode(0), new NumberNode(0)]),
                 '==',
                 new FunctionNode('rgb', [new NumberNode(255), new NumberNode(0), new NumberNode(0)]),
-                $this->env
+                $this->env,
             ))->toBeFalse();
     });
 
@@ -136,19 +136,19 @@ describe('Condition', function () {
             new ListNode([new StringNode('a')], 'space'),
             '==',
             new ListNode([new StringNode('a')], 'comma'),
-            $this->env
+            $this->env,
         ))->toBeFalse()
             ->and($this->condition->compare(
                 new ListNode([new StringNode('a')], 'space'),
                 '==',
                 new ListNode([new StringNode('a'), new StringNode('b')], 'space'),
-                $this->env
+                $this->env,
             ))->toBeFalse()
             ->and($this->condition->compare(
                 new ListNode([new StringNode('a')], 'space'),
                 '==',
                 new ListNode([new StringNode('b')], 'space'),
-                $this->env
+                $this->env,
             ))->toBeFalse()
             ->and($this->condition->compare(
                 new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]),
@@ -157,13 +157,13 @@ describe('Condition', function () {
                     ['key' => new StringNode('a'), 'value' => new NumberNode(1)],
                     ['key' => new StringNode('b'), 'value' => new NumberNode(2)],
                 ]),
-                $this->env
+                $this->env,
             ))->toBeFalse()
             ->and($this->condition->compare(
                 new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]),
                 '==',
                 new MapNode([['key' => new StringNode('b'), 'value' => new NumberNode(1)]]),
-                $this->env
+                $this->env,
             ))->toBeFalse();
     });
 
@@ -244,7 +244,7 @@ describe('Condition', function () {
             ->and($resolvedFunction->value)->toBe(3.0)
             ->and($resolvedFunction->unit)->toBe('px');
 
-        $parser = new class () implements ParserInterface {
+        $parser = new class implements ParserInterface {
             public function setTrackSourceLocations(bool $track): void {}
 
             public function parse(string $source): RootNode

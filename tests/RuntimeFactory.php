@@ -25,14 +25,14 @@ final class RuntimeFactory
         ?CompilerContext $context = null,
         ?LoaderInterface $loader = null,
         ?ParserInterface $parser = null,
-        ?LoggerInterface $logger = null
+        ?LoggerInterface $logger = null,
     ): CompilerRuntime {
         return new CompilerRuntime(
             $context ?? new CompilerContext(),
             $options ?? new CompilerOptions(),
             $loader ?? new Loader($loadPaths),
             $parser ?? new Parser(),
-            $logger ?? new NullLogger()
+            $logger ?? new NullLogger(),
         );
     }
 

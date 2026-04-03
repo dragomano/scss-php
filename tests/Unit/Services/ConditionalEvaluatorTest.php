@@ -38,14 +38,14 @@ describe('ConditionalEvaluator', function () {
                 $node instanceof NullNode => 'null',
                 $node instanceof FunctionNode => $node->name . '(' . implode(', ', array_map(
                     fn(AstNode $argument): string => $format($argument, $env),
-                    $node->arguments
+                    $node->arguments,
                 )) . ')',
                 $node instanceof ListNode => implode(
                     $node->separator === 'comma' ? ', ' : ' ',
                     array_map(
                         fn(AstNode $item): string => $format($item, $env),
-                        $node->items
-                    )
+                        $node->items,
+                    ),
                 ),
                 default => 'node',
             };
@@ -60,7 +60,7 @@ describe('ConditionalEvaluator', function () {
                 $format($node, $env)
             ] ?? null,
             fn(bool $value): AstNode => new BooleanNode($value),
-            fn(): AstNode => new NullNode()
+            fn(): AstNode => new NullNode(),
         );
         $this->accessor = new ReflectionAccessor($this->evaluator);
     });

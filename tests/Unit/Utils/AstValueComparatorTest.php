@@ -144,7 +144,7 @@ describe('AstValueComparator', function () {
         });
 
         it('returns false for unknown node types', function () {
-            $node = new class () extends AstNode {};
+            $node = new class extends AstNode {};
 
             expect(AstValueComparator::equals($node, $node))->toBeFalse();
         });

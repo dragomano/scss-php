@@ -15,7 +15,7 @@ function moduleDirectiveToken(
     TokenType $type,
     string $value = '',
     int $line = 1,
-    int $column = 1
+    int $column = 1,
 ): Token {
     return new Token($type, $value, $line, $column);
 }
@@ -60,7 +60,7 @@ function createModuleDirectiveParser(array $tokens, array $overrides = []): Modu
         $parseString,
         $consumeIdentifier,
         $parseValueUntil,
-        $parseValueModifiers
+        $parseValueModifiers,
     );
 }
 

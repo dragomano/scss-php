@@ -36,7 +36,7 @@ it('returns an empty string for unresolved local mixin includes', function () {
 it('returns an empty string for meta.apply when the first argument is not a mixin reference', function () {
     $result = $this->runtime->block()->handleInclude(
         new IncludeNode('meta', 'apply', [new NumberNode(10, 'px')]),
-        $this->ctx
+        $this->ctx,
     );
 
     expect($result)->toBe('');
@@ -45,7 +45,7 @@ it('returns an empty string for meta.apply when the first argument is not a mixi
 it('returns an empty string for meta.apply when the referenced mixin cannot be resolved', function () {
     $result = $this->runtime->block()->handleInclude(
         new IncludeNode('meta', 'apply', [new StringNode('theme.missing')]),
-        $this->ctx
+        $this->ctx,
     );
 
     expect($result)->toBe('');
@@ -54,7 +54,7 @@ it('returns an empty string for meta.apply when the referenced mixin cannot be r
 it('returns an empty string for meta.load-css when the first argument is not a string', function () {
     $result = $this->runtime->block()->handleInclude(
         new IncludeNode('meta', 'load-css', [new NumberNode(10, 'px')]),
-        $this->ctx
+        $this->ctx,
     );
 
     expect($result)->toBe('');
@@ -63,7 +63,7 @@ it('returns an empty string for meta.load-css when the first argument is not a s
 it('returns an empty string for meta.load-css when the loaded module has no css', function () {
     $result = $this->runtime->block()->handleInclude(
         new IncludeNode('meta', 'load-css', [new StringNode('functions')]),
-        $this->ctx
+        $this->ctx,
     );
 
     expect($result)->toBe('');
@@ -72,7 +72,7 @@ it('returns an empty string for meta.load-css when the loaded module has no css'
 it('returns loaded css for meta.load-css without a parent selector', function () {
     $result = $this->runtime->block()->handleInclude(
         new IncludeNode('meta', 'load-css', [new StringNode('meta-load-css')]),
-        $this->ctx
+        $this->ctx,
     );
 
     $expected = /** @lang text */ <<<'CSS'
@@ -89,7 +89,7 @@ it('qualifies loaded css with the parent selector for meta.load-css', function (
 
     $result = $this->runtime->block()->handleInclude(
         new IncludeNode('meta', 'load-css', [new StringNode('meta-load-css')]),
-        $this->ctx
+        $this->ctx,
     );
 
     $expected = /** @lang text */ <<<'CSS'
@@ -152,7 +152,7 @@ it('appends non-declaration mixin output directly when source mappings are disab
 it('defers non-declaration mixin output through deferred chunks when source mappings are enabled', function () {
     $runtime = RuntimeFactory::createRuntime(
         [__DIR__ . '/../../fixtures'],
-        new CompilerOptions(sourceMapFile: 'output.css.map')
+        new CompilerOptions(sourceMapFile: 'output.css.map'),
     );
     $ctx = RuntimeFactory::context();
 

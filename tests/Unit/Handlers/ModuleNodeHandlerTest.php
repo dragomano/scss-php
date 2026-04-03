@@ -47,12 +47,12 @@ it('adds newlines between sequential css and sass imports', function () {
 
     $cssImports = $runtime->moduleLoad()->handleImport(
         new ImportNode(['"a.css"', '"b.css"']),
-        $ctx
+        $ctx,
     );
 
     $sassImports = $runtime->moduleLoad()->handleImport(
         new ImportNode(['"_imported.scss"', '"_forwarded.scss"']),
-        $ctx
+        $ctx,
     );
 
     expect($cssImports)->toBe("@import \"a.css\";\n@import \"b.css\";")
@@ -65,7 +65,7 @@ it('adds a newline between css and sass imports in the same directive', function
 
     $result = $runtime->moduleLoad()->handleImport(
         new ImportNode(['"a.css"', '"_imported.scss"']),
-        $ctx
+        $ctx,
     );
 
     expect($result)->toContain("@import \"a.css\";\n.from-import {");

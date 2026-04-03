@@ -49,12 +49,12 @@ it('handles meta.apply and regular rule blocks', function () {
 
     $apply = $runtime->block()->handleInclude(
         new IncludeNode('meta', 'apply', [new StringNode('sized'), new NumberNode(20, 'px')]),
-        $ctx
+        $ctx,
     );
 
     $rule = $runtime->block()->handleRule(
         new RuleNode('.box', [new DeclarationNode('color', new StringNode('red'))]),
-        RuntimeFactory::context()
+        RuntimeFactory::context(),
     );
 
     $expected = /** @lang text */ <<<'CSS'
@@ -174,7 +174,7 @@ it('handles variables and module assignments inside supports while collecting so
 
 it('returns escaped at-root chunks when supports body has no direct content', function () {
     $runtime = RuntimeFactory::createRuntime(
-        options: new CompilerOptions(style: Style::COMPRESSED)
+        options: new CompilerOptions(style: Style::COMPRESSED),
     );
     $ctx     = RuntimeFactory::context();
 
@@ -254,7 +254,7 @@ it('appends escaped at-root chunks after supports output when content exists', f
 
 it('returns compressed empty supports blocks without trailing newline', function () {
     $runtime = RuntimeFactory::createRuntime(
-        options: new CompilerOptions(style: Style::COMPRESSED)
+        options: new CompilerOptions(style: Style::COMPRESSED),
     );
     $ctx = RuntimeFactory::context();
 

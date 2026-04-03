@@ -44,7 +44,7 @@ final class AstValueTransformer
                 $items,
                 $node->separator,
                 $node->bracketed,
-                $keywords
+                $keywords,
             ));
         }
 
@@ -64,7 +64,7 @@ final class AstValueTransformer
         if ($node instanceof NamedArgumentNode) {
             return $transform(new NamedArgumentNode(
                 $node->name,
-                self::map($node->value, $transform)
+                self::map($node->value, $transform),
             ));
         }
 
@@ -80,7 +80,7 @@ final class AstValueTransformer
                 $arguments,
                 $node->line,
                 $node->modernSyntax,
-                $node->capturedScope
+                $node->capturedScope,
             ));
         }
 

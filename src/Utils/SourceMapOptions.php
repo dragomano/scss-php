@@ -14,6 +14,6 @@ final readonly class SourceMapOptions
         public string $sourceMapRoot = '',
         public string $sourceContent = '',
         public bool $includeSources = false,
-        public array $sources = []
+        public array $sources = [],
     ) {}
 }

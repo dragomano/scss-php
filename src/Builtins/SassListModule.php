@@ -112,7 +112,7 @@ final class SassListModule extends AbstractModule
         if (count($positional) < 2) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('list.append'),
-                'list and value arguments'
+                'list and value arguments',
             );
         }
 
@@ -136,7 +136,7 @@ final class SassListModule extends AbstractModule
         if (count($positional) < 2) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('list.index'),
-                'list and value arguments'
+                'list and value arguments',
             );
         }
 
@@ -162,7 +162,7 @@ final class SassListModule extends AbstractModule
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('list.is-bracketed'),
-                'a list argument'
+                'a list argument',
             );
         }
 
@@ -181,7 +181,7 @@ final class SassListModule extends AbstractModule
             throw MissingFunctionArgumentsException::count(
                 $this->builtinErrorContext('list.join'),
                 2,
-                true
+                true,
             );
         }
 
@@ -206,7 +206,7 @@ final class SassListModule extends AbstractModule
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('list.length'),
-                'a list argument'
+                'a list argument',
             );
         }
 
@@ -229,7 +229,7 @@ final class SassListModule extends AbstractModule
         if (count($positional) < 2) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('list.nth'),
-                'list and index arguments'
+                'list and index arguments',
             );
         }
 
@@ -250,7 +250,7 @@ final class SassListModule extends AbstractModule
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('list.separator'),
-                'a list argument'
+                'a list argument',
             );
         }
 
@@ -273,7 +273,7 @@ final class SassListModule extends AbstractModule
         if (count($positional) < 3) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('list.set-nth'),
-                'list, index and value arguments'
+                'list, index and value arguments',
             );
         }
 
@@ -298,7 +298,7 @@ final class SassListModule extends AbstractModule
             throw MissingFunctionArgumentsException::count(
                 $this->builtinErrorContext('list.slash'),
                 1,
-                true
+                true,
             );
         }
 
@@ -348,7 +348,7 @@ final class SassListModule extends AbstractModule
         ?BuiltinCallContext $context,
         string $name,
         array $positional,
-        array $named = []
+        array $named = [],
     ): void {
         if (! $this->isGlobalBuiltinCall()) {
             return;
@@ -357,7 +357,7 @@ final class SassListModule extends AbstractModule
         $this->warnAboutDeprecatedBuiltinFunctionWithSingleSuggestion(
             $context,
             $this->deprecatedListSuggestion($name, $positional, $named),
-            'list.' . $name
+            'list.' . $name,
         );
     }
 
@@ -487,7 +487,7 @@ final class SassListModule extends AbstractModule
             throw new InvalidArgumentTypeException(
                 'list separator',
                 'one of: auto, comma, space, slash',
-                get_debug_type($separator)
+                get_debug_type($separator),
             );
         }
 

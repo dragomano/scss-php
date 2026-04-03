@@ -40,6 +40,6 @@ describe('AstValueSuggestionDescriber', function () {
         ]);
 
         expect(AstValueSuggestionDescriber::describe($map))->toBe('(k: 1)')
-            ->and(AstValueSuggestionDescriber::describe(new class () extends AstNode {}))->toBe('');
+            ->and(AstValueSuggestionDescriber::describe(new class extends AstNode {}))->toBe('');
     });
 });

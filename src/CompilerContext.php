@@ -36,7 +36,7 @@ final class CompilerContext
         public ColorBundleInterface $colorBundle = new ColorBundleAdapter(),
         public OutputOptimizer $optimizer = new OutputOptimizer(),
         public OutputRenderer $renderer = new OutputRenderer(),
-        public string $currentSourceFile = 'input.scss'
+        public string $currentSourceFile = 'input.scss',
     ) {
         $this->functionRegistry = $functionRegistry ?? new FunctionRegistry(colorBundle: $this->colorBundle);
     }

@@ -19,7 +19,7 @@ function functionCallToken(
     TokenType $type,
     string $value = '',
     int $line = 1,
-    int $column = 1
+    int $column = 1,
 ): Token {
     return new Token($type, $value, $line, $column);
 }
@@ -136,7 +136,7 @@ function createFunctionCallParser(array $tokens, array $overrides = []): array
             $parseSingleValue,
             $parseValueUntil,
             $parseVariableReference,
-            $parseCommaSeparatedValue
+            $parseCommaSeparatedValue,
         ),
         $stream,
     ];
@@ -252,7 +252,7 @@ describe('FunctionCallParser', function () {
         ]);
 
         $accessor = new ReflectionAccessor($parser);
-        $node = new class () extends AstNode {};
+        $node = new class extends AstNode {};
 
         expect($accessor->callMethod('nodeToString', [$node]))->toBe('');
     });

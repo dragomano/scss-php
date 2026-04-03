@@ -13,7 +13,7 @@ final class ModuleVarDeclarationNode extends StatementNode
         public string $module,
         public string $name,
         public AstNode $value,
-        public bool $default = false
+        public bool $default = false,
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

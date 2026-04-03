@@ -926,7 +926,7 @@ describe('Parser', function () {
             $this->parser,
             'extractInlineValueFromAst',
             new RootNode([new StringNode('broken')]),
-            'broken'
+            'broken',
         );
 
         expect($value)->toBeInstanceOf(StringNode::class)

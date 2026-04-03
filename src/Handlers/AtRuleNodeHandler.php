@@ -28,7 +28,7 @@ final readonly class AtRuleNodeHandler
         private NodeDispatcherInterface $dispatcher,
         private Evaluator $evaluation,
         private Render $render,
-        private Selector $selector
+        private Selector $selector,
     ) {}
 
     public function handleAtRoot(AtRootNode $node, TraversalContext $ctx): string
@@ -151,7 +151,7 @@ final readonly class AtRuleNodeHandler
                     $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $parentAtRuleStack);
 
                     $mergedChunk = $this->render->trimTrailingNewlines(
-                        $this->dispatcher->compileWithContext($mergedNode, $mergedCtx)
+                        $this->dispatcher->compileWithContext($mergedNode, $mergedCtx),
                     );
 
                     $deferredMergedChunk = $this->render->createDeferredChunk($mergedChunk, $saved);
@@ -171,7 +171,7 @@ final readonly class AtRuleNodeHandler
 
                 /** @var Visitable $child */
                 $compiled = $this->render->trimAndAdjustState(
-                    $this->dispatcher->compileWithContext($child, $bodyCtx)
+                    $this->dispatcher->compileWithContext($child, $bodyCtx),
                 );
 
                 if ($compiled === '') {
@@ -260,7 +260,7 @@ final readonly class AtRuleNodeHandler
         }
 
         $contentBlock = $this->evaluation->extractAstNodes(
-            $ctx->env->getCurrentScope()->getVariable('__meta_content_block')
+            $ctx->env->getCurrentScope()->getVariable('__meta_content_block'),
         );
 
         if ($contentBlock === []) {
@@ -269,7 +269,7 @@ final readonly class AtRuleNodeHandler
 
         $contentArguments = $ctx->env->getCurrentScope()->hasVariable('__meta_content_arguments')
             ? $this->evaluation->extractArgumentNodes(
-                $ctx->env->getCurrentScope()->getVariable('__meta_content_arguments')
+                $ctx->env->getCurrentScope()->getVariable('__meta_content_arguments'),
             )
             : [];
 
@@ -281,7 +281,7 @@ final readonly class AtRuleNodeHandler
 
         [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments(
             $contentCallArguments,
-            $ctx->env
+            $ctx->env,
         );
 
         if ($contentScope === null) {
@@ -307,7 +307,7 @@ final readonly class AtRuleNodeHandler
                 $contentArguments,
                 $resolvedPositional,
                 $resolvedNamed,
-                $ctx->env->getCurrentScope()
+                $ctx->env->getCurrentScope(),
             );
         }
 

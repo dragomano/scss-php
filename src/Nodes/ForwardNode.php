@@ -18,7 +18,7 @@ final class ForwardNode extends StatementNode
         public ?string $prefix = null,
         public ?string $visibility = null,
         public array $members = [],
-        public array $configuration = []
+        public array $configuration = [],
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

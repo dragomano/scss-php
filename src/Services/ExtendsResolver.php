@@ -68,7 +68,7 @@ final readonly class ExtendsResolver
         private Closure $applyVariableDeclaration,
         private Closure $eachIterableItems,
         private Closure $assignEachVariables,
-        private Closure $format
+        private Closure $format,
     ) {}
 
     public function collectExtends(AstNode $node, Environment $env): void
@@ -540,7 +540,7 @@ final readonly class ExtendsResolver
         Environment $env,
         ?string $selector = null,
         string $currentContext = '',
-        bool $applyDeclarations = false
+        bool $applyDeclarations = false,
     ): void {
         foreach ($children as $child) {
             if ($child instanceof ExtendNode && $selector !== null) {
@@ -615,7 +615,7 @@ final readonly class ExtendsResolver
 
         if ($this->tokenizer->hasUnsupportedTopLevelCombinator($target)) {
             throw new SassErrorException(
-                'Complex selectors may not be extended. Use a simple selector target in @extend.'
+                'Complex selectors may not be extended. Use a simple selector target in @extend.',
             );
         }
 
@@ -623,7 +623,7 @@ final readonly class ExtendsResolver
 
         if (count($compounds) !== 1) {
             throw new SassErrorException(
-                'Complex selectors may not be extended. Use a simple selector target in @extend.'
+                'Complex selectors may not be extended. Use a simple selector target in @extend.',
             );
         }
 
@@ -631,7 +631,7 @@ final readonly class ExtendsResolver
 
         if (count($tokens) !== 1) {
             throw new SassErrorException(
-                'Compound selectors may not be extended. Use separate @extend directives for each simple selector.'
+                'Compound selectors may not be extended. Use separate @extend directives for each simple selector.',
             );
         }
     }
@@ -693,7 +693,7 @@ final readonly class ExtendsResolver
         return $this->tokenizer->replaceExtendTargetInStructuredSelector(
             $partCompounds,
             $targetTokens,
-            $extenderCompounds
+            $extenderCompounds,
         );
     }
 
@@ -718,7 +718,7 @@ final readonly class ExtendsResolver
                 $woven = $this->weaveFallbackExtendedSelector(
                     trim(substr($part, 0, $start)),
                     trim(substr($part, $end)),
-                    $extender
+                    $extender,
                 );
 
                 if ($woven !== null) {

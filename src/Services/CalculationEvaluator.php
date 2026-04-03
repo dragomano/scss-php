@@ -41,7 +41,7 @@ final readonly class CalculationEvaluator
     public function __construct(
         private Closure $format,
         private Closure $evaluateArithmetic,
-        private Closure $fromAst
+        private Closure $fromAst,
     ) {}
 
     /**
@@ -234,7 +234,7 @@ final readonly class CalculationEvaluator
     public function unwrapNestedNode(
         AstNode $node,
         ?string $calculationContext = null,
-        bool $insideList = false
+        bool $insideList = false,
     ): AstNode {
         if ($node instanceof FunctionNode) {
             $arguments = [];
@@ -389,7 +389,7 @@ final readonly class CalculationEvaluator
                 'round',
                 $numberIndex === 1
                     ? [new StringNode($strategy), $number, $step]
-                    : [$number, $step]
+                    : [$number, $step],
             );
         }
 

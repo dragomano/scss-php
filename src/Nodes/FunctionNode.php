@@ -16,6 +16,6 @@ final class FunctionNode extends AstNode
         public array $arguments = [],
         public int $line = 0,
         public bool $modernSyntax = false,
-        public ?Scope $capturedScope = null
+        public ?Scope $capturedScope = null,
     ) {}
 }

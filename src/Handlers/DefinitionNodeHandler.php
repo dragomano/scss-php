@@ -24,7 +24,7 @@ final readonly class DefinitionNodeHandler
     public function __construct(
         private Evaluator $evaluation,
         private Module $module,
-        private Context $context
+        private Context $context,
     ) {}
 
     public function handleFunction(FunctionDeclarationNode $node, TraversalContext $ctx): string
@@ -39,7 +39,7 @@ final readonly class DefinitionNodeHandler
             $node->body,
             false,
             null,
-            $node->line
+            $node->line,
         );
 
         return '';
@@ -53,7 +53,7 @@ final readonly class DefinitionNodeHandler
             $node->body,
             false,
             null,
-            $node->line
+            $node->line,
         );
 
         return '';
@@ -73,7 +73,7 @@ final readonly class DefinitionNodeHandler
             $this->evaluation->evaluateValueWithSlashDivision($node->value, $ctx->env),
             $node->global,
             $node->default,
-            $node->line
+            $node->line,
         );
 
         return '';
@@ -84,7 +84,7 @@ final readonly class DefinitionNodeHandler
         return in_array(
             strtolower(str_replace('_', '-', $name)),
             self::DEPRECATED_FUNCTION_NAMES,
-            true
+            true,
         );
     }
 }

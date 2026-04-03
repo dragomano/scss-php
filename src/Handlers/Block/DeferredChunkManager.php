@@ -44,7 +44,7 @@ final readonly class DeferredChunkManager
         private Context $context,
         private Evaluator $evaluation,
         private Render $render,
-        private Selector $selector
+        private Selector $selector,
     ) {}
 
     /**
@@ -64,7 +64,7 @@ final readonly class DeferredChunkManager
     public function buildRuleResult(
         string $output,
         array $leadingRootChunks,
-        array $trailingRootChunks
+        array $trailingRootChunks,
     ): string {
         $segmentSeparator = $this->render->outputSeparator();
 
@@ -152,7 +152,7 @@ final readonly class DeferredChunkManager
         string $selector,
         Scope $scope,
         AstNode $child,
-        TraversalContext $ctx
+        TraversalContext $ctx,
     ): void {
         /** @var StatementNode $child */
         $bubblingNode = $this->evaluation->normalizeBubblingNodeForSelector($child, $selector);
@@ -165,7 +165,7 @@ final readonly class DeferredChunkManager
             if ($parentMediaPrelude !== null && $bubblingNode instanceof DirectiveNode) {
                 $mergedPrelude = $this->selector->combineMediaQueryPreludes(
                     $parentMediaPrelude,
-                    $this->selector->resolveDirectivePrelude($child->prelude, $ctx->env)
+                    $this->selector->resolveDirectivePrelude($child->prelude, $ctx->env),
                 );
 
                 $bubblingNode = new DirectiveNode('media', $mergedPrelude, $bubblingNode->body, true);
@@ -177,7 +177,7 @@ final readonly class DeferredChunkManager
                 $outerCtx = new TraversalContext($ctx->env, max(0, $ctx->indent - 1));
 
                 $chunk = $this->render->trimAndAdjustState(
-                    $this->dispatcher->compileWithContext($bubblingNode, $outerCtx)
+                    $this->dispatcher->compileWithContext($bubblingNode, $outerCtx),
                 );
 
                 $deferredChunk = $this->render->createDeferredChunk($chunk, $saved);
@@ -203,7 +203,7 @@ final readonly class DeferredChunkManager
         }
 
         $chunk = $this->render->trimAndAdjustState(
-            $this->dispatcher->compileWithContext($bubblingNode, $ctx)
+            $this->dispatcher->compileWithContext($bubblingNode, $ctx),
         );
 
         if ($chunk !== '') {
@@ -293,7 +293,7 @@ final readonly class DeferredChunkManager
         string &$output,
         bool &$first,
         AtRootNode $child,
-        TraversalContext $ctx
+        TraversalContext $ctx,
     ): void {
         $preparedChunk = $this->prepareAtRootChunk($child, $ctx);
 
@@ -328,7 +328,7 @@ final readonly class DeferredChunkManager
         string &$output,
         bool &$first,
         AstNode $child,
-        TraversalContext $ctx
+        TraversalContext $ctx,
     ): void {
         /** @var StatementNode $child */
         $parentSelector = $this->selector->getCurrentParentSelector($ctx->env);
@@ -370,7 +370,7 @@ final readonly class DeferredChunkManager
         string &$output,
         bool &$first,
         RuleNode $child,
-        TraversalContext $ctx
+        TraversalContext $ctx,
     ): void {
         $parentSelector = $this->selector->getCurrentParentSelector($ctx->env);
         $childSelector  = $this->resolveRuleSelector($child, $ctx);
@@ -394,7 +394,7 @@ final readonly class DeferredChunkManager
                 $resolvedSelector,
                 $child->children,
                 $child->line,
-                $child->column
+                $child->column,
             );
         }
 
@@ -471,7 +471,7 @@ final readonly class DeferredChunkManager
         RuleNode $node,
         string $selector,
         TraversalContext $ctx,
-        int $indent
+        int $indent,
     ): ?string {
         $nestedProperty = $this->selector->parseNestedPropertyBlockSelector($selector);
 
@@ -484,7 +484,7 @@ final readonly class DeferredChunkManager
             $ctx->env,
             $indent,
             $nestedProperty['property'],
-            $nestedProperty['value']
+            $nestedProperty['value'],
         );
     }
 
@@ -505,7 +505,7 @@ final readonly class DeferredChunkManager
         RuleNode $child,
         bool &$containsStandaloneNestedRuleChunks,
         array &$trailingRootChunks,
-        TraversalContext $ctx
+        TraversalContext $ctx,
     ): void {
         $childSelector = $this->resolveRuleSelector($child, $ctx);
         $compiled      = $this->compileNestedPropertyBlock($child, $childSelector, $ctx, $ctx->indent + 1);
@@ -530,7 +530,7 @@ final readonly class DeferredChunkManager
             $resolvedNestedSelector,
             $child->children,
             $child->line,
-            $child->column
+            $child->column,
         );
 
         $preparedChunk = $this->prepareCompiledChunk($nestedRuleNode, $ctx);
@@ -657,7 +657,7 @@ final readonly class DeferredChunkManager
     {
         $saved = $this->render->savePosition();
         $chunk = $this->render->trimAndAdjustState(
-            $this->dispatcher->compileWithContext($node, $ctx)
+            $this->dispatcher->compileWithContext($node, $ctx),
         );
 
         if ($chunk === '') {

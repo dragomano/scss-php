@@ -157,7 +157,7 @@ final readonly class SassNormalizer implements SourceNormalizer
                 $level,
                 $index,
                 $lines,
-                $indentSize
+                $indentSize,
             );
 
             if (str_ends_with(rtrim($trimmed), ',')) {
@@ -226,7 +226,7 @@ final readonly class SassNormalizer implements SourceNormalizer
         int $level,
         int $index,
         array $lines,
-        int $indentSize
+        int $indentSize,
     ): array {
         $candidate = rtrim($trimmed);
 
@@ -246,7 +246,7 @@ final readonly class SassNormalizer implements SourceNormalizer
         int $level,
         int $index,
         array $lines,
-        int $indentSize
+        int $indentSize,
     ): array {
         $header = rtrim($trimmed);
 
@@ -287,7 +287,7 @@ final readonly class SassNormalizer implements SourceNormalizer
         int $level,
         int $index,
         array $lines,
-        int $indentSize
+        int $indentSize,
     ): array {
         $candidate = rtrim($trimmed);
 
@@ -307,7 +307,7 @@ final readonly class SassNormalizer implements SourceNormalizer
         int $level,
         int $index,
         array $lines,
-        int $indentSize
+        int $indentSize,
     ): array {
         $depth = $this->parenthesisBalance($merged);
 

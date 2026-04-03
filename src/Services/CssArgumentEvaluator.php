@@ -34,7 +34,7 @@ final readonly class CssArgumentEvaluator
      */
     public function __construct(
         private Closure $evaluateValue,
-        private Closure $normalizeCalculationArguments
+        private Closure $normalizeCalculationArguments,
     ) {}
 
     /**
@@ -81,7 +81,7 @@ final readonly class CssArgumentEvaluator
             if ($argument instanceof NamedArgumentNode) {
                 $expanded[] = new NamedArgumentNode(
                     $argument->name,
-                    ($this->evaluateValue)($argument->value, $env)
+                    ($this->evaluateValue)($argument->value, $env),
                 );
 
                 continue;
@@ -109,7 +109,7 @@ final readonly class CssArgumentEvaluator
                     $expanded[] = $spreadArgument instanceof NamedArgumentNode
                         ? new NamedArgumentNode(
                             $spreadArgument->name,
-                            $this->evaluateFallbackCssArgument($spreadArgument->value, $env)
+                            $this->evaluateFallbackCssArgument($spreadArgument->value, $env),
                         )
                         : $this->evaluateFallbackCssArgument($spreadArgument, $env);
                 }
@@ -120,7 +120,7 @@ final readonly class CssArgumentEvaluator
             if ($argument instanceof NamedArgumentNode) {
                 $expanded[] = new NamedArgumentNode(
                     $argument->name,
-                    $this->evaluateFallbackCssArgument($argument->value, $env)
+                    $this->evaluateFallbackCssArgument($argument->value, $env),
                 );
 
                 continue;

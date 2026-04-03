@@ -361,7 +361,7 @@ final class SassMathModule extends AbstractModule
             throw MissingFunctionArgumentsException::count(
                 $this->builtinErrorContext('math.hypot'),
                 1,
-                true
+                true,
             );
         }
 
@@ -450,7 +450,7 @@ final class SassMathModule extends AbstractModule
         if ($number->unit !== null) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('math.percentage'),
-                'a unitless number'
+                'a unitless number',
             );
         }
 
@@ -487,7 +487,7 @@ final class SassMathModule extends AbstractModule
         if (! is_int($limit->value) || $limit->value < 1) {
             throw BuiltinArgumentException::mustBePositiveInteger(
                 $this->builtinCallReference('math.random'),
-                'limit'
+                'limit',
             );
         }
 
@@ -571,7 +571,7 @@ final class SassMathModule extends AbstractModule
             if (count($positional) < 1) {
                 throw new MissingFunctionArgumentsException(
                     $this->builtinErrorContext($wantMax ? 'math.max' : 'math.min'),
-                    'at least one number'
+                    'at least one number',
                 );
             }
 
@@ -583,7 +583,7 @@ final class SassMathModule extends AbstractModule
             foreach ($numbers as $number) {
                 if (! $this->unitsCompatible($unit, $number->unit)) {
                     throw IncompatibleUnitsException::functionArguments(
-                        $this->builtinCallReference($wantMax ? 'math.max' : 'math.min')
+                        $this->builtinCallReference($wantMax ? 'math.max' : 'math.min'),
                     );
                 }
             }
@@ -619,7 +619,7 @@ final class SassMathModule extends AbstractModule
         if (! isset($positional[$index])) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext($context),
-                'required number argument'
+                'required number argument',
             );
         }
 
@@ -632,7 +632,7 @@ final class SassMathModule extends AbstractModule
             throw new InvalidArgumentTypeException(
                 $this->builtinErrorContext($context),
                 'number',
-                get_debug_type($value)
+                get_debug_type($value),
             );
         }
 
@@ -647,7 +647,7 @@ final class SassMathModule extends AbstractModule
         if (! isset($positional[$index])) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext($context),
-                'required number argument'
+                'required number argument',
             );
         }
 
@@ -661,7 +661,7 @@ final class SassMathModule extends AbstractModule
         if ($number->unit !== null) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext($context),
-                'a unitless number'
+                'a unitless number',
             );
         }
 
@@ -678,7 +678,7 @@ final class SassMathModule extends AbstractModule
         if (! $this->unitsCompatible($a->unit, $b->unit)) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('math.clamp'),
-                'compatible units'
+                'compatible units',
             );
         }
     }
@@ -706,7 +706,7 @@ final class SassMathModule extends AbstractModule
     private function warnAboutDeprecatedMathFunction(
         ?BuiltinCallContext $context,
         string $name,
-        array $positional
+        array $positional,
     ): void {
         if (! $this->isGlobalBuiltinCall() || in_array($name, ['abs', 'clamp'], true)) {
             return;
@@ -715,7 +715,7 @@ final class SassMathModule extends AbstractModule
         $this->warnAboutDeprecatedBuiltinFunctionWithSingleSuggestion(
             $context,
             $this->deprecatedMathSuggestion($name, $positional),
-            'math.' . $name
+            'math.' . $name,
         );
     }
 
@@ -784,7 +784,7 @@ final class SassMathModule extends AbstractModule
         throw BuiltinArgumentException::unsupportedUnit(
             $this->builtinCallReference('math'),
             $number->unit,
-            'unitless, deg, rad, grad, or turn'
+            'unitless, deg, rad, grad, or turn',
         );
     }
 

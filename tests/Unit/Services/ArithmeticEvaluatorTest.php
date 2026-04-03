@@ -104,7 +104,7 @@ describe('ArithmeticEvaluator', function () {
     it('evaluate() returns null for non-space-separated list', function () {
         $list = new ListNode(
             [new NumberNode(1.0), new NumberNode(2.0)],
-            'comma'
+            'comma',
         );
 
         expect($this->evaluator->evaluate($list, true))->toBeNull();
@@ -114,7 +114,7 @@ describe('ArithmeticEvaluator', function () {
         // [-] [5] — unary minus applied to 5
         $list = new ListNode(
             [new StringNode('-'), new NumberNode(5.0, null, false)],
-            'space'
+            'space',
         );
 
         $result = $this->evaluator->evaluate($list, false);
@@ -131,7 +131,7 @@ describe('ArithmeticEvaluator', function () {
     it('evaluate() collapses unary plus', function () {
         $list = new ListNode(
             [new StringNode('+'), new NumberNode(5.0, null, false)],
-            'space'
+            'space',
         );
 
         $result = $this->evaluator->evaluate($list, false);
@@ -153,7 +153,7 @@ describe('ArithmeticEvaluator', function () {
                 new StringNode('+'),
                 new NumberNode(4.0, null, false),
             ],
-            'space'
+            'space',
         );
 
         $result = $this->evaluator->evaluate($list, false);
@@ -174,7 +174,7 @@ describe('ArithmeticEvaluator', function () {
                 new StringNode('^'),
                 new NumberNode(4.0, null, false),
             ],
-            'space'
+            'space',
         );
 
         expect($this->evaluator->evaluate($list, false))->toBeNull();

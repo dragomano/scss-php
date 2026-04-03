@@ -69,7 +69,7 @@ final readonly class DirectiveParser
         private Closure $parseRuleFromSelector,
         private Closure $parseInlineValue,
         private Closure $incrementBlockDepth,
-        private Closure $decrementBlockDepth
+        private Closure $decrementBlockDepth,
     ) {
         $this->modules = new ModuleDirectiveParser(
             $this->stream,
@@ -408,7 +408,7 @@ final readonly class DirectiveParser
             ($this->parseInlineValue)($startExpr),
             ($this->parseInlineValue)($endExpr),
             $inclusive,
-            $body
+            $body,
         );
     }
 

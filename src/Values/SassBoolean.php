@@ -11,7 +11,7 @@ final class SassBoolean extends AbstractSassValue
     private static ?self $falseInstance = null;
 
     private function __construct(
-        private readonly bool $value
+        private readonly bool $value,
     ) {}
 
     public static function fromBool(bool $value): self

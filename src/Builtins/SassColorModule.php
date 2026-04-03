@@ -121,7 +121,7 @@ final class SassColorModule extends AbstractModule
 
     public function __construct(
         private readonly HexColorConverter $hexColorConverter = new HexColorConverter(),
-        ColorBundleInterface $bundle = new ColorBundleAdapter()
+        ColorBundleInterface $bundle = new ColorBundleAdapter(),
     ) {
         $errorCtx = fn(string $f): string => $this->builtinErrorContext($f);
         $isGlobal = fn(): bool => $this->isGlobalBuiltinCall();
@@ -145,7 +145,7 @@ final class SassColorModule extends AbstractModule
             $converter,
             $literal,
             new ColorAstParser(),
-            $errorCtx
+            $errorCtx,
         );
 
         $this->astReader = new ColorAstReader(
@@ -163,7 +163,7 @@ final class SassColorModule extends AbstractModule
             $this->hexColorConverter,
             $converter,
             new ColorChannelSchema(),
-            $errorCtx
+            $errorCtx,
         );
 
         $this->channelReader = new ColorChannelReader(
@@ -174,7 +174,7 @@ final class SassColorModule extends AbstractModule
             new ColorChannelSchema(),
             $errorCtx,
             $isGlobal,
-            $warn
+            $warn,
         );
 
         $this->functions = new ColorFunctionEvaluator(
@@ -186,14 +186,14 @@ final class SassColorModule extends AbstractModule
             $this->spaceInterop,
             $this->formatter,
             $converter,
-            $warn
+            $warn,
         );
 
         $this->constructors = new ColorConstructorFunctions(
             $this->argumentParser,
             $this->converter,
             $this->astWriter,
-            $errorCtx
+            $errorCtx,
         );
     }
 
@@ -286,21 +286,21 @@ final class SassColorModule extends AbstractModule
                 'rgb',
                 $name,
                 $name,
-                $context
+                $context,
             ),
             'hue', 'saturation', 'lightness' => $this->channelReader->deprecatedChannelValue(
                 $positional,
                 'hsl',
                 $name,
                 $name,
-                $context
+                $context,
             ),
             'whiteness', 'blackness' => $this->channelReader->deprecatedChannelValue(
                 $positional,
                 'hwb',
                 $name,
                 $name,
-                $context
+                $context,
             ),
             default => throw new UnknownSassFunctionException('color', $name),
         };
@@ -341,7 +341,7 @@ final class SassColorModule extends AbstractModule
             $direction,
             $name,
             $allowCssDefer,
-            $context
+            $context,
         );
     }
 }

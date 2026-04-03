@@ -123,7 +123,7 @@ describe('Loader', function () {
                     [$tmpDir],
                     fileReader: static fn(string $resolvedPath): string|false => str_ends_with($resolvedPath, 'broken.scss')
                         ? false
-                        : file_get_contents($resolvedPath)
+                        : file_get_contents($resolvedPath),
                 );
 
                 expect(fn() => $loader->load('broken.scss'))
@@ -314,7 +314,7 @@ describe('Loader', function () {
         it('uses include paths when getcwd() fails', function () {
             $loader = new Loader(
                 [__DIR__ . '/../fixtures'],
-                workDir: static fn(): string|false => false
+                workDir: static fn(): string|false => false,
             );
 
             $result = $loader->load('_theme.scss');

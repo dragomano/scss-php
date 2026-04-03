@@ -53,7 +53,7 @@ final class SassSelectorModule extends AbstractModule
     ];
 
     public function __construct(
-        private readonly SelectorTokenizer $tokenizer = new SelectorTokenizer()
+        private readonly SelectorTokenizer $tokenizer = new SelectorTokenizer(),
     ) {}
 
     public function getName(): string
@@ -105,14 +105,14 @@ final class SassSelectorModule extends AbstractModule
             throw MissingFunctionArgumentsException::count(
                 $this->builtinErrorContext('selector.append'),
                 1,
-                true
+                true,
             );
         }
 
         $this->warnAboutDeprecatedSelectorFunction($context, 'append', $positional);
 
         $resultParts = $this->splitSelectorList(
-            $this->normalizeSelector($this->requireString($positional[0], 'selector.append'))
+            $this->normalizeSelector($this->requireString($positional[0], 'selector.append')),
         );
 
         for ($i = 1; $i < count($positional); $i++) {
@@ -146,7 +146,7 @@ final class SassSelectorModule extends AbstractModule
         if (count($positional) < 3) {
             throw MissingFunctionArgumentsException::count(
                 $this->builtinErrorContext('selector.extend'),
-                3
+                3,
             );
         }
 
@@ -165,7 +165,7 @@ final class SassSelectorModule extends AbstractModule
 
             if ($this->hasUnsupportedTopLevelCombinator($targetPart)) {
                 throw new SassErrorException(
-                    'Complex selectors may not be extended. Use a simple selector target in @extend.'
+                    'Complex selectors may not be extended. Use a simple selector target in @extend.',
                 );
             }
 
@@ -173,7 +173,7 @@ final class SassSelectorModule extends AbstractModule
 
             if (count($compounds) > 1) {
                 throw new SassErrorException(
-                    'Complex selectors may not be extended. Use a simple selector target in @extend.'
+                    'Complex selectors may not be extended. Use a simple selector target in @extend.',
                 );
             }
 
@@ -181,7 +181,7 @@ final class SassSelectorModule extends AbstractModule
 
             if (count($tokens) > 1) {
                 throw new SassErrorException(
-                    'Compound selectors may not be extended. Use separate @extend directives for each simple selector.'
+                    'Compound selectors may not be extended. Use separate @extend directives for each simple selector.',
                 );
             }
         }
@@ -212,7 +212,7 @@ final class SassSelectorModule extends AbstractModule
         if (count($positional) < 2) {
             throw MissingFunctionArgumentsException::count(
                 $this->builtinErrorContext('selector.is-superselector'),
-                2
+                2,
             );
         }
 
@@ -246,14 +246,14 @@ final class SassSelectorModule extends AbstractModule
             throw MissingFunctionArgumentsException::count(
                 $this->builtinErrorContext('selector.nest'),
                 1,
-                true
+                true,
             );
         }
 
         $this->warnAboutDeprecatedSelectorFunction($context, 'nest', $positional);
 
         $resultParts = $this->splitSelectorList(
-            $this->normalizeSelector($this->requireString($positional[0], 'selector.nest'))
+            $this->normalizeSelector($this->requireString($positional[0], 'selector.nest')),
         );
 
         for ($i = 1; $i < count($positional); $i++) {
@@ -287,7 +287,7 @@ final class SassSelectorModule extends AbstractModule
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('selector.parse'),
-                'a string selector argument'
+                'a string selector argument',
             );
         }
 
@@ -304,7 +304,7 @@ final class SassSelectorModule extends AbstractModule
         if (count($positional) < 3) {
             throw MissingFunctionArgumentsException::count(
                 $this->builtinErrorContext('selector.replace'),
-                3
+                3,
             );
         }
 
@@ -330,7 +330,7 @@ final class SassSelectorModule extends AbstractModule
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('selector.simple-selectors'),
-                'a string selector argument'
+                'a string selector argument',
             );
         }
 
@@ -350,7 +350,7 @@ final class SassSelectorModule extends AbstractModule
         if (count($positional) < 2) {
             throw MissingFunctionArgumentsException::count(
                 $this->builtinErrorContext('selector.unify'),
-                2
+                2,
             );
         }
 
@@ -433,7 +433,7 @@ final class SassSelectorModule extends AbstractModule
         return $this->tokenizer->replaceExtendTargetInStructuredSelector(
             $partCompounds,
             $targetTokens,
-            $sourceCompounds
+            $sourceCompounds,
         );
     }
 
@@ -443,7 +443,7 @@ final class SassSelectorModule extends AbstractModule
     private function warnAboutDeprecatedSelectorFunction(
         ?BuiltinCallContext $context,
         string $name,
-        array $positional
+        array $positional,
     ): void {
         if (! $this->isGlobalBuiltinCall()) {
             return;
@@ -452,7 +452,7 @@ final class SassSelectorModule extends AbstractModule
         $this->warnAboutDeprecatedBuiltinFunctionWithSingleSuggestion(
             $context,
             $this->deprecatedSelectorSuggestion($name, $positional),
-            'selector.' . $name
+            'selector.' . $name,
         );
     }
 
@@ -566,7 +566,7 @@ final class SassSelectorModule extends AbstractModule
         if (! ($value instanceof StringNode)) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext($context),
-                'a string selector argument'
+                'a string selector argument',
             );
         }
 

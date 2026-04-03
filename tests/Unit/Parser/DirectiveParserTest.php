@@ -291,7 +291,7 @@ describe('DirectiveParser', function () {
         it('falls back to a generic directive for invalid @for syntax', function (
             string $source,
             string $prelude,
-            bool $hasBlock
+            bool $hasBlock,
         ) {
             $ast = $this->parser->parse($source);
             $node = $ast->children[0];

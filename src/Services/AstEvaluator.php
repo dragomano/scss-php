@@ -85,7 +85,7 @@ final class AstEvaluator
                 $node->value,
                 $node->global,
                 $node->default,
-                $node->line
+                $node->line,
             );
 
             return;
@@ -104,7 +104,7 @@ final class AstEvaluator
                 $node->body,
                 false,
                 null,
-                $node->line
+                $node->line,
             );
 
             return;
@@ -117,7 +117,7 @@ final class AstEvaluator
                 $node->body,
                 false,
                 null,
-                $node->line
+                $node->line,
             );
         }
     }

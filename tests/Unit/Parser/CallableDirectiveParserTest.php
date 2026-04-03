@@ -19,7 +19,7 @@ function callableDirectiveToken(
     TokenType $type,
     string $value = '',
     int $line = 1,
-    int $column = 1
+    int $column = 1,
 ): Token {
     return new Token($type, $value, $line, $column);
 }
@@ -81,7 +81,7 @@ function createCallableDirectiveParser(array $tokens, array $overrides = []): Ca
         $consumeIdentifier,
         $parseRuleFromSelector,
         $incrementBlockDepth,
-        $decrementBlockDepth
+        $decrementBlockDepth,
     );
 }
 

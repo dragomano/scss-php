@@ -284,7 +284,7 @@ describe('Selector service', function () {
                 static fn($value): bool => $value instanceof StringNode && $value->value === 'nullish',
                 static fn(string $property): bool => $property === 'border-color',
                 static fn($value) => new StringNode('compressed'),
-                static fn($node, Environment $env): string => $node instanceof StringNode ? $node->value : ''
+                static fn($node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
             );
         });
 

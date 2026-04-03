@@ -14,7 +14,7 @@ use Bugo\Iris\Spaces\XyzColor;
 
 interface ColorConverterInterface
 {
-    public function clamp(float|null $value, float $max): float;
+    public function clamp(?float $value, float $max): float;
 
     public function normalizeHue(float $hue): float;
 
@@ -60,7 +60,7 @@ interface ColorConverterInterface
 
     public function scaleLinear(float $current, float $amountPercent, float $maxValue): float;
 
-    public function mixChannel(float|null $a, float|null $b, float $p): float;
+    public function mixChannel(?float $a, ?float $b, float $p): float;
 
     public function xyzD65ToOklch(XyzColor $xyz, float $alpha = 1.0): OklchColor;
 
@@ -74,7 +74,7 @@ interface ColorConverterInterface
 
     public function xyzD65ToOklabColor(XyzColor $xyz, float $alpha = 1.0): OklabColor;
 
-    public function srgbToLinearUnclamped(float|null $value): float;
+    public function srgbToLinearUnclamped(?float $value): float;
 
     /** @return array{0: float, 1: float, 2: float} */
     public function xyzD65ToLinearDisplayP3(XyzColor $xyz): array;

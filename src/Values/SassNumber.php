@@ -32,7 +32,7 @@ final class SassNumber extends AbstractSassValue
     public function __construct(
         private readonly int|float $value,
         private readonly ?string $unit = null,
-        private readonly bool $preserveZeroUnit = false
+        private readonly bool $preserveZeroUnit = false,
     ) {}
 
     public function toCss(): string
