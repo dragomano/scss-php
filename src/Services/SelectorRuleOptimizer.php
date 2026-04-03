@@ -222,11 +222,7 @@ final class SelectorRuleOptimizer
         }
 
         $trimmed        = ltrim($line);
-        $separatorIndex = strpos($trimmed, ':');
-
-        if ($separatorIndex === false) {
-            return null;
-        }
+        $separatorIndex = (int) strpos($trimmed, ':');
 
         return $property . ':' . trim(substr($trimmed, $separatorIndex + 1, -1));
     }
@@ -238,10 +234,6 @@ final class SelectorRuleOptimizer
         }
 
         $trimmed = ltrim($line);
-
-        if ($trimmed === '') {
-            return null;
-        }
 
         $length = strlen($trimmed);
         $index  = 0;
@@ -289,11 +281,7 @@ final class SelectorRuleOptimizer
         }
 
         $trimmedLine    = ltrim($line);
-        $separatorIndex = strpos($trimmedLine, ':');
-
-        if ($separatorIndex === false) {
-            return false;
-        }
+        $separatorIndex = (int) strpos($trimmedLine, ':');
 
         $trimmed = trim(substr($trimmedLine, $separatorIndex + 1, -1));
 

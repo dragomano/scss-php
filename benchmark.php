@@ -155,7 +155,7 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
                 'sourceMapFilename' => 'result-scssphp-scssphp.css',
                 'sourceMapURL'      => 'result-scssphp-scssphp.css.map',
                 'sourceMapBasepath' => __DIR__,
-                'outputSourceFiles' => true,
+                'outputSourceFiles' => false,
             ] : []);
 
             // BenchmarkRunner calls compileString(), but scssphp only tracks the source URL

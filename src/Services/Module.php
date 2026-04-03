@@ -40,7 +40,6 @@ use function serialize;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;
-use function strpos;
 use function strtolower;
 use function substr;
 use function substr_count;
@@ -367,17 +366,8 @@ final readonly class Module
             return ['type' => 'sass', 'path' => $path];
         }
 
-        $spacePosition = strpos($raw, ' ');
-
-        if ($spacePosition !== false) {
-            $path  = trim(substr($raw, 0, $spacePosition));
-            $media = trim(substr($raw, $spacePosition + 1));
-
-            if ($media !== '' || $this->isCssImportPath($path)) {
-                return ['type' => 'css', 'raw' => $raw];
-            }
-
-            return ['type' => 'sass', 'path' => $path];
+        if (str_contains($raw, ' ')) {
+            return ['type' => 'css', 'raw' => $raw];
         }
 
         if ($this->isCssImportPath($raw)) {

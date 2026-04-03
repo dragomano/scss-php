@@ -77,119 +77,133 @@ final readonly class ColorChannelReader
 
     public function resolveChannelValue(AstNode $color, string $space, string $channelName): NumberNode
     {
-        if ($space === 'rgb') {
-            $rgb = $this->converter->toRgb($color);
+        return match ($space) {
+            'rgb'            => $this->resolveRgbChannel($color, $channelName, false),
+            'srgb'           => $this->resolveRgbChannel($color, $channelName, true),
+            'hsl'            => $this->resolveHslChannel($color, $channelName),
+            'hwb'            => $this->resolveHwbChannel($color, $channelName),
+            'lch'            => $this->resolveLchChannel($color, $channelName),
+            'lab'            => $this->resolveLabChannel($color, $channelName),
+            'oklch'          => $this->resolveOklchChannel($color, $channelName),
+            'oklab'          => $this->resolveOklabChannel($color, $channelName),
+            'xyz', 'xyz-d65' => $this->resolveXyzD65Channel($color, $channelName),
+            default          => $this->resolveXyzD50Channel($color, $channelName),
+        };
+    }
 
-            return match ($channelName) {
-                'red'   => new NumberNode($rgb->rValue()),
-                'green' => new NumberNode($rgb->gValue()),
-                'blue'  => new NumberNode($rgb->bValue()),
-                'alpha' => new NumberNode($rgb->a),
-                default => throw new UnknownColorChannelException('RGB', $channelName),
-            };
-        }
+    private function resolveRgbChannel(AstNode $color, string $channelName, bool $normalized): NumberNode
+    {
+        $rgb    = $this->converter->toRgb($color);
+        $factor = $normalized ? 255.0 : 1.0;
+        $label  = $normalized ? 'sRGB' : 'RGB';
 
-        if ($space === 'srgb') {
-            $rgb = $this->converter->toRgb($color);
+        return match ($channelName) {
+            'red'   => new NumberNode($rgb->rValue() / $factor),
+            'green' => new NumberNode($rgb->gValue() / $factor),
+            'blue'  => new NumberNode($rgb->bValue() / $factor),
+            'alpha' => new NumberNode($rgb->a),
+            default => throw new UnknownColorChannelException($label, $channelName),
+        };
+    }
 
-            return match ($channelName) {
-                'red'   => new NumberNode($rgb->rValue() / 255.0),
-                'green' => new NumberNode($rgb->gValue() / 255.0),
-                'blue'  => new NumberNode($rgb->bValue() / 255.0),
-                'alpha' => new NumberNode($rgb->a),
-                default => throw new UnknownColorChannelException('sRGB', $channelName),
-            };
-        }
+    private function resolveHslChannel(AstNode $color, string $channelName): NumberNode
+    {
+        $hsl = $this->converter->toHsl($color);
 
-        if ($space === 'hsl') {
-            $hsl = $this->converter->toHsl($color);
+        return match ($channelName) {
+            'hue'        => new NumberNode($hsl->hValue(), 'deg'),
+            'saturation' => new NumberNode($hsl->sValue(), '%'),
+            'lightness'  => new NumberNode($hsl->lValue(), '%'),
+            'alpha'      => new NumberNode($hsl->a),
+            default      => throw new UnknownColorChannelException('HSL', $channelName),
+        };
+    }
 
-            return match ($channelName) {
-                'hue'        => new NumberNode($hsl->hValue(), 'deg'),
-                'saturation' => new NumberNode($hsl->sValue(), '%'),
-                'lightness'  => new NumberNode($hsl->lValue(), '%'),
-                'alpha'      => new NumberNode($hsl->a),
-                default      => throw new UnknownColorChannelException('HSL', $channelName),
-            };
-        }
+    private function resolveHwbChannel(AstNode $color, string $channelName): NumberNode
+    {
+        $hwb = $this->converter->toHwb($color);
 
-        if ($space === 'hwb') {
-            $hwb = $this->converter->toHwb($color);
+        return match ($channelName) {
+            'hue'       => new NumberNode($hwb->hValue(), 'deg'),
+            'whiteness' => new NumberNode($hwb->wValue(), '%'),
+            'blackness' => new NumberNode($hwb->bValue(), '%'),
+            'alpha'     => new NumberNode($hwb->a),
+            default     => throw new UnknownColorChannelException('HWB', $channelName),
+        };
+    }
 
-            return match ($channelName) {
-                'hue'       => new NumberNode($hwb->hValue(), 'deg'),
-                'whiteness' => new NumberNode($hwb->wValue(), '%'),
-                'blackness' => new NumberNode($hwb->bValue(), '%'),
-                'alpha'     => new NumberNode($hwb->a),
-                default     => throw new UnknownColorChannelException('HWB', $channelName),
-            };
-        }
-
-        if ($space === 'lch') {
-            $rgb = $this->converter->toRgb($color);
-            $lch = $this->colorSpaceConverter->rgbToLch($rgb);
-
-            return match ($channelName) {
-                'lightness' => new NumberNode($lch->lValue(), '%'),
-                'chroma'    => new NumberNode($lch->cValue()),
-                'hue'       => new NumberNode($lch->hValue(), 'deg'),
-                'alpha'     => new NumberNode($rgb->a),
-                default     => throw new UnknownColorChannelException('LCH', $channelName),
-            };
-        }
-
-        if ($space === 'lab') {
-            $alpha = $this->converter->toAlpha($color);
-            $lab   = $this->colorSpaceConverter->xyzD50ToLabColor($this->converter->toXyzD50($color), $alpha);
-
-            return match ($channelName) {
-                'lightness' => new NumberNode($lab->lValue(), '%'),
-                'a'         => new NumberNode($lab->aValue()),
-                'b'         => new NumberNode($lab->bValue()),
-                'alpha'     => new NumberNode($lab->alpha),
-                default     => throw new UnknownColorChannelException('Lab', $channelName),
-            };
-        }
-
-        if ($space === 'oklch') {
-            $oklch = $this->colorSpaceConverter->rgbToOklch($this->converter->toRgb($color));
-
-            return match ($channelName) {
-                'lightness' => new NumberNode($oklch->lValue(), '%'),
-                'chroma'    => new NumberNode($oklch->cValue()),
-                'hue'       => new NumberNode($oklch->hValue(), 'deg'),
-                'alpha'     => new NumberNode($oklch->a),
-                default     => throw new UnknownColorChannelException('OKLCh', $channelName),
-            };
-        }
-
-        if ($space === 'oklab') {
-            $alpha = $this->converter->toAlpha($color);
-            $oklab = $this->colorSpaceConverter->xyzD65ToOklabColor($this->converter->toXyzD65($color), $alpha);
-
-            return match ($channelName) {
-                'lightness' => new NumberNode($oklab->lValue(), '%'),
-                'a'         => new NumberNode($oklab->aValue()),
-                'b'         => new NumberNode($oklab->bValue()),
-                'alpha'     => new NumberNode($oklab->alpha),
-                default     => throw new UnknownColorChannelException('OKLab', $channelName),
-            };
-        }
-
+    private function resolveLchChannel(AstNode $color, string $channelName): NumberNode
+    {
         $rgb = $this->converter->toRgb($color);
+        $lch = $this->colorSpaceConverter->rgbToLch($rgb);
 
-        if ($space === 'xyz' || $space === 'xyz-d65') {
-            $xyz = $this->colorSpaceConverter->rgbToXyzD65($rgb);
+        return match ($channelName) {
+            'lightness' => new NumberNode($lch->lValue(), '%'),
+            'chroma'    => new NumberNode($lch->cValue()),
+            'hue'       => new NumberNode($lch->hValue(), 'deg'),
+            'alpha'     => new NumberNode($rgb->a),
+            default     => throw new UnknownColorChannelException('LCH', $channelName),
+        };
+    }
 
-            return match ($channelName) {
-                'x'     => new NumberNode($xyz->x),
-                'y'     => new NumberNode($xyz->y),
-                'z'     => new NumberNode($xyz->z),
-                'alpha' => new NumberNode($rgb->a),
-                default => throw new UnknownColorChannelException('XYZ', $channelName),
-            };
-        }
+    private function resolveLabChannel(AstNode $color, string $channelName): NumberNode
+    {
+        $alpha = $this->converter->toAlpha($color);
+        $lab   = $this->colorSpaceConverter->xyzD50ToLabColor($this->converter->toXyzD50($color), $alpha);
 
+        return match ($channelName) {
+            'lightness' => new NumberNode($lab->lValue(), '%'),
+            'a'         => new NumberNode($lab->aValue()),
+            'b'         => new NumberNode($lab->bValue()),
+            'alpha'     => new NumberNode($lab->alpha),
+            default     => throw new UnknownColorChannelException('Lab', $channelName),
+        };
+    }
+
+    private function resolveOklchChannel(AstNode $color, string $channelName): NumberNode
+    {
+        $oklch = $this->colorSpaceConverter->rgbToOklch($this->converter->toRgb($color));
+
+        return match ($channelName) {
+            'lightness' => new NumberNode($oklch->lValue(), '%'),
+            'chroma'    => new NumberNode($oklch->cValue()),
+            'hue'       => new NumberNode($oklch->hValue(), 'deg'),
+            'alpha'     => new NumberNode($oklch->a),
+            default     => throw new UnknownColorChannelException('OKLCh', $channelName),
+        };
+    }
+
+    private function resolveOklabChannel(AstNode $color, string $channelName): NumberNode
+    {
+        $alpha = $this->converter->toAlpha($color);
+        $oklab = $this->colorSpaceConverter->xyzD65ToOklabColor($this->converter->toXyzD65($color), $alpha);
+
+        return match ($channelName) {
+            'lightness' => new NumberNode($oklab->lValue(), '%'),
+            'a'         => new NumberNode($oklab->aValue()),
+            'b'         => new NumberNode($oklab->bValue()),
+            'alpha'     => new NumberNode($oklab->alpha),
+            default     => throw new UnknownColorChannelException('OKLab', $channelName),
+        };
+    }
+
+    private function resolveXyzD65Channel(AstNode $color, string $channelName): NumberNode
+    {
+        $rgb = $this->converter->toRgb($color);
+        $xyz = $this->colorSpaceConverter->rgbToXyzD65($rgb);
+
+        return match ($channelName) {
+            'x'     => new NumberNode($xyz->x),
+            'y'     => new NumberNode($xyz->y),
+            'z'     => new NumberNode($xyz->z),
+            'alpha' => new NumberNode($rgb->a),
+            default => throw new UnknownColorChannelException('XYZ', $channelName),
+        };
+    }
+
+    private function resolveXyzD50Channel(AstNode $color, string $channelName): NumberNode
+    {
+        $rgb = $this->converter->toRgb($color);
         $xyz = $this->colorSpaceConverter->rgbToXyzD50($rgb);
 
         return match ($channelName) {

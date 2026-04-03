@@ -121,11 +121,7 @@ final readonly class Render
 
         $sourceMapState->generatedLine += $newLineCount;
 
-        $lastNewLineOffset = strrpos($chunk, "\n");
-
-        $sourceMapState->generatedColumn = $lastNewLineOffset === false
-            ? $length
-            : $length - $lastNewLineOffset - 1;
+        $sourceMapState->generatedColumn = $length - (int) strrpos($chunk, "\n") - 1;
     }
 
     public function outputState(): OutputState
@@ -393,11 +389,6 @@ final readonly class Render
             $column = $mapping->generated->column;
 
             $oldOffset = $this->lineColumnToOffsetUsingLineStarts($beforeLineStarts, $beforeLength, $line, $column);
-
-            if (! isset($oldToNewOffsets[$oldOffset])) {
-                $oldOffset = max(0, min($oldOffset, count($oldToNewOffsets) - 1));
-            }
-
             $newOffset = $oldToNewOffsets[$oldOffset] ?? 0;
 
             [$newLine, $newColumn] = $this->offsetToLineColumnUsingLineStarts($afterLineStarts, $newOffset);
@@ -453,14 +444,6 @@ final readonly class Render
         }
 
         $map[$oldLength] = $newLength;
-
-        for ($k = $oldLength - 1; $k >= 0; $k--) {
-            if (isset($map[$k])) {
-                continue;
-            }
-
-            $map[$k] = $map[$k + 1] ?? $newLength;
-        }
 
         return $map;
     }

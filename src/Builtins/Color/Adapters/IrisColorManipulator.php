@@ -28,42 +28,19 @@ final readonly class IrisColorManipulator implements ColorManipulatorInterface
     /** @return IrisColorValue<HslColor> */
     public function grayscale(ColorValueInterface $hsl): IrisColorValue
     {
-        $inner = $hsl->getInner();
-
-        if (! $inner instanceof HslColor) {
-            throw new LogicException('Expected HslColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->legacy->grayscale($inner));
+        return $this->wrap($this->legacy->grayscale($this->requireHsl($hsl)));
     }
 
     /** @return IrisColorValue<RgbColor> */
     public function mix(ColorValueInterface $first, ColorValueInterface $second, float $weight): IrisColorValue
     {
-        $firstInner  = $first->getInner();
-        $secondInner = $second->getInner();
-
-        if (! $firstInner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $firstInner::class);
-        }
-
-        if (! $secondInner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $secondInner::class);
-        }
-
-        return $this->wrap($this->legacy->mix($firstInner, $secondInner, $weight));
+        return $this->wrap($this->legacy->mix($this->requireRgb($first), $this->requireRgb($second), $weight));
     }
 
     /** @return IrisColorValue<RgbColor> */
     public function invert(ColorValueInterface $rgb, float $weight): IrisColorValue
     {
-        $inner = $rgb->getInner();
-
-        if (! $inner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->legacy->invert($inner, $weight));
+        return $this->wrap($this->legacy->invert($this->requireRgb($rgb), $weight));
     }
 
     /**
@@ -72,11 +49,7 @@ final readonly class IrisColorManipulator implements ColorManipulatorInterface
      */
     public function scaleColor(ColorValueInterface $color, array $scales): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $inner::class);
-        }
+        $inner = $this->requireRgb($color);
 
         return $this->wrap($this->legacy->scale($inner, $this->rgbToHsl($inner), $scales));
     }
@@ -87,11 +60,7 @@ final readonly class IrisColorManipulator implements ColorManipulatorInterface
      */
     public function adjustColor(ColorValueInterface $color, array $adjustments): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $inner::class);
-        }
+        $inner = $this->requireRgb($color);
 
         return $this->wrap($this->legacy->adjust($inner, $this->rgbToHsl($inner), $adjustments));
     }
@@ -102,11 +71,7 @@ final readonly class IrisColorManipulator implements ColorManipulatorInterface
      */
     public function changeColor(ColorValueInterface $color, array $changes): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $inner::class);
-        }
+        $inner = $this->requireRgb($color);
 
         return $this->wrap($this->legacy->change($inner, $this->rgbToHsl($inner), $changes));
     }
@@ -114,85 +79,43 @@ final readonly class IrisColorManipulator implements ColorManipulatorInterface
     /** @return IrisColorValue<RgbColor> */
     public function spin(ColorValueInterface $color, float $degrees): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->legacy->spin($inner, $degrees));
+        return $this->wrap($this->legacy->spin($this->requireRgb($color), $degrees));
     }
 
     /** @return IrisColorValue<RgbColor> */
     public function lighten(ColorValueInterface $color, float $amount): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->legacy->lighten($inner, $amount));
+        return $this->wrap($this->legacy->lighten($this->requireRgb($color), $amount));
     }
 
     /** @return IrisColorValue<RgbColor> */
     public function darken(ColorValueInterface $color, float $amount): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->legacy->darken($inner, $amount));
+        return $this->wrap($this->legacy->darken($this->requireRgb($color), $amount));
     }
 
     /** @return IrisColorValue<RgbColor> */
     public function saturate(ColorValueInterface $color, float $amount): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->legacy->saturate($inner, $amount));
+        return $this->wrap($this->legacy->saturate($this->requireRgb($color), $amount));
     }
 
     /** @return IrisColorValue<RgbColor> */
     public function desaturate(ColorValueInterface $color, float $amount): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->legacy->desaturate($inner, $amount));
+        return $this->wrap($this->legacy->desaturate($this->requireRgb($color), $amount));
     }
 
     /** @return IrisColorValue<RgbColor> */
     public function fadeIn(ColorValueInterface $color, float $amount): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->legacy->fadeIn($inner, $amount));
+        return $this->wrap($this->legacy->fadeIn($this->requireRgb($color), $amount));
     }
 
     /** @return IrisColorValue<RgbColor> */
     public function fadeOut(ColorValueInterface $color, float $amount): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof RgbColor) {
-            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->legacy->fadeOut($inner, $amount));
+        return $this->wrap($this->legacy->fadeOut($this->requireRgb($color), $amount));
     }
 
     /**
@@ -201,13 +124,7 @@ final readonly class IrisColorManipulator implements ColorManipulatorInterface
      */
     public function changeOklch(ColorValueInterface $color, array $values): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof OklchColor) {
-            throw new LogicException('Expected OklchColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->perceptual->changeOklch($inner, $values));
+        return $this->wrap($this->perceptual->changeOklch($this->requireOklch($color), $values));
     }
 
     /**
@@ -216,13 +133,7 @@ final readonly class IrisColorManipulator implements ColorManipulatorInterface
      */
     public function adjustOklch(ColorValueInterface $color, array $values): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof OklchColor) {
-            throw new LogicException('Expected OklchColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->perceptual->adjustOklch($inner, $values));
+        return $this->wrap($this->perceptual->adjustOklch($this->requireOklch($color), $values));
     }
 
     /**
@@ -231,13 +142,7 @@ final readonly class IrisColorManipulator implements ColorManipulatorInterface
      */
     public function changeLab(ColorValueInterface $color, array $values): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof LabColor) {
-            throw new LogicException('Expected LabColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->perceptual->changeLab($inner, $values));
+        return $this->wrap($this->perceptual->changeLab($this->requireLab($color), $values));
     }
 
     /**
@@ -246,13 +151,7 @@ final readonly class IrisColorManipulator implements ColorManipulatorInterface
      */
     public function adjustLab(ColorValueInterface $color, array $values): IrisColorValue
     {
-        $inner = $color->getInner();
-
-        if (! $inner instanceof LabColor) {
-            throw new LogicException('Expected LabColor inside IrisColorValue, got ' . $inner::class);
-        }
-
-        return $this->wrap($this->perceptual->adjustLab($inner, $values));
+        return $this->wrap($this->perceptual->adjustLab($this->requireLab($color), $values));
     }
 
     public function changeSrgb(float $r, float $g, float $b, array $values): array
@@ -268,13 +167,55 @@ final readonly class IrisColorManipulator implements ColorManipulatorInterface
     /** @return IrisColorValue<RgbColor> */
     public function hslToRgb(ColorValueInterface $hsl): IrisColorValue
     {
-        $inner = $hsl->getInner();
+        return $this->wrap($this->model->hslToRgbColor($this->requireHsl($hsl)));
+    }
+
+    /** @param ColorValueInterface<object> $color */
+    private function requireRgb(ColorValueInterface $color): RgbColor
+    {
+        $inner = $color->getInner();
+
+        if (! $inner instanceof RgbColor) {
+            throw new LogicException('Expected RgbColor inside IrisColorValue, got ' . $inner::class);
+        }
+
+        return $inner;
+    }
+
+    /** @param ColorValueInterface<object> $color */
+    private function requireHsl(ColorValueInterface $color): HslColor
+    {
+        $inner = $color->getInner();
 
         if (! $inner instanceof HslColor) {
             throw new LogicException('Expected HslColor inside IrisColorValue, got ' . $inner::class);
         }
 
-        return $this->wrap($this->model->hslToRgbColor($inner));
+        return $inner;
+    }
+
+    /** @param ColorValueInterface<object> $color */
+    private function requireOklch(ColorValueInterface $color): OklchColor
+    {
+        $inner = $color->getInner();
+
+        if (! $inner instanceof OklchColor) {
+            throw new LogicException('Expected OklchColor inside IrisColorValue, got ' . $inner::class);
+        }
+
+        return $inner;
+    }
+
+    /** @param ColorValueInterface<object> $color */
+    private function requireLab(ColorValueInterface $color): LabColor
+    {
+        $inner = $color->getInner();
+
+        if (! $inner instanceof LabColor) {
+            throw new LogicException('Expected LabColor inside IrisColorValue, got ' . $inner::class);
+        }
+
+        return $inner;
     }
 
     private function rgbToHsl(RgbColor $rgb): HslColor

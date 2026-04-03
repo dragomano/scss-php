@@ -16,7 +16,6 @@ use Closure;
 
 use function in_array;
 use function max;
-use function str_contains;
 use function str_starts_with;
 use function strlen;
 use function strpbrk;
@@ -125,7 +124,7 @@ final class RuleParser
         if (($this->isInsideBraces)() && $this->stream->is(TokenType::CSS_VARIABLE)) {
             $token = $this->stream->current();
 
-            if (str_starts_with($token->value, '--') && str_contains($token->value, ':')) {
+            if (str_starts_with($token->value, '--')) {
                 return $this->parseCssVariableDeclaration($token->value, $token->line, $token->column);
             }
         }
@@ -251,7 +250,6 @@ final class RuleParser
     {
         $buffer             = '';
         $depth              = 0;
-        $inPseudo           = false;
         $bracketDepth       = 0;
         $interpolationDepth = 0;
 
@@ -297,20 +295,13 @@ final class RuleParser
                     continue;
                 }
 
-                if ($inPseudo) {
-                    $buffer .= ':';
-
-                    $this->stream->advance();
-
-                    continue;
-                }
-
                 if (($this->isInsideBraces)()) {
                     break;
                 }
 
                 $savedPos = $this->stream->getPosition();
 
+                $this->stream->advance();
                 $this->stream->skipWhitespace();
 
                 $afterColon = $this->stream->current();
@@ -351,16 +342,10 @@ final class RuleParser
 
             if ($token->type === TokenType::LPAREN) {
                 $depth++;
-
-                $inPseudo = true;
             }
 
             if ($token->type === TokenType::RPAREN) {
                 $depth--;
-
-                if ($depth === 0) {
-                    $inPseudo = false;
-                }
             }
 
             if ($token->type === TokenType::LBRACKET) {

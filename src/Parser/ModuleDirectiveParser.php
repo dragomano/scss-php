@@ -114,11 +114,7 @@ final readonly class ModuleDirectiveParser
 
                 $this->stream->skipWhitespace();
                 $this->stream->consume(TokenType::STAR);
-
-                continue;
-            }
-
-            if ($keyword === 'hide' || $keyword === 'show') {
+            } elseif ($keyword === 'hide' || $keyword === 'show') {
                 $visibility = $keyword;
 
                 StreamUtils::consumeKeyword($this->stream, $keyword, true);
@@ -135,19 +131,13 @@ final readonly class ModuleDirectiveParser
                         break;
                     }
                 }
-
-                continue;
-            }
-
-            if ($keyword === 'with') {
+            } elseif ($keyword === 'with') {
                 StreamUtils::consumeKeyword($this->stream, $keyword, true);
 
                 $configuration = $this->parseForwardConfiguration();
-
-                continue;
+            } else {
+                break;
             }
-
-            break;
         }
 
         StreamUtils::consumeSemicolonFromStream($this->stream);

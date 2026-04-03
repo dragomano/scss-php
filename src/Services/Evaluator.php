@@ -41,6 +41,7 @@ use Bugo\SCSS\Values\SassCalculation;
 use Bugo\SCSS\Values\SassMap;
 use Bugo\SCSS\Values\SassValue;
 use Closure;
+use LogicException;
 
 use function array_slice;
 use function count;
@@ -126,7 +127,6 @@ final readonly class Evaluator
 
         $this->cssArgument = new CssArgumentEvaluator(
             fn(AstNode $node, Environment $env): AstNode => $this->evaluateValue($node, $env),
-            fn(string $name, Environment $env): AstNode => $this->resolveVariable($name, $env),
             fn(string $name, array $args): array => $this->calculation->normalizeArguments($name, $args)
         );
 
@@ -700,14 +700,6 @@ final readonly class Evaluator
 
             $evaluatedValue = $this->evaluateValue($firstDeclaration->value, $env);
 
-            if ($evaluatedValue instanceof ListNode) {
-                $strictArithmetic = $this->evaluateArithmeticList($evaluatedValue, true, $env);
-
-                if ($strictArithmetic instanceof AstNode) {
-                    return $strictArithmetic;
-                }
-            }
-
             return $evaluatedValue !== $value ? $evaluatedValue : null;
         } catch (SassThrowable) {
             // Reparsing the formatted value failed (e.g. invalid slash expression).
@@ -836,11 +828,11 @@ final readonly class Evaluator
             }
         }
 
-        if (in_array($comparisonIndex, [null, 0, count($list->items) - 1], true)) {
+        if (! is_string($operator)) {
             return null;
         }
 
-        if ($operator === null) {
+        if (in_array($comparisonIndex, [null, 0, count($list->items) - 1], true)) {
             return null;
         }
 
@@ -949,15 +941,15 @@ final readonly class Evaluator
         $currentScope = $env->getCurrentScope();
 
         if (NameHelper::hasNamespace($name)) {
-            $parts = NameHelper::splitQualifiedName($name);
-
-            if ($parts['member'] === null) {
-                throw UndefinedSymbolException::variable($name);
-            }
+            $parts = NameHelper::splitNamespacedName($name);
 
             $moduleName  = $parts['namespace'];
             $varName     = $parts['member'];
             $moduleScope = $currentScope->getModule($moduleName);
+
+            if ($varName === '') {
+                throw new LogicException('Qualified variable reference must include a member name.');
+            }
 
             if (! $moduleScope) {
                 throw ModuleResolutionException::notFound($moduleName);

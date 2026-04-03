@@ -354,32 +354,10 @@ final readonly class ColorFunctionEvaluator
         $p    = $this->parser->clamp($weight / 100.0, 1.0);
 
         if ($method === 'hsl') {
-            $hsl1 = $this->spaceInterop->toHslWithMissingChannels($color1);
-            $hsl2 = $this->spaceInterop->toHslWithMissingChannels($color2);
+            $result = $this->mixInHslSpace($color1, $color2, $p, $hueMethod);
 
-            if ($hsl1 !== null && $hsl2 !== null) {
-                $h1 = $hsl1->h;
-                $h2 = $hsl2->h;
-
-                if ($hsl1->h === null && $hsl2->h !== null) {
-                    $h1 = $hsl2->h;
-                } elseif ($hsl2->h === null && $hsl1->h !== null) {
-                    $h2 = $hsl1->h;
-                }
-
-                $mixedHsl = $this->colorMixResolver->mixHsl(
-                    new HslColor($h1, $hsl1->s, $hsl1->l, $hsl1->a),
-                    new HslColor($h2, $hsl2->s, $hsl2->l, $hsl2->a),
-                    $p,
-                    $hueMethod ?? 'shorter'
-                );
-
-                $hue = $mixedHsl->hValue();
-                $sat = $this->parser->clamp($this->colorSpaceConverter->mixChannel($hsl1->s, $hsl2->s, $p), 100.0);
-                $lig = $this->parser->clamp($this->colorSpaceConverter->mixChannel($hsl1->l, $hsl2->l, $p), 100.0);
-                $alp = $mixedHsl->a;
-
-                return $this->astWriter->buildHslFunctionNode($hue, $sat, $lig, $alp);
+            if ($result !== null) {
+                return $result;
             }
         }
 
@@ -388,53 +366,7 @@ final readonly class ColorFunctionEvaluator
         }
 
         if ($method === 'oklch') {
-            $oklch1 = $this->spaceInterop->extractOklchMixData($color1);
-            $oklch2 = $this->spaceInterop->extractOklchMixData($color2);
-
-            $lightness = $this->mixPossiblyMissingChannel(
-                $oklch1['l'],
-                $oklch2['l'],
-                $oklch1['l_missing'],
-                $oklch2['l_missing'],
-                $p
-            );
-
-            $chroma = $this->mixPossiblyMissingChannel(
-                $oklch1['c'],
-                $oklch2['c'],
-                $oklch1['c_missing'],
-                $oklch2['c_missing'],
-                $p
-            );
-
-            $hue = $this->mixPossiblyMissingHue(
-                $oklch1['h'],
-                $oklch2['h'],
-                $oklch1['h_missing'],
-                $oklch2['h_missing'],
-                $p,
-                $hueMethod
-            );
-
-            $mix = new OklchColor(
-                l: $lightness['value'],
-                c: $chroma['value'],
-                h: $hue['value'],
-                a: $this->colorSpaceConverter->mixChannel($oklch1['a'], $oklch2['a'], $p),
-            );
-
-            if (
-                $this->converter->detectNativeColorSpace($color1) === 'oklch'
-                && $this->converter->detectNativeColorSpace($color2) === 'oklch'
-            ) {
-                return $this->astWriter->buildFunctionalColorNode('oklch', [
-                    $lightness['missing'] ? new StringNode('none') : new NumberNode($mix->lValue(), '%'),
-                    $chroma['missing'] ? new StringNode('none') : new NumberNode($mix->cValue()),
-                    $hue['missing'] ? new StringNode('none') : new NumberNode($mix->hValue(), 'deg'),
-                ], $mix->a);
-            }
-
-            return $this->astWriter->serializeLegacyRgbFunction($this->colorSpaceConverter->oklchToSrgb($mix));
+            return $this->mixInOklchSpace($color1, $color2, $p, $hueMethod);
         }
 
         $mixedColor = $this->manipulator->mix(new IrisColorValue($rgb1), new IrisColorValue($rgb2), $p);
@@ -460,7 +392,7 @@ final readonly class ColorFunctionEvaluator
             && abs($left->bValue() - $right->bValue()) < 0.000001
             && abs($left->a - $right->a) < 0.000001;
 
-        return $this->boolNode($same);
+        return new BooleanNode($same);
     }
 
     /**
@@ -974,8 +906,87 @@ final readonly class ColorFunctionEvaluator
         )->hValue();
     }
 
-    private function boolNode(bool $value): BooleanNode
+    private function mixInHslSpace(AstNode $color1, AstNode $color2, float $p, ?string $hueMethod): ?AstNode
     {
-        return new BooleanNode($value);
+        $hsl1 = $this->spaceInterop->toHslWithMissingChannels($color1);
+        $hsl2 = $this->spaceInterop->toHslWithMissingChannels($color2);
+
+        if ($hsl1 === null || $hsl2 === null) {
+            return null;
+        }
+
+        $h1 = $hsl1->h;
+        $h2 = $hsl2->h;
+
+        if ($hsl1->h === null && $hsl2->h !== null) {
+            $h1 = $hsl2->h;
+        } elseif ($hsl2->h === null && $hsl1->h !== null) {
+            $h2 = $hsl1->h;
+        }
+
+        $mixedHsl = $this->colorMixResolver->mixHsl(
+            new HslColor($h1, $hsl1->s, $hsl1->l, $hsl1->a),
+            new HslColor($h2, $hsl2->s, $hsl2->l, $hsl2->a),
+            $p,
+            $hueMethod ?? 'shorter'
+        );
+
+        $hue = $mixedHsl->hValue();
+        $sat = $this->parser->clamp($this->colorSpaceConverter->mixChannel($hsl1->s, $hsl2->s, $p), 100.0);
+        $lig = $this->parser->clamp($this->colorSpaceConverter->mixChannel($hsl1->l, $hsl2->l, $p), 100.0);
+        $alp = $mixedHsl->a;
+
+        return $this->astWriter->buildHslFunctionNode($hue, $sat, $lig, $alp);
+    }
+
+    private function mixInOklchSpace(AstNode $color1, AstNode $color2, float $p, ?string $hueMethod): AstNode
+    {
+        $oklch1 = $this->spaceInterop->extractOklchMixData($color1);
+        $oklch2 = $this->spaceInterop->extractOklchMixData($color2);
+
+        $lightness = $this->mixPossiblyMissingChannel(
+            $oklch1['l'],
+            $oklch2['l'],
+            $oklch1['l_missing'],
+            $oklch2['l_missing'],
+            $p
+        );
+
+        $chroma = $this->mixPossiblyMissingChannel(
+            $oklch1['c'],
+            $oklch2['c'],
+            $oklch1['c_missing'],
+            $oklch2['c_missing'],
+            $p
+        );
+
+        $hue = $this->mixPossiblyMissingHue(
+            $oklch1['h'],
+            $oklch2['h'],
+            $oklch1['h_missing'],
+            $oklch2['h_missing'],
+            $p,
+            $hueMethod
+        );
+
+        $mix = new OklchColor(
+            l: $lightness['value'],
+            c: $chroma['value'],
+            h: $hue['value'],
+            a: $this->colorSpaceConverter->mixChannel($oklch1['a'], $oklch2['a'], $p),
+        );
+
+        if (
+            $this->converter->detectNativeColorSpace($color1) === 'oklch'
+            && $this->converter->detectNativeColorSpace($color2) === 'oklch'
+        ) {
+            return $this->astWriter->buildFunctionalColorNode('oklch', [
+                $lightness['missing'] ? new StringNode('none') : new NumberNode($mix->lValue(), '%'),
+                $chroma['missing'] ? new StringNode('none') : new NumberNode($mix->cValue()),
+                $hue['missing'] ? new StringNode('none') : new NumberNode($mix->hValue(), 'deg'),
+            ], $mix->a);
+        }
+
+        return $this->astWriter->serializeLegacyRgbFunction($this->colorSpaceConverter->oklchToSrgb($mix));
     }
 }

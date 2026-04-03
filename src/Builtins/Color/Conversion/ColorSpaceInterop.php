@@ -171,78 +171,15 @@ final readonly class ColorSpaceInterop
         }
 
         if ($space === 'srgb-linear') {
-            $rgb = $this->converter->toRgb($color);
-
-            return $this->astWriter->buildGenericColorFunctionNode('srgb-linear', [
-                $this->colorSpaceConverter->srgbToLinearUnclamped($rgb->rValue() / 255.0),
-                $this->colorSpaceConverter->srgbToLinearUnclamped($rgb->gValue() / 255.0),
-                $this->colorSpaceConverter->srgbToLinearUnclamped($rgb->bValue() / 255.0),
-            ], $rgb->a);
+            return $this->toSrgbLinear($color);
         }
 
-        if ($space === 'display-p3-linear') {
-            /** @var array{0: float, 1: float, 2: float} $channels */
-            $channels = $this->colorSpaceConverter->xyzD65ToLinearDisplayP3($this->converter->toXyzD65($color));
-
-            [$r, $g, $b] = $channels;
-
-            return $this->astWriter->buildGenericColorFunctionNode(
-                'display-p3-linear',
-                [$r, $g, $b],
-                $this->converter->toAlpha($color)
-            );
-        }
-
-        if ($space === 'display-p3') {
-            /** @var array{0: float, 1: float, 2: float} $channels */
-            $channels = $this->colorSpaceConverter->xyzD65ToDisplayP3($this->converter->toXyzD65($color));
-
-            [$r, $g, $b] = $channels;
-
-            return $this->astWriter->buildGenericColorFunctionNode(
-                'display-p3',
-                [$r, $g, $b],
-                $this->converter->toAlpha($color)
-            );
-        }
-
-        if ($space === 'a98-rgb') {
-            /** @var array{0: float, 1: float, 2: float} $channels */
-            $channels = $this->colorSpaceConverter->xyzD65ToA98Rgb($this->converter->toXyzD65($color));
-
-            [$r, $g, $b] = $channels;
-
-            return $this->astWriter->buildGenericColorFunctionNode(
-                'a98-rgb',
-                [$r, $g, $b],
-                $this->converter->toAlpha($color)
-            );
+        if (in_array($space, ['display-p3-linear', 'display-p3', 'a98-rgb', 'rec2020'], true)) {
+            return $this->toXyzD65GenericSpace($color, $space);
         }
 
         if ($space === 'prophoto-rgb') {
-            /** @var array{0: float, 1: float, 2: float} $channels */
-            $channels = $this->colorSpaceConverter->xyzD50ToProphotoRgb($this->converter->toXyzD50($color));
-
-            [$r, $g, $b] = $channels;
-
-            return $this->astWriter->buildGenericColorFunctionNode(
-                'prophoto-rgb',
-                [$r, $g, $b],
-                $this->converter->toAlpha($color)
-            );
-        }
-
-        if ($space === 'rec2020') {
-            /** @var array{0: float, 1: float, 2: float} $channels */
-            $channels = $this->colorSpaceConverter->xyzD65ToRec2020($this->converter->toXyzD65($color));
-
-            [$r, $g, $b] = $channels;
-
-            return $this->astWriter->buildGenericColorFunctionNode(
-                'rec2020',
-                [$r, $g, $b],
-                $this->converter->toAlpha($color)
-            );
+            return $this->toXyzD50GenericSpace($color, $space);
         }
 
         if (! in_array($space, ['rgb', 'srgb', 'hsl', 'hwb'], true)) {
@@ -510,5 +447,41 @@ final readonly class ColorSpaceInterop
     public function missingStringNode(): StringNode
     {
         return new StringNode('none');
+    }
+
+    private function toSrgbLinear(AstNode $color): AstNode
+    {
+        $rgb = $this->converter->toRgb($color);
+
+        return $this->astWriter->buildGenericColorFunctionNode('srgb-linear', [
+            $this->colorSpaceConverter->srgbToLinearUnclamped($rgb->rValue() / 255.0),
+            $this->colorSpaceConverter->srgbToLinearUnclamped($rgb->gValue() / 255.0),
+            $this->colorSpaceConverter->srgbToLinearUnclamped($rgb->bValue() / 255.0),
+        ], $rgb->a);
+    }
+
+    private function toXyzD65GenericSpace(AstNode $color, string $space): AstNode
+    {
+        /** @var array{0: float, 1: float, 2: float} $channels */
+        $channels = match ($space) {
+            'display-p3-linear' => $this->colorSpaceConverter->xyzD65ToLinearDisplayP3($this->converter->toXyzD65($color)),
+            'display-p3'        => $this->colorSpaceConverter->xyzD65ToDisplayP3($this->converter->toXyzD65($color)),
+            'a98-rgb'           => $this->colorSpaceConverter->xyzD65ToA98Rgb($this->converter->toXyzD65($color)),
+            default             => $this->colorSpaceConverter->xyzD65ToRec2020($this->converter->toXyzD65($color)),
+        };
+
+        [$r, $g, $b] = $channels;
+
+        return $this->astWriter->buildGenericColorFunctionNode($space, [$r, $g, $b], $this->converter->toAlpha($color));
+    }
+
+    private function toXyzD50GenericSpace(AstNode $color, string $space): AstNode
+    {
+        /** @var array{0: float, 1: float, 2: float} $channels */
+        $channels = $this->colorSpaceConverter->xyzD50ToProphotoRgb($this->converter->toXyzD50($color));
+
+        [$r, $g, $b] = $channels;
+
+        return $this->astWriter->buildGenericColorFunctionNode($space, [$r, $g, $b], $this->converter->toAlpha($color));
     }
 }

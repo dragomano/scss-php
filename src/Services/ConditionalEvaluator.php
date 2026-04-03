@@ -349,9 +349,11 @@ final readonly class ConditionalEvaluator
                 return ['kind' => 'bool', 'value' => false];
             }
 
-            $restResult = count($rest) === 1
-                ? $this->evaluateInlineIfCondition($rest[0], $env)
-                : $this->evaluateInlineIfListCondition($rest, $env);
+            $restResult = $this->evaluateInlineIfCondition($rest[0], $env);
+
+            if (count($rest) > 1) {
+                $restResult = $this->evaluateInlineIfListCondition($rest, $env);
+            }
 
             if ($restResult['kind'] === 'bool') {
                 /** @var array{kind: 'bool', value: bool} $restResult */

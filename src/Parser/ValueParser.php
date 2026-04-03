@@ -177,13 +177,6 @@ final readonly class ValueParser
 
         if (
             $this->stream->is(TokenType::HASH)
-            && $this->stream->peek()->type === TokenType::LBRACE
-        ) {
-            return $this->parseHashInterpolationString();
-        }
-
-        if (
-            $this->stream->is(TokenType::HASH)
             && $this->stream->peek()->type === TokenType::HASH
             && $this->stream->peek(2)->type === TokenType::LBRACE
         ) {
@@ -257,30 +250,7 @@ final readonly class ValueParser
         }
 
         if ($this->stream->is(TokenType::IDENTIFIER)) {
-            $savedPosition = $this->stream->getPosition();
-            $identifier    = $this->functions->parseIdentifierOrFunction();
-
-            $this->stream->skipWhitespace();
-            if ($this->stream->is(TokenType::DOT)) {
-                $this->stream->advance();
-                $this->stream->skipWhitespace();
-
-                if ($this->stream->is(TokenType::DOLLAR)) {
-                    $this->stream->advance();
-
-                    $varName = $this->consumeIdentifier();
-
-                    if ($identifier instanceof StringNode) {
-                        return new VariableReferenceNode($identifier->value . '.' . $varName);
-                    }
-                } else {
-                    $this->stream->setPosition($savedPosition);
-
-                    return $this->functions->parseIdentifierOrFunction();
-                }
-            }
-
-            return $identifier;
+            return $this->functions->parseIdentifierOrFunction();
         }
 
         return null;

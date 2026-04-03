@@ -14,7 +14,6 @@ use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\CssNamedColors;
 use Bugo\SCSS\Values\AstValueTransformer;
@@ -31,12 +30,10 @@ final readonly class CssArgumentEvaluator
 
     /**
      * @param Closure(AstNode, Environment): AstNode $evaluateValue
-     * @param Closure(string, Environment): AstNode $resolveVariable
      * @param Closure(string, array<int, AstNode>): array<int, AstNode> $normalizeCalculationArguments
      */
     public function __construct(
         private Closure $evaluateValue,
-        private Closure $resolveVariable,
         private Closure $normalizeCalculationArguments
     ) {}
 
@@ -210,17 +207,10 @@ final readonly class CssArgumentEvaluator
                 : new NamedArgumentNode($node->name, $value);
         }
 
-        if ($node instanceof FunctionNode) {
-            $arguments = $this->expandCssCallArguments($node->arguments, $env);
+        /** @var FunctionNode $node */
+        $arguments = $this->expandCssCallArguments($node->arguments, $env);
 
-            return new FunctionNode($node->name, ($this->normalizeCalculationArguments)($node->name, $arguments));
-        }
-
-        if ($node instanceof VariableReferenceNode) {
-            return $this->evaluateFallbackCssArgument(($this->resolveVariable)($node->name, $env), $env);
-        }
-
-        return $node;
+        return new FunctionNode($node->name, ($this->normalizeCalculationArguments)($node->name, $arguments));
     }
 
     /**

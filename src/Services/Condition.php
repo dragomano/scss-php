@@ -460,10 +460,11 @@ final readonly class Condition
                 );
             }
 
-            return match ($operator) {
-                '!='    => true,
-                default => false,
-            };
+            if ($operator === '!=') {
+                return true;
+            }
+
+            return false;
         }
 
         if ($left->unit !== $right->unit) {
@@ -474,9 +475,15 @@ final readonly class Condition
 
         $equals = abs($leftValue - $rightValue) < 0.0000000001;
 
+        if ($operator === '==') {
+            return $equals;
+        }
+
+        if ($operator === '!=') {
+            return ! $equals;
+        }
+
         return match ($operator) {
-            '=='    => $equals,
-            '!='    => ! $equals,
             '>='    => $leftValue >= $rightValue,
             '<='    => $leftValue <= $rightValue,
             '>'     => $leftValue > $rightValue,

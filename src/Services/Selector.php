@@ -530,19 +530,6 @@ final readonly class Selector
 
             foreach ($selectorParts as $selectorPart) {
                 $trimmedSelector = trim($selectorPart);
-
-                if ($trimmedParent === '') {
-                    $combined[] = $trimmedSelector;
-
-                    continue;
-                }
-
-                if ($trimmedSelector === '') {
-                    $combined[] = $trimmedParent;
-
-                    continue;
-                }
-
                 $combined[] = $trimmedParent . ' ' . $trimmedSelector;
             }
         }
@@ -716,10 +703,6 @@ final readonly class Selector
         $name = $entry['name'] ?? '';
 
         if ($name !== '' && in_array($name, $rules, true)) {
-            return true;
-        }
-
-        if (in_array('media', $rules, true) && $name === 'media') {
             return true;
         }
 
