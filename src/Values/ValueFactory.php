@@ -109,6 +109,16 @@ final readonly class ValueFactory
         return SassBoolean::fromBool(true);
     }
 
+    public function createBooleanNode(bool $value): BooleanNode
+    {
+        return new BooleanNode($value);
+    }
+
+    public function createNullNode(): NullNode
+    {
+        return new NullNode();
+    }
+
     private function callableDisplayName(string $name): string
     {
         $offset = strrpos($name, '.');
@@ -118,15 +128,5 @@ final readonly class ValueFactory
         }
 
         return substr($name, $offset + 1);
-    }
-
-    public function createBooleanNode(bool $value): BooleanNode
-    {
-        return new BooleanNode($value);
-    }
-
-    public function createNullNode(): NullNode
-    {
-        return new NullNode();
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Handlers\Block;
 
 use Bugo\SCSS\Builtins\FunctionRegistry;
+use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
@@ -57,7 +58,7 @@ final readonly class MixinHandler
         );
 
         if ($mixin === null) {
-            return '';
+            throw UndefinedSymbolException::mixin($node->name);
         }
 
         [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);

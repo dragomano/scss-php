@@ -295,7 +295,7 @@ final readonly class ValueParser
 
     public function parseParenthesizedValue(): AstNode
     {
-        $this->stream->consume(TokenType::LPAREN);
+        $this->stream->expect(TokenType::LPAREN);
 
         $items = [];
         $pairs = [];
@@ -376,7 +376,7 @@ final readonly class ValueParser
 
     public function parseBracketedListValue(): AstNode
     {
-        $this->stream->consume(TokenType::LBRACKET);
+        $this->stream->expect(TokenType::LBRACKET);
 
         $items = [];
 

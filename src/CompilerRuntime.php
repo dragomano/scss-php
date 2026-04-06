@@ -17,7 +17,6 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
-use Bugo\SCSS\Services\AstEvaluator;
 use Bugo\SCSS\Services\Condition;
 use Bugo\SCSS\Services\Context;
 use Bugo\SCSS\Services\Evaluator;
@@ -35,8 +34,6 @@ final class CompilerRuntime
     private ?Context $context = null;
 
     private ?Condition $condition = null;
-
-    private ?AstEvaluator $ast = null;
 
     private ?Evaluator $evaluation = null;
 
@@ -84,36 +81,14 @@ final class CompilerRuntime
 
     public function module(): Module
     {
-        if ($this->module instanceof Module) {
-            return $this->module;
-        }
-
-        $ast = $this->ast ??= new AstEvaluator();
-
-        $this->module = new Module(
+        return $this->module ??= new Module(
             $this->ctx,
             $this->loader,
             $this->parser,
-            $ast,
             $this->evaluation(),
             $this->selector(),
             $this->dispatcher,
         );
-
-        $ast->setModule($this->module);
-
-        return $this->module;
-    }
-
-    public function ast(): AstEvaluator
-    {
-        $ast = $this->ast ??= new AstEvaluator();
-
-        if (! $this->module instanceof Module) {
-            $this->module();
-        }
-
-        return $ast;
     }
 
     public function evaluation(): Evaluator

@@ -13,7 +13,6 @@ use Bugo\SCSS\LoaderInterface;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ForwardNode;
-use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\UseNode;
@@ -53,7 +52,6 @@ final readonly class Module
         private CompilerContext $ctx,
         private LoaderInterface $loader,
         private ParserInterface $parser,
-        private AstEvaluator $ast,
         private Evaluator $evaluation,
         private Selector $selector,
         private NodeDispatcherInterface $dispatcher,
@@ -112,10 +110,6 @@ final readonly class Module
     public function handleUse(UseNode $node, Environment $env): void
     {
         $state = $this->state();
-
-        if ($state->importEvaluationDepth === 0 && $state->hasSassImport) {
-            throw ModuleResolutionException::mixedImportUse();
-        }
 
         if ($state->importEvaluationDepth === 0) {
             $state->hasUseDirective = true;
@@ -216,7 +210,7 @@ final readonly class Module
         $state->loadingFiles[$moduleId] = true;
 
         try {
-            $this->ast->evaluate($moduleAst, $moduleEnv);
+            $compiledCss = $this->dispatcher->compile($moduleAst, $moduleEnv);
         } finally {
             unset($state->loadingFiles[$moduleId]);
         }
@@ -244,7 +238,7 @@ final readonly class Module
         $moduleData = [
             'id'    => $moduleId,
             'scope' => $moduleEnv->getCurrentScope(),
-            'css'   => $this->dispatcher->compile($moduleAst, $moduleEnv),
+            'css'   => $compiledCss,
         ];
 
         $state->loadedModules[$namespace] = $moduleData;
@@ -257,45 +251,7 @@ final readonly class Module
         $env->getGlobalScope()->addModule($namespace, $moduleEnv->getCurrentScope());
     }
 
-    public function handleImport(ImportNode $node, Environment $env): void
-    {
-        $state = $this->state();
-
-        foreach ($node->imports as $import) {
-            $resolvedImport = $this->resolveImport($import);
-
-            if ($resolvedImport['type'] !== 'sass') {
-                continue;
-            }
-
-            /** @var array{type: 'sass', path: string} $resolvedImport */
-            $path = $resolvedImport['path'];
-
-            if ($path === '') {
-                continue;
-            }
-
-            if ($state->importEvaluationDepth === 0) {
-                if ($state->hasUseDirective) {
-                    throw ModuleResolutionException::mixedImportUse();
-                }
-
-                $state->hasSassImport = true;
-            }
-
-            $data = $this->loadAndEvaluateModule(
-                $path,
-                [],
-                true,
-                false,
-                $this->extractAstVariables($env->getCurrentScope()->getVariables()),
-            );
-
-            $this->mergeScopeExports($data['scope'], $env->getCurrentScope());
-        }
-    }
-
-    public function handleForward(ForwardNode $node, Environment $env): void
+    public function handleForward(ForwardNode $node, Environment $env): string
     {
         $path = $node->path;
 
@@ -321,6 +277,8 @@ final readonly class Module
             $node->visibility,
             $node->members,
         );
+
+        return $forwardKey;
     }
 
     public function deriveNamespaceFromUsePath(string $path): string
@@ -421,8 +379,6 @@ final readonly class Module
         }
 
         try {
-            $this->ast->evaluate($moduleAst, $moduleEnv);
-
             $css = $compileCss ? $this->dispatcher->compile($moduleAst, $moduleEnv) : '';
         } finally {
             if ($fromImport) {
@@ -569,7 +525,7 @@ final readonly class Module
     /**
      * @param array<int, string> $members
      */
-    private function mergeScopeExports(
+    public function mergeScopeExports(
         Scope $from,
         Scope $to,
         ?string $prefix = null,

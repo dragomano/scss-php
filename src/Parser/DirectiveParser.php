@@ -93,13 +93,9 @@ final readonly class DirectiveParser
         );
     }
 
-    public function parseDirective(): ?AstNode
+    public function parseDirective(): AstNode
     {
-        $atToken = $this->stream->consume(TokenType::AT);
-
-        if ($atToken === null) {
-            return null;
-        }
+        $atToken = $this->stream->expect(TokenType::AT);
 
         $this->stream->skipWhitespace();
 
@@ -197,105 +193,6 @@ final readonly class DirectiveParser
         }
 
         return new AtRootNode([new RuleNode($prelude, $body)]);
-    }
-
-    /**
-     * @return array{mode: string, rules: array<int, string>}|null
-     */
-    private function parseAtRootQuery(string $prelude): ?array
-    {
-        if ($prelude === '' || ! str_starts_with($prelude, '(') || ! str_ends_with($prelude, ')')) {
-            return null;
-        }
-
-        $inner = trim(substr($prelude, 1, -1));
-
-        if ($inner === '') {
-            return null;
-        }
-
-        $colonPosition = strpos($inner, ':');
-
-        if ($colonPosition === false) {
-            return null;
-        }
-
-        $mode = strtolower(trim(substr($inner, 0, $colonPosition)));
-
-        if (! in_array($mode, ['with', 'without'], true)) {
-            return null;
-        }
-
-        $rulesText = trim(substr($inner, $colonPosition + 1));
-
-        if ($rulesText === '') {
-            return null;
-        }
-
-        $rules   = [];
-        $current = '';
-        $length  = strlen($rulesText);
-
-        for ($index = 0; $index < $length; $index++) {
-            $char = $rulesText[$index];
-
-            if (ctype_alnum($char) || $char === '-' || $char === '_') {
-                $current .= strtolower($char);
-
-                continue;
-            }
-
-            if (in_array($char, [',', ' ', "\t", "\n", "\r"], true)) {
-                if ($current !== '') {
-                    $rules[] = $current;
-                    $current = '';
-                }
-
-                continue;
-            }
-
-            return null;
-        }
-
-        if ($current !== '') {
-            $rules[] = $current;
-        }
-
-        if ($rules === []) {
-            return null;
-        }
-
-        return [
-            'mode'  => $mode,
-            'rules' => $rules,
-        ];
-    }
-
-    private function readPreludeUntilBlock(): string
-    {
-        $buffer             = '';
-        $parenDepth         = 0;
-        $bracketDepth       = 0;
-        $interpolationDepth = 0;
-
-        while (! $this->stream->isEof()) {
-            $token = $this->stream->current();
-
-            if (StreamUtils::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
-                continue;
-            }
-
-            if ($interpolationDepth === 0 && $parenDepth === 0 && $bracketDepth === 0 && $token->type === TokenType::LBRACE) {
-                break;
-            }
-
-            StreamUtils::updateNestingDepth($token, $parenDepth, $bracketDepth);
-            StreamUtils::appendTokenToBuffer($buffer, $token, true);
-
-            $this->stream->advance();
-        }
-
-        return $buffer;
     }
 
     public function parseDebugDirective(int $line = 1, int $column = 1): DebugNode
@@ -562,6 +459,105 @@ final readonly class DirectiveParser
         }
 
         return new DirectiveNode($name, $prelude, [], false);
+    }
+
+    /**
+     * @return array{mode: string, rules: array<int, string>}|null
+     */
+    private function parseAtRootQuery(string $prelude): ?array
+    {
+        if ($prelude === '' || ! str_starts_with($prelude, '(') || ! str_ends_with($prelude, ')')) {
+            return null;
+        }
+
+        $inner = trim(substr($prelude, 1, -1));
+
+        if ($inner === '') {
+            return null;
+        }
+
+        $colonPosition = strpos($inner, ':');
+
+        if ($colonPosition === false) {
+            return null;
+        }
+
+        $mode = strtolower(trim(substr($inner, 0, $colonPosition)));
+
+        if (! in_array($mode, ['with', 'without'], true)) {
+            return null;
+        }
+
+        $rulesText = trim(substr($inner, $colonPosition + 1));
+
+        if ($rulesText === '') {
+            return null;
+        }
+
+        $rules   = [];
+        $current = '';
+        $length  = strlen($rulesText);
+
+        for ($index = 0; $index < $length; $index++) {
+            $char = $rulesText[$index];
+
+            if (ctype_alnum($char) || $char === '-' || $char === '_') {
+                $current .= strtolower($char);
+
+                continue;
+            }
+
+            if (in_array($char, [',', ' ', "\t", "\n", "\r"], true)) {
+                if ($current !== '') {
+                    $rules[] = $current;
+                    $current = '';
+                }
+
+                continue;
+            }
+
+            return null;
+        }
+
+        if ($current !== '') {
+            $rules[] = $current;
+        }
+
+        if ($rules === []) {
+            return null;
+        }
+
+        return [
+            'mode'  => $mode,
+            'rules' => $rules,
+        ];
+    }
+
+    private function readPreludeUntilBlock(): string
+    {
+        $buffer             = '';
+        $parenDepth         = 0;
+        $bracketDepth       = 0;
+        $interpolationDepth = 0;
+
+        while (! $this->stream->isEof()) {
+            $token = $this->stream->current();
+
+            if (StreamUtils::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
+                continue;
+            }
+
+            if ($interpolationDepth === 0 && $parenDepth === 0 && $bracketDepth === 0 && $token->type === TokenType::LBRACE) {
+                break;
+            }
+
+            StreamUtils::updateNestingDepth($token, $parenDepth, $bracketDepth);
+            StreamUtils::appendTokenToBuffer($buffer, $token, true);
+
+            $this->stream->advance();
+        }
+
+        return $buffer;
     }
 
     private function parseDiagnosticDirectiveMessage(): AstNode

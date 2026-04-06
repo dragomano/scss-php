@@ -20,6 +20,7 @@ use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
+use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\NameNormalizer;
@@ -74,7 +75,21 @@ final readonly class ExtendsResolver
     public function collectExtends(AstNode $node, Environment $env): void
     {
         if ($node instanceof RootNode) {
-            $this->collectChildren($node->children, $env);
+            foreach ($node->children as $child) {
+                if ($child instanceof VariableDeclarationNode) {
+                    $env->getCurrentScope()->setVariable(
+                        $child->name,
+                        $child->value,
+                        $child->global,
+                        $child->default,
+                        $child->line,
+                    );
+
+                    continue;
+                }
+
+                $this->collectExtends($child, $env);
+            }
 
             return;
         }
@@ -107,6 +122,7 @@ final readonly class ExtendsResolver
 
             $env->enterScope();
             $env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode($selector));
+
             $this->collectChildren($node->children, $env, $selector, $currentContext);
 
             $env->exitScope();
@@ -131,6 +147,7 @@ final readonly class ExtendsResolver
             $name           = strtolower(trim($node->name));
             $prelude        = trim($node->prelude);
             $contextSegment = '@' . $name . ($prelude !== '' ? ' ' . $prelude : '');
+
             /** @var array<int, AstNode> $body */
             $body = $node->body;
 
@@ -149,6 +166,7 @@ final readonly class ExtendsResolver
 
         if ($node instanceof EachNode) {
             $iterableValue = ($this->evaluateValue)($node->list, $env);
+
             /** @var array<int, AstNode> $items */
             $items = ($this->eachIterableItems)($iterableValue);
 
@@ -156,6 +174,7 @@ final readonly class ExtendsResolver
 
             foreach ($items as $item) {
                 ($this->assignEachVariables)($node->variables, $item, $env);
+
                 $this->collectChildren($node->body, $env, applyDeclarations: true);
             }
 
@@ -186,6 +205,7 @@ final readonly class ExtendsResolver
                 }
 
                 $env->getCurrentScope()->setVariable($node->variable, new NumberNode($i));
+
                 $this->collectChildren($node->body, $env, applyDeclarations: true);
             }
 
@@ -350,6 +370,7 @@ final readonly class ExtendsResolver
                     }
 
                     $seen[$extendedPart] = true;
+
                     $result[]  = $extendedPart;
                     $pending[] = $extendedPart;
                 }
@@ -395,7 +416,8 @@ final readonly class ExtendsResolver
                 }
 
                 $seen[$target] = true;
-                $targets[]     = $target;
+
+                $targets[] = $target;
             }
         }
 

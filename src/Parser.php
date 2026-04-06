@@ -41,52 +41,6 @@ final class Parser implements ParserInterface
         $this->initSubParsers();
     }
 
-    private function initSubParsers(): void
-    {
-        $this->values = new ValueParser(
-            $this->stream,
-            fn(string $expr): AstNode => $this->parseInlineValue($expr),
-        );
-
-        $this->rules = new RuleParser(
-            $this->stream,
-            fn(): AstNode => $this->values->parseValue(),
-            fn(): array => $this->values->parseValueModifiers(),
-            fn(): string => $this->values->parseCustomPropertyValue(),
-            fn(): bool => $this->blockDepth > 0,
-            fn(string $selector, int $line, int $column): RuleNode => $this->parseRuleFromSelector(
-                $selector,
-                $line,
-                $column,
-            ),
-            $this->trackSourceLocations,
-        );
-
-        $this->directives = new DirectiveParser(
-            $this->stream,
-            fn(): array => $this->parseBlock(),
-            fn(): array => $this->parseStatementsInsideBlock(),
-            fn(): AstNode => $this->values->parseValue(),
-            fn(array $stopTokens): ?AstNode => $this->values->parseValueUntil($stopTokens),
-            fn(): array => $this->values->parseValueModifiers(),
-            fn(): array => $this->values->parseArgumentList(),
-            fn(): string => $this->values->parseString(),
-            fn(): string => $this->values->consumeIdentifier(),
-            fn(string $selector, int $line, int $column): RuleNode => $this->parseRuleFromSelector(
-                $selector,
-                $line,
-                $column,
-            ),
-            fn(string $expr): AstNode => $this->parseInlineValue($expr),
-            function (): void {
-                $this->blockDepth++;
-            },
-            function (): void {
-                $this->blockDepth--;
-            },
-        );
-    }
-
     public function setTrackSourceLocations(bool $track): void
     {
         $this->trackSourceLocations = $track;
@@ -298,6 +252,52 @@ final class Parser implements ParserInterface
         $ast = $inlineParser->parse(".__tmp__ { __tmp__: $expr; }");
 
         return $this->extractInlineValueFromAst($ast, $expr);
+    }
+
+    private function initSubParsers(): void
+    {
+        $this->values = new ValueParser(
+            $this->stream,
+            fn(string $expr): AstNode => $this->parseInlineValue($expr),
+        );
+
+        $this->rules = new RuleParser(
+            $this->stream,
+            fn(): AstNode => $this->values->parseValue(),
+            fn(): array => $this->values->parseValueModifiers(),
+            fn(): string => $this->values->parseCustomPropertyValue(),
+            fn(): bool => $this->blockDepth > 0,
+            fn(string $selector, int $line, int $column): RuleNode => $this->parseRuleFromSelector(
+                $selector,
+                $line,
+                $column,
+            ),
+            $this->trackSourceLocations,
+        );
+
+        $this->directives = new DirectiveParser(
+            $this->stream,
+            fn(): array => $this->parseBlock(),
+            fn(): array => $this->parseStatementsInsideBlock(),
+            fn(): AstNode => $this->values->parseValue(),
+            fn(array $stopTokens): ?AstNode => $this->values->parseValueUntil($stopTokens),
+            fn(): array => $this->values->parseValueModifiers(),
+            fn(): array => $this->values->parseArgumentList(),
+            fn(): string => $this->values->parseString(),
+            fn(): string => $this->values->consumeIdentifier(),
+            fn(string $selector, int $line, int $column): RuleNode => $this->parseRuleFromSelector(
+                $selector,
+                $line,
+                $column,
+            ),
+            fn(string $expr): AstNode => $this->parseInlineValue($expr),
+            function (): void {
+                $this->blockDepth++;
+            },
+            function (): void {
+                $this->blockDepth--;
+            },
+        );
     }
 
     private function extractInlineValueFromAst(RootNode $ast, string $expr): AstNode

@@ -134,7 +134,7 @@ final readonly class CompilerVisitor implements Visitor
 
     public function visitUse(UseNode $node, TraversalContext $ctx): string
     {
-        return $this->runtime->moduleLoad()->handleUse($node);
+        return $this->runtime->moduleLoad()->handleUse($node, $ctx);
     }
 
     public function visitSupports(SupportsNode $node, TraversalContext $ctx): string
