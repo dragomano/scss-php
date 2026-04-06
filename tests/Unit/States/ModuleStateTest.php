@@ -18,7 +18,6 @@ describe('ModuleState', function () {
             ->and($state->importEvaluationDepth)->toBe(0)
             ->and($state->callDepth)->toBe(0)
             ->and($state->hasUseDirective)->toBeFalse()
-            ->and($state->hasSassImport)->toBeFalse()
             ->and($state->loadingFiles)->toBe([]);
     });
 
@@ -30,7 +29,6 @@ describe('ModuleState', function () {
         $state->importEvaluationDepth = 3;
         $state->callDepth = 5;
         $state->hasUseDirective = true;
-        $state->hasSassImport = true;
         $state->loadingFiles['file.scss'] = true;
         $state->emittedForwardCss['x'] = true;
         $state->emittedUseCss['y'] = true;
@@ -46,7 +44,6 @@ describe('ModuleState', function () {
             ->and($state->importEvaluationDepth)->toBe(0)
             ->and($state->callDepth)->toBe(0)
             ->and($state->hasUseDirective)->toBeFalse()
-            ->and($state->hasSassImport)->toBeFalse()
             ->and($state->loadingFiles)->toBe([]);
     });
 

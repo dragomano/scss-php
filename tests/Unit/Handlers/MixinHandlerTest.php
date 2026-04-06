@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
@@ -27,10 +28,9 @@ beforeEach(function () {
     $this->mixinTest = new ReflectionAccessor($this->mixin);
 });
 
-it('returns an empty string for unresolved local mixin includes', function () {
-    $result = $this->runtime->block()->handleInclude(new IncludeNode(null, 'missing'), $this->ctx);
-
-    expect($result)->toBe('');
+it('throws for unresolved local mixin includes', function () {
+    expect(fn() => $this->runtime->block()->handleInclude(new IncludeNode(null, 'missing'), $this->ctx))
+        ->toThrow(UndefinedSymbolException::class, 'Undefined mixin: missing');
 });
 
 it('returns an empty string for meta.apply when the first argument is not a mixin reference', function () {
