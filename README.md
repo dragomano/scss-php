@@ -3,6 +3,8 @@
 ![PHP](https://img.shields.io/badge/PHP-^8.2-blue.svg?style=flat)
 [![Coverage Status](https://coveralls.io/repos/github/dragomano/scss-php/badge.svg?branch=main)](https://coveralls.io/github/dragomano/scss-php?branch=main)
 
+[По-русски](README.ru.md)
+
 ## Features
 
 - Sass and SCSS compilation to CSS
@@ -206,9 +208,8 @@ flowchart TD
     F --> F2["RuleParser\nselectors & blocks"]
     F --> F3["ValueParser\nexpressions & values"]
 
-    F1 & F2 & F3 --> G["AST — RootNode tree"]
+    F1 & F2 & F3 --> H["AST — RootNode tree"]
 
-    G --> H["AstEvaluator · pre-pass\nvariables, functions, mixins"]
     H --> I["CompilerDispatcher\nVisitor pattern"]
 
     I --> J0["RootNodeHandler\nroot document"]
