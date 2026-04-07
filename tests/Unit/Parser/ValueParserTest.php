@@ -10,6 +10,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
+use Bugo\SCSS\Nodes\DeprecatedExpressionNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
@@ -444,6 +445,28 @@ describe('ValueParser', function () {
             $length = (new ReflectionAccessor($valueParser))->callMethod('readNumericPrefixLength', ['']);
 
             expect($length)->toBe(0);
+        });
+
+        it('wraps ambiguous strict unary expressions in a deprecated expression node', function () {
+            [$valueParser] = ($this->createValueParser)('$a -$b');
+
+            /** @var DeprecatedExpressionNode $result */
+            $result = $valueParser->parseValueUntil([TokenType::EOF]);
+
+            expect($result)->toBeInstanceOf(DeprecatedExpressionNode::class)
+                ->and($result->message)->toContain('This expression will be parsed differently in a future release.')
+                ->and($result->line)->toBe(1)
+                ->and($result->column)->toBe(4)
+                ->and($result->expression)->toBeInstanceOf(ListNode::class);
+
+            /** @var ListNode $expression */
+            $expression = $result->expression;
+
+            expect($expression->separator)->toBe('space')
+                ->and($expression->items)->toHaveCount(3)
+                ->and($expression->items[0])->toBeInstanceOf(VariableReferenceNode::class)
+                ->and($expression->items[1])->toBeInstanceOf(StringNode::class)
+                ->and($expression->items[2])->toBeInstanceOf(VariableReferenceNode::class);
         });
     });
 

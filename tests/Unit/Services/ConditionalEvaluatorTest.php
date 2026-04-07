@@ -32,10 +32,10 @@ describe('ConditionalEvaluator', function () {
             }
 
             return match (true) {
-                $node instanceof StringNode => $node->quoted ? '"' . $node->value . '"' : $node->value,
-                $node instanceof NumberNode => $node->value . ($node->unit ?? ''),
-                $node instanceof BooleanNode => $node->value ? 'true' : 'false',
-                $node instanceof NullNode => 'null',
+                $node instanceof StringNode,
+                $node instanceof NumberNode,
+                $node instanceof BooleanNode  => (string) $node,
+                $node instanceof NullNode     => 'null',
                 $node instanceof FunctionNode => $node->name . '(' . implode(', ', array_map(
                     fn(AstNode $argument): string => $format($argument, $env),
                     $node->arguments,

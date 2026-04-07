@@ -341,6 +341,36 @@ describe('Compiler', function () {
             expect($this->compiler->compileString($source))->toEqualCss($expected);
         });
 
+        it('preserves source order around bubbled media blocks for repeated declarations', function () {
+            $source = <<<'SCSS'
+            .case {
+              color: red;
+
+              @media (max-width: 768px) {
+                color: blue;
+              }
+
+              color: green;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .case {
+              color: red;
+            }
+            @media (max-width: 768px) {
+              .case {
+                color: blue;
+              }
+            }
+            .case {
+              color: green;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
         it('interpolates values in @supports conditions', function () {
             $source = <<<'SCSS'
             $query: "(feature1: val)";
