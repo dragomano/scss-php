@@ -14,8 +14,8 @@ describe('IrisConverterAdapter', function () {
 
     it('converts lab and lch channels to xyz and srgba values', function () {
         $labXyz = $this->converter->labToXyzD50(50.0, 10.0, 20.0);
-        $labRgb = $this->converter->labChannelsToSrgba(50.0, 10.0, 20.0, 0.5);
-        $lchRgb = $this->converter->lchChannelsToSrgba(50.0, 30.0, 45.0, 0.25);
+        $labRgb = $this->converter->convertToRgba('lab', 50.0, 10.0, 20.0, 0.5);
+        $lchRgb = $this->converter->convertToRgba('lch', 50.0, 30.0, 45.0, 0.25);
 
         expect($labXyz)->toBeInstanceOf(XyzColor::class)
             ->and($labRgb)->toBeInstanceOf(RgbColor::class)

@@ -13,6 +13,8 @@ use LogicException;
 
 final readonly class IrisLiteralAdapter implements ColorLiteralInterface
 {
+    use IrisColorValueWrap;
+
     public function __construct(
         private LiteralSerializer $literalSerializer = new LiteralSerializer(),
         private LiteralParser $literalConverter = new LiteralParser(),
@@ -42,13 +44,4 @@ final readonly class IrisLiteralAdapter implements ColorLiteralInterface
         return $this->literalSerializer->serialize($inner);
     }
 
-    /**
-     * @template TInner of \Bugo\Iris\Contracts\ColorValueInterface
-     * @param TInner $inner
-     * @return IrisColorValue<TInner>
-     */
-    private function wrap(\Bugo\Iris\Contracts\ColorValueInterface $inner): IrisColorValue
-    {
-        return new IrisColorValue($inner);
-    }
 }

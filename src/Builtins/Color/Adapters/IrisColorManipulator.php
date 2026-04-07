@@ -18,6 +18,8 @@ use LogicException;
 
 final readonly class IrisColorManipulator implements ColorManipulatorInterface
 {
+    use IrisColorValueWrap;
+
     public function __construct(
         private LegacyManipulator $legacy = new LegacyManipulator(),
         private PerceptualManipulator $perceptual = new PerceptualManipulator(),
@@ -223,13 +225,4 @@ final readonly class IrisColorManipulator implements ColorManipulatorInterface
         return $this->model->rgbToHslColor($rgb);
     }
 
-    /**
-     * @template TInner of \Bugo\Iris\Contracts\ColorValueInterface
-     * @param TInner $inner
-     * @return IrisColorValue<TInner>
-     */
-    private function wrap(\Bugo\Iris\Contracts\ColorValueInterface $inner): IrisColorValue
-    {
-        return new IrisColorValue($inner);
-    }
 }
