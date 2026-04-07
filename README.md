@@ -12,7 +12,6 @@
 - Optional source maps and rule splitting
 - PSR-3 logging for `@debug`, `@warn`, and `@error`
 - PSR-16 support for caching compiled files
-- Replaceable color engine via `ColorBundleInterface`
 
 ---
 
@@ -251,57 +250,9 @@ Paste the problematic code into the [sandbox](https://sass-lang.com/playground/)
 
 Don't forget to test and tidy up your code before submitting a pull request.
 
-## Custom Color Engine
+## Additional resources
 
-By default, the compiler uses the bundled color engine. You can replace it entirely by implementing `ColorBundleInterface`.
-
-This is a full integration point, not a small extension hook: in practice you need to provide compatible converter, literal parser/serializer, polar math, and manipulator implementations.
-
-```php
-use Bugo\SCSS\Compiler;
-use Bugo\SCSS\Contracts\Color\ColorBundleInterface;
-use Bugo\SCSS\Contracts\Color\ColorConverterInterface;
-use Bugo\SCSS\Contracts\Color\ColorLiteralInterface;
-use Bugo\SCSS\Contracts\Color\ColorManipulatorInterface;
-use Bugo\SCSS\Contracts\Color\ColorValueInterface;
-
-// 1. Your color data container
-final class MyColorValue implements ColorValueInterface
-{
-    public function __construct(
-        private readonly string $space,
-        /** @var list<float|null> */
-        private readonly array $channels,
-        private readonly float $alpha = 1.0,
-    ) {}
-
-    public function getSpace(): string { return $this->space; }
-    public function getChannels(): array { return $this->channels; }
-    public function getAlpha(): float { return $this->alpha; }
-}
-
-// 2. Space converter + router (see ColorConverterInterface for all required methods)
-final class MyColorConverter implements ColorConverterInterface { /* ... */ }
-
-// 3. CSS color string parser/serializer
-final class MyColorLiteral implements ColorLiteralInterface
-{
-    public function parse(string $css): ?ColorValueInterface { /* ... */ }
-    public function serialize(ColorValueInterface $color): string { /* ... */ }
-}
-
-// 4. Color manipulation (mix, grayscale, adjust, scale, etc.)
-final class MyColorManipulator implements ColorManipulatorInterface { /* ... */ }
-
-// 5. Bundle everything together
-final class MyColorBundle implements ColorBundleInterface
-{
-    public function getConverter(): ColorConverterInterface { return new MyColorConverter(); }
-    public function getLiteral(): ColorLiteralInterface { return new MyColorLiteral(); }
-    public function getManipulator(): ColorManipulatorInterface { return new MyColorManipulator(); }
-}
-
-// 6. Pass the bundle to the compiler
-$compiler = new Compiler(colorBundle: new MyColorBundle());
-$css = $compiler->compileString('$c: oklch(50% 0.2 120deg); .a { color: $c; }');
-```
+* https://sass-lang.com/documentation/
+* https://github.com/sass/sass
+* https://tc39.es/ecma426/
+* https://evanw.github.io/source-map-visualization/
