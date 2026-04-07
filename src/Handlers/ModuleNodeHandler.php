@@ -29,26 +29,8 @@ final readonly class ModuleNodeHandler
 
     public function handleForward(ForwardNode $node, TraversalContext $ctx): string
     {
-        $path                  = $node->path;
-        $resolvedConfiguration = $this->module->resolveForwardConfiguration($node, $ctx->env);
-        $moduleState           = $this->module->moduleState();
-
-        if ($this->module->importEvaluationDepth() > 0) {
-            $resolvedConfiguration = $this->module->resolveImportForwardConfiguration(
-                $node,
-                $ctx->env,
-                $resolvedConfiguration,
-            );
-        }
-
-        $forwardKey = $this->module->forwardCacheKey($path, $resolvedConfiguration, $ctx->env);
-
-        if (! isset($moduleState->forwardedModules[$forwardKey])) {
-            $moduleState->forwardedModules[$forwardKey] = $this->module->loadAndEvaluateModule(
-                $path,
-                $resolvedConfiguration,
-            );
-        }
+        $forwardKey  = $this->module->handleForward($node, $ctx->env);
+        $moduleState = $this->module->moduleState();
 
         if (isset($moduleState->emittedForwardCss[$forwardKey])) {
             return '';
@@ -104,6 +86,8 @@ final readonly class ModuleNodeHandler
                 $this->module->extractAstVariables($ctx->env->getCurrentScope()->getVariables()),
             );
 
+            $this->module->mergeScopeExports($data['scope'], $ctx->env->getCurrentScope());
+
             $css = $data['css'];
 
             if ($css === '') {
@@ -141,17 +125,15 @@ final readonly class ModuleNodeHandler
         return $output;
     }
 
-    public function handleUse(UseNode $node): string
+    public function handleUse(UseNode $node, TraversalContext $ctx): string
     {
+        $this->module->handleUse($node, $ctx->env);
+
         if (str_starts_with($node->path, 'sass:')) {
             return '';
         }
 
-        $namespace = $node->namespace;
-
-        if ($namespace === null) {
-            $namespace = $this->module->deriveNamespaceFromUsePath($node->path);
-        }
+        $namespace = $node->namespace ?? $this->module->deriveNamespaceFromUsePath($node->path);
 
         if ($namespace === '*') {
             return '';

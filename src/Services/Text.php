@@ -24,6 +24,7 @@ use function str_ends_with;
 use function str_starts_with;
 use function strlen;
 use function strpos;
+use function strspn;
 use function strtolower;
 use function substr;
 use function trim;
@@ -102,14 +103,19 @@ final readonly class Text
         $index  = 0;
 
         while ($index < $length) {
-            if ($value[$index] !== '#' || $index + 1 >= $length || $value[$index + 1] !== '{') {
-                $result .= $value[$index];
-                $index++;
+            $pos = strpos($value, '#{', $index);
 
-                continue;
+            if ($pos === false) {
+                $result .= substr($value, $index);
+
+                break;
             }
 
-            $start  = $index + 2;
+            if ($pos > $index) {
+                $result .= substr($value, $index, $pos - $index);
+            }
+
+            $start  = $pos + 2;
             $cursor = $start;
             $depth  = 1;
 
@@ -124,7 +130,7 @@ final readonly class Text
             }
 
             if ($depth !== 0) {
-                $result .= substr($value, $index);
+                $result .= substr($value, $pos);
 
                 break;
             }
@@ -145,30 +151,34 @@ final readonly class Text
         $index  = 0;
 
         while ($index < $length) {
-            if ($value[$index] !== '$') {
-                $result .= $value[$index];
-                $index++;
+            $pos = strpos($value, '$', $index);
 
-                continue;
+            if ($pos === false) {
+                $result .= substr($value, $index);
+
+                break;
             }
 
-            $name   = '';
-            $cursor = $index + 1;
-
-            while ($cursor < $length && $this->isVariableNameChar($value[$cursor])) {
-                $name .= $value[$cursor];
-                $cursor++;
+            if ($pos > $index) {
+                $result .= substr($value, $index, $pos - $index);
             }
 
-            if ($name === '') {
+            $nameLen = strspn(
+                $value,
+                'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.',
+                $pos + 1,
+            );
+
+            if ($nameLen === 0) {
                 $result .= '$';
-                $index++;
+                $index   = $pos + 1;
 
                 continue;
             }
 
+            $name     = substr($value, $pos + 1, $nameLen);
             $resolved = ($this->evaluateValue)(new VariableReferenceNode($name), $env);
-            $index    = $cursor;
+            $index    = $pos + 1 + $nameLen;
 
             if ($resolved instanceof StringNode) {
                 $result .= $resolved->value;

@@ -196,6 +196,24 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('normalizes lowercase NaN constants and arithmetic that produces NaN inside calc()', function () {
+            $source = <<<'SCSS'
+            .test {
+              direct: calc(nan);
+              product: calc(infinity * 0);
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .test {
+              direct: calc(NaN);
+              product: calc(NaN);
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
         it('supports calculation round strategy and step fallback', function () {
             $source = <<<'SCSS'
             $number: 12.5px;
@@ -884,6 +902,32 @@ describe('Compiler', function () {
             CSS;
 
             expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('emits a deprecation warning for ambiguous strict unary syntax', function () {
+            $source = <<<'SCSS'
+            $a: 10px;
+            $b: 5px;
+
+            .result {
+              margin: $a -$b;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .result {
+              margin: 5px;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected)
+                ->and($this->logger->records)->toHaveCount(1)
+                ->and($this->logger->records[0]['level'])->toBe('warning')
+                ->and($this->logger->records[0]['message'])->toContain('This expression will be parsed differently in a future release.')
+                ->and($this->logger->records[0]['message'])->toContain('"a - b"')
+                ->and($this->logger->records[0]['message'])->toContain('"a (-b)"')
+                ->and($this->logger->records[0]['message'])->toContain('input.scss:5 >>>')
+                ->and($this->logger->records[0]['context'])->toBe([]);
         });
 
         it('compiles nested properties declared as property block', function () {

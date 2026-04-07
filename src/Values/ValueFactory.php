@@ -31,8 +31,11 @@ final readonly class ValueFactory
     /**
      * @param null|callable(AstNode): string $formatter
      */
-    public function fromAst(AstNode $node, ?callable $formatter = null, bool $preserveZeroUnits = false): SassValue
-    {
+    public function fromAst(
+        AstNode $node,
+        ?callable $formatter = null,
+        bool $preserveZeroUnits = false,
+    ): SassValue {
         if ($node instanceof BooleanNode) {
             return SassBoolean::fromBool($node->value);
         }
@@ -50,11 +53,7 @@ final readonly class ValueFactory
         }
 
         if ($node instanceof StringNode) {
-            if ($node->quoted) {
-                return new SassString($node->value, true);
-            }
-
-            return new SassString($node->value, false);
+            return new SassString($node->value, $node->quoted);
         }
 
         if ($node instanceof ListNode || $node instanceof ArgumentListNode) {
@@ -109,6 +108,16 @@ final readonly class ValueFactory
         return SassBoolean::fromBool(true);
     }
 
+    public function createBooleanNode(bool $value): BooleanNode
+    {
+        return new BooleanNode($value);
+    }
+
+    public function createNullNode(): NullNode
+    {
+        return new NullNode();
+    }
+
     private function callableDisplayName(string $name): string
     {
         $offset = strrpos($name, '.');
@@ -118,15 +127,5 @@ final readonly class ValueFactory
         }
 
         return substr($name, $offset + 1);
-    }
-
-    public function createBooleanNode(bool $value): BooleanNode
-    {
-        return new BooleanNode($value);
-    }
-
-    public function createNullNode(): NullNode
-    {
-        return new NullNode();
     }
 }

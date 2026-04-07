@@ -8,25 +8,10 @@ final class SassErrorException extends SassException
 {
     public function __construct(
         string $message,
-        private readonly ?string $sourceFile = null,
-        private readonly ?int $sourceLine = null,
-        private readonly ?int $sourceColumn = null,
+        public readonly ?string $sourceFile = null,
+        public readonly ?int $sourceLine = null,
+        public readonly ?int $sourceColumn = null,
     ) {
         parent::__construct('@error: ' . $message);
-    }
-
-    public function getSourceFilePath(): ?string
-    {
-        return $this->sourceFile;
-    }
-
-    public function getSourceLineNumber(): ?int
-    {
-        return $this->sourceLine;
-    }
-
-    public function getSourceColumnNumber(): ?int
-    {
-        return $this->sourceColumn;
     }
 }

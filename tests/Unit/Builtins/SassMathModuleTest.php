@@ -275,7 +275,7 @@ describe('SassMathModule', function () {
 
         expect($warnings)->toHaveCount(1)
             ->and($warnings[0])->toContain('max() is deprecated')
-            ->and($warnings[0])->toContain('math.max("quoted", 1)');
+            ->and($warnings[0])->toContain('math.max("quoted", true)');
     });
 
     it('converts unitless turn and grad angles to radians for trig functions', function () {

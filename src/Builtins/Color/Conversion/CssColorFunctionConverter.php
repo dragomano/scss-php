@@ -153,18 +153,28 @@ final readonly class CssColorFunctionConverter
     private function parseCssPerceptualFunction(FunctionNode $function): ?RgbColor
     {
         return match (strtolower($function->name)) {
-            'lab'   => $this->parseCssLabLike($function, $this->colorSpaceConverter->labChannelsToSrgba(...), 125.0),
-            'lch'   => $this->parseCssLchLike($function, $this->colorSpaceConverter->lchChannelsToSrgba(...), 150.0),
+            'lab'   => $this->parseCssLabLike(
+                $function,
+                fn(float $l, float $a, float $b, float $opacity): RgbColor
+                    => $this->colorSpaceConverter->convertToRgba('lab', $l, $a, $b, $opacity),
+                125.0,
+            ),
+            'lch'   => $this->parseCssLchLike(
+                $function,
+                fn(float $l, float $c, float $h, float $opacity): RgbColor
+                    => $this->colorSpaceConverter->convertToRgba('lch', $l, $c, $h, $opacity),
+                150.0,
+            ),
             'oklab' => $this->parseCssLabLike(
                 $function,
                 fn(float $l, float $a, float $b, float $opacity): RgbColor
-                    => $this->colorSpaceConverter->oklabChannelsToSrgba($l / 100.0, $a, $b, $opacity),
+                    => $this->colorSpaceConverter->convertToRgba('oklab', $l / 100.0, $a, $b, $opacity),
                 0.4,
             ),
             'oklch' => $this->parseCssLchLike(
                 $function,
                 fn(float $l, float $c, float $h, float $opacity): RgbColor
-                    => $this->colorSpaceConverter->oklchChannelsToSrgba($l / 100.0, $c, $h, $opacity),
+                    => $this->colorSpaceConverter->convertToRgba('oklch', $l / 100.0, $c, $h, $opacity),
                 0.4,
             ),
             default => null,

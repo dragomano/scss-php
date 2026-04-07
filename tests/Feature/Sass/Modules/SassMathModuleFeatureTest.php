@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
+use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Tests\ArrayLogger;
 
 describe('Sass Math Module Feature', function () {
@@ -394,6 +395,19 @@ describe('Sass Math Module Feature', function () {
 
             expect($css)->toEqualCss($expected);
         });
+
+        it('throws when either argument has units', function (string $expression) {
+            $scss = <<<SCSS
+            @use "sass:math";
+            .math-pow-invalid { value: {$expression}; }
+            SCSS;
+
+            expect(fn() => $this->compiler->compileString($scss))
+                ->toThrow(MissingFunctionArgumentsException::class, 'a unitless number');
+        })->with([
+            'unitful base' => ['math.pow(2px, 3)'],
+            'unitful exponent' => ['math.pow(2, 3px)'],
+        ]);
     });
 
     describe('math.random()', function () {

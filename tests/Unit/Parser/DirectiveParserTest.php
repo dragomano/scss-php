@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Lexer\Tokenizer;
-use Bugo\SCSS\Lexer\TokenStream;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\DebugNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
@@ -22,7 +20,6 @@ use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Parser;
-use Tests\ReflectionAccessor;
 
 describe('DirectiveParser', function () {
     beforeEach(function () {
@@ -436,24 +433,6 @@ describe('DirectiveParser', function () {
                 ->and($node->prelude)->toBe('screen')
                 ->and($node->body)->toBe([])
                 ->and($node->hasBlock)->toBeFalse();
-        });
-    });
-
-    describe('direct parser access', function () {
-        it('returns null when parseDirective is called outside an at-rule', function () {
-            $accessor = new ReflectionAccessor($this->parser);
-
-            /** @var Tokenizer $tokenizer */
-            $tokenizer = $accessor->getProperty('tokenizer');
-
-            $accessor->setProperty('stream', new TokenStream($tokenizer->tokenize('')));
-            $accessor->setProperty('blockDepth', 0);
-            $accessor->callMethod('initSubParsers');
-
-            $directives = $accessor->getProperty('directives');
-            $node = (new ReflectionAccessor($directives))->callMethod('parseDirective');
-
-            expect($node)->toBeNull();
         });
     });
 });

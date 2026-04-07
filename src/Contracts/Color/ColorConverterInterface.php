@@ -44,14 +44,6 @@ interface ColorConverterInterface
     /** @return array{0: float, 1: float, 2: float} */
     public function xyzD50ToD65(float $x, float $y, float $z): array;
 
-    public function labChannelsToSrgba(float $l, float $a, float $b, float $opacity): RgbColor;
-
-    public function lchChannelsToSrgba(float $l, float $c, float $h, float $opacity): RgbColor;
-
-    public function oklabChannelsToSrgba(float $l, float $a, float $b, float $opacity): RgbColor;
-
-    public function oklchChannelsToSrgba(float $l, float $c, float $h, float $opacity): RgbColor;
-
     public function labToRgbColor(LabColor $lab): RgbColor;
 
     public function rgbToOklch(RgbColor $rgb): OklchColor;

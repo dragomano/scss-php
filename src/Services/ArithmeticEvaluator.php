@@ -193,9 +193,10 @@ final readonly class ArithmeticEvaluator
         $collapsed = [];
 
         /** @var NumberNode $current */
-        $current = $items[0];
+        $current   = $items[0];
+        $itemCount = count($items);
 
-        for ($i = 1; $i < count($items); $i += 2) {
+        for ($i = 1; $i < $itemCount; $i += 2) {
             /** @var StringNode $operator */
             $operator = $items[$i];
 
@@ -217,9 +218,10 @@ final readonly class ArithmeticEvaluator
         $collapsed[] = $current;
 
         /** @var NumberNode $result */
-        $result = $collapsed[0];
+        $result         = $collapsed[0];
+        $collapsedCount = count($collapsed);
 
-        for ($i = 1; $i < count($collapsed); $i += 2) {
+        for ($i = 1; $i < $collapsedCount; $i += 2) {
             /** @var StringNode $operator */
             $operator = $collapsed[$i];
 

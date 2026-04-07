@@ -8,6 +8,7 @@ use Bugo\SCSS\Lexer\TokenStream;
 use Bugo\SCSS\Lexer\TokenType;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
+use Bugo\SCSS\Nodes\DeprecatedExpressionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
@@ -61,16 +62,20 @@ final readonly class ValueParser
     {
         $this->stream->skipWhitespace();
 
-        $groups       = [];
-        $currentGroup = [];
+        $groups               = [];
+        $currentGroup         = [];
+        $deprecatedExpression = null;
 
         while (! $this->stream->isEof()) {
+            $hasLeadingWhitespace = $this->stream->is(TokenType::WHITESPACE);
+
             $this->stream->skipWhitespace();
 
             foreach ($stopTokens as $tokenType) {
                 if ($this->stream->is($tokenType)) {
-                    return $this->buildListFromGroups(
+                    return $this->wrapDeprecatedExpression(
                         $currentGroup !== [] ? [...$groups, $currentGroup] : $groups,
+                        $deprecatedExpression,
                     );
                 }
             }
@@ -100,9 +105,24 @@ final readonly class ValueParser
             if ($value !== null) {
                 $currentGroup[] = $value;
             } else {
-                $word = $this->parseOperatorOrKeyword();
+                $operatorToken = $this->stream->current();
+                $word          = $this->parseOperatorOrKeyword();
 
                 if ($word !== '') {
+                    if (
+                        ($word === '-' || $word === '+')
+                        && $hasLeadingWhitespace
+                        && ! $this->stream->is(TokenType::WHITESPACE)
+                        && ! empty($currentGroup)
+                    ) {
+                        $deprecatedExpression = [
+                            'message' => 'This expression will be parsed differently in a future release. '
+                                . "Write \"a $word b\" for subtraction or \"a ({$word}b)\" for a list.",
+                            'line'    => $operatorToken->line,
+                            'column'  => $operatorToken->column,
+                        ];
+                    }
+
                     $currentGroup[] = new StringNode($word);
                 } else {
                     break;
@@ -114,7 +134,7 @@ final readonly class ValueParser
             $groups[] = $currentGroup;
         }
 
-        return $this->buildListFromGroups($groups);
+        return $this->wrapDeprecatedExpression($groups, $deprecatedExpression);
     }
 
     public function parseOperatorOrKeyword(): string
@@ -295,7 +315,7 @@ final readonly class ValueParser
 
     public function parseParenthesizedValue(): AstNode
     {
-        $this->stream->consume(TokenType::LPAREN);
+        $this->stream->expect(TokenType::LPAREN);
 
         $items = [];
         $pairs = [];
@@ -376,7 +396,7 @@ final readonly class ValueParser
 
     public function parseBracketedListValue(): AstNode
     {
-        $this->stream->consume(TokenType::LBRACKET);
+        $this->stream->expect(TokenType::LBRACKET);
 
         $items = [];
 
@@ -633,6 +653,26 @@ final readonly class ValueParser
         }
 
         return new ListNode($resultItems, 'comma');
+    }
+
+    /**
+     * @param array<int, array<int, AstNode>> $groups
+     * @param array{message: string, line: int, column: int}|null $deprecatedExpression
+     */
+    private function wrapDeprecatedExpression(array $groups, ?array $deprecatedExpression): ?AstNode
+    {
+        $result = $this->buildListFromGroups($groups);
+
+        if ($deprecatedExpression === null || ! $result instanceof AstNode) {
+            return $result;
+        }
+
+        return new DeprecatedExpressionNode(
+            $result,
+            $deprecatedExpression['message'],
+            $deprecatedExpression['line'],
+            $deprecatedExpression['column'],
+        );
     }
 
     private function tryParseModuleVariable(): ?VariableReferenceNode

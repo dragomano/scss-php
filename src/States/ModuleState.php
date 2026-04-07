@@ -32,8 +32,6 @@ final class ModuleState
 
     public bool $hasUseDirective = false;
 
-    public bool $hasSassImport = false;
-
     /** @var array<string, bool> */
     public array $loadingFiles = [];
 
@@ -49,6 +47,5 @@ final class ModuleState
         $this->callDepth             = 0;
         $this->loadingFiles          = [];
         $this->hasUseDirective       = false;
-        $this->hasSassImport         = false;
     }
 }

@@ -21,13 +21,13 @@ use Closure;
 
 use function ceil;
 use function count;
+use function fdiv;
 use function floor;
 use function in_array;
 use function round;
 use function strtolower;
 use function trim;
 
-use const INF;
 use const M_E;
 use const M_PI;
 
@@ -152,13 +152,15 @@ final readonly class CalculationEvaluator
             }
 
             if ($argument instanceof ListNode) {
-                $division = $this->simplifyCalcDivision($argument);
+                $resolved = $this->resolveConstantsInList($argument);
+
+                $division = $this->simplifyCalcDivision($resolved);
 
                 if ($division instanceof NumberNode) {
                     return $division;
                 }
 
-                $collapsed = ($this->evaluateArithmetic)($argument, true, $env);
+                $collapsed = ($this->evaluateArithmetic)($resolved, true, $env);
 
                 if ($collapsed instanceof NumberNode) {
                     return $collapsed;
@@ -474,13 +476,33 @@ final readonly class CalculationEvaluator
         return $simplified instanceof NumberNode ? $simplified : null;
     }
 
+    private function resolveConstantsInList(ListNode $list): ListNode
+    {
+        $items   = [];
+        $changed = false;
+
+        foreach ($list->items as $item) {
+            $resolved = $this->resolveConstant($item);
+
+            if ($resolved instanceof NumberNode) {
+                $items[]  = $resolved;
+                $changed  = true;
+            } else {
+                $items[] = $item;
+            }
+        }
+
+        return $changed ? new ListNode($items, $list->separator, $list->bracketed) : $list;
+    }
+
     private function mapConstant(string $value): ?NumberNode
     {
         return match (strtolower(trim($value))) {
             'pi'        => new NumberNode(M_PI),
             'e'         => new NumberNode(M_E),
-            'infinity'  => new NumberNode(INF),
-            '-infinity' => new NumberNode(-INF),
+            'infinity'  => new NumberNode(fdiv(1.0, 0.0)),
+            '-infinity' => new NumberNode(fdiv(-1.0, 0.0)),
+            'nan'       => new NumberNode(fdiv(0.0, 0.0)),
             default     => null,
         };
     }

@@ -107,7 +107,6 @@ final class Compiler implements CompilerInterface
     {
         $environment = new Environment();
 
-        $this->runtime->ast()->evaluate($ast, $environment);
         $this->runtime->selector()->collectExtends($ast, $environment);
         $this->runtime->selector()->finalizeCollectedExtends();
 

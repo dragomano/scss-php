@@ -704,16 +704,7 @@ final class SassMetaModule extends AbstractModule
      */
     private function describeArguments(array $arguments): array
     {
-        return array_map($this->describeValue(...), $arguments);
-    }
-
-    private function describeValue(AstNode $value): string
-    {
-        if ($value instanceof StringNode) {
-            return $value->quoted ? '"' . $value->value . '"' : $value->value;
-        }
-
-        return $this->formatValue($value);
+        return array_map($this->formatValue(...), $arguments);
     }
 
     private function functionNameFromValue(AstNode $value): ?string

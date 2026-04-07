@@ -7,7 +7,6 @@ use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 use Bugo\SCSS\LoaderInterface;
 use Bugo\SCSS\Nodes\ForwardNode;
-use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -80,15 +79,6 @@ describe('Module service', function () {
             ->toThrow(MaxIterationsExceededException::class);
     });
 
-    it('handleUse() throws when @use is mixed with top-level sass imports', function () {
-        $env = new Environment();
-
-        $this->ctx->moduleState->hasSassImport = true;
-
-        expect(fn() => $this->module->handleUse(new UseNode('module'), $env))
-            ->toThrow(ModuleResolutionException::class);
-    });
-
     it('handleUse() returns early for built-in wildcard namespaces', function () {
         $env = new Environment();
 
@@ -142,15 +132,6 @@ describe('Module service', function () {
         $this->ctx->moduleState->loadingFiles['/tmp/_theme.scss'] = true;
 
         expect(fn() => $this->module->handleUse(new UseNode('theme', 'theme'), $env))
-            ->toThrow(ModuleResolutionException::class);
-    });
-
-    it('handleImport() throws when @import is mixed with a top-level @use', function () {
-        $env = new Environment();
-
-        $this->ctx->moduleState->hasUseDirective = true;
-
-        expect(fn() => $this->module->handleImport(new ImportNode(['theme']), $env))
             ->toThrow(ModuleResolutionException::class);
     });
 

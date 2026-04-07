@@ -3,6 +3,8 @@
 ![PHP](https://img.shields.io/badge/PHP-^8.2-blue.svg?style=flat)
 [![Coverage Status](https://coveralls.io/repos/github/dragomano/scss-php/badge.svg?branch=main)](https://coveralls.io/github/dragomano/scss-php?branch=main)
 
+[English](README.md)
+
 ## Особенности
 
 - Компиляция Sass и SCSS в CSS
@@ -10,7 +12,6 @@
 - Опциональные source maps и разделение правил
 - PSR-3 логирование для `@debug`, `@warn` и `@error`
 - Поддержка PSR-16 для кэширования скомпилированных файлов
-- Возможность полностью заменить цветовой движок через `ColorBundleInterface`
 
 ---
 
@@ -206,9 +207,8 @@ flowchart TD
     F --> F2["RuleParser\nselectors & blocks"]
     F --> F3["ValueParser\nexpressions & values"]
 
-    F1 & F2 & F3 --> G["AST — RootNode tree"]
+    F1 & F2 & F3 --> H["AST — RootNode tree"]
 
-    G --> H["AstEvaluator · pre-pass\nvariables, functions, mixins"]
     H --> I["CompilerDispatcher\nVisitor pattern"]
 
     I --> J0["RootNodeHandler\nroot document"]
@@ -249,61 +249,6 @@ flowchart TD
 ## Хотите что-то добавить?
 
 Не забудьте протестировать и привести в порядок свой код, прежде чем отправлять пулреквест.
-
-## Пользовательский цветовой движок
-
-По умолчанию компилятор использует встроенный цветовой движок. Его можно полностью заменить, реализовав `ColorBundleInterface`.
-
-Это не маленькая точка расширения, а полноценная интеграция: на практике нужно предоставить совместимые реализации конвертера, парсера/сериализатора литералов, полярной математики и манипулятора цветов.
-
-```php
-use Bugo\SCSS\Compiler;
-use Bugo\SCSS\Contracts\Color\ColorBundleInterface;
-use Bugo\SCSS\Contracts\Color\ColorConverterInterface;
-use Bugo\SCSS\Contracts\Color\ColorLiteralInterface;
-use Bugo\SCSS\Contracts\Color\ColorManipulatorInterface;
-use Bugo\SCSS\Contracts\Color\ColorValueInterface;
-
-// 1. Ваш контейнер данных цвета
-final class MyColorValue implements ColorValueInterface
-{
-    public function __construct(
-        private readonly string $space,
-        /** @var list<float|null> */
-        private readonly array $channels,
-        private readonly float $alpha = 1.0,
-    ) {}
-
-    public function getSpace(): string { return $this->space; }
-    public function getChannels(): array { return $this->channels; }
-    public function getAlpha(): float { return $this->alpha; }
-}
-
-// 2. Конвертер пространств и роутер (см. ColorConverterInterface для полного контракта)
-final class MyColorConverter implements ColorConverterInterface { /* ... */ }
-
-// 3. Парсер и сериализатор CSS-цветов
-final class MyColorLiteral implements ColorLiteralInterface
-{
-    public function parse(string $css): ?ColorValueInterface { /* ... */ }
-    public function serialize(ColorValueInterface $color): string { /* ... */ }
-}
-
-// 4. Манипуляции с цветами (mix, grayscale, adjust, scale и т.д.)
-final class MyColorManipulator implements ColorManipulatorInterface { /* ... */ }
-
-// 5. Собрать все в bundle
-final class MyColorBundle implements ColorBundleInterface
-{
-    public function getConverter(): ColorConverterInterface { return new MyColorConverter(); }
-    public function getLiteral(): ColorLiteralInterface { return new MyColorLiteral(); }
-    public function getManipulator(): ColorManipulatorInterface { return new MyColorManipulator(); }
-}
-
-// 6. Передать bundle в компилятор
-$compiler = new Compiler(colorBundle: new MyColorBundle());
-$css = $compiler->compileString('$c: oklch(50% 0.2 120deg); .a { color: $c; }');
-```
 
 ## Дополнительные ресурсы
 

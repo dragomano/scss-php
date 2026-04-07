@@ -365,9 +365,9 @@ describe('Compiler', function () {
                 $caught = true;
 
                 expect($e->getMessage())->toBe('@error: fatal')
-                    ->and($e->getSourceFilePath())->toBe('input.scss')
-                    ->and($e->getSourceLineNumber())->toBe(1)
-                    ->and($e->getSourceColumnNumber())->toBe(1);
+                    ->and($e->sourceFile)->toBe('input.scss')
+                    ->and($e->sourceLine)->toBe(1)
+                    ->and($e->sourceColumn)->toBe(1);
             }
 
             expect($caught)->toBeTrue()
@@ -572,9 +572,9 @@ describe('Compiler', function () {
                 $caught = true;
 
                 expect($e->getMessage())->toBe('@error: fatal')
-                    ->and($e->getSourceFilePath())->toBe('input.scss')
-                    ->and($e->getSourceLineNumber())->toBe(1)
-                    ->and($e->getSourceColumnNumber())->toBe(1);
+                    ->and($e->sourceFile)->toBe('input.scss')
+                    ->and($e->sourceLine)->toBe(1)
+                    ->and($e->sourceColumn)->toBe(1);
             }
 
             expect($caught)->toBeTrue()

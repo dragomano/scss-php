@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Exceptions;
 
+use function implode;
+
 final class ModuleResolutionException extends SassException
 {
     public static function importNotFound(string $path): self
@@ -44,16 +46,14 @@ final class ModuleResolutionException extends SassException
 
     public static function nonConfigurableVariable(string $name, string $modulePath): self
     {
-        return new self("This variable isn't declared with !default in the target stylesheet, so it can't be configured: \$$name (in module '$modulePath').");
+        return new self(implode(' ', [
+            "This variable isn't declared with !default in the target stylesheet,",
+            "so it can't be configured: \$$name (in module '$modulePath').",
+        ]));
     }
 
     public static function builtInModuleConfiguration(string $module): self
     {
         return new self("Built-in module '$module' can't be configured.");
-    }
-
-    public static function mixedImportUse(): self
-    {
-        return new self('Cannot use @use in a file that also uses @import. Consider using @forward instead of @import.');
     }
 }

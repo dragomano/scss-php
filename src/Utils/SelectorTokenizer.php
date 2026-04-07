@@ -439,184 +439,6 @@ final readonly class SelectorTokenizer
         return '';
     }
 
-    private function readPseudoSelector(string $compound, int &$index): string
-    {
-        $length = strlen($compound);
-        $token  = ':';
-
-        $index++;
-
-        if ($index < $length && $compound[$index] === ':') {
-            $token .= ':';
-
-            $index++;
-        }
-
-        $token .= $this->readIdentifier($compound, $index);
-
-        if ($index < $length && $compound[$index] === '(') {
-            $token .= $this->readBracketGroup($compound, $index, '(', ')');
-        }
-
-        return $token;
-    }
-
-    private function readBracketGroup(string $input, int &$index, string $open, string $close): string
-    {
-        $length = strlen($input);
-        $depth  = 0;
-        $token  = '';
-        $quote  = '';
-
-        while ($index < $length) {
-            $char   = $input[$index];
-            $token .= $char;
-
-            if ($quote !== '') {
-                if ($char === $quote) {
-                    $quote = '';
-                }
-
-                $index++;
-
-                continue;
-            }
-
-            if ($char === '"' || $char === "'") {
-                $quote = $char;
-
-                $index++;
-
-                continue;
-            }
-
-            if ($char === $open) {
-                $depth++;
-            } elseif ($char === $close) {
-                $depth--;
-
-                if ($depth === 0) {
-                    $index++;
-
-                    break;
-                }
-            }
-
-            $index++;
-        }
-
-        return $token;
-    }
-
-    private function readIdentifier(string $input, int &$index): string
-    {
-        $length     = strlen($input);
-        $identifier = '';
-
-        while ($index < $length && $this->isIdentifierChar($input[$index])) {
-            $identifier .= $input[$index];
-
-            $index++;
-        }
-
-        return $identifier;
-    }
-
-    private function isIdentifierChar(string $char): bool
-    {
-        return $char !== '' && (ctype_alnum($char) || $char === '-' || $char === '_');
-    }
-
-    /**
-     * @param callable(string): bool $inspector
-     */
-    private function inspectTopLevelCombinators(string $selector, callable $inspector): bool
-    {
-        $parenDepth   = 0;
-        $bracketDepth = 0;
-        $quote        = '';
-        $length       = strlen($selector);
-
-        for ($i = 0; $i < $length; $i++) {
-            $char = $selector[$i];
-
-            if ($quote !== '') {
-                if ($char === $quote) {
-                    $quote = '';
-                }
-
-                continue;
-            }
-
-            if ($char === '"' || $char === "'") {
-                $quote = $char;
-
-                continue;
-            }
-
-            if ($char === '[') {
-                $bracketDepth++;
-
-                continue;
-            }
-
-            if ($char === ']' && $bracketDepth > 0) {
-                $bracketDepth--;
-
-                continue;
-            }
-
-            if ($char === '(') {
-                $parenDepth++;
-
-                continue;
-            }
-
-            if ($char === ')' && $parenDepth > 0) {
-                $parenDepth--;
-
-                continue;
-            }
-
-            if ($parenDepth !== 0 || $bracketDepth !== 0) {
-                continue;
-            }
-
-            if ($inspector($char)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @param array<int, string> $tokens
-     */
-    private function shouldNormalizePseudoOrder(array $tokens): bool
-    {
-        $hasPseudo    = false;
-        $hasClassLike = false;
-
-        foreach ($tokens as $token) {
-            if ($token === '') {
-                continue;
-            }
-
-            if ($token[0] === ':') {
-                $hasPseudo = true;
-
-                continue;
-            }
-
-            if ($token[0] === '.' || $token[0] === '#' || $token[0] === '%' || $token[0] === '[') {
-                $hasClassLike = true;
-            }
-        }
-
-        return $hasPseudo && $hasClassLike;
-    }
-
     /**
      * @param array<int, string> $partCompounds
      * @param array<int, string> $targetTokens
@@ -793,5 +615,183 @@ final readonly class SelectorTokenizer
         }
 
         return $result;
+    }
+
+    private function readPseudoSelector(string $compound, int &$index): string
+    {
+        $length = strlen($compound);
+        $token  = ':';
+
+        $index++;
+
+        if ($index < $length && $compound[$index] === ':') {
+            $token .= ':';
+
+            $index++;
+        }
+
+        $token .= $this->readIdentifier($compound, $index);
+
+        if ($index < $length && $compound[$index] === '(') {
+            $token .= $this->readBracketGroup($compound, $index, '(', ')');
+        }
+
+        return $token;
+    }
+
+    private function readBracketGroup(string $input, int &$index, string $open, string $close): string
+    {
+        $length = strlen($input);
+        $depth  = 0;
+        $token  = '';
+        $quote  = '';
+
+        while ($index < $length) {
+            $char   = $input[$index];
+            $token .= $char;
+
+            if ($quote !== '') {
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === $open) {
+                $depth++;
+            } elseif ($char === $close) {
+                $depth--;
+
+                if ($depth === 0) {
+                    $index++;
+
+                    break;
+                }
+            }
+
+            $index++;
+        }
+
+        return $token;
+    }
+
+    private function readIdentifier(string $input, int &$index): string
+    {
+        $length     = strlen($input);
+        $identifier = '';
+
+        while ($index < $length && $this->isIdentifierChar($input[$index])) {
+            $identifier .= $input[$index];
+
+            $index++;
+        }
+
+        return $identifier;
+    }
+
+    private function isIdentifierChar(string $char): bool
+    {
+        return $char !== '' && (ctype_alnum($char) || $char === '-' || $char === '_');
+    }
+
+    /**
+     * @param callable(string): bool $inspector
+     */
+    private function inspectTopLevelCombinators(string $selector, callable $inspector): bool
+    {
+        $parenDepth   = 0;
+        $bracketDepth = 0;
+        $quote        = '';
+        $length       = strlen($selector);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $selector[$i];
+
+            if ($quote !== '') {
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $bracketDepth++;
+
+                continue;
+            }
+
+            if ($char === ']' && $bracketDepth > 0) {
+                $bracketDepth--;
+
+                continue;
+            }
+
+            if ($char === '(') {
+                $parenDepth++;
+
+                continue;
+            }
+
+            if ($char === ')' && $parenDepth > 0) {
+                $parenDepth--;
+
+                continue;
+            }
+
+            if ($parenDepth !== 0 || $bracketDepth !== 0) {
+                continue;
+            }
+
+            if ($inspector($char)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int, string> $tokens
+     */
+    private function shouldNormalizePseudoOrder(array $tokens): bool
+    {
+        $hasPseudo    = false;
+        $hasClassLike = false;
+
+        foreach ($tokens as $token) {
+            if ($token === '') {
+                continue;
+            }
+
+            if ($token[0] === ':') {
+                $hasPseudo = true;
+
+                continue;
+            }
+
+            if ($token[0] === '.' || $token[0] === '#' || $token[0] === '%' || $token[0] === '[') {
+                $hasClassLike = true;
+            }
+        }
+
+        return $hasPseudo && $hasClassLike;
     }
 }

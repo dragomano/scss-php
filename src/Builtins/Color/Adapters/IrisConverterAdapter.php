@@ -98,26 +98,6 @@ final readonly class IrisConverterAdapter implements ColorConverterInterface
         return $this->spaceConverter->xyzD50ToD65($x, $y, $z);
     }
 
-    public function labChannelsToSrgba(float $l, float $a, float $b, float $opacity): RgbColor
-    {
-        return $this->spaceConverter->labChannelsToSrgba($l, $a, $b, $opacity);
-    }
-
-    public function lchChannelsToSrgba(float $l, float $c, float $h, float $opacity): RgbColor
-    {
-        return $this->spaceConverter->lchChannelsToSrgba($l, $c, $h, $opacity);
-    }
-
-    public function oklabChannelsToSrgba(float $l, float $a, float $b, float $opacity): RgbColor
-    {
-        return $this->spaceConverter->oklabChannelsToSrgba($l, $a, $b, $opacity);
-    }
-
-    public function oklchChannelsToSrgba(float $l, float $c, float $h, float $opacity): RgbColor
-    {
-        return $this->spaceConverter->oklchChannelsToSrgba($l, $c, $h, $opacity);
-    }
-
     public function labToRgbColor(LabColor $lab): RgbColor
     {
         return $this->spaceConverter->labToRgbColor($lab);

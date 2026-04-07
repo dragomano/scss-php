@@ -100,30 +100,6 @@ final readonly class BlockNodeHandler
             /** @var array<int, string> $trailingRootChunks */
             $trailingRootChunks = [];
 
-            foreach ($node->children as $child) {
-                if ($child instanceof VariableDeclarationNode) {
-                    $scope->setVariable($child->name, $child->value, $child->global, $child->default);
-
-                    continue;
-                }
-
-                if ($child instanceof ModuleVarDeclarationNode) {
-                    $this->module->assignModuleVariable($child, $ctx->env);
-
-                    continue;
-                }
-
-                if ($child instanceof IncludeNode) {
-                    $requiresRuleBlockOptimization = true;
-
-                    continue;
-                }
-
-                if ($child instanceof DiagnosticNode) {
-                    $this->dispatcher->compileWithContext($child, $childCtx);
-                }
-            }
-
             $selector = str_contains($node->selector, '#{')
                 ? $this->evaluation->interpolateText($node->selector, $ctx->env)
                 : $node->selector;
@@ -170,10 +146,19 @@ final readonly class BlockNodeHandler
                 if (
                     $child instanceof VariableDeclarationNode
                     || $child instanceof ModuleVarDeclarationNode
-                    || $child instanceof ExtendNode
                     || $child instanceof DiagnosticNode
                 ) {
+                    $this->dispatcher->compileWithContext($child, $childCtx);
+
                     continue;
+                }
+
+                if ($child instanceof ExtendNode) {
+                    continue;
+                }
+
+                if ($child instanceof IncludeNode) {
+                    $requiresRuleBlockOptimization = true;
                 }
 
                 if ($child instanceof AtRootNode) {
@@ -183,15 +168,39 @@ final readonly class BlockNodeHandler
                 }
 
                 if ($this->evaluation->isBubblingAtRuleNode($child)) {
-                    $this->chunks->collectRuleBubblingChunk(
-                        $leadingRootChunks,
-                        $trailingRootChunks,
-                        $hasRenderedChildren,
-                        $selector,
-                        $scope,
-                        $child,
-                        $ctx,
-                    );
+                    if ($hasRenderedChildren) {
+                        $output = $this->render->trimTrailingNewlines($output);
+
+                        $this->render->appendChunk($output, "\n" . $prefix . '}');
+
+                        $hasRenderedChildren           = false;
+                        $requiresRuleBlockOptimization = false;
+
+                        $interleavedChunk = $this->chunks->compileInterleavedBubblingChunk(
+                            $selector,
+                            $scope,
+                            $child,
+                            $ctx,
+                        );
+
+                        if ($interleavedChunk !== null) {
+                            if ($output !== '') {
+                                $this->render->appendChunk($output, $this->render->outputSeparator());
+                            }
+
+                            $this->chunks->appendResolvedChunk($output, $interleavedChunk);
+                        }
+                    } else {
+                        $this->chunks->collectRuleBubblingChunk(
+                            $leadingRootChunks,
+                            $trailingRootChunks,
+                            $hasRenderedChildren,
+                            $selector,
+                            $scope,
+                            $child,
+                            $ctx,
+                        );
+                    }
 
                     continue;
                 }

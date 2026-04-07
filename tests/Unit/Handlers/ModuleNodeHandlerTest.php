@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Handlers\ModuleNodeHandler;
 use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\UseNode;
+use Bugo\SCSS\Services\Module;
+use Bugo\SCSS\States\ModuleState;
 use Tests\RuntimeFactory;
 
 it('handles @import, @forward and @use css emission', function () {
@@ -19,8 +22,8 @@ it('handles @import, @forward and @use css emission', function () {
 
     $runtime->module()->handleUse($use, $ctx->env);
 
-    $used      = $runtime->moduleLoad()->handleUse($use);
-    $usedAgain = $runtime->moduleLoad()->handleUse($use);
+    $used      = $runtime->moduleLoad()->handleUse($use, $ctx);
+    $usedAgain = $runtime->moduleLoad()->handleUse($use, $ctx);
 
     expect($imported)->toContain('.from-import')
         ->and($forwarded)->toContain('.from-forwarded')
@@ -34,7 +37,7 @@ it('does not emit forwarded css twice for the same module', function () {
 
     $node = new ForwardNode('_forwarded.scss');
 
-    $first = $runtime->moduleLoad()->handleForward($node, $ctx);
+    $first  = $runtime->moduleLoad()->handleForward($node, $ctx);
     $second = $runtime->moduleLoad()->handleForward($node, $ctx);
 
     expect($first)->toContain('.from-forwarded')
@@ -74,6 +77,7 @@ it('adds a newline between css and sass imports in the same directive', function
 it('qualifies imported sass css with the current parent selector', function () {
     $runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);
     $ctx     = RuntimeFactory::context();
+
     $ctx->env->getCurrentScope()->setVariable('__parent_selector', new StringNode('.wrapper'));
 
     $result = $runtime->moduleLoad()->handleImport(new ImportNode(['"_imported.scss"']), $ctx);
@@ -81,8 +85,37 @@ it('qualifies imported sass css with the current parent selector', function () {
     expect($result)->toContain('.wrapper .from-import');
 });
 
-it('returns empty css for @use when the module was not loaded through the evaluator', function () {
+it('does not emit used css twice for the same module', function () {
     $runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);
+    $ctx     = RuntimeFactory::context();
 
-    expect($runtime->moduleLoad()->handleUse(new UseNode('_configurable_with_css.scss', 'cfg')))->toBe('');
+    $use = new UseNode('_configurable_with_css.scss', 'cfg');
+
+    $first  = $runtime->moduleLoad()->handleUse($use, $ctx);
+    $second = $runtime->moduleLoad()->handleUse($use, $ctx);
+
+    expect($first)->toContain('.configurable-sample')
+        ->and($second)->toBe('');
+});
+
+it('returns empty string when namespace is absent from loaded modules state', function () {
+    // Module::handleUse() always populates loadedModules for non-sass:, non-wildcard paths.
+    $runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);
+    $ctx     = RuntimeFactory::context();
+    $use     = new UseNode('_configurable_with_css.scss', 'cfg');
+
+    $moduleState = new ModuleState();
+
+    $module = mock(Module::class);
+    $module->shouldReceive('handleUse')->once();
+    $module->shouldReceive('moduleState')->andReturn($moduleState);
+
+    $handler = new ModuleNodeHandler(
+        $runtime->evaluation(),
+        $module,
+        $runtime->render(),
+        $runtime->selector(),
+    );
+
+    expect($handler->handleUse($use, $ctx))->toBe('');
 });
