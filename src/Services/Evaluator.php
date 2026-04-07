@@ -17,6 +17,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
+use Bugo\SCSS\Nodes\DeprecatedExpressionNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
@@ -145,6 +146,17 @@ final readonly class Evaluator
 
     public function evaluateValue(AstNode $node, Environment $env, bool $skipSlashArithmetic = false): AstNode
     {
+        if ($node instanceof DeprecatedExpressionNode) {
+            ($this->handleDiagnosticDirective)(
+                'warn',
+                new StringNode($node->message, true),
+                $env,
+                $node,
+            );
+
+            return $this->evaluateValue($node->expression, $env, $skipSlashArithmetic);
+        }
+
         if ($node instanceof VariableReferenceNode) {
             return $this->evaluateValue($this->resolveVariable($node->name, $env), $env, $skipSlashArithmetic);
         }
@@ -731,7 +743,7 @@ final readonly class Evaluator
         }
 
         if ($value instanceof BooleanNode) {
-            return $value->value ? 'true' : 'false';
+            return (string) $value;
         }
 
         if ($value instanceof NullNode) {

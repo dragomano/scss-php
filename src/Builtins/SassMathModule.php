@@ -12,6 +12,7 @@ use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\SassThrowable;
 use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -28,11 +29,11 @@ use function atan2;
 use function ceil;
 use function cos;
 use function count;
+use function fdiv;
 use function floor;
 use function get_debug_type;
 use function implode;
 use function is_int;
-use function is_scalar;
 use function log;
 use function max;
 use function mt_getrandmax;
@@ -43,10 +44,8 @@ use function sqrt;
 use function str_contains;
 use function tan;
 
-use const INF;
 use const M_E;
 use const M_PI;
-use const NAN;
 use const PHP_FLOAT_EPSILON;
 use const PHP_FLOAT_MAX;
 
@@ -331,10 +330,10 @@ final class SassMathModule extends AbstractModule
 
         if ($bFloat === 0.0) {
             if ($aFloat === 0.0) {
-                return new NumberNode(NAN, $unit);
+                return new NumberNode(fdiv(0.0, 0.0), $unit);
             }
 
-            return new NumberNode($aFloat > 0.0 ? INF : -INF, $unit);
+            return new NumberNode(fdiv($aFloat > 0.0 ? 1.0 : -1.0, 0.0), $unit);
         }
 
         return new NumberNode($aFloat / $bFloat, $unit);
@@ -409,14 +408,14 @@ final class SassMathModule extends AbstractModule
             $base = $this->ensureUnitlessNumber($positional[1], 'math.log');
 
             if ($base === 0.0) {
-                return new NumberNode(NAN);
+                return new NumberNode(fdiv(0.0, 0.0));
             }
 
             if ($base === 1.0) {
-                return new NumberNode(NAN);
+                return new NumberNode(fdiv(0.0, 0.0));
             }
 
-            return new NumberNode($base < 0.0 ? NAN : log($number) / log($base));
+            return new NumberNode($base < 0.0 ? fdiv(0.0, 0.0) : log($number) / log($base));
         }
 
         return new NumberNode(log($number));
@@ -464,11 +463,10 @@ final class SassMathModule extends AbstractModule
      */
     private function pow(array $positional): AstNode
     {
-        $base      = $this->requireNumber($positional, 0, 'math.pow');
-        $exponent  = $this->requireUnitlessNumber($positional, 1, 'math.pow');
-        $baseValue = (float) $base->value;
+        $base     = $this->requireUnitlessNumber($positional, 0, 'math.pow');
+        $exponent = $this->requireUnitlessNumber($positional, 1, 'math.pow');
 
-        return new NumberNode($baseValue ** $exponent, $base->unit);
+        return new NumberNode($base ** $exponent);
     }
 
     /**
@@ -748,16 +746,12 @@ final class SassMathModule extends AbstractModule
             return '$' . $value->name;
         }
 
-        if ($value instanceof StringNode) {
-            return $value->quoted ? '"' . $value->value . '"' : $value->value;
-        }
-
-        if ($value instanceof NumberNode) {
-            return "$value->value" . ($value->unit ?? '');
-        }
-
-        if (property_exists($value, 'value') && is_scalar($value->value)) {
-            return (string) $value->value;
+        if (
+            $value instanceof StringNode
+            || $value instanceof NumberNode
+            || $value instanceof BooleanNode
+        ) {
+            return (string) $value;
         }
 
         return '';

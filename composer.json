@@ -31,7 +31,7 @@
   "require": {
     "php": "^8.2",
     "ext-ctype": "*",
-    "bugo/iris": "^0.1",
+    "bugo/iris": "^0.2",
     "psr/log": "^3.0",
     "psr/simple-cache": "^3.0",
     "symfony/filesystem": "^7.4|^8.0"
@@ -47,7 +47,7 @@
     "monolog/monolog": "^3.10",
     "pestphp/pest": "^3.8|^4.4",
     "phpstan/phpstan": "^2.1",
-    "rector/rector": "^2.3",
+    "rector/rector": "^2.4",
     "scssphp/scssphp": "^2.1",
     "symfony/cache": "^7.4|^8.0",
     "symfony/var-dumper": "^7.4|^8.0",

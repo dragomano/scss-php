@@ -22,12 +22,8 @@ final class AstValueDescriber
             return '$' . $value->name;
         }
 
-        if ($value instanceof NumberNode) {
-            return "$value->value" . ($value->unit ?? '');
-        }
-
-        if ($value instanceof StringNode) {
-            return $value->quoted ? '"' . $value->value . '"' : $value->value;
+        if ($value instanceof StringNode || $value instanceof NumberNode) {
+            return (string) $value;
         }
 
         if ($value instanceof ListNode) {

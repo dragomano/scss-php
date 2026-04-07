@@ -461,7 +461,7 @@ final readonly class FunctionCallParser
         }
 
         if ($node instanceof NumberNode) {
-            return "$node->value$node->unit";
+            return (string) $node;
         }
 
         if ($node instanceof ColorNode) {

@@ -118,7 +118,7 @@ final readonly class DiagnosticNodeHandler
         }
 
         if ($evaluated instanceof BooleanNode) {
-            return $evaluated->value ? 'true' : 'false';
+            return (string) $evaluated;
         }
 
         return $evaluated instanceof StringNode ? $evaluated->value : $formatted;

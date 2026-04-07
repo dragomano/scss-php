@@ -168,15 +168,39 @@ final readonly class BlockNodeHandler
                 }
 
                 if ($this->evaluation->isBubblingAtRuleNode($child)) {
-                    $this->chunks->collectRuleBubblingChunk(
-                        $leadingRootChunks,
-                        $trailingRootChunks,
-                        $hasRenderedChildren,
-                        $selector,
-                        $scope,
-                        $child,
-                        $ctx,
-                    );
+                    if ($hasRenderedChildren) {
+                        $output = $this->render->trimTrailingNewlines($output);
+
+                        $this->render->appendChunk($output, "\n" . $prefix . '}');
+
+                        $hasRenderedChildren           = false;
+                        $requiresRuleBlockOptimization = false;
+
+                        $interleavedChunk = $this->chunks->compileInterleavedBubblingChunk(
+                            $selector,
+                            $scope,
+                            $child,
+                            $ctx,
+                        );
+
+                        if ($interleavedChunk !== null) {
+                            if ($output !== '') {
+                                $this->render->appendChunk($output, $this->render->outputSeparator());
+                            }
+
+                            $this->chunks->appendResolvedChunk($output, $interleavedChunk);
+                        }
+                    } else {
+                        $this->chunks->collectRuleBubblingChunk(
+                            $leadingRootChunks,
+                            $trailingRootChunks,
+                            $hasRenderedChildren,
+                            $selector,
+                            $scope,
+                            $child,
+                            $ctx,
+                        );
+                    }
 
                     continue;
                 }

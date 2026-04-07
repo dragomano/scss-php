@@ -384,12 +384,8 @@ final class SassStringModule extends AbstractModule
 
     private function describeValue(AstNode $value): string
     {
-        if ($value instanceof StringNode) {
-            return $value->quoted ? '"' . $value->value . '"' : $value->value;
-        }
-
-        if ($value instanceof NumberNode) {
-            return "$value->value" . ($value->unit ?? '');
+        if ($value instanceof StringNode || $value instanceof NumberNode) {
+            return (string) $value;
         }
 
         if ($value instanceof ListNode) {
@@ -430,7 +426,7 @@ final class SassStringModule extends AbstractModule
         }
 
         if ($value instanceof NumberNode) {
-            return "$value->value" . ($value->unit ?? '');
+            return (string) $value;
         }
 
         throw new MissingFunctionArgumentsException(
