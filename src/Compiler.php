@@ -4,10 +4,6 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS;
 
-use Bugo\SCSS\Builtins\Color\ColorBundleAdapter;
-use Bugo\SCSS\Builtins\Color\ColorSerializerAdapter;
-use Bugo\SCSS\Contracts\Color\ColorBundleInterface;
-use Bugo\SCSS\Contracts\Color\ColorSerializerInterface;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StatementNode;
 use Bugo\SCSS\Runtime\Environment;
@@ -29,8 +25,6 @@ final class Compiler implements CompilerInterface
         protected LoaderInterface $loader = new Loader(),
         protected ParserInterface $parser = new Parser(),
         protected LoggerInterface $logger = new NullLogger(),
-        protected ColorSerializerInterface $colorSerializer = new ColorSerializerAdapter(),
-        protected ColorBundleInterface $colorBundle = new ColorBundleAdapter(),
     ) {
         $this->ctx = $this->createContext();
 
@@ -76,12 +70,7 @@ final class Compiler implements CompilerInterface
     private function createContext(): CompilerContext
     {
         return new CompilerContext(
-            valueFactory: new ValueFactory(
-                outputHexColors: $this->options->outputHexColors,
-                colorSerializer: $this->colorSerializer,
-            ),
-            colorSerializer: $this->colorSerializer,
-            colorBundle: $this->colorBundle,
+            valueFactory: new ValueFactory($this->options->outputHexColors),
         );
     }
 

@@ -9,38 +9,24 @@ use Bugo\Iris\Operations\GamutMapper;
 use Bugo\Iris\Spaces\HslColor;
 use Bugo\Iris\Spaces\OklchColor;
 use Bugo\Iris\Spaces\RgbColor;
-use Bugo\SCSS\Builtins\Color\Ast\ColorAstReader;
-use Bugo\SCSS\Builtins\Color\Ast\ColorAstWriter;
-use Bugo\SCSS\Builtins\Color\Support\ColorArgumentParser;
-use Bugo\SCSS\Builtins\Color\Support\ColorChannelSchema;
-use Bugo\SCSS\Contracts\Color\ColorConverterInterface;
+use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
 use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Closure;
 
 use function abs;
 use function count;
 use function in_array;
 use function strtolower;
 
-final readonly class ColorSpaceInterop
+final readonly class ColorSpaceConverter
 {
-    /**
-     * @param Closure(string): string $errorCtx
-     */
     public function __construct(
-        private ColorArgumentParser $parser,
+        private ColorRuntime $runtime,
         private ColorNodeConverter $converter,
-        private ColorAstWriter $astWriter,
-        private ColorAstReader $astReader,
-        private HexColorConverter $hexColorConverter,
-        private ColorConverterInterface $colorSpaceConverter,
-        private ColorChannelSchema $channelSchema,
-        private Closure $errorCtx,
         private GamutMapper $gamutMapper = new GamutMapper(),
     ) {}
 
@@ -49,8 +35,8 @@ final readonly class ColorSpaceInterop
      */
     public function toSpace(array $positional): AstNode
     {
-        $color       = $this->parser->requireColor($positional, 0, 'to-space');
-        $space       = strtolower($this->parser->asString($positional[1] ?? null, 'to-space'));
+        $color       = $this->runtime->argumentParser->requireColor($positional, 0, 'to-space');
+        $space       = strtolower($this->runtime->argumentParser->asString($positional[1] ?? null, 'to-space'));
         $nativeSpace = $this->converter->detectNativeColorSpace($color);
 
         if (
@@ -62,7 +48,7 @@ final readonly class ColorSpaceInterop
 
         if ($space === 'lch') {
             $xyz50 = $this->converter->toXyzD50($color);
-            $lch   = $this->colorSpaceConverter->xyzD50ToLch($xyz50);
+            $lch   = $this->runtime->spaceConverter->xyzD50ToLch($xyz50);
             $alpha = $this->converter->toAlpha($color);
 
             $hslWithMissing = $this->toHslWithMissingChannels($color);
@@ -71,7 +57,7 @@ final readonly class ColorSpaceInterop
 
             if ($color instanceof FunctionNode && strtolower($color->name) === 'oklch') {
                 $oklch = $this->extractOklchMixData($color);
-                $lch   = $this->colorSpaceConverter->oklchToLch(new OklchColor(
+                $lch   = $this->runtime->spaceConverter->oklchToLch(new OklchColor(
                     l: $oklch['l'],
                     c: $oklch['c'],
                     h: $oklch['h'],
@@ -86,7 +72,7 @@ final readonly class ColorSpaceInterop
                     ? new StringNode('none')
                     : new NumberNode($lch->hValue(), 'deg');
 
-                return $this->astWriter->buildFunctionalColorNode('lch', [
+                return $this->converter->buildFunctionalColorNode('lch', [
                     $lightnessNode,
                     new NumberNode($lch->cValue()),
                     $hueNode,
@@ -101,7 +87,7 @@ final readonly class ColorSpaceInterop
                 $lightnessNode = $this->missingStringNode();
             }
 
-            return $this->astWriter->buildFunctionalColorNode('lch', [
+            return $this->converter->buildFunctionalColorNode('lch', [
                 $lightnessNode,
                 new NumberNode($lch->cValue()),
                 $hueNode,
@@ -112,7 +98,7 @@ final readonly class ColorSpaceInterop
             $xyzD65 = $color instanceof FunctionNode ? $this->converter->toXyzD65WithAlpha($color) : null;
             $oklch  = $xyzD65 === null
                 ? $this->toOklchPreservingMissingChannels($color)
-                : $this->colorSpaceConverter->xyzD65ToOklch($xyzD65[0], $xyzD65[1]);
+                : $this->runtime->spaceConverter->xyzD65ToOklch($xyzD65[0], $xyzD65[1]);
 
             $lightnessNode = new NumberNode($oklch->lValue(), '%');
             $hueNode       = new NumberNode($oklch->hValue(), 'deg');
@@ -125,7 +111,7 @@ final readonly class ColorSpaceInterop
                 $hueNode = new StringNode('none');
             }
 
-            return $this->astWriter->buildFunctionalColorNode('oklch', [
+            return $this->converter->buildFunctionalColorNode('oklch', [
                 $lightnessNode,
                 new NumberNode($oklch->cValue()),
                 $hueNode,
@@ -133,8 +119,8 @@ final readonly class ColorSpaceInterop
         }
 
         if ($space === 'lab') {
-            return $this->astWriter->buildLabColorNode(
-                $this->colorSpaceConverter->xyzD50ToLabColor(
+            return $this->converter->buildLabColorNode(
+                $this->runtime->spaceConverter->xyzD50ToLabColor(
                     $this->converter->toXyzD50($color),
                     $this->converter->toAlpha($color),
                 ),
@@ -142,8 +128,8 @@ final readonly class ColorSpaceInterop
         }
 
         if ($space === 'oklab') {
-            return $this->astWriter->buildOklabColorNode(
-                $this->colorSpaceConverter->xyzD65ToOklabColor(
+            return $this->converter->buildOklabColorNode(
+                $this->runtime->spaceConverter->xyzD65ToOklabColor(
                     $this->converter->toXyzD65($color),
                     $this->converter->toAlpha($color),
                 ),
@@ -153,7 +139,7 @@ final readonly class ColorSpaceInterop
         if ($space === 'xyz-d50') {
             $xyz = $this->converter->toXyzD50($color);
 
-            return $this->astWriter->buildGenericColorFunctionNode(
+            return $this->converter->buildGenericColorFunctionNode(
                 'xyz-d50',
                 [$xyz->x, $xyz->y, $xyz->z],
                 $this->converter->toAlpha($color),
@@ -163,7 +149,7 @@ final readonly class ColorSpaceInterop
         if ($space === 'xyz' || $space === 'xyz-d65') {
             $xyz = $this->converter->toXyzD65($color);
 
-            return $this->astWriter->buildGenericColorFunctionNode(
+            return $this->converter->buildGenericColorFunctionNode(
                 $space,
                 [$xyz->x, $xyz->y, $xyz->z],
                 $this->converter->toAlpha($color),
@@ -183,17 +169,17 @@ final readonly class ColorSpaceInterop
         }
 
         if (! in_array($space, ['rgb', 'srgb', 'hsl', 'hwb'], true)) {
-            throw new UnsupportedColorSpaceException($space, ($this->errorCtx)('to-space'));
+            throw new UnsupportedColorSpaceException($space, $this->runtime->context->errorCtx('to-space'));
         }
 
         $rgb = $this->converter->toRgb($color);
 
         if ($space === 'rgb') {
-            return $this->astWriter->serializeRgbFromAstSource($color, $rgb);
+            return $this->converter->serializeRgbFromAstSource($color, $rgb);
         }
 
         if ($space === 'srgb') {
-            return $this->astWriter->buildFunctionalColorNode('color', [
+            return $this->converter->buildFunctionalColorNode('color', [
                 new StringNode('srgb'),
                 new NumberNode($rgb->rValue() / 255.0),
                 new NumberNode($rgb->gValue() / 255.0),
@@ -203,7 +189,7 @@ final readonly class ColorSpaceInterop
 
         $hsl = $this->converter->toHsl($color);
 
-        return $this->astWriter->buildHslFunctionNode($hsl->hValue(), $hsl->sValue(), $hsl->lValue(), $hsl->a);
+        return $this->converter->buildHslFunctionNode($hsl->hValue(), $hsl->sValue(), $hsl->lValue(), $hsl->a);
     }
 
     /**
@@ -212,14 +198,14 @@ final readonly class ColorSpaceInterop
      */
     public function toGamut(array $positional, array $named): AstNode
     {
-        $color = $this->parser->requireColor($positional, 0, 'to-gamut');
+        $color = $this->runtime->argumentParser->requireColor($positional, 0, 'to-gamut');
 
-        $space = strtolower($this->parser->asString(
+        $space = strtolower($this->runtime->argumentParser->asString(
             $named['space'] ?? ($positional[1] ?? new StringNode('rgb')),
             'to-gamut',
         ));
 
-        $method = strtolower($this->parser->asString(
+        $method = strtolower($this->runtime->argumentParser->asString(
             $named['method'] ?? ($positional[2] ?? new StringNode('local-minde')),
             'to-gamut',
         ));
@@ -247,26 +233,26 @@ final readonly class ColorSpaceInterop
 
             if ($method === 'clip') {
                 return $this->serializeRgbForOriginalSpace($nativeSpace, new RgbColor(
-                    r: $this->parser->clamp($rgb->rValue(), 255.0),
-                    g: $this->parser->clamp($rgb->gValue(), 255.0),
-                    b: $this->parser->clamp($rgb->bValue(), 255.0),
+                    r: $this->runtime->argumentParser->clamp($rgb->rValue(), 255.0),
+                    g: $this->runtime->argumentParser->clamp($rgb->gValue(), 255.0),
+                    b: $this->runtime->argumentParser->clamp($rgb->bValue(), 255.0),
                     a: $rgb->a,
                 ));
             }
 
-            $oklch    = $this->colorSpaceConverter->rgbToOklch($rgb);
+            $oklch    = $this->runtime->spaceConverter->rgbToOklch($rgb);
             $mapped   = $this->gamutMapper->localMinde($oklch);
-            $finalRgb = $this->colorSpaceConverter->oklchToSrgb($mapped);
+            $finalRgb = $this->runtime->spaceConverter->oklchToSrgb($mapped);
 
             return $this->serializeRgbForOriginalSpace($nativeSpace, new RgbColor(
-                r: $this->parser->clamp($finalRgb->rValue() * 255.0, 255.0),
-                g: $this->parser->clamp($finalRgb->gValue() * 255.0, 255.0),
-                b: $this->parser->clamp($finalRgb->bValue() * 255.0, 255.0),
+                r: $this->runtime->argumentParser->clamp($finalRgb->rValue() * 255.0, 255.0),
+                g: $this->runtime->argumentParser->clamp($finalRgb->gValue() * 255.0, 255.0),
+                b: $this->runtime->argumentParser->clamp($finalRgb->bValue() * 255.0, 255.0),
                 a: $finalRgb->a,
             ));
         }
 
-        throw new UnsupportedColorSpaceException($space, ($this->errorCtx)('to-gamut'));
+        throw new UnsupportedColorSpaceException($space, $this->runtime->context->errorCtx('to-gamut'));
     }
 
     public function toGamutFromOklch(AstNode $color, string $method): AstNode
@@ -276,52 +262,59 @@ final readonly class ColorSpaceInterop
             ? $this->gamutMapper->clip($oklch)
             : $this->gamutMapper->localMinde($oklch);
 
-        return $this->astWriter->serializeAsOklchString($mapped);
+        return $this->converter->serializeAsOklchString($mapped);
     }
 
     public function serializeRgbForOriginalSpace(string $space, RgbColor $rgb): AstNode
     {
         if ($space === 'rgb' || $space === 'srgb') {
-            return $this->astWriter->fromRgb($rgb);
+            return $this->converter->fromRgb($rgb);
         }
 
         if (in_array($space, ['oklch', 'oklab', 'lch', 'lab'], true)) {
             return $this->toSpace([
-                $this->astWriter->fromRgb($rgb),
+                $this->converter->fromRgb($rgb),
                 new StringNode($space),
             ]);
         }
 
-        return $this->astWriter->fromRgb($rgb);
+        return $this->converter->fromRgb($rgb);
     }
 
     public function toOklchPreservingMissingChannels(AstNode $color): OklchColor
     {
         if ($color instanceof FunctionNode && strtolower($color->name) === 'lch') {
             $channels  = $this->converter->extractChannelNodes($color);
-            $lightness = $this->parser->isMissingChannelNode($channels[0] ?? new StringNode('none'))
+            $lightness = $this->runtime->argumentParser->isMissingChannelNode(
+                $channels[0] ?? new StringNode('none'),
+            )
                 ? 0.0
-                : $this->parser->clamp(
-                    $this->parser->asPercentage($channels[0] ?? null, 'to-space'),
+                : $this->runtime->argumentParser->clamp(
+                    $this->runtime->argumentParser->asPercentage($channels[0] ?? null, 'to-space'),
                     100.0,
                 );
 
-            $chroma = $this->parser->asAbsoluteChannel($channels[1] ?? null, 'to-space', 150.0);
-            $hue    = $this->parser->normalizeHue(
-                $this->parser->asHueAngle($channels[2] ?? null, 'to-space'),
+            $chroma = $this->runtime->argumentParser->asAbsoluteChannel(
+                $channels[1] ?? null,
+                'to-space',
+                150.0,
             );
 
-            return $this->colorSpaceConverter->xyzD65ToOklch(
-                $this->colorSpaceConverter->lchChannelsToXyzD65($lightness, $chroma, $hue),
+            $hue = $this->runtime->argumentParser->normalizeHue(
+                $this->runtime->argumentParser->asHueAngle($channels[2] ?? null, 'to-space'),
+            );
+
+            return $this->runtime->spaceConverter->xyzD65ToOklch(
+                $this->runtime->spaceConverter->lchChannelsToXyzD65($lightness, $chroma, $hue),
             );
         }
 
-        return $this->colorSpaceConverter->rgbToOklch($this->converter->toRgb($color));
+        return $this->runtime->spaceConverter->rgbToOklch($this->converter->toRgb($color));
     }
 
     public function extractOklchColor(AstNode $color): OklchColor
     {
-        return $this->astReader->extractOklch($color, 'to-gamut');
+        return $this->converter->extractOklch($color, 'to-gamut');
     }
 
     /**
@@ -331,11 +324,11 @@ final readonly class ColorSpaceInterop
     {
         /** @var array{0: float, 1: float, 2: float} $channels */
         $channels = match ($space) {
-            'display-p3'   => $this->colorSpaceConverter->rgbToDisplayP3($rgb),
-            'a98-rgb'      => $this->colorSpaceConverter->rgbToA98Rgb($rgb),
-            'prophoto-rgb' => $this->colorSpaceConverter->rgbToProphotoRgb($rgb),
-            'rec2020'      => $this->colorSpaceConverter->rgbToRec2020($rgb),
-            default        => throw new UnsupportedColorSpaceException($space, ($this->errorCtx)('invert')),
+            'display-p3'   => $this->runtime->spaceConverter->rgbToDisplayP3($rgb),
+            'a98-rgb'      => $this->runtime->spaceConverter->rgbToA98Rgb($rgb),
+            'prophoto-rgb' => $this->runtime->spaceConverter->rgbToProphotoRgb($rgb),
+            'rec2020'      => $this->runtime->spaceConverter->rgbToRec2020($rgb),
+            default        => throw new UnsupportedColorSpaceException($space, $this->runtime->context->errorCtx('invert')),
         };
 
         return $channels;
@@ -347,7 +340,7 @@ final readonly class ColorSpaceInterop
     public function workingSpaceChannelsToRgb(string $space, array $channels, float $alpha): RgbColor
     {
         try {
-            $rgba = $this->colorSpaceConverter->convertToRgba(
+            $rgba = $this->runtime->spaceRouter->convertToRgba(
                 $space,
                 $channels[0],
                 $channels[1],
@@ -355,7 +348,7 @@ final readonly class ColorSpaceInterop
                 1.0,
             );
         } catch (UnsupportedColorSpace) {
-            throw new UnsupportedColorSpaceException($space, ($this->errorCtx)('invert'));
+            throw new UnsupportedColorSpaceException($space, $this->runtime->context->errorCtx('invert'));
         }
 
         return new RgbColor(
@@ -371,7 +364,7 @@ final readonly class ColorSpaceInterop
      */
     public function extractOklchMixData(AstNode $color): array
     {
-        return $this->astReader->extractOklchMixData($color, 'mix');
+        return $this->converter->extractOklchMixData($color, 'mix');
     }
 
     public function toHslWithMissingChannels(AstNode $color): ?HslColor
@@ -392,37 +385,41 @@ final readonly class ColorSpaceInterop
         }
 
         /** @var array<int, AstNode> $expandedArgs */
-        $expandedArgs = $this->parser->expandSingleSpaceListArgument($color->arguments);
+        $expandedArgs = $this->runtime->argumentParser->expandSingleSpaceListArgument($color->arguments);
 
-        [$channels, $alpha] = $this->hexColorConverter->splitChannelsAndAlpha($expandedArgs);
+        [$channels, $alpha] = $this->runtime->arguments->splitChannelsAndAlpha($expandedArgs);
 
         if (count($channels) !== 3) {
             return null;
         }
 
-        $hNone = $this->parser->isMissingChannelNode($channels[0]);
-        $sNone = $this->parser->isMissingChannelNode($channels[1]);
-        $lNone = $this->parser->isMissingChannelNode($channels[2]);
+        $hNone = $this->runtime->argumentParser->isMissingChannelNode($channels[0]);
+        $sNone = $this->runtime->argumentParser->isMissingChannelNode($channels[1]);
+        $lNone = $this->runtime->argumentParser->isMissingChannelNode($channels[2]);
 
-        $hue = $hNone ? null : $this->parser->normalizeHue($this->parser->asNumber($channels[0], 'mix'));
+        $hue = $hNone ? null : $this->runtime->argumentParser->normalizeHue(
+            $this->runtime->argumentParser->asNumber($channels[0], 'mix'),
+        );
 
-        $sat = $sNone ? null : $this->parser->clamp(
-            $this->parser->asPercentage($channels[1], 'mix'),
+        $sat = $sNone ? null : $this->runtime->argumentParser->clamp(
+            $this->runtime->argumentParser->asPercentage($channels[1], 'mix'),
             100.0,
         );
 
-        $lig = $lNone ? null : $this->parser->clamp(
-            $this->parser->asPercentage($channels[2], 'mix'),
+        $lig = $lNone ? null : $this->runtime->argumentParser->clamp(
+            $this->runtime->argumentParser->asPercentage($channels[2], 'mix'),
             100.0,
         );
 
         $alp = 1.0;
 
         if ($alpha !== null) {
-            $alp = $this->parser->isMissingChannelNode($alpha) ? 0.0 : $this->parser->clamp(
-                $this->parser->asNumber($alpha, 'mix'),
-                1.0,
-            );
+            $alp = $this->runtime->argumentParser->isMissingChannelNode($alpha)
+                ? 0.0
+                : $this->runtime->argumentParser->clamp(
+                    $this->runtime->argumentParser->asNumber($alpha, 'mix'),
+                    1.0,
+                );
         }
 
         return new HslColor($hue, $sat, $lig, $alp);
@@ -434,14 +431,14 @@ final readonly class ColorSpaceInterop
             return false;
         }
 
-        $expandedArgs = $this->parser->expandSingleSpaceListArgument($color->arguments);
-        $channelIndex = $this->channelSchema->lightnessIndexForFunction(strtolower($color->name));
+        $expandedArgs = $this->runtime->argumentParser->expandSingleSpaceListArgument($color->arguments);
+        $channelIndex = $this->runtime->channelSchema->lightnessIndexForFunction(strtolower($color->name));
 
         if ($channelIndex === null || ! isset($expandedArgs[$channelIndex])) {
             return false;
         }
 
-        return $this->parser->isMissingChannelNode($expandedArgs[$channelIndex]);
+        return $this->runtime->argumentParser->isMissingChannelNode($expandedArgs[$channelIndex]);
     }
 
     public function missingStringNode(): StringNode
@@ -453,10 +450,10 @@ final readonly class ColorSpaceInterop
     {
         $rgb = $this->converter->toRgb($color);
 
-        return $this->astWriter->buildGenericColorFunctionNode('srgb-linear', [
-            $this->colorSpaceConverter->srgbToLinearUnclamped($rgb->rValue() / 255.0),
-            $this->colorSpaceConverter->srgbToLinearUnclamped($rgb->gValue() / 255.0),
-            $this->colorSpaceConverter->srgbToLinearUnclamped($rgb->bValue() / 255.0),
+        return $this->converter->buildGenericColorFunctionNode('srgb-linear', [
+            $this->runtime->spaceConverter->srgbToLinearUnclamped($rgb->rValue() / 255.0),
+            $this->runtime->spaceConverter->srgbToLinearUnclamped($rgb->gValue() / 255.0),
+            $this->runtime->spaceConverter->srgbToLinearUnclamped($rgb->bValue() / 255.0),
         ], $rgb->a);
     }
 
@@ -464,24 +461,24 @@ final readonly class ColorSpaceInterop
     {
         /** @var array{0: float, 1: float, 2: float} $channels */
         $channels = match ($space) {
-            'display-p3-linear' => $this->colorSpaceConverter->xyzD65ToLinearDisplayP3($this->converter->toXyzD65($color)),
-            'display-p3'        => $this->colorSpaceConverter->xyzD65ToDisplayP3($this->converter->toXyzD65($color)),
-            'a98-rgb'           => $this->colorSpaceConverter->xyzD65ToA98Rgb($this->converter->toXyzD65($color)),
-            default             => $this->colorSpaceConverter->xyzD65ToRec2020($this->converter->toXyzD65($color)),
+            'display-p3-linear' => $this->runtime->spaceConverter->xyzD65ToLinearDisplayP3($this->converter->toXyzD65($color)),
+            'display-p3'        => $this->runtime->spaceConverter->xyzD65ToDisplayP3($this->converter->toXyzD65($color)),
+            'a98-rgb'           => $this->runtime->spaceConverter->xyzD65ToA98Rgb($this->converter->toXyzD65($color)),
+            default             => $this->runtime->spaceConverter->xyzD65ToRec2020($this->converter->toXyzD65($color)),
         };
 
         [$r, $g, $b] = $channels;
 
-        return $this->astWriter->buildGenericColorFunctionNode($space, [$r, $g, $b], $this->converter->toAlpha($color));
+        return $this->converter->buildGenericColorFunctionNode($space, [$r, $g, $b], $this->converter->toAlpha($color));
     }
 
     private function toXyzD50GenericSpace(AstNode $color, string $space): AstNode
     {
         /** @var array{0: float, 1: float, 2: float} $channels */
-        $channels = $this->colorSpaceConverter->xyzD50ToProphotoRgb($this->converter->toXyzD50($color));
+        $channels = $this->runtime->spaceConverter->xyzD50ToProphotoRgb($this->converter->toXyzD50($color));
 
         [$r, $g, $b] = $channels;
 
-        return $this->astWriter->buildGenericColorFunctionNode($space, [$r, $g, $b], $this->converter->toAlpha($color));
+        return $this->converter->buildGenericColorFunctionNode($space, [$r, $g, $b], $this->converter->toAlpha($color));
     }
 }

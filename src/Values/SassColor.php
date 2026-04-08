@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Values;
 
-use Bugo\SCSS\Builtins\Color\ColorSerializerAdapter;
-use Bugo\SCSS\Contracts\Color\ColorSerializerInterface;
+use Bugo\Iris\Serializers\Serializer;
 
 final class SassColor extends AbstractSassValue
 {
     public function __construct(
         private readonly string $value,
         private readonly bool $outputHexColors = false,
-        private readonly ColorSerializerInterface $colorSerializer = new ColorSerializerAdapter(),
+        private readonly Serializer $colorSerializer = new Serializer(),
     ) {}
 
     public function toCss(): string

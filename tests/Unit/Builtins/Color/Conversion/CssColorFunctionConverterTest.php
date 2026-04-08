@@ -13,7 +13,7 @@ use Tests\ReflectionAccessor;
 describe('CssColorFunctionConverter', function () {
     beforeEach(function () {
         $this->converter = new CssColorFunctionConverter();
-        $this->accessor = new ReflectionAccessor($this->converter);
+        $this->accessor  = new ReflectionAccessor($this->converter);
     });
 
     it('converts rgb functions to rgba', function () {

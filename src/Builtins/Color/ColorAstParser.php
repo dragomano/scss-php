@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Bugo\SCSS\Builtins\Color\Ast;
+namespace Bugo\SCSS\Builtins\Color;
 
 use Bugo\SCSS\Lexer\Tokenizer;
 use Bugo\SCSS\Lexer\TokenStream;

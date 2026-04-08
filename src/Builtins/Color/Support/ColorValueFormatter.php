@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Builtins\Color\Support;
 
-use Bugo\SCSS\Contracts\Color\ColorConverterInterface;
+use Bugo\Iris\Converters\SpaceConverter;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
@@ -17,7 +17,7 @@ use function implode;
 
 final readonly class ColorValueFormatter
 {
-    public function __construct(private ColorConverterInterface $colorSpaceConverter) {}
+    public function __construct(private SpaceConverter $colorSpaceConverter) {}
 
     public function describeValue(AstNode $value): string
     {

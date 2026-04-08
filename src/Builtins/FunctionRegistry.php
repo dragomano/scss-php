@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Builtins;
 
-use Bugo\SCSS\Builtins\Color\ColorBundleAdapter;
-use Bugo\SCSS\Contracts\Color\ColorBundleInterface;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
@@ -46,15 +44,11 @@ final class FunctionRegistry
     /**
      * @param iterable<ModuleInterface> $modules
      */
-    public function __construct(
-        iterable $modules = [],
-        private readonly ColorBundleInterface $colorBundle = new ColorBundleAdapter(),
-    ) {
+    public function __construct(iterable $modules = [])
+    {
         foreach (self::DEFAULT_MODULE_CLASSES as $moduleName => $class) {
             $this->moduleFactories[$moduleName] = $class;
         }
-
-        $this->moduleFactories['color'] = fn(): SassColorModule => new SassColorModule(bundle: $this->colorBundle);
 
         foreach ($modules as $module) {
             $this->registerModule($module);
@@ -109,10 +103,9 @@ final class FunctionRegistry
 
         if (NameHelper::hasNamespace($name)) {
             $parts = NameHelper::splitNamespacedName($name);
+            $alias = $parts['namespace'];
 
-            $alias    = $parts['namespace'];
-            $function = $this->normalizeName($parts['member']);
-
+            $function   = $this->normalizeName($parts['member']);
             $moduleName = $this->moduleAliases[$alias] ?? null;
 
             if ($moduleName === null) {

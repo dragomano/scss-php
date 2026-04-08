@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Builtins\Color\Adapters\IrisConverterAdapter;
+use Bugo\Iris\Converters\SpaceConverter;
 use Bugo\SCSS\Builtins\Color\Support\ColorArgumentParser;
+use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\NonFiniteNumberException;
@@ -16,8 +17,12 @@ use Bugo\SCSS\Nodes\StringNode;
 describe('ColorArgumentParser', function () {
     beforeEach(function () {
         $this->parser = new ColorArgumentParser(
-            new IrisConverterAdapter(),
-            static fn(string $name): string => $name,
+            new SpaceConverter(),
+            new ColorModuleContext(
+                errorCtx: static fn(string $name): string => $name,
+                isGlobalBuiltinCall: static fn(): bool => false,
+                warn: static function (): void {},
+            ),
         );
     });
 
@@ -69,9 +74,9 @@ describe('ColorArgumentParser', function () {
     });
 
     it('unwraps calc numbers only for supported calc shapes', function () {
-        $direct = new FunctionNode('calc', [new NumberNode(25, '%')]);
-        $nested = new FunctionNode('calc', [new ListNode([new NumberNode(10)])]);
-        $twoArguments = new FunctionNode('calc', [new NumberNode(1), new NumberNode(2)]);
+        $direct         = new FunctionNode('calc', [new NumberNode(25, '%')]);
+        $nested         = new FunctionNode('calc', [new ListNode([new NumberNode(10)])]);
+        $twoArguments   = new FunctionNode('calc', [new NumberNode(1), new NumberNode(2)]);
         $nonNumericList = new FunctionNode('calc', [new ListNode([new StringNode('foo')])]);
 
         $directResult = $this->parser->unwrapCalcNumber($direct);

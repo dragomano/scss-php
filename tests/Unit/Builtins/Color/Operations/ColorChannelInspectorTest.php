@@ -2,16 +2,14 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Builtins\Color\Adapters\IrisConverterAdapter;
-use Bugo\SCSS\Builtins\Color\Adapters\IrisLiteralAdapter;
-use Bugo\SCSS\Builtins\Color\Ast\ColorAstParser;
+use Bugo\Iris\Converters\ModelConverter;
+use Bugo\Iris\Converters\SpaceConverter;
+use Bugo\Iris\LiteralParser;
+use Bugo\Iris\Serializers\LiteralSerializer;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
-use Bugo\SCSS\Builtins\Color\Conversion\CssColorFunctionConverter;
-use Bugo\SCSS\Builtins\Color\Conversion\HexColorConverter;
-use Bugo\SCSS\Builtins\Color\Operations\ColorChannelReader;
-use Bugo\SCSS\Builtins\Color\Support\ColorArgumentParser;
-use Bugo\SCSS\Builtins\Color\Support\ColorChannelSchema;
-use Bugo\SCSS\Builtins\Color\Support\ColorValueFormatter;
+use Bugo\SCSS\Builtins\Color\Operations\ColorChannelInspector;
+use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
+use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
 use Bugo\SCSS\Exceptions\UnknownColorChannelException;
 use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\BooleanNode;
@@ -22,37 +20,30 @@ use Bugo\SCSS\Nodes\StringNode;
 
 describe('ColorChannelReader', function () {
     beforeEach(function () {
-        $irisConverter = new IrisConverterAdapter();
-        $hexConverter = new HexColorConverter();
         $state = new class {
             public bool $isGlobal = false;
 
             /** @var list<string> */
             public array $warnings = [];
         };
-
-        $converter = new ColorNodeConverter(
-            $hexConverter,
-            new CssColorFunctionConverter(),
-            $irisConverter,
-            new IrisLiteralAdapter(),
-            new ColorAstParser(),
-            static fn(string $name): string => $name,
+        $runtime = new ColorRuntime(
+            context: new ColorModuleContext(
+                errorCtx: static fn(string $name): string => $name,
+                isGlobalBuiltinCall: fn(): bool => $state->isGlobal,
+                warn: function ($context, string $message) use ($state): void {
+                    $state->warnings[] = $message;
+                },
+            ),
+            spaceConverter: new SpaceConverter(),
+            modelConverter: new ModelConverter(),
+            literalParser: new LiteralParser(),
+            literalSerializer: new LiteralSerializer(),
         );
+
+        $converter = new ColorNodeConverter($runtime);
 
         $this->state  = $state;
-        $this->reader = new ColorChannelReader(
-            new ColorArgumentParser($irisConverter, static fn(string $name): string => $name),
-            $converter,
-            new ColorValueFormatter($irisConverter),
-            $irisConverter,
-            new ColorChannelSchema(),
-            static fn(string $name): string => $name,
-            fn(): bool => $state->isGlobal,
-            function ($context, string $message) use ($state): void {
-                $state->warnings[] = $message;
-            },
-        );
+        $this->reader = new ColorChannelInspector($runtime, $converter);
     });
 
     it('reads channels using positional spaces and rgb-like alpha branches', function () {
@@ -62,13 +53,13 @@ describe('ColorChannelReader', function () {
             new StringNode('srgb'),
         ], []);
 
-        $rgbAlpha = $this->reader->resolveChannelValue(new ColorNode('#33669980'), 'rgb', 'alpha');
+        $rgbAlpha  = $this->reader->resolveChannelValue(new ColorNode('#33669980'), 'rgb', 'alpha');
         $srgbGreen = $this->reader->resolveChannelValue(new ColorNode('#33669980'), 'srgb', 'green');
-        $srgbBlue = $this->reader->resolveChannelValue(new ColorNode('#33669980'), 'srgb', 'blue');
+        $srgbBlue  = $this->reader->resolveChannelValue(new ColorNode('#33669980'), 'srgb', 'blue');
         $srgbAlpha = $this->reader->resolveChannelValue(new ColorNode('#33669980'), 'srgb', 'alpha');
-        $hslAlpha = $this->reader->resolveChannelValue(new ColorNode('#33669980'), 'hsl', 'alpha');
-        $hwbHue = $this->reader->resolveChannelValue(new ColorNode('#33669980'), 'hwb', 'hue');
-        $hwbAlpha = $this->reader->resolveChannelValue(new ColorNode('#33669980'), 'hwb', 'alpha');
+        $hslAlpha  = $this->reader->resolveChannelValue(new ColorNode('#33669980'), 'hsl', 'alpha');
+        $hwbHue    = $this->reader->resolveChannelValue(new ColorNode('#33669980'), 'hwb', 'hue');
+        $hwbAlpha  = $this->reader->resolveChannelValue(new ColorNode('#33669980'), 'hwb', 'alpha');
 
         expect($fromChannel->value)->toBeCloseTo(102 / 255, 0.000001)
             ->and($rgbAlpha->value)->toBeCloseTo(0.501961, 0.00001)
@@ -84,33 +75,33 @@ describe('ColorChannelReader', function () {
         $color = new ColorNode('#33669980');
 
         $lchLightness = $this->reader->resolveChannelValue($color, 'lch', 'lightness');
-        $lchChroma = $this->reader->resolveChannelValue($color, 'lch', 'chroma');
-        $lchHue = $this->reader->resolveChannelValue($color, 'lch', 'hue');
-        $lchAlpha = $this->reader->resolveChannelValue($color, 'lch', 'alpha');
+        $lchChroma    = $this->reader->resolveChannelValue($color, 'lch', 'chroma');
+        $lchHue       = $this->reader->resolveChannelValue($color, 'lch', 'hue');
+        $lchAlpha     = $this->reader->resolveChannelValue($color, 'lch', 'alpha');
 
         $labLightness = $this->reader->resolveChannelValue($color, 'lab', 'lightness');
-        $labA = $this->reader->resolveChannelValue($color, 'lab', 'a');
-        $labB = $this->reader->resolveChannelValue($color, 'lab', 'b');
-        $labAlpha = $this->reader->resolveChannelValue($color, 'lab', 'alpha');
+        $labA         = $this->reader->resolveChannelValue($color, 'lab', 'a');
+        $labB         = $this->reader->resolveChannelValue($color, 'lab', 'b');
+        $labAlpha     = $this->reader->resolveChannelValue($color, 'lab', 'alpha');
 
         $oklchLightness = $this->reader->resolveChannelValue($color, 'oklch', 'lightness');
-        $oklchChroma = $this->reader->resolveChannelValue($color, 'oklch', 'chroma');
-        $oklchHue = $this->reader->resolveChannelValue($color, 'oklch', 'hue');
-        $oklchAlpha = $this->reader->resolveChannelValue($color, 'oklch', 'alpha');
+        $oklchChroma    = $this->reader->resolveChannelValue($color, 'oklch', 'chroma');
+        $oklchHue       = $this->reader->resolveChannelValue($color, 'oklch', 'hue');
+        $oklchAlpha     = $this->reader->resolveChannelValue($color, 'oklch', 'alpha');
 
         $oklabLightness = $this->reader->resolveChannelValue($color, 'oklab', 'lightness');
-        $oklabA = $this->reader->resolveChannelValue($color, 'oklab', 'a');
-        $oklabB = $this->reader->resolveChannelValue($color, 'oklab', 'b');
-        $oklabAlpha = $this->reader->resolveChannelValue($color, 'oklab', 'alpha');
+        $oklabA         = $this->reader->resolveChannelValue($color, 'oklab', 'a');
+        $oklabB         = $this->reader->resolveChannelValue($color, 'oklab', 'b');
+        $oklabAlpha     = $this->reader->resolveChannelValue($color, 'oklab', 'alpha');
 
-        $xyzX = $this->reader->resolveChannelValue($color, 'xyz', 'x');
-        $xyzY = $this->reader->resolveChannelValue($color, 'xyz-d65', 'y');
-        $xyzZ = $this->reader->resolveChannelValue($color, 'xyz-d65', 'z');
+        $xyzX     = $this->reader->resolveChannelValue($color, 'xyz', 'x');
+        $xyzY     = $this->reader->resolveChannelValue($color, 'xyz-d65', 'y');
+        $xyzZ     = $this->reader->resolveChannelValue($color, 'xyz-d65', 'z');
         $xyzAlpha = $this->reader->resolveChannelValue($color, 'xyz-d65', 'alpha');
 
-        $xyzD50X = $this->reader->resolveChannelValue($color, 'xyz-d50', 'x');
-        $xyzD50Y = $this->reader->resolveChannelValue($color, 'xyz-d50', 'y');
-        $xyzD50Z = $this->reader->resolveChannelValue($color, 'xyz-d50', 'z');
+        $xyzD50X     = $this->reader->resolveChannelValue($color, 'xyz-d50', 'x');
+        $xyzD50Y     = $this->reader->resolveChannelValue($color, 'xyz-d50', 'y');
+        $xyzD50Z     = $this->reader->resolveChannelValue($color, 'xyz-d50', 'z');
         $xyzD50Alpha = $this->reader->resolveChannelValue($color, 'xyz-d50', 'alpha');
 
         expect($lchLightness->unit)->toBe('%')

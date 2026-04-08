@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Values;
 
-use Bugo\SCSS\Builtins\Color\ColorSerializerAdapter;
-use Bugo\SCSS\Contracts\Color\ColorSerializerInterface;
+use Bugo\Iris\Serializers\Serializer;
 use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
@@ -25,7 +24,7 @@ final readonly class ValueFactory
 {
     public function __construct(
         private bool $outputHexColors = false,
-        private ColorSerializerInterface $colorSerializer = new ColorSerializerAdapter(),
+        private Serializer $colorSerializer = new Serializer(),
     ) {}
 
     /**

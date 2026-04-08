@@ -5,18 +5,36 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Builtins\Color\Support;
 
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\StringNode;
 
 use function array_slice;
 use function count;
 
-trait ColorChannelSplitterTrait
+final readonly class ColorFunctionArgumentList
 {
+    /**
+     * @return array<int, AstNode>
+     */
+    public function expandArguments(FunctionNode $function): array
+    {
+        if (
+            count($function->arguments) === 1
+            && $function->arguments[0] instanceof ListNode
+            && $function->arguments[0]->separator === 'space'
+        ) {
+            return $function->arguments[0]->items;
+        }
+
+        return $function->arguments;
+    }
+
     /**
      * @param array<int, AstNode> $items
      * @return array{0: array<int, AstNode>, 1: ?AstNode}
      */
-    private function splitChannelsAndAlpha(array $items, bool $allowFourthAsAlpha = true): array
+    public function splitChannelsAndAlpha(array $items, bool $allowFourthAsAlpha = true): array
     {
         $channels      = [];
         $alpha         = null;

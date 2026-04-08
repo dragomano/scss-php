@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Builtins\Color\Adapters\IrisConverterAdapter;
+use Bugo\Iris\Converters\SpaceConverter;
 use Bugo\SCSS\Builtins\Color\Support\ColorValueFormatter;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\FunctionNode;
@@ -12,7 +12,7 @@ use Bugo\SCSS\Nodes\StringNode;
 
 describe('ColorValueFormatter', function () {
     beforeEach(function () {
-        $this->formatter = new ColorValueFormatter(new IrisConverterAdapter());
+        $this->formatter = new ColorValueFormatter(new SpaceConverter());
     });
 
     it('formats signed values and degree values', function () {

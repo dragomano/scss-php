@@ -2,18 +2,16 @@
 
 declare(strict_types=1);
 
+use Bugo\Iris\Converters\ModelConverter;
+use Bugo\Iris\Converters\SpaceConverter;
+use Bugo\Iris\LiteralParser;
+use Bugo\Iris\Serializers\LiteralSerializer;
+use Bugo\Iris\SpaceRouter;
 use Bugo\Iris\Spaces\RgbColor;
-use Bugo\SCSS\Builtins\Color\Adapters\IrisConverterAdapter;
-use Bugo\SCSS\Builtins\Color\Adapters\IrisLiteralAdapter;
-use Bugo\SCSS\Builtins\Color\Ast\ColorAstParser;
-use Bugo\SCSS\Builtins\Color\Ast\ColorAstReader;
-use Bugo\SCSS\Builtins\Color\Ast\ColorAstWriter;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
-use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceInterop;
-use Bugo\SCSS\Builtins\Color\Conversion\CssColorFunctionConverter;
-use Bugo\SCSS\Builtins\Color\Conversion\HexColorConverter;
-use Bugo\SCSS\Builtins\Color\Support\ColorArgumentParser;
-use Bugo\SCSS\Builtins\Color\Support\ColorChannelSchema;
+use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
+use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
+use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
 use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\ColorNode;
@@ -22,36 +20,23 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 
-describe('ColorSpaceInterop', function () {
+describe('ColorSpaceConverter', function () {
     beforeEach(function () {
-        $irisConverter = new IrisConverterAdapter();
-        $irisLiteral   = new IrisLiteralAdapter();
-        $hexConverter  = new HexColorConverter();
-
-        $converter = new ColorNodeConverter(
-            $hexConverter,
-            new CssColorFunctionConverter(),
-            $irisConverter,
-            $irisLiteral,
-            new ColorAstParser(),
-            static fn(string $name): string => $name,
-        );
-
-        $this->interop = new ColorSpaceInterop(
-            new ColorArgumentParser($irisConverter, static fn(string $name): string => $name),
-            $converter,
-            new ColorAstWriter($irisConverter, $irisLiteral),
-            new ColorAstReader(
-                new ColorArgumentParser($irisConverter, static fn(string $name): string => $name),
-                $converter,
-                $hexConverter,
-                $irisConverter,
+        $runtime = new ColorRuntime(
+            context: new ColorModuleContext(
+                errorCtx: static fn(string $name): string => $name,
+                isGlobalBuiltinCall: static fn(): bool => false,
+                warn: static function (): void {},
             ),
-            $hexConverter,
-            $irisConverter,
-            new ColorChannelSchema(),
-            static fn(string $name): string => $name,
+            spaceConverter: new SpaceConverter(),
+            spaceRouter: new SpaceRouter(),
+            modelConverter: new ModelConverter(),
+            literalParser: new LiteralParser(),
+            literalSerializer: new LiteralSerializer(),
         );
+        $converter = new ColorNodeConverter($runtime);
+
+        $this->interop = new ColorSpaceConverter($runtime, $converter);
     });
 
     it('detects semantic missing lightness channels', function () {
@@ -144,11 +129,11 @@ describe('ColorSpaceInterop', function () {
     });
 
     it('converts colors to xyz-d50 and wide-gamut generic spaces', function () {
-        $xyzD50 = $this->interop->toSpace([new ColorNode('#036'), new StringNode('xyz-d50')]);
+        $xyzD50          = $this->interop->toSpace([new ColorNode('#036'), new StringNode('xyz-d50')]);
         $displayP3Linear = $this->interop->toSpace([new ColorNode('#036'), new StringNode('display-p3-linear')]);
-        $a98 = $this->interop->toSpace([new ColorNode('#036'), new StringNode('a98-rgb')]);
-        $prophoto = $this->interop->toSpace([new ColorNode('#036'), new StringNode('prophoto-rgb')]);
-        $rec2020 = $this->interop->toSpace([new ColorNode('#036'), new StringNode('rec2020')]);
+        $a98             = $this->interop->toSpace([new ColorNode('#036'), new StringNode('a98-rgb')]);
+        $prophoto        = $this->interop->toSpace([new ColorNode('#036'), new StringNode('prophoto-rgb')]);
+        $rec2020         = $this->interop->toSpace([new ColorNode('#036'), new StringNode('rec2020')]);
 
         expect($xyzD50)->toBeInstanceOf(FunctionNode::class)
             ->and($xyzD50->name)->toBe('color')
@@ -215,8 +200,8 @@ describe('ColorSpaceInterop', function () {
     it('serializes rgb colors for original spaces', function () {
         $rgb = new RgbColor(300.0, 20.0, 10.0, 0.5);
 
-        $srgb = $this->interop->serializeRgbForOriginalSpace('srgb', $rgb);
-        $lab = $this->interop->serializeRgbForOriginalSpace('lab', $rgb);
+        $srgb      = $this->interop->serializeRgbForOriginalSpace('srgb', $rgb);
+        $lab       = $this->interop->serializeRgbForOriginalSpace('lab', $rgb);
         $displayP3 = $this->interop->serializeRgbForOriginalSpace('display-p3', $rgb);
 
         expect($srgb)->toBeInstanceOf(ColorNode::class)
@@ -256,9 +241,9 @@ describe('ColorSpaceInterop', function () {
     it('converts rgb colors to working-space channels and rejects unsupported spaces', function () {
         $rgb = new RgbColor(12.0, 34.0, 56.0, 0.25);
 
-        $a98 = $this->interop->rgbToWorkingSpaceChannels($rgb, 'a98-rgb');
+        $a98      = $this->interop->rgbToWorkingSpaceChannels($rgb, 'a98-rgb');
         $prophoto = $this->interop->rgbToWorkingSpaceChannels($rgb, 'prophoto-rgb');
-        $rec2020 = $this->interop->rgbToWorkingSpaceChannels($rgb, 'rec2020');
+        $rec2020  = $this->interop->rgbToWorkingSpaceChannels($rgb, 'rec2020');
 
         expect($a98)->toHaveCount(3)
             ->and($prophoto)->toHaveCount(3)
@@ -291,5 +276,17 @@ describe('ColorSpaceInterop', function () {
         $result = $this->interop->isSemanticChannelMissing(new FunctionNode('rgb', []));
 
         expect($result)->toBeFalse();
+    });
+
+    it('returns 0.0 alpha when hsl alpha channel is marked as none', function () {
+        $withMissingAlpha = $this->interop->toHslWithMissingChannels(new FunctionNode('hsl', [new ListNode([
+            new NumberNode(120.0, 'deg'),
+            new NumberNode(50.0, '%'),
+            new NumberNode(25.0, '%'),
+            new StringNode('none'),
+        ], 'space')]));
+
+        expect($withMissingAlpha)->not->toBeNull()
+            ->and($withMissingAlpha?->a)->toBe(0.0);
     });
 });
