@@ -16,7 +16,7 @@ use Tests\ReflectionAccessor;
 
 describe('SassColorModule', function () {
     beforeEach(function () {
-        $this->module = new SassColorModule();
+        $this->module   = new SassColorModule();
         $this->accessor = new ReflectionAccessor($this->module);
     });
 

@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Builtins\Color\ColorSerializerAdapter;
 use Bugo\SCSS\Builtins\FunctionRegistry;
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Nodes\ColorNode;
@@ -28,7 +27,6 @@ describe('CompilerContext', function () {
             ->and($ctx->conditionCacheState)->toBeInstanceOf(ConditionCacheState::class)
             ->and($ctx->sourceMapState)->toBeInstanceOf(SourceMapState::class)
             ->and($ctx->sourceMapGenerator)->toBeInstanceOf(SourceMapGenerator::class)
-            ->and($ctx->colorSerializer)->toBeInstanceOf(ColorSerializerAdapter::class)
             ->and($ctx->optimizer)->toBeInstanceOf(OutputOptimizer::class)
             ->and($ctx->renderer)->toBeInstanceOf(OutputRenderer::class);
     });
@@ -47,14 +45,14 @@ describe('CompilerContext', function () {
 
     it('allows overriding dependencies', function () {
         $registry = new FunctionRegistry();
-        $ctx = new CompilerContext(functionRegistry: $registry);
+        $ctx      = new CompilerContext(functionRegistry: $registry);
 
         expect($ctx->functionRegistry)->toBe($registry);
     });
 
     it('stores explicitly provided value factory as is', function () {
         $valueFactory = new ValueFactory(outputHexColors: true);
-        $ctx = new CompilerContext(valueFactory: $valueFactory);
+        $ctx          = new CompilerContext(valueFactory: $valueFactory);
 
         expect($ctx->valueFactory)->toBe($valueFactory)
             ->and($ctx->valueFactory->fromAst(new ColorNode('rgb(255, 0, 0)'))->toCss())

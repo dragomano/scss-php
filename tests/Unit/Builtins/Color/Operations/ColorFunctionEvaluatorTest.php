@@ -14,17 +14,18 @@ use Tests\ReflectionAccessor;
 describe('ColorFunctionEvaluator', function () {
     beforeEach(function () {
         $module = new SassColorModule();
-        $this->accessor = new ReflectionAccessor($module);
+
+        $this->accessor  = new ReflectionAccessor($module);
         $this->evaluator = $this->accessor->getProperty('functions');
 
-        expect($this->evaluator)->toBeInstanceOf(ColorFunctionEvaluator::class);
         /** @var ColorFunctionEvaluator $evaluator */
         $evaluator = $this->evaluator;
+
         $this->evaluatorAccessor = new ReflectionAccessor($evaluator);
     });
 
     it('falls back to adjust-color for non-legacy hue and alpha adjustments', function () {
-        $oklch = new FunctionNode('oklch', [new NumberNode(50, '%'), new NumberNode(0.12), new NumberNode(70, 'deg')]);
+        $oklch     = new FunctionNode('oklch', [new NumberNode(50, '%'), new NumberNode(0.12), new NumberNode(70, 'deg')]);
         $withAlpha = new FunctionNode('oklch', [new ListNode([
             new NumberNode(50, '%'),
             new NumberNode(0.12),
@@ -33,7 +34,7 @@ describe('ColorFunctionEvaluator', function () {
             new NumberNode(0.5),
         ], 'space')]);
 
-        $adjustedHue = $this->evaluator->adjustHue([$oklch, new NumberNode(45, 'deg')], null);
+        $adjustedHue   = $this->evaluator->adjustHue([$oklch, new NumberNode(45, 'deg')], null);
         $adjustedAlpha = $this->evaluator->adjustAlphaChannel([$withAlpha, new NumberNode(0.2)], 1, 'fade-in', null);
 
         expect($adjustedHue)->toBeInstanceOf(FunctionNode::class)
@@ -102,7 +103,7 @@ describe('ColorFunctionEvaluator', function () {
     it('changes native lab colors and can serialize them as float rgb for legacy callers', function () {
         $lab = new FunctionNode('lab', [new NumberNode(40, '%'), new NumberNode(30), new NumberNode(40)]);
 
-        $changed = $this->evaluator->changeColor([$lab], ['lightness' => new NumberNode(10, '%')]);
+        $changed          = $this->evaluator->changeColor([$lab], ['lightness' => new NumberNode(10, '%')]);
         $legacySerialized = $this->evaluatorAccessor->callMethod('applyInLabSpace', [
             $lab,
             ['lightness' => new NumberNode(10, '%')],
@@ -180,10 +181,10 @@ describe('ColorFunctionEvaluator', function () {
     });
 
     it('handles missing oklch channels and hues in mix helpers', function () {
-        $bothMissingChannel = $this->evaluatorAccessor->callMethod('mixPossiblyMissingChannel', [1.0, 2.0, true, true, 0.5]);
+        $bothMissingChannel  = $this->evaluatorAccessor->callMethod('mixPossiblyMissingChannel', [1.0, 2.0, true, true, 0.5]);
         $rightMissingChannel = $this->evaluatorAccessor->callMethod('mixPossiblyMissingChannel', [1.0, 2.0, false, true, 0.5]);
-        $bothMissingHue = $this->evaluatorAccessor->callMethod('mixPossiblyMissingHue', [10.0, 20.0, true, true, 0.5, null]);
-        $rightMissingHue = $this->evaluatorAccessor->callMethod('mixPossiblyMissingHue', [10.0, 20.0, false, true, 0.5, null]);
+        $bothMissingHue      = $this->evaluatorAccessor->callMethod('mixPossiblyMissingHue', [10.0, 20.0, true, true, 0.5, null]);
+        $rightMissingHue     = $this->evaluatorAccessor->callMethod('mixPossiblyMissingHue', [10.0, 20.0, false, true, 0.5, null]);
 
         expect($bothMissingChannel)->toBe(['value' => 0.0, 'missing' => true])
             ->and($rightMissingChannel)->toBe(['value' => 1.0, 'missing' => false])
@@ -209,7 +210,7 @@ describe('ColorFunctionEvaluator', function () {
         ]);
 
         $fallbackChannels = $this->evaluatorAccessor->callMethod('extractColorSpaceChannels', [new ColorNode('#036')]);
-        $percentChannel = $this->evaluatorAccessor->callMethod('extractOptionalNumericChannel', [new NumberNode(25, '%')]);
+        $percentChannel   = $this->evaluatorAccessor->callMethod('extractOptionalNumericChannel', [new NumberNode(25, '%')]);
 
         expect($mixed)->toBeInstanceOf(FunctionNode::class)
             ->and($mixed->name)->toBe('color')

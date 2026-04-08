@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Builtins\Color\Ast\ColorAstParser;
+use Bugo\SCSS\Builtins\Color\ColorAstParser;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 
