@@ -6,11 +6,10 @@ namespace Bugo\SCSS\Builtins\Color\Conversion;
 
 use Bugo\Iris\Encoders\HexEncoder;
 use Bugo\Iris\Encoders\HexShortener;
-use Bugo\SCSS\Builtins\Color\Support\ColorChannelSplitterTrait;
+use Bugo\SCSS\Builtins\Color\Support\ColorFunctionArgumentList;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
-use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 
 use function abs;
@@ -22,14 +21,11 @@ use function strtolower;
 
 final readonly class HexColorConverter
 {
-    use ColorChannelSplitterTrait {
-        splitChannelsAndAlpha as public;
-    }
-
     public function __construct(
         private HexEncoder $hexColorEncoder = new HexEncoder(),
         private HexShortener $hexColorShortener = new HexShortener(),
         private CssColorFunctionConverter $cssColorFunctionConverter = new CssColorFunctionConverter(),
+        private ColorFunctionArgumentList $arguments = new ColorFunctionArgumentList(),
     ) {}
 
     public function tryConvert(FunctionNode $function): ?ColorNode
@@ -52,15 +48,16 @@ final readonly class HexColorConverter
      */
     public function expandArguments(FunctionNode $function): array
     {
-        if (
-            count($function->arguments) === 1
-            && $function->arguments[0] instanceof ListNode
-            && $function->arguments[0]->separator === 'space'
-        ) {
-            return $function->arguments[0]->items;
-        }
+        return $this->arguments->expandArguments($function);
+    }
 
-        return $function->arguments;
+    /**
+     * @param array<int, AstNode> $items
+     * @return array{0: array<int, AstNode>, 1: ?AstNode}
+     */
+    public function splitChannelsAndAlpha(array $items, bool $allowFourthAsAlpha = true): array
+    {
+        return $this->arguments->splitChannelsAndAlpha($items, $allowFourthAsAlpha);
     }
 
     private function canConvertWithoutPrecisionLoss(FunctionNode $function): bool

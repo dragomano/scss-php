@@ -9,9 +9,9 @@ use Bugo\Iris\Spaces\LchColor;
 use Bugo\Iris\Spaces\OklabColor;
 use Bugo\Iris\Spaces\OklchColor;
 use Bugo\Iris\Spaces\RgbColor;
-use Bugo\SCSS\Builtins\Color\Ast\ColorAstWriter;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
 use Bugo\SCSS\Builtins\Color\Support\ColorArgumentParser;
+use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
@@ -22,7 +22,6 @@ use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Closure;
 
 use function abs;
 use function count;
@@ -31,7 +30,7 @@ use function round;
 use function sprintf;
 use function strtolower;
 
-final readonly class ColorConstructorFunctions
+final readonly class ColorConstructorEvaluator
 {
     private const SUPPORTED_COLOR_SPACES = [
         'srgb',
@@ -46,17 +45,10 @@ final readonly class ColorConstructorFunctions
         'xyz-d65',
     ];
 
-    /**
-     * @param ColorArgumentParser $parser
-     * @param ColorNodeConverter $converter
-     * @param ColorAstWriter $astWriter
-     * @param Closure(string): string $errorCtx
-     */
     public function __construct(
         private ColorArgumentParser $parser,
         private ColorNodeConverter $converter,
-        private ColorAstWriter $astWriter,
-        private Closure $errorCtx,
+        private ColorModuleContext $context,
     ) {}
 
     /**
@@ -73,7 +65,9 @@ final readonly class ColorConstructorFunctions
             return new FunctionNode('hsl', [
                 new ListNode([
                     $hueMissing ? new StringNode('none') : new NumberNode(
-                        $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsl')),
+                        $this->parser->normalizeHue(
+                            $this->parser->asNumber($arguments[0], 'hsl'),
+                        ),
                     ),
                     $satMissing ? new StringNode('none') : new NumberNode(
                         $this->parser->asPercentage($arguments[1], 'hsl'),
@@ -87,7 +81,7 @@ final readonly class ColorConstructorFunctions
             ]);
         }
 
-        return $this->astWriter->buildHslFunctionNode(
+        return $this->converter->buildHslFunctionNode(
             $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsl')),
             $this->parser->asPercentage($arguments[1], 'hsl'),
             $this->parser->asPercentage($arguments[2], 'hsl'),
@@ -102,7 +96,7 @@ final readonly class ColorConstructorFunctions
     {
         $arguments = $this->parser->parseFunctionalColorArguments($positional, 'hsla', 4);
 
-        return $this->astWriter->buildHslFunctionNode(
+        return $this->converter->buildHslFunctionNode(
             $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsla')),
             $this->parser->asPercentage($arguments[1], 'hsla'),
             $this->parser->asPercentage($arguments[2], 'hsla'),
@@ -121,7 +115,7 @@ final readonly class ColorConstructorFunctions
                 $alpha = $this->parser->parseAlphaOrDefault($positional, 1, 'rgb');
 
                 if (abs($alpha - 1.0) < 0.000001) {
-                    return $this->astWriter->fromRgb(new RgbColor(r: $rgb->r, g: $rgb->g, b: $rgb->b, a: 1.0));
+                    return $this->converter->fromRgb(new RgbColor(r: $rgb->r, g: $rgb->g, b: $rgb->b, a: 1.0));
                 }
 
                 return new FunctionNode('rgba', [
@@ -172,7 +166,7 @@ final readonly class ColorConstructorFunctions
             $rgb   = $this->converter->toRgb($this->parser->requireColor($positional, 0, 'rgba'));
             $alpha = $this->parser->clamp($this->parser->asNumber($positional[1], 'rgba'), 1.0);
 
-            return $this->astWriter->fromRgb(new RgbColor(
+            return $this->converter->fromRgb(new RgbColor(
                 r: $rgb->r,
                 g: $rgb->g,
                 b: $rgb->b,
@@ -181,14 +175,20 @@ final readonly class ColorConstructorFunctions
         }
 
         if (count($positional) < 4) {
-            throw new MissingFunctionArgumentsException(($this->errorCtx)('rgba'), '2 or 4 arguments');
+            throw new MissingFunctionArgumentsException(
+                $this->context->errorCtx('rgba'),
+                '2 or 4 arguments',
+            );
         }
 
-        return $this->astWriter->fromRgb(new RgbColor(
+        return $this->converter->fromRgb(new RgbColor(
             r: $this->parser->asByte($positional[0], 'rgba'),
             g: $this->parser->asByte($positional[1], 'rgba'),
             b: $this->parser->asByte($positional[2], 'rgba'),
-            a: $this->parser->clamp($this->parser->asNumber($positional[3], 'rgba'), 1.0),
+            a: $this->parser->clamp(
+                $this->parser->asNumber($positional[3], 'rgba'),
+                1.0,
+            ),
         ));
     }
 
@@ -204,7 +204,7 @@ final readonly class ColorConstructorFunctions
             $alpha = $this->parser->parseAlphaOrDefault($positional, 3, 'rgba');
 
             if (abs($alpha - 1.0) < 0.000001) {
-                return $this->astWriter->fromRgb(new RgbColor(r: $r, g: $g, b: $b, a: 1.0));
+                return $this->converter->fromRgb(new RgbColor(r: $r, g: $g, b: $b, a: 1.0));
             }
 
             return new FunctionNode('rgba', [
@@ -220,7 +220,9 @@ final readonly class ColorConstructorFunctions
         }
 
         try {
-            $rgb = $this->converter->toRgb($this->parser->requireColor($positional, 0, 'rgba'));
+            $rgb = $this->converter->toRgb(
+                $this->parser->requireColor($positional, 0, 'rgba'),
+            );
         } catch (MissingFunctionArgumentsException|UnsupportedColorValueException) {
             return new FunctionNode('rgba', $positional);
         }
@@ -228,7 +230,7 @@ final readonly class ColorConstructorFunctions
         $alpha = $this->parser->parseAlphaOrDefault($positional, 1, 'rgba');
 
         if (abs($alpha - 1.0) < 0.000001) {
-            return $this->astWriter->fromRgb(new RgbColor(r: $rgb->r, g: $rgb->g, b: $rgb->b, a: 1.0));
+            return $this->converter->fromRgb(new RgbColor(r: $rgb->r, g: $rgb->g, b: $rgb->b, a: 1.0));
         }
 
         return new FunctionNode('rgba', [
@@ -256,7 +258,7 @@ final readonly class ColorConstructorFunctions
             $blackness = ($blackness / $sum) * 100.0;
         }
 
-        return $this->astWriter->buildFunctionalColorNode('hwb', [
+        return $this->converter->buildFunctionalColorNode('hwb', [
             new NumberNode($hue),
             new NumberNode($whiteness, '%'),
             new NumberNode($blackness, '%'),
@@ -276,10 +278,10 @@ final readonly class ColorConstructorFunctions
         $alpha     = $this->parser->parseAlphaOrDefault($arguments, 4, 'color');
 
         if (! in_array($space, self::SUPPORTED_COLOR_SPACES, true)) {
-            throw new UnsupportedColorSpaceException($space, ($this->errorCtx)('color'));
+            throw new UnsupportedColorSpaceException($space, $this->context->errorCtx('color'));
         }
 
-        return $this->astWriter->buildGenericColorFunctionNode($space, [$ch1, $ch2, $ch3], $alpha);
+        return $this->converter->buildGenericColorFunctionNode($space, [$ch1, $ch2, $ch3], $alpha);
     }
 
     /**
@@ -293,7 +295,7 @@ final readonly class ColorConstructorFunctions
         $b         = $this->parser->asAbsoluteChannel($arguments[2], 'lab', 125.0);
         $alpha     = $this->parser->parseAlphaOrDefault($arguments, 3, 'lab');
 
-        return $this->astWriter->buildLabColorNode(new LabColor($lightness, $a, $b, $alpha));
+        return $this->converter->buildLabColorNode(new LabColor($lightness, $a, $b, $alpha));
     }
 
     /**
@@ -311,7 +313,7 @@ final readonly class ColorConstructorFunctions
             $chroma = 0.0;
         }
 
-        return $this->astWriter->buildLchColorNode(new LchColor($lightness, $chroma, $hue), $alpha);
+        return $this->converter->buildLchColorNode(new LchColor($lightness, $chroma, $hue), $alpha);
     }
 
     /**
@@ -325,7 +327,7 @@ final readonly class ColorConstructorFunctions
         $b         = $this->parser->asAbsoluteChannel($arguments[2], 'oklab', 0.4);
         $alpha     = $this->parser->parseAlphaOrDefault($arguments, 3, 'oklab');
 
-        return $this->astWriter->buildOklabColorNode(new OklabColor($lightness, $a, $b, $alpha));
+        return $this->converter->buildOklabColorNode(new OklabColor($lightness, $a, $b, $alpha));
     }
 
     /**
@@ -343,7 +345,7 @@ final readonly class ColorConstructorFunctions
             $chroma = 0.0;
         }
 
-        return $this->astWriter->serializeAsOklchColorFunction(new OklchColor($lightness, $chroma, $hue, $alpha));
+        return $this->converter->serializeAsOklchString(new OklchColor($lightness, $chroma, $hue, $alpha));
     }
 
     /**
@@ -351,7 +353,9 @@ final readonly class ColorConstructorFunctions
      */
     public function ieHexStr(array $positional): StringNode
     {
-        $rgb = $this->converter->toRgb($this->parser->requireColor($positional, 0, 'ie-hex-str'));
+        $rgb = $this->converter->toRgb(
+            $this->parser->requireColor($positional, 0, 'ie-hex-str'),
+        );
 
         return new StringNode(sprintf(
             '#%02X%02X%02X%02X',

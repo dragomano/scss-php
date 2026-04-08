@@ -5,10 +5,7 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Builtins\Color\Operations;
 
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
-use Bugo\SCSS\Builtins\Color\Support\ColorArgumentParser;
-use Bugo\SCSS\Builtins\Color\Support\ColorChannelSchema;
-use Bugo\SCSS\Builtins\Color\Support\ColorValueFormatter;
-use Bugo\SCSS\Contracts\Color\ColorConverterInterface;
+use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\UnknownColorChannelException;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
@@ -19,28 +16,13 @@ use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
-use Closure;
 
 use function abs;
 use function strtolower;
 
-final readonly class ColorChannelReader
+final readonly class ColorChannelInspector
 {
-    /**
-     * @param Closure(string): string $errorCtx
-     * @param Closure(): bool $isGlobalBuiltinCall
-     * @param Closure(?BuiltinCallContext, string, bool=): void $warn
-     */
-    public function __construct(
-        private ColorArgumentParser $parser,
-        private ColorNodeConverter $converter,
-        private ColorValueFormatter $formatter,
-        private ColorConverterInterface $colorSpaceConverter,
-        private ColorChannelSchema $channelSchema,
-        private Closure $errorCtx,
-        private Closure $isGlobalBuiltinCall,
-        private Closure $warn,
-    ) {}
+    public function __construct(private ColorRuntime $runtime, private ColorNodeConverter $converter) {}
 
     /**
      * @param array<int, AstNode> $positional
@@ -48,13 +30,13 @@ final readonly class ColorChannelReader
      */
     public function channel(array $positional, array $named): NumberNode
     {
-        $color       = $this->parser->requireColor($positional, 0, 'channel');
-        $channelName = $this->parser->asString($positional[1] ?? null, 'channel');
+        $color       = $this->runtime->argumentParser->requireColor($positional, 0, 'channel');
+        $channelName = $this->runtime->argumentParser->asString($positional[1] ?? null, 'channel');
 
         if (isset($named['space'])) {
-            $space = strtolower($this->parser->asString($named['space'], 'channel'));
+            $space = strtolower($this->runtime->argumentParser->asString($named['space'], 'channel'));
         } elseif (isset($positional[2])) {
-            $space = strtolower($this->parser->asString($positional[2], 'channel'));
+            $space = strtolower($this->runtime->argumentParser->asString($positional[2], 'channel'));
         } else {
             $space = $this->converter->detectNativeColorSpace($color);
         }
@@ -71,7 +53,7 @@ final readonly class ColorChannelReader
             'xyz',
             'xyz-d50',
             'xyz-d65' => $this->resolveChannelValue($color, $space, $channelName),
-            default   => throw new UnsupportedColorSpaceException($space, ($this->errorCtx)('channel')),
+            default   => throw new UnsupportedColorSpaceException($space, $this->runtime->context->errorCtx('channel')),
         };
     }
 
@@ -101,11 +83,11 @@ final readonly class ColorChannelReader
         string $context,
         ?BuiltinCallContext $callContext,
     ): NumberNode {
-        $color = $this->parser->requireColor($positional, 0, $context);
+        $color = $this->runtime->argumentParser->requireColor($positional, 0, $context);
 
-        ($this->warn)(
+        $this->runtime->context->warn(
             $callContext,
-            'color.channel(' . $this->formatter->describeValue($color) . ', "' . $channelName . '", $space: ' . $space . ')'
+            'color.channel(' . $this->runtime->formatter->describeValue($color) . ', "' . $channelName . '", $space: ' . $space . ')',
         );
 
         return $this->resolveChannelValue($color, $space, $channelName);
@@ -116,12 +98,12 @@ final readonly class ColorChannelReader
      */
     public function channelAlpha(array $positional, string $name, ?BuiltinCallContext $context): AstNode
     {
-        $isGlobal = ($this->isGlobalBuiltinCall)();
+        $isGlobal = $this->runtime->context->isGlobalBuiltinCall();
 
         try {
             $color = $isGlobal
-                ? $this->parser->requireColorOrDefer($positional, $name)
-                : $this->parser->requireColor($positional, 0, $name);
+                ? $this->runtime->argumentParser->requireColorOrDefer($positional, $name)
+                : $this->runtime->argumentParser->requireColor($positional, 0, $name);
             $alpha = $this->converter->toRgb($color)->a;
         } catch (UnsupportedColorValueException $unsupportedColorValueException) {
             if ($isGlobal) {
@@ -136,9 +118,9 @@ final readonly class ColorChannelReader
         }
 
         if ($isGlobal) {
-            ($this->warn)(
+            $this->runtime->context->warn(
                 $context,
-                'color.channel(' . $this->formatter->describeValue($color) . ', "alpha")'
+                'color.channel(' . $this->runtime->formatter->describeValue($color) . ', "alpha")',
             );
         }
 
@@ -147,7 +129,7 @@ final readonly class ColorChannelReader
 
     public function channelIndexForFunction(string $functionName, string $channelName): ?int
     {
-        return $this->channelSchema->indexForChannel($functionName, $channelName);
+        return $this->runtime->channelSchema->indexForChannel($functionName, $channelName);
     }
 
     /**
@@ -155,8 +137,8 @@ final readonly class ColorChannelReader
      */
     public function isMissing(array $positional): BooleanNode
     {
-        $color       = $this->parser->requireColor($positional, 0, 'is-missing');
-        $channelName = strtolower($this->parser->asString($positional[1] ?? null, 'is-missing'));
+        $color       = $this->runtime->argumentParser->requireColor($positional, 0, 'is-missing');
+        $channelName = strtolower($this->runtime->argumentParser->asString($positional[1] ?? null, 'is-missing'));
 
         if ($color instanceof StringNode) {
             $parsed = $this->converter->parseColorString($color->value);
@@ -167,17 +149,17 @@ final readonly class ColorChannelReader
         }
 
         if (! ($color instanceof FunctionNode)) {
-            return $this->boolNode(false);
+            return new BooleanNode(false);
         }
 
-        $expandedArgs = $this->parser->expandSingleSpaceListArgument($color->arguments);
+        $expandedArgs = $this->runtime->argumentParser->expandSingleSpaceListArgument($color->arguments);
         $channelIndex = $this->channelIndexForFunction(strtolower($color->name), $channelName);
 
         if ($channelIndex === null || ! isset($expandedArgs[$channelIndex])) {
-            return $this->boolNode(false);
+            return new BooleanNode(false);
         }
 
-        return $this->boolNode($this->parser->isMissingChannelNode($expandedArgs[$channelIndex]));
+        return new BooleanNode($this->runtime->argumentParser->isMissingChannelNode($expandedArgs[$channelIndex]));
     }
 
     /**
@@ -186,11 +168,11 @@ final readonly class ColorChannelReader
      */
     public function isPowerless(array $positional, array $named): BooleanNode
     {
-        $color       = $this->parser->requireColor($positional, 0, 'is-powerless');
-        $channelName = $this->parser->asString($positional[1] ?? null, 'is-powerless');
+        $color       = $this->runtime->argumentParser->requireColor($positional, 0, 'is-powerless');
+        $channelName = $this->runtime->argumentParser->asString($positional[1] ?? null, 'is-powerless');
 
         $space = strtolower(
-            $this->parser->asString(
+            $this->runtime->argumentParser->asString(
                 $named['space'] ?? ($positional[2] ?? new StringNode('hsl')),
                 'is-powerless',
             ),
@@ -218,19 +200,19 @@ final readonly class ColorChannelReader
 
         if ($space === 'lch') {
             if ($channelName === 'hue') {
-                $lch       = $this->colorSpaceConverter->rgbToLch($this->converter->toRgb($color));
+                $lch       = $this->runtime->spaceConverter->rgbToLch($this->converter->toRgb($color));
                 $powerless = abs($lch->cValue()) < 0.000001;
             }
         }
 
         if ($space === 'oklch') {
             if ($channelName === 'hue') {
-                $oklch     = $this->colorSpaceConverter->rgbToOklch($this->converter->toRgb($color));
+                $oklch     = $this->runtime->spaceConverter->rgbToOklch($this->converter->toRgb($color));
                 $powerless = abs($oklch->cValue()) < 0.000001;
             }
         }
 
-        return $this->boolNode($powerless);
+        return new BooleanNode($powerless);
     }
 
     /**
@@ -238,7 +220,7 @@ final readonly class ColorChannelReader
      */
     public function space(array $positional): StringNode
     {
-        $color = $this->parser->requireColor($positional, 0, 'space');
+        $color = $this->runtime->argumentParser->requireColor($positional, 0, 'space');
 
         return new StringNode($this->converter->detectNativeColorSpace($color));
     }
@@ -248,9 +230,9 @@ final readonly class ColorChannelReader
      */
     public function isInGamut(array $positional): BooleanNode
     {
-        $color = $this->parser->requireColor($positional, 0, 'is-in-gamut');
+        $color = $this->runtime->argumentParser->requireColor($positional, 0, 'is-in-gamut');
 
-        return $this->boolNode($this->converter->isInGamut($color));
+        return new BooleanNode($this->converter->isInGamut($color));
     }
 
     /**
@@ -258,9 +240,9 @@ final readonly class ColorChannelReader
      */
     public function isLegacy(array $positional): BooleanNode
     {
-        $color = $this->parser->requireColor($positional, 0, 'is-legacy');
+        $color = $this->runtime->argumentParser->requireColor($positional, 0, 'is-legacy');
 
-        return $this->boolNode($this->converter->isLegacyColor($color));
+        return new BooleanNode($this->converter->isLegacyColor($color));
     }
 
     private function resolveRgbChannel(AstNode $color, string $channelName, bool $normalized): NumberNode
@@ -307,7 +289,7 @@ final readonly class ColorChannelReader
     private function resolveLchChannel(AstNode $color, string $channelName): NumberNode
     {
         $rgb = $this->converter->toRgb($color);
-        $lch = $this->colorSpaceConverter->rgbToLch($rgb);
+        $lch = $this->runtime->spaceConverter->rgbToLch($rgb);
 
         return match ($channelName) {
             'lightness' => new NumberNode($lch->lValue(), '%'),
@@ -321,7 +303,7 @@ final readonly class ColorChannelReader
     private function resolveLabChannel(AstNode $color, string $channelName): NumberNode
     {
         $alpha = $this->converter->toAlpha($color);
-        $lab   = $this->colorSpaceConverter->xyzD50ToLabColor($this->converter->toXyzD50($color), $alpha);
+        $lab   = $this->runtime->spaceConverter->xyzD50ToLabColor($this->converter->toXyzD50($color), $alpha);
 
         return match ($channelName) {
             'lightness' => new NumberNode($lab->lValue(), '%'),
@@ -334,7 +316,7 @@ final readonly class ColorChannelReader
 
     private function resolveOklchChannel(AstNode $color, string $channelName): NumberNode
     {
-        $oklch = $this->colorSpaceConverter->rgbToOklch($this->converter->toRgb($color));
+        $oklch = $this->runtime->spaceConverter->rgbToOklch($this->converter->toRgb($color));
 
         return match ($channelName) {
             'lightness' => new NumberNode($oklch->lValue(), '%'),
@@ -348,7 +330,7 @@ final readonly class ColorChannelReader
     private function resolveOklabChannel(AstNode $color, string $channelName): NumberNode
     {
         $alpha = $this->converter->toAlpha($color);
-        $oklab = $this->colorSpaceConverter->xyzD65ToOklabColor($this->converter->toXyzD65($color), $alpha);
+        $oklab = $this->runtime->spaceConverter->xyzD65ToOklabColor($this->converter->toXyzD65($color), $alpha);
 
         return match ($channelName) {
             'lightness' => new NumberNode($oklab->lValue(), '%'),
@@ -362,7 +344,7 @@ final readonly class ColorChannelReader
     private function resolveXyzD65Channel(AstNode $color, string $channelName): NumberNode
     {
         $rgb = $this->converter->toRgb($color);
-        $xyz = $this->colorSpaceConverter->rgbToXyzD65($rgb);
+        $xyz = $this->runtime->spaceConverter->rgbToXyzD65($rgb);
 
         return match ($channelName) {
             'x'     => new NumberNode($xyz->x),
@@ -376,7 +358,7 @@ final readonly class ColorChannelReader
     private function resolveXyzD50Channel(AstNode $color, string $channelName): NumberNode
     {
         $rgb = $this->converter->toRgb($color);
-        $xyz = $this->colorSpaceConverter->rgbToXyzD50($rgb);
+        $xyz = $this->runtime->spaceConverter->rgbToXyzD50($rgb);
 
         return match ($channelName) {
             'x'     => new NumberNode($xyz->x),
@@ -385,10 +367,5 @@ final readonly class ColorChannelReader
             'alpha' => new NumberNode($rgb->a),
             default => throw new UnknownColorChannelException('XYZ-D50', $channelName),
         };
-    }
-
-    private function boolNode(bool $value): BooleanNode
-    {
-        return new BooleanNode($value);
     }
 }

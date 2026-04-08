@@ -4,21 +4,13 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Builtins;
 
-use Bugo\SCSS\Builtins\Color\Ast\ColorAstParser;
-use Bugo\SCSS\Builtins\Color\Ast\ColorAstReader;
-use Bugo\SCSS\Builtins\Color\Ast\ColorAstWriter;
-use Bugo\SCSS\Builtins\Color\ColorBundleAdapter;
-use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
-use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceInterop;
-use Bugo\SCSS\Builtins\Color\Conversion\CssColorFunctionConverter;
-use Bugo\SCSS\Builtins\Color\Conversion\HexColorConverter;
-use Bugo\SCSS\Builtins\Color\Operations\ColorChannelReader;
-use Bugo\SCSS\Builtins\Color\Operations\ColorConstructorFunctions;
+use Bugo\SCSS\Builtins\Color\ColorModuleComponents;
+use Bugo\SCSS\Builtins\Color\ColorModuleFactory;
+use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
+use Bugo\SCSS\Builtins\Color\Operations\ColorChannelInspector;
+use Bugo\SCSS\Builtins\Color\Operations\ColorConstructorEvaluator;
 use Bugo\SCSS\Builtins\Color\Operations\ColorFunctionEvaluator;
-use Bugo\SCSS\Builtins\Color\Support\ColorArgumentParser;
-use Bugo\SCSS\Builtins\Color\Support\ColorChannelSchema;
-use Bugo\SCSS\Builtins\Color\Support\ColorValueFormatter;
-use Bugo\SCSS\Contracts\Color\ColorBundleInterface;
+use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
@@ -97,104 +89,33 @@ final class SassColorModule extends AbstractModule
     ];
 
     private const GLOBAL_ALIASES = [
-        'color-channel' => 'channel',
-        'rgba'          => 'legacy-rgba',
+        'rgba' => 'legacy-rgba',
     ];
 
-    private readonly ColorArgumentParser $argumentParser;
+    private readonly ColorSpaceConverter $spaceConverter;
 
-    private readonly ColorNodeConverter $converter;
-
-    private readonly ColorSpaceInterop $spaceInterop;
-
-    private readonly ColorChannelReader $channelReader;
+    private readonly ColorChannelInspector $channelInspector;
 
     private readonly ColorFunctionEvaluator $functions;
 
-    private readonly ColorConstructorFunctions $constructors;
+    private readonly ColorConstructorEvaluator $constructors;
 
-    private readonly ColorValueFormatter $formatter;
-
-    private readonly ColorAstWriter $astWriter;
-
-    private readonly ColorAstReader $astReader;
-
-    public function __construct(
-        private readonly HexColorConverter $hexColorConverter = new HexColorConverter(),
-        ColorBundleInterface $bundle = new ColorBundleAdapter(),
-    ) {
-        $errorCtx = fn(string $f): string => $this->builtinErrorContext($f);
-        $isGlobal = fn(): bool => $this->isGlobalBuiltinCall();
-        $warn     = function (?BuiltinCallContext $ctx, string $s, bool $multipleSuggestions = false): void {
-            $this->warnAboutDeprecatedBuiltinFunction($ctx, $s, 'color', $multipleSuggestions);
-        };
-
-        $converter    = $bundle->getConverter();
-        $literal      = $bundle->getLiteral();
-        $manipulator  = $bundle->getManipulator();
-
-        $this->argumentParser = new ColorArgumentParser($converter, $errorCtx);
-        $this->formatter      = new ColorValueFormatter($converter);
-        $this->astWriter      = new ColorAstWriter($converter, $literal);
-
-        $cssColorFunctionConverter = new CssColorFunctionConverter($converter);
-
-        $this->converter = new ColorNodeConverter(
-            $this->hexColorConverter,
-            $cssColorFunctionConverter,
-            $converter,
-            $literal,
-            new ColorAstParser(),
-            $errorCtx,
+    public function __construct(?ColorModuleComponents $components = null)
+    {
+        $context = new ColorModuleContext(
+            errorCtx: fn(string $function): string => $this->builtinErrorContext($function),
+            isGlobalBuiltinCall: fn(): bool => $this->isGlobalBuiltinCall(),
+            warn: function (?BuiltinCallContext $callContext, string $message, bool $multipleSuggestions = false): void {
+                $this->warnAboutDeprecatedBuiltinFunction($callContext, $message, 'color', $multipleSuggestions);
+            },
         );
 
-        $this->astReader = new ColorAstReader(
-            $this->argumentParser,
-            $this->converter,
-            $this->hexColorConverter,
-            $converter,
-        );
+        $services = (new ColorModuleFactory())->create($context, $components);
 
-        $this->spaceInterop = new ColorSpaceInterop(
-            $this->argumentParser,
-            $this->converter,
-            $this->astWriter,
-            $this->astReader,
-            $this->hexColorConverter,
-            $converter,
-            new ColorChannelSchema(),
-            $errorCtx,
-        );
-
-        $this->channelReader = new ColorChannelReader(
-            $this->argumentParser,
-            $this->converter,
-            $this->formatter,
-            $converter,
-            new ColorChannelSchema(),
-            $errorCtx,
-            $isGlobal,
-            $warn,
-        );
-
-        $this->functions = new ColorFunctionEvaluator(
-            $this->argumentParser,
-            $this->converter,
-            $this->astWriter,
-            $this->astReader,
-            $manipulator,
-            $this->spaceInterop,
-            $this->formatter,
-            $converter,
-            $warn,
-        );
-
-        $this->constructors = new ColorConstructorFunctions(
-            $this->argumentParser,
-            $this->converter,
-            $this->astWriter,
-            $errorCtx,
-        );
+        $this->spaceConverter   = $services->spaceConverter;
+        $this->channelInspector = $services->channelInspector;
+        $this->functions        = $services->functions;
+        $this->constructors     = $services->constructors;
     }
 
     public function getName(): string
@@ -224,7 +145,7 @@ final class SassColorModule extends AbstractModule
             return match ($name) {
                 'adjust-hue'             => $this->functions->adjustHue($positional, $context),
                 'adjust', 'adjust-color' => $this->functions->adjustColor($positional, $named),
-                'alpha', 'opacity'       => $this->channelReader->channelAlpha($positional, $name, $context),
+                'alpha', 'opacity'       => $this->channelInspector->channelAlpha($positional, $name, $context),
                 'blackness',
                 'blue',
                 'green',
@@ -234,7 +155,7 @@ final class SassColorModule extends AbstractModule
                 'saturation',
                 'whiteness'              => $this->deprecatedChannelFunction($name, $positional, $context),
                 'change', 'change-color' => $this->functions->changeColor($positional, $named),
-                'channel'                => $this->channelReader->channel($positional, $named),
+                'channel'                => $this->channelInspector->channel($positional, $named),
                 'color'                  => $this->constructors->colorFunction($positional),
                 'complement'             => $this->functions->complement($positional),
                 'darken',
@@ -247,10 +168,10 @@ final class SassColorModule extends AbstractModule
                 'hwb'                    => $this->constructors->hwbFunction($positional),
                 'ie-hex-str'             => $this->constructors->ieHexStr($positional),
                 'invert'                 => $this->functions->invert($positional, $named),
-                'is-in-gamut'            => $this->channelReader->isInGamut($positional),
-                'is-legacy'              => $this->channelReader->isLegacy($positional),
-                'is-missing'             => $this->channelReader->isMissing($positional),
-                'is-powerless'           => $this->channelReader->isPowerless($positional, $named),
+                'is-in-gamut'            => $this->channelInspector->isInGamut($positional),
+                'is-legacy'              => $this->channelInspector->isLegacy($positional),
+                'is-missing'             => $this->channelInspector->isMissing($positional),
+                'is-powerless'           => $this->channelInspector->isPowerless($positional, $named),
                 'lab'                    => $this->constructors->labFunction($positional),
                 'lch'                    => $this->constructors->lchFunction($positional),
                 'legacy-rgba'            => $this->constructors->legacyRgbaFunction($positional),
@@ -265,9 +186,9 @@ final class SassColorModule extends AbstractModule
                 'rgba'                   => $this->constructors->rgbaFunction($positional),
                 'same'                   => $this->functions->same($positional),
                 'scale', 'scale-color'   => $this->functions->scaleColor($positional, $named),
-                'space'                  => $this->channelReader->space($positional),
-                'to-gamut'               => $this->spaceInterop->toGamut($positional, $named),
-                'to-space'               => $this->spaceInterop->toSpace($positional),
+                'space'                  => $this->channelInspector->space($positional),
+                'to-gamut'               => $this->spaceConverter->toGamut($positional, $named),
+                'to-space'               => $this->spaceConverter->toSpace($positional),
                 default                  => throw new UnknownSassFunctionException('color', $name),
             };
         } finally {
@@ -281,21 +202,21 @@ final class SassColorModule extends AbstractModule
     private function deprecatedChannelFunction(string $name, array $positional, ?BuiltinCallContext $context): AstNode
     {
         return match ($name) {
-            'red', 'green', 'blue' => $this->channelReader->deprecatedChannelValue(
+            'red', 'green', 'blue' => $this->channelInspector->deprecatedChannelValue(
                 $positional,
                 'rgb',
                 $name,
                 $name,
                 $context,
             ),
-            'hue', 'saturation', 'lightness' => $this->channelReader->deprecatedChannelValue(
+            'hue', 'saturation', 'lightness' => $this->channelInspector->deprecatedChannelValue(
                 $positional,
                 'hsl',
                 $name,
                 $name,
                 $context,
             ),
-            'whiteness', 'blackness' => $this->channelReader->deprecatedChannelValue(
+            'whiteness', 'blackness' => $this->channelInspector->deprecatedChannelValue(
                 $positional,
                 'hwb',
                 $name,

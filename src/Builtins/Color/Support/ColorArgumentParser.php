@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Builtins\Color\Support;
 
-use Bugo\SCSS\Contracts\Color\ColorConverterInterface;
+use Bugo\Iris\Converters\SpaceConverter;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\NonFiniteNumberException;
@@ -15,7 +15,6 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Values\AstValueInspector;
-use Closure;
 
 use function array_merge;
 use function array_slice;
@@ -29,13 +28,7 @@ use const M_PI;
 
 final readonly class ColorArgumentParser
 {
-    /**
-     * @param Closure(string): string $errorCtx
-     */
-    public function __construct(
-        private ColorConverterInterface $colorSpaceConverter,
-        private Closure $errorCtx,
-    ) {}
+    public function __construct(private SpaceConverter $colorSpaceConverter, private ColorModuleContext $context) {}
 
     /**
      * @param array<int, AstNode> $positional
@@ -43,13 +36,13 @@ final readonly class ColorArgumentParser
     public function requireColor(array $positional, int $index, string $context): AstNode
     {
         if (! isset($positional[$index])) {
-            throw MissingFunctionArgumentsException::required(($this->errorCtx)($context), 'color');
+            throw MissingFunctionArgumentsException::required($this->context->errorCtx($context), 'color');
         }
 
         $value = $positional[$index];
 
         if (! ($value instanceof ColorNode || $value instanceof StringNode || $value instanceof FunctionNode)) {
-            throw new MissingFunctionArgumentsException(($this->errorCtx)($context), 'color arguments');
+            throw new MissingFunctionArgumentsException($this->context->errorCtx($context), 'color arguments');
         }
 
         return $value;
@@ -102,13 +95,10 @@ final readonly class ColorArgumentParser
     ): array {
         $arguments = $this->expandSingleSpaceListArgument($positional);
 
-        if ($this->isRelativeColorSyntax($arguments)) {
-            throw new DeferToCssFunctionException(
-                $this->callRef($context) . ' should be emitted as a CSS function.',
-            );
-        }
-
-        if ($this->hasUnresolvableArguments($arguments, $allowMissingChannels)) {
+        if (
+            $this->isRelativeColorSyntax($arguments)
+            || $this->hasUnresolvableArguments($arguments, $allowMissingChannels)
+        ) {
             throw new DeferToCssFunctionException(
                 $this->callRef($context) . ' should be emitted as a CSS function.',
             );
@@ -117,7 +107,7 @@ final readonly class ColorArgumentParser
         $arguments = $this->extractSlashAlpha($arguments);
 
         if (count($arguments) < $minArguments) {
-            throw MissingFunctionArgumentsException::count(($this->errorCtx)($context), $minArguments);
+            throw MissingFunctionArgumentsException::count($this->context->errorCtx($context), $minArguments);
         }
 
         return $arguments;
@@ -179,11 +169,14 @@ final readonly class ColorArgumentParser
     public function asNumber(?AstNode $value, string $context): float
     {
         if (! ($value instanceof NumberNode)) {
-            throw new MissingFunctionArgumentsException(($this->errorCtx)($context), 'number arguments');
+            throw new MissingFunctionArgumentsException(
+                $this->context->errorCtx($context),
+                'number arguments',
+            );
         }
 
         if (! is_finite((float) $value->value)) {
-            throw new NonFiniteNumberException(($this->errorCtx)($context));
+            throw new NonFiniteNumberException($this->context->errorCtx($context));
         }
 
         return (float) $value->value;
@@ -192,11 +185,14 @@ final readonly class ColorArgumentParser
     public function asHueAngle(?AstNode $value, string $context): float
     {
         if (! ($value instanceof NumberNode)) {
-            throw new MissingFunctionArgumentsException(($this->errorCtx)($context), 'number arguments');
+            throw new MissingFunctionArgumentsException(
+                $this->context->errorCtx($context),
+                'number arguments',
+            );
         }
 
         if (! is_finite((float) $value->value)) {
-            throw new NonFiniteNumberException(($this->errorCtx)($context));
+            throw new NonFiniteNumberException($this->context->errorCtx($context));
         }
 
         $v = (float) $value->value;
@@ -212,11 +208,14 @@ final readonly class ColorArgumentParser
     public function asAbsoluteChannel(?AstNode $value, string $context, float $range): float
     {
         if (! ($value instanceof NumberNode)) {
-            throw new MissingFunctionArgumentsException(($this->errorCtx)($context), 'number arguments');
+            throw new MissingFunctionArgumentsException(
+                $this->context->errorCtx($context),
+                'number arguments',
+            );
         }
 
         if (! is_finite((float) $value->value)) {
-            throw new NonFiniteNumberException(($this->errorCtx)($context));
+            throw new NonFiniteNumberException($this->context->errorCtx($context));
         }
 
         $v = (float) $value->value;
@@ -227,11 +226,14 @@ final readonly class ColorArgumentParser
     public function asColorChannel(?AstNode $value): float
     {
         if (! ($value instanceof NumberNode)) {
-            throw new MissingFunctionArgumentsException(($this->errorCtx)('color'), 'number arguments');
+            throw new MissingFunctionArgumentsException(
+                $this->context->errorCtx('color'),
+                'number arguments',
+            );
         }
 
         if (! is_finite((float) $value->value)) {
-            throw new NonFiniteNumberException(($this->errorCtx)('color'));
+            throw new NonFiniteNumberException($this->context->errorCtx('color'));
         }
 
         if ($value->unit === '%') {
@@ -244,7 +246,10 @@ final readonly class ColorArgumentParser
     public function asString(?AstNode $value, string $context): string
     {
         if (! ($value instanceof StringNode)) {
-            throw new MissingFunctionArgumentsException(($this->errorCtx)($context), 'string arguments');
+            throw new MissingFunctionArgumentsException(
+                $this->context->errorCtx($context),
+                'string arguments',
+            );
         }
 
         return strtolower($value->value);
@@ -255,11 +260,17 @@ final readonly class ColorArgumentParser
         $value = $this->unwrapCalcNumber($value) ?? $value;
 
         if (! ($value instanceof NumberNode)) {
-            throw new MissingFunctionArgumentsException(($this->errorCtx)($context), 'a percentage number');
+            throw new MissingFunctionArgumentsException(
+                $this->context->errorCtx($context),
+                'a percentage number',
+            );
         }
 
         if ($value->unit !== '%' && $value->unit !== null) {
-            throw new MissingFunctionArgumentsException(($this->errorCtx)($context), 'percentage values');
+            throw new MissingFunctionArgumentsException(
+                $this->context->errorCtx($context),
+                'percentage values',
+            );
         }
 
         return (float) $value->value;
@@ -346,7 +357,7 @@ final readonly class ColorArgumentParser
 
     public function callRef(string $context): string
     {
-        $ctx = ($this->errorCtx)($context);
+        $ctx = $this->context->errorCtx($context);
 
         return str_contains($ctx, '()') ? $ctx : $ctx . '()';
     }
