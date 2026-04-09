@@ -10,11 +10,14 @@ use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
+use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\States\OutputState;
+use Bugo\SCSS\Utils\DeferredChunk;
+use Bugo\SCSS\Utils\OutputChunk;
 use Tests\RuntimeFactory;
 
 it('handles @at-root blocks', function () {
@@ -38,22 +41,20 @@ it('defers escaped @at-root chunks into the current at-rule stack', function () 
     $runtime = RuntimeFactory::createRuntime();
     $ctx     = RuntimeFactory::context();
 
-    $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', [[
-        'type'    => 'directive',
-        'name'    => 'media',
-        'prelude' => 'screen',
-    ]]);
+    $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', [
+        AtRuleContextEntry::directive('media', 'screen'),
+    ]);
     $outputState = $runtime->render()->outputState();
-    $outputState->deferredAtRuleStack[] = [];
+    $outputState->deferral->atRuleStack[] = [];
 
     $node = new AtRootNode([
         new RuleNode('.outside', [new DeclarationNode('color', new StringNode('red'))]),
     ]);
 
     expect($runtime->atRule()->handleAtRoot($node, $ctx))->toBe('')
-        ->and($outputState->deferredAtRuleStack[0])->toHaveCount(1)
-        ->and($outputState->deferredAtRuleStack[0][0]['levels'])->toBe(1)
-        ->and($outputState->deferredAtRuleStack[0][0]['chunk'])->toContain('@media screen');
+        ->and($outputState->deferral->atRuleStack[0])->toHaveCount(1)
+        ->and($outputState->deferral->atRuleStack[0][0]->levels)->toBe(1)
+        ->and($outputState->deferral->atRuleStack[0][0]->chunk)->toContain('@media screen');
 });
 
 it('returns non-escaped @at-root chunks when a parent selector and root stack are present', function () {
@@ -62,7 +63,7 @@ it('returns non-escaped @at-root chunks when a parent selector and root stack ar
 
     $ctx->env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.host'));
     $outputState = $runtime->render()->outputState();
-    $outputState->deferredAtRuleStack[] = [];
+    $outputState->deferral->atRuleStack[] = [];
 
     $node = new AtRootNode([
         new RuleNode('.outside', [new DeclarationNode('color', new StringNode('red'))]),
@@ -72,7 +73,7 @@ it('returns non-escaped @at-root chunks when a parent selector and root stack ar
 
     expect($result)->toContain('.outside')
         ->toContain('color: red')
-        ->and($outputState->deferredAtRuleStack[0])->toBe([]);
+        ->and($outputState->deferral->atRuleStack[0])->toBe([]);
 });
 
 it('returns non-escaped @at-root chunks when a parent selector exists but root deferral is unavailable', function () {
@@ -94,14 +95,9 @@ it('defers non-escaped @at-root chunks into the deferred root stack when a paren
     $ctx->env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.host'));
 
     $savedPosition = [1, 0, 0];
-    $deferredChunk = [
-        'chunk'      => '.outside { color: red; }',
-        'baseLine'   => 1,
-        'baseColumn' => 0,
-        'mappings'   => [],
-    ];
+    $deferredChunk = new DeferredChunk('.outside { color: red; }', 1, 0, []);
     $outputState = new OutputState();
-    $outputState->deferredAtRootStack[] = [];
+    $outputState->deferral->atRootStack[] = [];
 
     $dispatcher = mock(NodeDispatcherInterface::class);
     $evaluation = mock(Evaluator::class);
@@ -117,11 +113,21 @@ it('defers non-escaped @at-root chunks into the deferred root stack when a paren
         ->andReturn($deferredChunk);
     $render->shouldReceive('outputState')->once()->andReturn($outputState);
     $render->shouldReceive('restorePosition')->once()->with($savedPosition);
+    $render->shouldReceive('appendOutputChunk')->zeroOrMoreTimes()->withArgs(
+        /**
+         * @param string $output
+         * @param OutputChunk $chunk
+         * @return bool
+         */
+        static function (string $output, OutputChunk $chunk): bool {
+            return $chunk->content() === '.outside { color: red; }';
+        },
+    );
 
     $handler = new AtRuleNodeHandler($dispatcher, $evaluation, $render, $selector);
 
     expect($handler->handleAtRoot(new AtRootNode(), $ctx))->toBe('')
-        ->and($outputState->deferredAtRootStack[0])->toBe([$deferredChunk]);
+        ->and($outputState->deferral->atRootStack[0])->toBe([$deferredChunk]);
 
     Mockery::close();
 });
@@ -259,10 +265,9 @@ it('wraps @content in the parent rule when the current at-rule stack requires it
         new DeclarationNode('color', new StringNode('red')),
     ]);
     $scope->setVariableLocal('__parent_selector', new StringNode('.host'));
-    $scope->setVariableLocal('__at_rule_stack', [[
-        'type'      => 'supports',
-        'condition' => '(display: grid)',
-    ]]);
+    $scope->setVariableLocal('__at_rule_stack', [
+        AtRuleContextEntry::supports('(display: grid)'),
+    ]);
 
     $expected = /** @lang text */ <<<'CSS'
     .host {

@@ -16,6 +16,7 @@ use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\MixinRefNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
@@ -284,8 +285,8 @@ describe('SassMetaModule', function () {
 
     it('evaluates inspect', function () {
         $value = new MapNode([
-            ['key' => new StringNode('a'), 'value' => new NumberNode(1)],
-            ['key' => new StringNode('b'), 'value' => new ListNode([new StringNode('x'), new StringNode('y')], 'comma')],
+            new MapPair(new StringNode('a'), new NumberNode(1)),
+            new MapPair(new StringNode('b'), new ListNode([new StringNode('x'), new StringNode('y')], 'comma')),
         ]);
         $result = $this->module->call('inspect', [$value], []);
 
@@ -299,7 +300,7 @@ describe('SassMetaModule', function () {
     });
 
     it('evaluates keywords for map and non-map values', function () {
-        $map = new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]);
+        $map = new MapNode([new MapPair(new StringNode('a'), new NumberNode(1))]);
         $mapResult = $this->module->call('keywords', [$map], []);
         $emptyResult = $this->module->call('keywords', [new ListNode([])], []);
 
@@ -317,8 +318,8 @@ describe('SassMetaModule', function () {
 
         expect($result)->toBeInstanceOf(MapNode::class)
             ->and(count($result->pairs))->toBe(2)
-            ->and($result->pairs[0]['key']->value)->toBe('alpha')
-            ->and($result->pairs[1]['key']->value)->toBe('beta');
+            ->and($result->pairs[0]->key->value)->toBe('alpha')
+            ->and($result->pairs[1]->key->value)->toBe('beta');
     });
 
     it('requires arguments for keywords and type-of', function () {
@@ -344,8 +345,8 @@ describe('SassMetaModule', function () {
         $result = $this->module->call('module-functions', [new StringNode('list')], [], $this->context);
 
         expect($result)->toBeInstanceOf(MapNode::class)
-            ->and($result->pairs[0]['key']->value)->toBe('append')
-            ->and($result->pairs[0]['value'])->toBeInstanceOf(FunctionNode::class);
+            ->and($result->pairs[0]->key->value)->toBe('append')
+            ->and($result->pairs[0]->value)->toBeInstanceOf(FunctionNode::class);
     });
 
     it('throws for unknown namespaces in module export helpers', function () {
@@ -365,7 +366,7 @@ describe('SassMetaModule', function () {
         $mixins = $this->module->call('module-mixins', [new StringNode('functions')], [], $this->context);
 
         expect($mixins)->toBeInstanceOf(MapNode::class)
-            ->and($mixins->pairs[0]['key']->value)->toBe('highlight');
+            ->and($mixins->pairs[0]->key->value)->toBe('highlight');
     });
 
     it('evaluates module-variables', function () {
@@ -378,7 +379,7 @@ describe('SassMetaModule', function () {
 
         expect($result)->toBeInstanceOf(MapNode::class)
             ->and(count($result->pairs))->toBe(1)
-            ->and($result->pairs[0]['key']->value)->toBe('primary-color');
+            ->and($result->pairs[0]->key->value)->toBe('primary-color');
     });
 
     it('evaluates type-of variants', function () {
@@ -416,12 +417,12 @@ describe('SassMetaModule', function () {
         $exists = $this->module->call('variable-exists', [new StringNode('answer')], ['module' => new StringNode('helpers')], $this->context);
 
         expect($functions)->toBeInstanceOf(MapNode::class)
-            ->and($functions->pairs[0]['key']->value)->toBe('custom-fn')
-            ->and($functions->pairs[0]['value'])->toBeInstanceOf(FunctionNode::class)
+            ->and($functions->pairs[0]->key->value)->toBe('custom-fn')
+            ->and($functions->pairs[0]->value)->toBeInstanceOf(FunctionNode::class)
             ->and($mixins)->toBeInstanceOf(MapNode::class)
-            ->and($mixins->pairs[0]['key']->value)->toBe('custom-mixin')
+            ->and($mixins->pairs[0]->key->value)->toBe('custom-mixin')
             ->and($variables)->toBeInstanceOf(MapNode::class)
-            ->and($variables->pairs[0]['key']->value)->toBe('answer')
+            ->and($variables->pairs[0]->key->value)->toBe('answer')
             ->and($exists->value)->toBeTrue();
     });
 

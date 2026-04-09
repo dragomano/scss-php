@@ -8,6 +8,7 @@ use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -116,29 +117,29 @@ describe('AstValueComparator', function () {
         });
 
         it('compares equal maps', function () {
-            $a = new MapNode([['key' => new StringNode('k'), 'value' => new StringNode('v')]]);
-            $b = new MapNode([['key' => new StringNode('k'), 'value' => new StringNode('v')]]);
+            $a = new MapNode([new MapPair(new StringNode('k'), new StringNode('v'))]);
+            $b = new MapNode([new MapPair(new StringNode('k'), new StringNode('v'))]);
 
             expect(AstValueComparator::equals($a, $b))->toBeTrue();
         });
 
         it('compares maps with different pair counts as unequal', function () {
-            $a = new MapNode([['key' => new StringNode('k'), 'value' => new StringNode('v')]]);
+            $a = new MapNode([new MapPair(new StringNode('k'), new StringNode('v'))]);
             $b = new MapNode([]);
 
             expect(AstValueComparator::equals($a, $b))->toBeFalse();
         });
 
         it('compares maps with different keys as unequal', function () {
-            $a = new MapNode([['key' => new StringNode('k1'), 'value' => new StringNode('v')]]);
-            $b = new MapNode([['key' => new StringNode('k2'), 'value' => new StringNode('v')]]);
+            $a = new MapNode([new MapPair(new StringNode('k1'), new StringNode('v'))]);
+            $b = new MapNode([new MapPair(new StringNode('k2'), new StringNode('v'))]);
 
             expect(AstValueComparator::equals($a, $b))->toBeFalse();
         });
 
         it('compares maps with different values as unequal', function () {
-            $a = new MapNode([['key' => new StringNode('k'), 'value' => new StringNode('v1')]]);
-            $b = new MapNode([['key' => new StringNode('k'), 'value' => new StringNode('v2')]]);
+            $a = new MapNode([new MapPair(new StringNode('k'), new StringNode('v1'))]);
+            $b = new MapNode([new MapPair(new StringNode('k'), new StringNode('v2'))]);
 
             expect(AstValueComparator::equals($a, $b))->toBeFalse();
         });

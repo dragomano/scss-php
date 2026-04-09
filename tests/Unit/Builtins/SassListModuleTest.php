@@ -13,6 +13,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -94,8 +95,8 @@ describe('SassListModule', function () {
     it('counts map pairs for length', function () {
         $result = $this->module->call('length', [
             new MapNode([
-                ['key' => new StringNode('width'), 'value' => new NumberNode(10, 'px')],
-                ['key' => new StringNode('height'), 'value' => new NumberNode(20, 'px')],
+                new MapPair(new StringNode('width'), new NumberNode(10, 'px')),
+                new MapPair(new StringNode('height'), new NumberNode(20, 'px')),
             ]),
         ], []);
 
@@ -245,7 +246,7 @@ describe('SassListModule', function () {
         )]);
 
         $map = $this->accessor->callMethod('describeValue', [new MapNode([
-            ['key' => new StringNode('k'), 'value' => new NumberNode(1)],
+            new MapPair(new StringNode('k'), new NumberNode(1)),
         ])]);
 
         $fallback = $this->accessor->callMethod('describeValue', [new class extends AstNode {}]);

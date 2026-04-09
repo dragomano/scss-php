@@ -9,6 +9,7 @@ use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -194,8 +195,8 @@ it('returns an empty configuration for meta.load-css when the with argument is n
 it('extracts string keyed configuration entries for meta.load-css maps', function () {
     $configuration = $this->mixinTest->callMethod('metaLoadCssConfiguration', [
         new MapNode([
-            ['key' => new StringNode('primary'), 'value' => new StringNode('red')],
-            ['key' => new NumberNode(1), 'value' => new StringNode('ignored')],
+            new MapPair(new StringNode('primary'), new StringNode('red')),
+            new MapPair(new NumberNode(1), new StringNode('ignored')),
         ]),
     ]);
 

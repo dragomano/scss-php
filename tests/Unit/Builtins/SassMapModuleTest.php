@@ -5,9 +5,11 @@ declare(strict_types=1);
 use Bugo\SCSS\Builtins\SassMapModule;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -19,10 +21,10 @@ describe('SassMapModule', function () {
         $this->module   = new SassMapModule();
         $this->accessor = new ReflectionAccessor($this->module);
         $this->map      = new MapNode([
-            ['key' => new StringNode('a'), 'value' => new NumberNode(1)],
-            ['key' => new StringNode('nested'), 'value' => new MapNode([
-                ['key' => new StringNode('b'), 'value' => new NumberNode(2)],
-            ])],
+            new MapPair(new StringNode('a'), new NumberNode(1)),
+            new MapPair(new StringNode('nested'), new MapNode([
+                new MapPair(new StringNode('b'), new NumberNode(2)),
+            ])),
         ]);
     });
 
@@ -47,21 +49,21 @@ describe('SassMapModule', function () {
 
     it('evaluates deep-merge', function () {
         $left = new MapNode([
-            ['key' => new StringNode('a'), 'value' => new MapNode([
-                ['key' => new StringNode('x'), 'value' => new NumberNode(1)],
-            ])],
+            new MapPair(new StringNode('a'), new MapNode([
+                new MapPair(new StringNode('x'), new NumberNode(1)),
+            ])),
         ]);
         $right = new MapNode([
-            ['key' => new StringNode('a'), 'value' => new MapNode([
-                ['key' => new StringNode('y'), 'value' => new NumberNode(2)],
-            ])],
+            new MapPair(new StringNode('a'), new MapNode([
+                new MapPair(new StringNode('y'), new NumberNode(2)),
+            ])),
         ]);
 
         $result = $this->module->call('deep-merge', [$left, $right], []);
 
         expect($result)->toBeInstanceOf(MapNode::class)
-            ->and($result->pairs[0]['value'])->toBeInstanceOf(MapNode::class)
-            ->and(count($result->pairs[0]['value']->pairs))->toBe(2);
+            ->and($result->pairs[0]->value)->toBeInstanceOf(MapNode::class)
+            ->and(count($result->pairs[0]->value->pairs))->toBe(2);
     });
 
     it('evaluates deep-remove', function () {
@@ -100,24 +102,24 @@ describe('SassMapModule', function () {
     });
 
     it('evaluates merge (two args)', function () {
-        $right  = new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(9)]]);
+        $right  = new MapNode([new MapPair(new StringNode('a'), new NumberNode(9))]);
         $result = $this->module->call('merge', [$this->map, $right], []);
 
         expect($result)->toBeInstanceOf(MapNode::class)
-            ->and($result->pairs[0]['value']->value)->toBe(9);
+            ->and($result->pairs[0]->value->value)->toBe(9);
     });
 
     it('evaluates merge (variadic path)', function () {
         $patch = new MapNode([
-            ['key' => new StringNode('b'), 'value' => new NumberNode(7)],
-            ['key' => new StringNode('c'), 'value' => new NumberNode(8)],
+            new MapPair(new StringNode('b'), new NumberNode(7)),
+            new MapPair(new StringNode('c'), new NumberNode(8)),
         ]);
 
         $result = $this->module->call('merge', [$this->map, new StringNode('nested'), $patch], []);
 
         expect($result)->toBeInstanceOf(MapNode::class)
-            ->and($result->pairs[1]['value'])->toBeInstanceOf(MapNode::class)
-            ->and(count($result->pairs[1]['value']->pairs))->toBe(2);
+            ->and($result->pairs[1]->value)->toBeInstanceOf(MapNode::class)
+            ->and(count($result->pairs[1]->value->pairs))->toBe(2);
     });
 
     it('evaluates remove', function () {
@@ -135,7 +137,7 @@ describe('SassMapModule', function () {
     it('evaluates set', function () {
         $result = $this->module->call('set', [$this->map, new StringNode('nested'), new StringNode('x'), new NumberNode(5)], []);
         expect($result)->toBeInstanceOf(MapNode::class)
-            ->and($result->pairs[1]['value'])->toBeInstanceOf(MapNode::class);
+            ->and($result->pairs[1]->value)->toBeInstanceOf(MapNode::class);
     });
 
     it('evaluates values', function () {
@@ -196,19 +198,19 @@ describe('SassMapModule', function () {
 
     it('replaces scalar path values with the provided map in variadic merge', function () {
         $patch = new MapNode([
-            ['key' => new StringNode('x'), 'value' => new NumberNode(9)],
+            new MapPair(new StringNode('x'), new NumberNode(9)),
         ]);
 
         $result = $this->module->call('merge', [$this->map, new StringNode('a'), $patch], []);
 
         expect($result)->toBeInstanceOf(MapNode::class)
-            ->and($result->pairs[0]['value'])->toBeInstanceOf(MapNode::class)
-            ->and($result->pairs[0]['value']->pairs[0]['value']->value)->toBe(9);
+            ->and($result->pairs[0]->value)->toBeInstanceOf(MapNode::class)
+            ->and($result->pairs[0]->value->pairs[0]->value->value)->toBe(9);
     });
 
     it('covers merge() guard for non-integer last variadic index', function () {
         $patch = new MapNode([
-            ['key' => new StringNode('x'), 'value' => new NumberNode(9)],
+            new MapPair(new StringNode('x'), new NumberNode(9)),
         ]);
 
         expect(fn() => $this->accessor->callMethod('merge', [[
@@ -287,14 +289,14 @@ describe('SassMapModule', function () {
         ], []);
 
         expect($throughScalar)->toBeInstanceOf(MapNode::class)
-            ->and($throughScalar->pairs[0]['value'])->toBeInstanceOf(MapNode::class)
-            ->and($throughScalar->pairs[0]['value']->pairs[0]['key']->value)->toBe('x')
-            ->and($throughScalar->pairs[0]['value']->pairs[0]['value']->value)->toBe(5)
+            ->and($throughScalar->pairs[0]->value)->toBeInstanceOf(MapNode::class)
+            ->and($throughScalar->pairs[0]->value->pairs[0]->key->value)->toBe('x')
+            ->and($throughScalar->pairs[0]->value->pairs[0]->value->value)->toBe(5)
             ->and($throughMissing)->toBeInstanceOf(MapNode::class)
-            ->and($throughMissing->pairs[2]['key']->value)->toBe('new')
-            ->and($throughMissing->pairs[2]['value'])->toBeInstanceOf(MapNode::class)
-            ->and($throughMissing->pairs[2]['value']->pairs[0]['key']->value)->toBe('leaf')
-            ->and($throughMissing->pairs[2]['value']->pairs[0]['value']->value)->toBe(8);
+            ->and($throughMissing->pairs[2]->key->value)->toBe('new')
+            ->and($throughMissing->pairs[2]->value)->toBeInstanceOf(MapNode::class)
+            ->and($throughMissing->pairs[2]->value->pairs[0]->key->value)->toBe('leaf')
+            ->and($throughMissing->pairs[2]->value->pairs[0]->value->value)->toBe(8);
     });
 
     it('uses raw arguments in global alias deprecation suggestions', function () {

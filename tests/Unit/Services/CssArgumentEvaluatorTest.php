@@ -9,6 +9,7 @@ use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
@@ -155,7 +156,7 @@ describe('CssArgumentEvaluator', function () {
 
     it('expands spread maps into named arguments and rejects non-string keys', function () {
         $expanded = $this->evaluator->expandSpreadValue(new MapNode([
-            ['key' => new StringNode('width'), 'value' => new NumberNode(10)],
+            new MapPair(new StringNode('width'), new NumberNode(10)),
         ]));
 
         expect($expanded)->toHaveCount(1)
@@ -171,7 +172,7 @@ describe('CssArgumentEvaluator', function () {
 
         expect($namedValue->value)->toBe(10)
             ->and(fn() => $this->evaluator->expandSpreadValue(new MapNode([
-                ['key' => new NumberNode(1), 'value' => new StringNode('bad')],
+                new MapPair(new NumberNode(1), new StringNode('bad')),
             ])))->toThrow(SassErrorException::class);
     });
 
@@ -194,10 +195,10 @@ describe('CssArgumentEvaluator', function () {
                 ),
             ], 'comma'),
             new MapNode([
-                [
-                    'key'   => new StringNode('primary'),
-                    'value' => new NamedArgumentNode('accent', new StringNode('navy')),
-                ],
+                new MapPair(
+                    new StringNode('primary'),
+                    new NamedArgumentNode('accent', new StringNode('navy')),
+                ),
             ]),
         ]);
 
@@ -235,10 +236,10 @@ describe('CssArgumentEvaluator', function () {
 
         /** @var MapNode $map */
         $map = $arguments[1];
-        expect($map->pairs[0]['value'])->toBeInstanceOf(NamedArgumentNode::class);
+        expect($map->pairs[0]->value)->toBeInstanceOf(NamedArgumentNode::class);
 
         /** @var NamedArgumentNode $named */
-        $named = $map->pairs[0]['value'];
+        $named = $map->pairs[0]->value;
         expect($named->value)->toBeInstanceOf(ColorNode::class);
 
         /** @var ColorNode $namedValue */
@@ -265,18 +266,18 @@ describe('CssArgumentEvaluator', function () {
             ], 'space')],
         );
         $map = new MapNode([
-            [
-                'key' => new ListNode([
+            new MapPair(
+                new ListNode([
                     new VariableReferenceNode('fallback'),
                     new StringNode('and'),
                     new StringNode('literal'),
                 ], 'space'),
-                'value' => new ListNode([
+                new ListNode([
                     new VariableReferenceNode('fallback'),
                     new StringNode('or'),
                     new StringNode('literal'),
                 ], 'space'),
-            ],
+            ),
         ]);
         $named = new NamedArgumentNode('accent', new ListNode([
             new VariableReferenceNode('fallback'),
@@ -308,12 +309,12 @@ describe('CssArgumentEvaluator', function () {
             ->and($evaluatedArgumentList->keywords['tone']->items[0])->toBeInstanceOf(StringNode::class)
             ->and($evaluatedArgumentList->keywords['tone']->items[0]->value)->toBe('resolved')
             ->and($evaluatedMap)->toBeInstanceOf(MapNode::class)
-            ->and($evaluatedMap->pairs[0]['key'])->toBeInstanceOf(ListNode::class)
-            ->and($evaluatedMap->pairs[0]['key']->items[0])->toBeInstanceOf(StringNode::class)
-            ->and($evaluatedMap->pairs[0]['key']->items[0]->value)->toBe('resolved')
-            ->and($evaluatedMap->pairs[0]['value'])->toBeInstanceOf(ListNode::class)
-            ->and($evaluatedMap->pairs[0]['value']->items[0])->toBeInstanceOf(StringNode::class)
-            ->and($evaluatedMap->pairs[0]['value']->items[0]->value)->toBe('resolved')
+            ->and($evaluatedMap->pairs[0]->key)->toBeInstanceOf(ListNode::class)
+            ->and($evaluatedMap->pairs[0]->key->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($evaluatedMap->pairs[0]->key->items[0]->value)->toBe('resolved')
+            ->and($evaluatedMap->pairs[0]->value)->toBeInstanceOf(ListNode::class)
+            ->and($evaluatedMap->pairs[0]->value->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($evaluatedMap->pairs[0]->value->items[0]->value)->toBe('resolved')
             ->and($evaluatedNamed)->toBeInstanceOf(NamedArgumentNode::class)
             ->and($evaluatedNamed->value)->toBeInstanceOf(ListNode::class)
             ->and($evaluatedNamed->value->items[0])->toBeInstanceOf(StringNode::class)
@@ -336,7 +337,7 @@ describe('CssArgumentEvaluator', function () {
             ['tone' => new StringNode('beta')],
         );
         $map = new MapNode([
-            ['key' => new StringNode('alpha'), 'value' => new StringNode('beta')],
+            new MapPair(new StringNode('alpha'), new StringNode('beta')),
         ]);
         $named = new NamedArgumentNode('accent', new ListNode([new StringNode('or')], 'space'));
 
@@ -368,7 +369,7 @@ describe('CssArgumentEvaluator', function () {
         );
         $named = new NamedArgumentNode('accent', new ListNode([new StringNode('or')], 'space'));
         $map = new MapNode([
-            ['key' => new ListNode([new StringNode('and')], 'space'), 'value' => new StringNode('plain')],
+            new MapPair(new ListNode([new StringNode('and')], 'space'), new StringNode('plain')),
         ]);
 
         expect($this->accessor->callMethod('shouldPreserveCssArgument', [$list]))->toBeTrue()
@@ -384,14 +385,14 @@ describe('CssArgumentEvaluator', function () {
         $env->getCurrentScope()->setVariable('value', new StringNode('resolved-value'));
 
         [$pairs, $changed] = $this->accessor->callMethod('evaluateFallbackPairs', [[
-            ['key' => new VariableReferenceNode('key'), 'value' => new VariableReferenceNode('value')],
+            new MapPair(new VariableReferenceNode('key'), new VariableReferenceNode('value')),
         ], $env]);
 
         expect($changed)->toBeTrue()
-            ->and($pairs[0]['key'])->toBeInstanceOf(StringNode::class)
-            ->and($pairs[0]['key']->value)->toBe('resolved-key')
-            ->and($pairs[0]['value'])->toBeInstanceOf(StringNode::class)
-            ->and($pairs[0]['value']->value)->toBe('resolved-value');
+            ->and($pairs[0]->key)->toBeInstanceOf(StringNode::class)
+            ->and($pairs[0]->key->value)->toBe('resolved-key')
+            ->and($pairs[0]->value)->toBeInstanceOf(StringNode::class)
+            ->and($pairs[0]->value->value)->toBe('resolved-value');
     });
 
     it('returns null for empty named colors', function () {

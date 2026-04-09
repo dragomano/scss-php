@@ -14,6 +14,7 @@ use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\MixinRefNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
@@ -311,8 +312,8 @@ it('evaluates map keys and values lazily', function () {
     $unchangedValue = new StringNode('kept-value');
 
     $map = new MapNode([
-        ['key' => new VariableReferenceNode('key'), 'value' => new VariableReferenceNode('value')],
-        ['key' => $unchangedKey, 'value' => $unchangedValue],
+        new MapPair(new VariableReferenceNode('key'), new VariableReferenceNode('value')),
+        new MapPair($unchangedKey, $unchangedValue),
     ]);
 
     $result = $runtime->evaluation()->evaluateValue($map, $env);
@@ -324,15 +325,15 @@ it('evaluates map keys and values lazily', function () {
         throw new RuntimeException('Expected result to be MapNode.');
     }
 
-    expect($result->pairs[0]['key'])->toBeInstanceOf(StringNode::class)
-        ->and($result->pairs[0]['value'])->toBeInstanceOf(StringNode::class)
-        ->and($result->pairs[1]['key'])->toBe($unchangedKey)
-        ->and($result->pairs[1]['value'])->toBe($unchangedValue);
+    expect($result->pairs[0]->key)->toBeInstanceOf(StringNode::class)
+        ->and($result->pairs[0]->value)->toBeInstanceOf(StringNode::class)
+        ->and($result->pairs[1]->key)->toBe($unchangedKey)
+        ->and($result->pairs[1]->value)->toBe($unchangedValue);
 
     /** @var StringNode $firstKey */
-    $firstKey = $result->pairs[0]['key'];
+    $firstKey = $result->pairs[0]->key;
     /** @var StringNode $firstValue */
-    $firstValue = $result->pairs[0]['value'];
+    $firstValue = $result->pairs[0]->value;
 
     expect($firstKey->value)->toBe('resolved-key')
         ->and($firstValue->value)->toBe('resolved-value');

@@ -7,6 +7,7 @@ use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -96,15 +97,15 @@ describe('Condition', function () {
                 $this->env,
             ))->toBeFalse()
             ->and($this->condition->compare(
-                new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]),
+                new MapNode([new MapPair(new StringNode('a'), new NumberNode(1))]),
                 '==',
-                new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]),
+                new MapNode([new MapPair(new StringNode('a'), new NumberNode(1))]),
                 $this->env,
             ))->toBeTrue()
             ->and($this->condition->compare(
-                new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]),
+                new MapNode([new MapPair(new StringNode('a'), new NumberNode(1))]),
                 '==',
-                new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(2)]]),
+                new MapNode([new MapPair(new StringNode('a'), new NumberNode(2))]),
                 $this->env,
             ))->toBeFalse()
             ->and($this->condition->compare($sharedFunction, '==', $sharedFunction, $this->env))->toBeTrue()
@@ -151,18 +152,18 @@ describe('Condition', function () {
                 $this->env,
             ))->toBeFalse()
             ->and($this->condition->compare(
-                new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]),
+                new MapNode([new MapPair(new StringNode('a'), new NumberNode(1))]),
                 '==',
                 new MapNode([
-                    ['key' => new StringNode('a'), 'value' => new NumberNode(1)],
-                    ['key' => new StringNode('b'), 'value' => new NumberNode(2)],
+                    new MapPair(new StringNode('a'), new NumberNode(1)),
+                    new MapPair(new StringNode('b'), new NumberNode(2)),
                 ]),
                 $this->env,
             ))->toBeFalse()
             ->and($this->condition->compare(
-                new MapNode([['key' => new StringNode('a'), 'value' => new NumberNode(1)]]),
+                new MapNode([new MapPair(new StringNode('a'), new NumberNode(1))]),
                 '==',
-                new MapNode([['key' => new StringNode('b'), 'value' => new NumberNode(1)]]),
+                new MapNode([new MapPair(new StringNode('b'), new NumberNode(1))]),
                 $this->env,
             ))->toBeFalse();
     });

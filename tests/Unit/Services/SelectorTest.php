@@ -10,6 +10,8 @@ use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
+use Bugo\SCSS\Runtime\AtRuleContextEntry;
+use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Utils\SelectorTokenizer;
@@ -43,9 +45,9 @@ describe('Selector service', function () {
                 ['type' => 'supports'],
             ]);
 
-            expect($this->selector->getCurrentAtRuleStack($env))->toBe([
-                ['type' => 'directive', 'name' => 'screen', 'prelude' => '(MIN-WIDTH: 10PX)'],
-                ['type' => 'supports', 'condition' => 'display:grid'],
+            expect($this->selector->getCurrentAtRuleStack($env))->toEqual([
+                AtRuleContextEntry::directive('screen', '(MIN-WIDTH: 10PX)'),
+                AtRuleContextEntry::supports('display:grid'),
             ]);
         });
     });
@@ -206,39 +208,33 @@ describe('Selector service', function () {
 
     describe('drainDeferredAtRuleEscapes()', function () {
         it('skips empty deferred chunks', function () {
-            $this->ctx->outputState->deferredAtRuleStack = [[
-                ['levels' => 1, 'chunk' => ''],
-            ]];
+            $this->ctx->outputState->deferral->atRuleStack = [[new DeferredAtRuleChunk(1, '')]];
 
             expect($this->selector->drainDeferredAtRuleEscapes())->toBe([])
-                ->and($this->ctx->outputState->deferredAtRuleStack)->toBe([]);
+                ->and($this->ctx->outputState->deferral->atRuleStack)->toBe([]);
         });
 
         it('moves deeper deferred chunks to the parent stack level', function () {
-            $this->ctx->outputState->deferredAtRuleStack = [
+            $this->ctx->outputState->deferral->atRuleStack = [
                 [],
                 [
-                    ['levels' => 2, 'chunk' => 'nested'],
+                    new DeferredAtRuleChunk(2, 'nested'),
                 ],
             ];
 
             $result = $this->selector->drainDeferredAtRuleEscapes();
 
             expect($result)->toBe([])
-                ->and($this->ctx->outputState->deferredAtRuleStack)->toBe([
-                    [
-                        ['levels' => 1, 'chunk' => 'nested'],
-                    ],
+                ->and($this->ctx->outputState->deferral->atRuleStack)->toEqual([
+                    [new DeferredAtRuleChunk(1, 'nested')],
                 ]);
         });
 
         it('returns deferred chunks outside when no parent at-rule level exists', function () {
-            $this->ctx->outputState->deferredAtRuleStack = [[
-                ['levels' => 2, 'chunk' => 'outside'],
-            ]];
+            $this->ctx->outputState->deferral->atRuleStack = [[new DeferredAtRuleChunk(2, 'outside')]];
 
             expect($this->selector->drainDeferredAtRuleEscapes())->toBe(['outside'])
-                ->and($this->ctx->outputState->deferredAtRuleStack)->toBe([]);
+                ->and($this->ctx->outputState->deferral->atRuleStack)->toBe([]);
         });
     });
 
@@ -271,6 +267,7 @@ describe('Selector service', function () {
                 $this->runtime->text(),
                 new SelectorTokenizer(),
                 $this->runtime->dispatcher(),
+                $this->runtime->extends(),
                 function ($node, Environment $env) {
                     if ($node instanceof StringNode && $node->value === 'nullish') {
                         return new StringNode('nullish');
@@ -345,29 +342,38 @@ describe('Selector service', function () {
         });
 
         it('returns original stack when at-root query rules normalize to an empty list', function () {
-            $stack = [['type' => 'supports', 'condition' => '(display: grid)']];
+            $stack = [AtRuleContextEntry::supports('(display: grid)')];
 
             expect($this->accessor->callMethod('filterAtRootStackByQuery', [$stack, 'with', [' ', '']]))
                 ->toBe($stack);
         });
 
         it('matches supports entries for at-root query rules', function () {
-            $entry = ['type' => 'supports', 'condition' => '(display: grid)'];
+            $entry = AtRuleContextEntry::supports('(display: grid)');
 
             expect($this->accessor->callMethod('matchesAtRootQueryRule', [$entry, ['supports']]))->toBeTrue();
         });
 
+        it('uses empty prelude when prelude key is absent in array directive entry', function () {
+            $result = $this->accessor->callMethod('normalizeAtRuleStackEntry', [
+                ['type' => 'directive', 'name' => 'media'],
+            ]);
+
+            expect($result)->toBeInstanceOf(AtRuleContextEntry::class)
+                ->and($result->prelude)->toBe('');
+        });
+
         it('handles at-root rule matching and rule context flags', function () {
             expect($this->accessor->callMethod('matchesAtRootQueryRule', [
-                ['type' => 'other'],
+                AtRuleContextEntry::directive('other'),
                 ['supports'],
             ]))->toBeFalse()
                 ->and($this->accessor->callMethod('matchesAtRootQueryRule', [
-                    ['type' => 'directive', 'name' => 'media'],
+                    AtRuleContextEntry::directive('media'),
                     ['media'],
                 ]))->toBeTrue()
                 ->and($this->accessor->callMethod('matchesAtRootQueryRule', [
-                    ['type' => 'directive', 'name' => 'font-face'],
+                    AtRuleContextEntry::directive('font-face'),
                     ['supports'],
                 ]))->toBeFalse()
                 ->and($this->accessor->callMethod('shouldKeepAtRootRuleContext', ['with', [' ', '']]))->toBeFalse()
@@ -383,7 +389,7 @@ describe('Selector service', function () {
             $normalizedAtRoot = $this->accessor->callMethod('normalizeAtRootChild', [$atRoot, '.parent', true]);
             $wrappedDecl = $this->accessor->callMethod('normalizeAtRootChild', [$decl, '.parent', true]);
             $wrappedStack = $this->accessor->callMethod('wrapNodeWithAtRuleStack', [$decl, [
-                ['type' => 'supports', 'condition' => '(display: grid)'],
+                AtRuleContextEntry::supports('(display: grid)'),
             ]]);
 
             expect($normalizedRule)->toBe($rule)

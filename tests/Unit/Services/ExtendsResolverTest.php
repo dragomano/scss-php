@@ -20,14 +20,13 @@ use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\ExtendsResolver;
 use Bugo\SCSS\Services\Text;
-use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 use Tests\ReflectionAccessor;
 
 describe('ExtendsResolver', function () {
     beforeEach(function () {
         $this->ctx = new CompilerContext();
-        $this->iterationValues = [];
+        $this->iterationValues  = [];
         $this->conditionResults = [];
 
         $parser = new class implements ParserInterface {
@@ -40,6 +39,7 @@ describe('ExtendsResolver', function () {
         };
 
         $evaluateValue = static fn(AstNode $node, Environment $env): AstNode => $node;
+
         $format = static function (AstNode $node, Environment $env): string {
             if ($node instanceof StringNode) {
                 return $node->value;
@@ -58,8 +58,6 @@ describe('ExtendsResolver', function () {
             $this->ctx,
             $text,
             new SelectorTokenizer(),
-            static fn(string $selector): array => SelectorHelper::splitList($selector, false),
-            static fn(string $selector, string $parent): string => str_replace('&', $parent, $selector),
             $evaluateValue,
             fn(string $condition, Environment $env): bool => $this->conditionResults[$condition] ?? false,
             function (AstNode $node, Environment $env): bool {
@@ -118,7 +116,7 @@ describe('ExtendsResolver', function () {
 
         $this->resolver->collectExtends($node, new Environment());
 
-        expect($this->ctx->outputState->pendingExtends)->toBe([
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([
             [
                 'target' => '%picked-target',
                 'source' => '.picked',
@@ -140,7 +138,7 @@ describe('ExtendsResolver', function () {
         $this->resolver->registerExtend('', '.source');
         $this->resolver->registerExtend('.target', '');
 
-        expect($this->ctx->outputState->extendMap)->toBe([])
+        expect($this->ctx->outputState->extends->extendMap)->toBe([])
             ->and($this->resolver->extractSimpleExtendTargetSelectors('   '))->toBe([]);
     });
 
@@ -162,5 +160,62 @@ describe('ExtendsResolver', function () {
             ->toBeNull()
             ->and($this->accessor->callMethod('weaveFallbackExtendedSelector', ['.parent', '.child', '.scope .item']))
             ->toBeNull();
+    });
+
+    it('skips empty selector parts when collecting extends from rule with trailing comma', function () {
+        // ".foo," splits into [".foo", ""] — the empty part must be skipped
+        $env = new Environment();
+
+        $this->resolver->collectExtends(
+            new RuleNode('.foo,', [new ExtendNode('%target')]),
+            $env,
+        );
+
+        expect($this->ctx->outputState->extends->selectorContexts)->toHaveKey('.foo')
+            ->and($this->ctx->outputState->extends->pendingExtends)->toHaveCount(1)
+            ->and($this->ctx->outputState->extends->pendingExtends[0]['source'])->toBe('.foo,');
+    });
+
+    it('skips empty parts in applyExtendsToSelector', function () {
+        // SelectorHelper::splitList with filterEmpty=false returns empty parts for leading comma
+        $this->resolver->registerExtend('%ph', '.replacement');
+
+        // ", .foo" produces ["", ".foo"] with filterEmpty=false — empty part must be skipped
+        $result = $this->resolver->applyExtendsToSelector(', .foo');
+
+        expect($result)->toBe('.foo');
+    });
+
+    it('deduplicates extenders when the same extender appears via multiple paths', function () {
+        // .a extended by .b and .c; .c also extended by .b
+        // When resolving transitive extenders of .a: pending=[.c,.b], then .c adds .b again
+        $this->resolver->registerExtend('.a', '.b');
+        $this->resolver->registerExtend('.a', '.c');
+        $this->resolver->registerExtend('.c', '.b');
+
+        $this->ctx->outputState->extends->selectorContexts['.a'] = ['' => true];
+
+        $result = $this->resolver->applyExtendsToSelector('.a');
+
+        expect($result)->toContain('.b')
+            ->and($result)->toContain('.c')
+            ->and(substr_count($result, '.b'))->toBe(1);
+    });
+
+    it('skips already-seen nested extenders when traversing transitive chains', function () {
+        // .a→.b; .b→.c,.d; .c→.d  — when processing .c's nested extenders, .d is already in $seen
+        $this->resolver->registerExtend('.a', '.b');
+        $this->resolver->registerExtend('.b', '.c');
+        $this->resolver->registerExtend('.b', '.d');
+        $this->resolver->registerExtend('.c', '.d');
+
+        $this->ctx->outputState->extends->selectorContexts['.a'] = ['' => true];
+
+        $result = $this->resolver->applyExtendsToSelector('.a');
+
+        expect($result)->toContain('.b')
+            ->and($result)->toContain('.c')
+            ->and($result)->toContain('.d')
+            ->and(substr_count($result, '.d'))->toBe(1);
     });
 });
