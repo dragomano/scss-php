@@ -42,7 +42,7 @@ final class AstValueDescriber
             $pairs = [];
 
             foreach ($value->pairs as $pair) {
-                $pairs[] = self::describe($pair['key']) . ': ' . self::describe($pair['value']);
+                $pairs[] = self::describe($pair->key) . ': ' . self::describe($pair->value);
             }
 
             return '(' . implode(', ', $pairs) . ')';

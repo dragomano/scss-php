@@ -430,11 +430,11 @@ final readonly class Condition
         foreach ($left->pairs as $index => $leftPair) {
             $rightPair = $right->pairs[$index];
 
-            if (! $this->areValuesEqual($leftPair['key'], $rightPair['key'], $env)) {
+            if (! $this->areValuesEqual($leftPair->key, $rightPair->key, $env)) {
                 return false;
             }
 
-            if (! $this->areValuesEqual($leftPair['value'], $rightPair['value'], $env)) {
+            if (! $this->areValuesEqual($leftPair->value, $rightPair->value, $env)) {
                 return false;
             }
         }

@@ -49,8 +49,6 @@ use function trim;
 final readonly class ExtendsResolver
 {
     /**
-     * @param Closure(string): array<int, string> $splitTopLevelSelectorList
-     * @param Closure(string, string): string $resolveNestedSelector
      * @param Closure(AstNode, Environment): AstNode $evaluateValue
      * @param Closure(string, Environment): bool $evaluateFunctionCondition
      * @param Closure(AstNode, Environment): bool $applyVariableDeclaration
@@ -62,8 +60,6 @@ final readonly class ExtendsResolver
         private CompilerContext $ctx,
         private Text $text,
         private SelectorTokenizer $tokenizer,
-        private Closure $splitTopLevelSelectorList,
-        private Closure $resolveNestedSelector,
         private Closure $evaluateValue,
         private Closure $evaluateFunctionCondition,
         private Closure $applyVariableDeclaration,
@@ -105,19 +101,19 @@ final readonly class ExtendsResolver
                 && str_contains($selector, '&')
                 && ! str_contains($parentSelector, '%')
             ) {
-                $selector = ($this->resolveNestedSelector)($selector, $parentSelector);
+                $selector = SelectorHelper::resolveNested($selector, $parentSelector);
             }
 
             $currentContext = $this->getCurrentExtendDirectiveContext($env);
             $outputState    = $this->ctx->outputState;
 
-            foreach (($this->splitTopLevelSelectorList)($selector) as $selectorPart) {
+            foreach ($this->splitTopLevelSelectorList($selector) as $selectorPart) {
                 if ($selectorPart === '') {
                     continue;
                 }
 
-                $outputState->selectorContexts[$selectorPart] ??= [];
-                $outputState->selectorContexts[$selectorPart][$currentContext] = true;
+                $outputState->extends->selectorContexts[$selectorPart] ??= [];
+                $outputState->extends->selectorContexts[$selectorPart][$currentContext] = true;
             }
 
             $env->enterScope();
@@ -242,7 +238,7 @@ final readonly class ExtendsResolver
     {
         $outputState = $this->ctx->outputState;
 
-        foreach ($outputState->pendingExtends as [
+        foreach ($outputState->extends->pendingExtends as [
             'target'  => $target,
             'source'  => $source,
             'context' => $sourceContext,
@@ -264,8 +260,8 @@ final readonly class ExtendsResolver
 
         $state = $this->ctx->outputState;
 
-        $state->extendMap[$target] ??= [];
-        $state->extendMap[$target][] = $source;
+        $state->extends->extendMap[$target] ??= [];
+        $state->extends->extendMap[$target][] = $source;
     }
 
     /**
@@ -279,7 +275,7 @@ final readonly class ExtendsResolver
             return [];
         }
 
-        $targets = ($this->splitTopLevelSelectorList)($target);
+        $targets = $this->splitTopLevelSelectorList($target);
 
         foreach ($targets as $item) {
             $this->assertSimpleExtendTargetSelector($item);
@@ -323,7 +319,7 @@ final readonly class ExtendsResolver
     private function collectTransitiveExactExtenders(string $part): array
     {
         $result  = [];
-        $pending = array_reverse($this->ctx->outputState->extendMap[$part] ?? []);
+        $pending = array_reverse($this->ctx->outputState->extends->extendMap[$part] ?? []);
         $seen    = [];
         $index   = 0;
 
@@ -338,8 +334,8 @@ final readonly class ExtendsResolver
 
             $result[] = $extender;
 
-            foreach (array_reverse($this->ctx->outputState->extendMap[$extender] ?? []) as $nestedExtender) {
-                if ($nestedExtender === '' || isset($seen[$nestedExtender])) {
+            foreach (array_reverse($this->ctx->outputState->extends->extendMap[$extender] ?? []) as $nestedExtender) {
+                if (isset($seen[$nestedExtender])) {
                     continue;
                 }
 
@@ -387,7 +383,7 @@ final readonly class ExtendsResolver
     {
         $variants = [];
 
-        foreach (array_reverse($this->ctx->outputState->extendMap[$target] ?? []) as $extender) {
+        foreach (array_reverse($this->ctx->outputState->extends->extendMap[$target] ?? []) as $extender) {
             array_push($variants, ...$this->replaceExtendTargetInSelectorPart($part, $target, $extender));
         }
 
@@ -409,8 +405,8 @@ final readonly class ExtendsResolver
                     $target === ''
                     || $target === $part
                     || isset($seen[$target])
-                    || ! isset($this->ctx->outputState->extendMap[$target])
-                    || $this->ctx->outputState->extendMap[$target] === []
+                    || ! isset($this->ctx->outputState->extends->extendMap[$target])
+                    || $this->ctx->outputState->extends->extendMap[$target] === []
                 ) {
                     continue;
                 }
@@ -567,7 +563,7 @@ final readonly class ExtendsResolver
         foreach ($children as $child) {
             if ($child instanceof ExtendNode && $selector !== null) {
                 foreach ($this->extractSimpleExtendTargetSelectors($child->selector) as $extendTarget) {
-                    $this->ctx->outputState->pendingExtends[] = [
+                    $this->ctx->outputState->extends->pendingExtends[] = [
                         'target'  => $extendTarget,
                         'source'  => $selector,
                         'context' => $currentContext,
@@ -798,7 +794,7 @@ final readonly class ExtendsResolver
 
     private function assertExtendContextIsCompatible(string $target, string $sourceContext): void
     {
-        foreach (array_keys($this->ctx->outputState->selectorContexts[$target] ?? []) as $targetContext) {
+        foreach (array_keys($this->ctx->outputState->extends->selectorContexts[$target] ?? []) as $targetContext) {
             if ($targetContext !== $sourceContext) {
                 throw new SassErrorException('You may not @extend selectors across media queries.');
             }
@@ -807,7 +803,7 @@ final readonly class ExtendsResolver
 
     private function assertExtendTargetExists(string $target): void
     {
-        if (isset($this->ctx->outputState->selectorContexts[$target])) {
+        if (isset($this->ctx->outputState->extends->selectorContexts[$target])) {
             return;
         }
 
@@ -820,5 +816,13 @@ final readonly class ExtendsResolver
         }
 
         throw new SassErrorException('The target selector was not found.');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function splitTopLevelSelectorList(string $selector): array
+    {
+        return $this->tokenizer->splitAtTopLevel($selector, [','], handleQuotes: true);
     }
 }

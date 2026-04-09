@@ -30,6 +30,7 @@ use Bugo\SCSS\Services\Module;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Style;
+use Bugo\SCSS\Utils\OutputChunk;
 
 use function array_pop;
 use function count;
@@ -89,15 +90,15 @@ final readonly class BlockNodeHandler
             $scope       = $ctx->env->getCurrentScope();
             $outputState = $this->render->outputState();
 
-            $outputState->deferredAtRootStack[]   = [];
-            $outputState->deferredBubblingStack[] = [];
+            $outputState->deferral->atRootStack[]   = [];
+            $outputState->deferral->bubblingStack[] = [];
 
             $requiresRuleBlockOptimization      = false;
             $containsStandaloneNestedRuleChunks = false;
 
-            /** @var array<int, string> $leadingRootChunks */
+            /** @var list<OutputChunk> $leadingRootChunks */
             $leadingRootChunks  = [];
-            /** @var array<int, string> $trailingRootChunks */
+            /** @var list<OutputChunk> $trailingRootChunks */
             $trailingRootChunks = [];
 
             $selector = str_contains($node->selector, '#{')
@@ -123,8 +124,8 @@ final readonly class BlockNodeHandler
             $omitOwnRuleOutput = $this->selector->hasBogusTopLevelCombinatorSequence($selector);
 
             if ($selector === '') {
-                array_pop($outputState->deferredAtRootStack);
-                array_pop($outputState->deferredBubblingStack);
+                array_pop($outputState->deferral->atRootStack);
+                array_pop($outputState->deferral->bubblingStack);
 
                 return '';
             }
@@ -134,8 +135,8 @@ final readonly class BlockNodeHandler
             $compiledNestedPropertyBlock = $this->chunks->compileNestedPropertyBlock($node, $selector, $ctx, $ctx->indent);
 
             if ($compiledNestedPropertyBlock !== null) {
-                array_pop($outputState->deferredAtRootStack);
-                array_pop($outputState->deferredBubblingStack);
+                array_pop($outputState->deferral->atRootStack);
+                array_pop($outputState->deferral->bubblingStack);
 
                 return $compiledNestedPropertyBlock;
             }
@@ -224,8 +225,8 @@ final readonly class BlockNodeHandler
                 $deferredAtRootCount = null;
 
                 if ($child instanceof IncludeNode) {
-                    $atRootStackIndex    = count($outputState->deferredAtRootStack) - 1;
-                    $deferredAtRootCount = count($outputState->deferredAtRootStack[$atRootStackIndex]);
+                    $atRootStackIndex    = count($outputState->deferral->atRootStack) - 1;
+                    $deferredAtRootCount = count($outputState->deferral->atRootStack[$atRootStackIndex]);
                 }
 
                 $this->assertCompilableRuleChild($child);
@@ -311,11 +312,11 @@ final readonly class BlockNodeHandler
                 $output = $this->selector->optimizeRuleBlock($output);
             }
 
-            /** @var array<int, string> $localTrailingRootChunks */
-            $localTrailingRootChunks = array_pop($outputState->deferredAtRootStack);
+            /** @var list<OutputChunk> $localTrailingRootChunks */
+            $localTrailingRootChunks = array_pop($outputState->deferral->atRootStack);
 
-            /** @var array<int, string> $localLeadingRootChunks */
-            $localLeadingRootChunks = array_pop($outputState->deferredBubblingStack);
+            /** @var list<OutputChunk> $localLeadingRootChunks */
+            $localLeadingRootChunks = array_pop($outputState->deferral->bubblingStack);
 
             foreach ($localLeadingRootChunks as $chunk) {
                 $leadingRootChunks[] = $chunk;
@@ -348,7 +349,7 @@ final readonly class BlockNodeHandler
         ];
 
         $outputState = $this->render->outputState();
-        $outputState->deferredAtRuleStack[] = [];
+        $outputState->deferral->atRuleStack[] = [];
 
         $ctx->env->enterScope();
         $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $currentAtRuleStack);

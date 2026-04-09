@@ -70,8 +70,8 @@ final readonly class ValueFactory
 
             foreach ($node->pairs as $pair) {
                 $pairs[] = [
-                    'key'   => $this->fromAst($pair['key'], $formatter),
-                    'value' => $this->fromAst($pair['value'], $formatter, $preserveZeroUnits),
+                    'key'   => $this->fromAst($pair->key, $formatter),
+                    'value' => $this->fromAst($pair->value, $formatter, $preserveZeroUnits),
                 ];
             }
 

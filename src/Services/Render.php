@@ -10,6 +10,8 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\Visitable;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\States\OutputState;
+use Bugo\SCSS\Utils\DeferredChunk;
+use Bugo\SCSS\Utils\OutputChunk;
 use Bugo\SCSS\Utils\SourceMapMapping;
 use Bugo\SCSS\Utils\SourceMapOptions;
 use Bugo\SCSS\Utils\SourceMapPosition;
@@ -231,53 +233,50 @@ final readonly class Render
 
     /**
      * @param array{0: int, 1: int, 2: int} $saved
-     * @return array{
-     *     chunk: string,
-     *     baseLine: int,
-     *     baseColumn: int,
-     *     mappings: array<int, SourceMapMapping>
-     * }
      */
-    public function createDeferredChunk(string $chunk, array $saved): array
+    public function createDeferredChunk(string $chunk, array $saved): DeferredChunk
     {
-        return [
-            'chunk'      => $chunk,
-            'baseLine'   => $saved[0],
-            'baseColumn' => $saved[1],
-            'mappings'   => array_slice($this->ctx->sourceMapState->mappings, $saved[2]),
-        ];
+        return new DeferredChunk(
+            $chunk,
+            $saved[0],
+            $saved[1],
+            array_slice($this->ctx->sourceMapState->mappings, $saved[2]),
+        );
     }
 
-    /**
-     * @param array{
-     *     chunk: string,
-     *     baseLine: int,
-     *     baseColumn: int,
-     *     mappings: array<int, SourceMapMapping>
-     * } $deferred
-     */
-    public function appendDeferredChunk(string &$output, array $deferred): void
+    public function appendDeferredChunk(string &$output, DeferredChunk $deferred): void
     {
         $startLine   = $this->ctx->sourceMapState->generatedLine;
         $startColumn = $this->ctx->sourceMapState->generatedColumn;
 
-        $this->appendChunk($output, $deferred['chunk']);
+        $this->appendChunk($output, $deferred->content());
 
-        if (! $this->ctx->sourceMapState->collectMappings || $deferred['mappings'] === []) {
+        if (! $this->ctx->sourceMapState->collectMappings || $deferred->mappings === []) {
             return;
         }
 
-        foreach ($deferred['mappings'] as $mapping) {
+        foreach ($deferred->mappings as $mapping) {
             $generated = $mapping->generated;
-            $lineDelta = $generated->line - $deferred['baseLine'];
+            $lineDelta = $generated->line - $deferred->baseLine;
             $column    = $lineDelta === 0
-                ? $startColumn + ($generated->column - $deferred['baseColumn'])
+                ? $startColumn + ($generated->column - $deferred->baseColumn)
                 : $generated->column;
 
             $this->ctx->sourceMapState->mappings[] = $mapping->withGeneratedPosition(
                 new SourceMapPosition($startLine + $lineDelta, $column),
             );
         }
+    }
+
+    public function appendOutputChunk(string &$output, OutputChunk $chunk): void
+    {
+        if ($chunk instanceof DeferredChunk) {
+            $this->appendDeferredChunk($output, $chunk);
+
+            return;
+        }
+
+        $this->appendChunk($output, $chunk->content());
     }
 
     public function buildSourceMap(string $compiled, string $source): string

@@ -21,6 +21,7 @@ use Bugo\SCSS\Nodes\DeprecatedExpressionNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\MixinRefNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
@@ -301,14 +302,14 @@ final readonly class Evaluator
             $pairIdx = 0;
 
             foreach ($node->pairs as $pair) {
-                $evaluatedKey   = $this->evaluateValue($pair['key'], $env);
-                $evaluatedValue = $this->evaluateValue($pair['value'], $env);
+                $evaluatedKey   = $this->evaluateValue($pair->key, $env);
+                $evaluatedValue = $this->evaluateValue($pair->value, $env);
 
                 if ($pairs !== null) {
-                    $pairs[] = ['key' => $evaluatedKey, 'value' => $evaluatedValue];
-                } elseif ($evaluatedKey !== $pair['key'] || $evaluatedValue !== $pair['value']) {
+                    $pairs[] = new MapPair($evaluatedKey, $evaluatedValue);
+                } elseif ($evaluatedKey !== $pair->key || $evaluatedValue !== $pair->value) {
                     $pairs   = $pairIdx > 0 ? array_slice($node->pairs, 0, $pairIdx) : [];
-                    $pairs[] = ['key' => $evaluatedKey, 'value' => $evaluatedValue];
+                    $pairs[] = new MapPair($evaluatedKey, $evaluatedValue);
                 }
 
                 $pairIdx++;
@@ -634,7 +635,7 @@ final readonly class Evaluator
             $items = [];
 
             foreach ($value->pairs as $pair) {
-                $items[] = new ListNode([$pair['key'], $pair['value']], 'space');
+                $items[] = new ListNode([$pair->key, $pair->value], 'space');
             }
 
             return $items;
@@ -775,8 +776,8 @@ final readonly class Evaluator
 
             foreach ($value->pairs as $pair) {
                 $pairs[] = [
-                    'key'   => $this->calculation->toSassValue($pair['key'], $env),
-                    'value' => $this->calculation->toSassValue($pair['value'], $env),
+                    'key'   => $this->calculation->toSassValue($pair->key, $env),
+                    'value' => $this->calculation->toSassValue($pair->value, $env),
                 ];
             }
 

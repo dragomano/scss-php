@@ -80,11 +80,11 @@ final class AstValueComparator
             }
 
             foreach ($left->pairs as $index => $pair) {
-                if (! self::equals($pair['key'], $right->pairs[$index]['key'])) {
+                if (! self::equals($pair->key, $right->pairs[$index]->key)) {
                     return false;
                 }
 
-                if (! self::equals($pair['value'], $right->pairs[$index]['value'])) {
+                if (! self::equals($pair->value, $right->pairs[$index]->value)) {
                     return false;
                 }
             }

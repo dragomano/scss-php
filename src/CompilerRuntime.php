@@ -20,6 +20,7 @@ use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Condition;
 use Bugo\SCSS\Services\Context;
 use Bugo\SCSS\Services\Evaluator;
+use Bugo\SCSS\Services\ExtendsResolver;
 use Bugo\SCSS\Services\Module;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
@@ -37,11 +38,15 @@ final class CompilerRuntime
 
     private ?Evaluator $evaluation = null;
 
+    private ?ExtendsResolver $extends = null;
+
     private ?Module $module = null;
 
     private ?Render $render = null;
 
     private ?Selector $selector = null;
+
+    private ?SelectorTokenizer $selectorTokenizer = null;
 
     private ?Text $text = null;
 
@@ -126,32 +131,42 @@ final class CompilerRuntime
         );
     }
 
+    public function extends(): ExtendsResolver
+    {
+        return $this->extends ??= new ExtendsResolver(
+            $this->ctx,
+            $this->text(),
+            $this->selectorTokenizer(),
+            fn(AstNode $node, Environment $env): AstNode => $this->evaluation()->evaluateValue($node, $env),
+            fn(string $condition, Environment $env): bool => $this->evaluation()->evaluateFunctionCondition($condition, $env),
+            fn(AstNode $node, Environment $env): bool => $this->evaluation()->applyVariableDeclaration($node, $env),
+            fn(AstNode $value): array => $this->evaluation()->eachIterableItems($value),
+            fn(array $variables, AstNode $item, Environment $env) => $this->evaluation()->assignEachVariables($variables, $item, $env),
+            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
+        );
+    }
+
     public function selector(): Selector
     {
         return $this->selector ??= new Selector(
             $this->ctx,
             $this->render(),
             $this->text(),
-            new SelectorTokenizer(),
+            $this->selectorTokenizer(),
             $this->dispatcher,
+            $this->extends(),
             fn(AstNode $node, Environment $env): AstNode => $this->evaluation()->evaluateValue($node, $env),
             fn(ModuleVarDeclarationNode $node, Environment $env) => $this->module()->assignModuleVariable($node, $env),
             fn(AstNode $value): bool => $this->evaluation()->isSassNullValue($value),
             fn(string $property): bool => $this->evaluation()->shouldCompressNamedColorForProperty($property),
             fn(AstNode $value): AstNode => $this->evaluation()->compressNamedColorsForOutput($value),
             fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
-            fn(string $condition, Environment $env): bool => $this->evaluation()->evaluateFunctionCondition(
-                $condition,
-                $env,
-            ),
-            fn(AstNode $node, Environment $env): bool => $this->evaluation()->applyVariableDeclaration($node, $env),
-            fn(AstNode $value): array => $this->evaluation()->eachIterableItems($value),
-            fn(array $variables, AstNode $item, Environment $env) => $this->evaluation()->assignEachVariables(
-                $variables,
-                $item,
-                $env,
-            ),
         );
+    }
+
+    private function selectorTokenizer(): SelectorTokenizer
+    {
+        return $this->selectorTokenizer ??= new SelectorTokenizer();
     }
 
     public function text(): Text

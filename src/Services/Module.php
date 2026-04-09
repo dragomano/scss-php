@@ -20,6 +20,7 @@ use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
+use Bugo\SCSS\States\LoadedModule;
 use Bugo\SCSS\States\ModuleState;
 use Bugo\SCSS\Syntax;
 use Bugo\SCSS\Utils\NameNormalizer;
@@ -149,9 +150,11 @@ final readonly class Module
 
         $namespace = $node->namespace ?? $this->deriveNamespaceFromUsePath($node->path);
 
-        if ($node->configuration === [] && isset($state->loadedModules[$namespace])) {
-            $env->getCurrentScope()->addModule($namespace, $state->loadedModules[$namespace]['scope']);
-            $env->getGlobalScope()->addModule($namespace, $state->loadedModules[$namespace]['scope']);
+        $loaded = $state->getByNamespace($namespace);
+
+        if ($node->configuration === [] && $loaded !== null) {
+            $env->getCurrentScope()->addModule($namespace, $loaded->scope);
+            $env->getGlobalScope()->addModule($namespace, $loaded->scope);
 
             return;
         }
@@ -166,13 +169,13 @@ final readonly class Module
 
         $moduleId = $file['path'];
 
-        if ($node->configuration === [] && isset($state->loadedModulesById[$moduleId])) {
-            $moduleData = $state->loadedModulesById[$moduleId];
+        $loadedById = $state->getById($moduleId);
 
-            $state->loadedModules[$namespace] = $moduleData;
+        if ($node->configuration === [] && $loadedById !== null) {
+            $state->addByNamespace($namespace, $loadedById);
 
-            $env->getCurrentScope()->addModule($namespace, $moduleData['scope']);
-            $env->getGlobalScope()->addModule($namespace, $moduleData['scope']);
+            $env->getCurrentScope()->addModule($namespace, $loadedById->scope);
+            $env->getGlobalScope()->addModule($namespace, $loadedById->scope);
 
             return;
         }
@@ -235,16 +238,10 @@ final readonly class Module
             return;
         }
 
-        $moduleData = [
-            'id'    => $moduleId,
-            'scope' => $moduleEnv->getCurrentScope(),
-            'css'   => $compiledCss,
-        ];
-
-        $state->loadedModules[$namespace] = $moduleData;
-
         if ($node->configuration === []) {
-            $state->loadedModulesById[$moduleId] = $moduleData;
+            $state->registerModule($namespace, $moduleId, $moduleEnv->getCurrentScope(), $compiledCss);
+        } else {
+            $state->addByNamespace($namespace, new LoadedModule($moduleId, $moduleEnv->getCurrentScope(), $compiledCss));
         }
 
         $env->getCurrentScope()->addModule($namespace, $moduleEnv->getCurrentScope());
