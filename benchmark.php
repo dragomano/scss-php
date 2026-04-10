@@ -98,7 +98,7 @@ $compilerList = [
 
 for ($i = 0; $i < $benchmarkRuns; $i++) {
     $results = (new BenchmarkRunner())
-        ->setScssCode($scss)
+        ->setCode($scss)
         ->setRuns($singleRuns)
         ->setWarmupRuns($warmupRuns)
         ->setOutputDir($outputDir)

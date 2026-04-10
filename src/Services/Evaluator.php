@@ -8,7 +8,8 @@ use Bugo\SCSS\Builtins\Color\Conversion\HexColorConverter;
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
-use Bugo\SCSS\Exceptions\SassThrowable;
+use Bugo\SCSS\Exceptions\SassArgumentException;
+use Bugo\SCSS\Exceptions\SassException;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\ArgumentNode;
@@ -204,7 +205,9 @@ final readonly class Evaluator
         return $this->registry->evaluate(
             $node,
             $env,
-            $skipSlashArithmetic ? EvaluationOptions::default()->withSkipSlashArithmetic() : EvaluationOptions::default(),
+            $skipSlashArithmetic
+                ? EvaluationOptions::default()->withSkipSlashArithmetic()
+                : EvaluationOptions::default(),
         );
     }
 
@@ -442,7 +445,7 @@ final readonly class Evaluator
             $evaluatedValue = $this->evaluateValue($firstDeclaration->value, $env);
 
             return $evaluatedValue !== $value ? $evaluatedValue : null;
-        } catch (SassThrowable) {
+        } catch (SassException|SassArgumentException) {
             // Reparsing the formatted value failed (e.g. invalid slash expression).
             // Return null to signal "no rewrite needed" — the caller keeps the original value.
             return null;

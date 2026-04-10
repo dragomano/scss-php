@@ -193,45 +193,6 @@ Notes:
 - `@warn`  -> `$logger->warning(...)`
 - `@error` -> `$logger->error(...)` and compilation throws `Bugo\SCSS\Exceptions\SassErrorException`
 
-## How It Works
-
-```mermaid
-flowchart TD
-    A["Input\n(SCSS / Sass / CSS)"] --> B["Compiler"]
-    B --> C["NormalizerPipeline"]
-    C --> D["Tokenizer"]
-    D --> E["TokenStream"]
-    E --> F["Parser"]
-
-    F --> F1["DirectiveParser\n@use, @import, @media..."]
-    F --> F2["RuleParser\nselectors & blocks"]
-    F --> F3["ValueParser\nexpressions & values"]
-
-    F1 & F2 & F3 --> H["AST — RootNode tree"]
-
-    H --> I["CompilerDispatcher\nVisitor pattern"]
-
-    I --> J0["RootNodeHandler\nroot document"]
-    I --> J1["BlockNodeHandler\nCSS rules & selectors"]
-    I --> J2["DeclarationNodeHandler\nCSS properties"]
-    I --> J3["AtRuleNodeHandler\n@media, @supports, @keyframes..."]
-    I --> J4["FlowControlNodeHandler\n@if, @for, @each, @while"]
-    I --> J5["ModuleNodeHandler\n@use, @forward, @import"]
-    I --> J6["DefinitionNodeHandler\n$var, @function, @mixin"]
-    I --> J7["DiagnosticNodeHandler\n@debug, @warn, @error"]
-    I --> J8["CommentNodeHandler\nCSS comments"]
-
-    J0 & J1 & J2 & J3 & J4 & J5 & J6 & J7 & J8 --> K["Services\nEvaluator · Selector · Text · Render"]
-
-    K --> L["OutputOptimizer"]
-    L --> M["OutputRenderer"]
-
-    M --> N["CSS"]
-    M --> O["Source Map (optional)"]
-```
-
----
-
 ## Comparison with other packages
 
 See the [benchmark.md](benchmark.md) file for results.
