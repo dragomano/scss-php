@@ -521,8 +521,8 @@ describe('Parser', function () {
 
             expect($value)->toBeInstanceOf(MapNode::class)
                 ->and(count($value->pairs))->toBe(2)
-                ->and($value->pairs[0]['key'])->toBeInstanceOf(StringNode::class)
-                ->and($value->pairs[0]['key']->value)->toBe('a');
+                ->and($value->pairs[0]->key)->toBeInstanceOf(StringNode::class)
+                ->and($value->pairs[0]->key->value)->toBe('a');
         });
         it('parses variable declarations', function () {
             $source = '$primary-color: #333; $font-size: 16px;';

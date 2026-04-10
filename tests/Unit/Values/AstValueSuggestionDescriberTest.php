@@ -6,6 +6,7 @@ use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Values\AstValueSuggestionDescriber;
@@ -36,7 +37,7 @@ describe('AstValueSuggestionDescriber', function () {
 
     it('describes maps and falls back for unsupported nodes', function () {
         $map = new MapNode([
-            ['key' => new StringNode('k'), 'value' => new NumberNode(1)],
+            new MapPair(new StringNode('k'), new NumberNode(1)),
         ]);
 
         expect(AstValueSuggestionDescriber::describe($map))->toBe('(k: 1)')

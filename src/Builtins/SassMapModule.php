@@ -10,6 +10,7 @@ use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Utils\AstValueComparator;
@@ -24,10 +25,6 @@ use function get_debug_type;
 use function implode;
 use function is_int;
 
-/**
- * @phpstan-type MapPair array{key: AstNode, value: AstNode}
- * @psalm-type MapPair = array{key: AstNode, value: AstNode}
- */
 final class SassMapModule extends AbstractModule
 {
     private const FUNCTIONS = [
@@ -200,8 +197,7 @@ final class SassMapModule extends AbstractModule
         $map = $this->asMap($positional[0], 'map.keys');
 
         return new ListNode(array_map(
-            /** @param MapPair $pair */
-            fn(array $pair): AstNode => $pair['key'],
+            fn(MapPair $pair): AstNode => $pair->key,
             $map->pairs,
         ), 'comma');
     }
@@ -274,10 +270,9 @@ final class SassMapModule extends AbstractModule
 
         $result = array_filter(
             $map->pairs,
-            /** @param MapPair $pair */
-            function (array $pair) use ($removeKeys): bool {
+            function (MapPair $pair) use ($removeKeys): bool {
                 foreach ($removeKeys as $removeKey) {
-                    if (AstValueComparator::equals($pair['key'], $removeKey)) {
+                    if (AstValueComparator::equals($pair->key, $removeKey)) {
                         return false;
                     }
                 }
@@ -327,8 +322,7 @@ final class SassMapModule extends AbstractModule
         $map = $this->asMap($positional[0], 'map.values');
 
         return new ListNode(array_map(
-            /** @param MapPair $pair */
-            fn(array $pair): AstNode => $pair['value'],
+            fn(MapPair $pair): AstNode => $pair->value,
             $map->pairs,
         ), 'comma');
     }
@@ -378,7 +372,7 @@ final class SassMapModule extends AbstractModule
             $replaced = false;
 
             foreach ($result as $idx => $existing) {
-                if (AstValueComparator::equals($existing['key'], $rightPair['key'])) {
+                if (AstValueComparator::equals($existing->key, $rightPair->key)) {
                     $result[$idx] = $rightPair;
                     $replaced     = true;
 
@@ -406,12 +400,12 @@ final class SassMapModule extends AbstractModule
             $matched = false;
 
             foreach ($result as $idx => $existing) {
-                if (AstValueComparator::equals($existing['key'], $rightPair['key'])) {
-                    if ($existing['value'] instanceof MapNode && $rightPair['value'] instanceof MapNode) {
-                        $result[$idx] = [
-                            'key'   => $existing['key'],
-                            'value' => $this->deepMergeMaps($existing['value'], $rightPair['value']),
-                        ];
+                if (AstValueComparator::equals($existing->key, $rightPair->key)) {
+                    if ($existing->value instanceof MapNode && $rightPair->value instanceof MapNode) {
+                        $result[$idx] = new MapPair(
+                            $existing->key,
+                            $this->deepMergeMaps($existing->value, $rightPair->value),
+                        );
                     } else {
                         $result[$idx] = $rightPair;
                     }
@@ -444,7 +438,7 @@ final class SassMapModule extends AbstractModule
         $pairs = $map->pairs;
 
         foreach ($pairs as $idx => $pair) {
-            if (! AstValueComparator::equals($pair['key'], $key)) {
+            if (! AstValueComparator::equals($pair->key, $key)) {
                 continue;
             }
 
@@ -454,8 +448,8 @@ final class SassMapModule extends AbstractModule
                 return new MapNode(array_values($pairs));
             }
 
-            if ($pair['value'] instanceof MapNode) {
-                $pairs[$idx]['value'] = $this->removeNested($pair['value'], $tail);
+            if ($pair->value instanceof MapNode) {
+                $pairs[$idx] = new MapPair($pair->key, $this->removeNested($pair->value, $tail));
 
                 return new MapNode($pairs);
             }
@@ -483,15 +477,15 @@ final class SassMapModule extends AbstractModule
         $pairs = $map->pairs;
 
         foreach ($pairs as $idx => $pair) {
-            if (AstValueComparator::equals($pair['key'], $key)) {
+            if (AstValueComparator::equals($pair->key, $key)) {
                 if ($tail === []) {
-                    $pairs[$idx]['value'] = $modify($pair['value']);
+                    $pairs[$idx] = new MapPair($pair->key, $modify($pair->value));
 
                     return new MapNode($pairs);
                 }
 
-                if ($pair['value'] instanceof MapNode) {
-                    $pairs[$idx]['value'] = $this->modifyNested($pair['value'], $tail, $modify, $addNesting);
+                if ($pair->value instanceof MapNode) {
+                    $pairs[$idx] = new MapPair($pair->key, $this->modifyNested($pair->value, $tail, $modify, $addNesting));
 
                     return new MapNode($pairs);
                 }
@@ -500,7 +494,7 @@ final class SassMapModule extends AbstractModule
                     return $map;
                 }
 
-                $pairs[$idx]['value'] = $this->modifyNested(new MapNode([]), $tail, $modify, true);
+                $pairs[$idx] = new MapPair($pair->key, $this->modifyNested(new MapNode([]), $tail, $modify, true));
 
                 return new MapNode($pairs);
             }
@@ -511,12 +505,12 @@ final class SassMapModule extends AbstractModule
         }
 
         if ($tail === []) {
-            $pairs[] = ['key' => $key, 'value' => $modify(new MapNode([]))];
+            $pairs[] = new MapPair($key, $modify(new MapNode([])));
 
             return new MapNode($pairs);
         }
 
-        $pairs[] = ['key' => $key, 'value' => $this->modifyNested(new MapNode([]), $tail, $modify, true)];
+        $pairs[] = new MapPair($key, $this->modifyNested(new MapNode([]), $tail, $modify, true));
 
         return new MapNode($pairs);
     }
@@ -524,8 +518,8 @@ final class SassMapModule extends AbstractModule
     private function findByKey(MapNode $map, AstNode $key): ?AstNode
     {
         foreach ($map->pairs as $pair) {
-            if (AstValueComparator::equals($pair['key'], $key)) {
-                return $pair['value'];
+            if (AstValueComparator::equals($pair->key, $key)) {
+                return $pair->value;
             }
         }
 

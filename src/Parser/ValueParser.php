@@ -11,6 +11,7 @@ use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeprecatedExpressionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
@@ -344,7 +345,7 @@ final readonly class ValueParser
 
                 $value = $this->parseParenthesizedMapValue();
 
-                $pairs[] = ['key' => $entry, 'value' => $value];
+                $pairs[] = new MapPair($entry, $value);
             } else {
                 $items[] = $entry;
             }

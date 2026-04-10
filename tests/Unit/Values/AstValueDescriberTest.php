@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
@@ -20,13 +21,13 @@ describe('AstValueDescriber', function () {
 
     it('describes nested list and map values', function () {
         $value = new MapNode([
-            [
-                'key' => new StringNode('palette'),
-                'value' => new ListNode([
+            new MapPair(
+                new StringNode('palette'),
+                new ListNode([
                     new StringNode('red'),
                     new StringNode('blue'),
                 ], 'comma', true),
-            ],
+            ),
         ]);
 
         expect(AstValueDescriber::describe($value))->toBe('(palette: [red, blue])');

@@ -11,6 +11,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -110,9 +111,9 @@ describe('BuiltinFunctionRegistry', function () {
         $registry->registerUse('sass:map', null);
 
         $map = new MapNode([
-            ['key' => new StringNode('nested'), 'value' => new MapNode([
-                ['key' => new StringNode('k'), 'value' => new NumberNode(10)],
-            ])],
+            new MapPair(new StringNode('nested'), new MapNode([
+                new MapPair(new StringNode('k'), new NumberNode(10)),
+            ])),
         ]);
 
         $result = $registry->tryCall('map.get', [$map, new StringNode('nested'), new StringNode('k')]);

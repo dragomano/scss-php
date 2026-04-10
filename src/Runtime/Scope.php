@@ -15,11 +15,7 @@ use function array_key_exists;
 
 final class Scope
 {
-    /** @var array<string, mixed> */
-    private array $variables = [];
-
-    /** @var array<string, int> */
-    private array $variableLines = [];
+    private readonly VariableRegistry $variables;
 
     private readonly CallableDefinitionMap $mixins;
 
@@ -30,6 +26,7 @@ final class Scope
 
     public function __construct(private readonly ?Scope $parent = null)
     {
+        $this->variables = new VariableRegistry();
         $this->mixins    = new CallableDefinitionMap();
         $this->functions = new CallableDefinitionMap();
     }
@@ -73,8 +70,7 @@ final class Scope
             return;
         }
 
-        $this->variables[$name]     = $value;
-        $this->variableLines[$name] = $line;
+        $this->variables->set($name, $value, $line);
     }
 
     public function setVariableLocal(string $name, mixed $value, bool $default = false, int $line = 1): void
@@ -89,8 +85,7 @@ final class Scope
             return;
         }
 
-        $this->variables[$name]     = $value;
-        $this->variableLines[$name] = $line;
+        $this->variables->set($name, $value, $line);
     }
 
     public function getVariable(string $name): mixed
@@ -101,58 +96,46 @@ final class Scope
     public function getAstVariable(string $name): ?AstNode
     {
         $normalized = $this->normalizeName($name);
-        $scope      = $this;
+        $scope      = $this->findScopeForVariable($normalized);
 
-        do {
-            if (array_key_exists($normalized, $scope->variables)) {
-                /** @psalm-var mixed $value */
-                $value = $scope->variables[$normalized];
+        if ($scope === null) {
+            return null;
+        }
 
-                return $value instanceof AstNode ? $value : null;
-            }
+        /** @psalm-var mixed $value */
+        $value = $scope->variables->get($normalized);
 
-            $scope = $scope->parent;
-        } while ($scope !== null);
-
-        return null;
+        return $value instanceof AstNode ? $value : null;
     }
 
     public function getStringVariable(string $name): ?StringNode
     {
         $normalized = $this->normalizeName($name);
-        $scope      = $this;
+        $scope      = $this->findScopeForVariable($normalized);
 
-        do {
-            if (array_key_exists($normalized, $scope->variables)) {
-                /** @psalm-var mixed $value */
-                $value = $scope->variables[$normalized];
+        if ($scope === null) {
+            return null;
+        }
 
-                return $value instanceof StringNode ? $value : null;
-            }
+        /** @psalm-var mixed $value */
+        $value = $scope->variables->get($normalized);
 
-            $scope = $scope->parent;
-        } while ($scope !== null);
-
-        return null;
+        return $value instanceof StringNode ? $value : null;
     }
 
     public function getScopeVariable(string $name): ?Scope
     {
         $normalized = $this->normalizeName($name);
-        $scope      = $this;
+        $scope      = $this->findScopeForVariable($normalized);
 
-        do {
-            if (array_key_exists($normalized, $scope->variables)) {
-                /** @psalm-var mixed $value */
-                $value = $scope->variables[$normalized];
+        if ($scope === null) {
+            return null;
+        }
 
-                return $value instanceof self ? $value : null;
-            }
+        /** @psalm-var mixed $value */
+        $value = $scope->variables->get($normalized);
 
-            $scope = $scope->parent;
-        } while ($scope !== null);
-
-        return null;
+        return $value instanceof self ? $value : null;
     }
 
     /**
@@ -160,7 +143,7 @@ final class Scope
      */
     public function getVariables(): array
     {
-        return $this->variables;
+        return $this->variables->all();
     }
 
     public function hasVariable(string $name): bool
@@ -288,49 +271,44 @@ final class Scope
         return $this->modules[$namespace] ?? $this->parent?->getModule($namespace);
     }
 
-    private function getVariableNormalized(string $name): mixed
+    private function findScopeForVariable(string $name): ?Scope
     {
         $scope = $this;
 
         do {
-            if (array_key_exists($name, $scope->variables)) {
-                return $scope->variables[$name];
-            }
-
-            $scope = $scope->parent;
-        } while ($scope !== null);
-
-        throw UndefinedSymbolException::variable($name);
-    }
-
-    private function hasVariableNormalized(string $name): bool
-    {
-        $scope = $this;
-
-        do {
-            if (array_key_exists($name, $scope->variables)) {
-                return true;
-            }
-
-            $scope = $scope->parent;
-        } while ($scope !== null);
-
-        return false;
-    }
-
-    private function findVariableDefinitionNormalized(string $name): ?VariableDefinition
-    {
-        $scope = $this;
-
-        do {
-            if (array_key_exists($name, $scope->variables)) {
-                return new VariableDefinition($scope, $scope->variableLines[$name] ?? 1);
+            if ($scope->variables->has($name)) {
+                return $scope;
             }
 
             $scope = $scope->parent;
         } while ($scope !== null);
 
         return null;
+    }
+
+    private function getVariableNormalized(string $name): mixed
+    {
+        $scope = $this->findScopeForVariable($name);
+
+        if ($scope === null) {
+            throw UndefinedSymbolException::variable($name);
+        }
+
+        return $scope->variables->get($name);
+    }
+
+    private function hasVariableNormalized(string $name): bool
+    {
+        return $this->findScopeForVariable($name) !== null;
+    }
+
+    private function findVariableDefinitionNormalized(string $name): ?VariableDefinition
+    {
+        $scope = $this->findScopeForVariable($name);
+
+        return $scope !== null
+            ? new VariableDefinition($scope, $scope->variables->getLine($name))
+            : null;
     }
 
     private function getMixinNormalized(string $name): CallableDefinition
@@ -405,14 +383,13 @@ final class Scope
 
     private function setVariableForce(string $name, mixed $value, bool $default, int $line): void
     {
-        if ($default && array_key_exists($name, $this->variables)) {
-            if (! $this->isSassNull($this->variables[$name])) {
+        if ($default && $this->variables->has($name)) {
+            if (! $this->isSassNull($this->variables->get($name))) {
                 return;
             }
         }
 
-        $this->variables[$name]     = $value;
-        $this->variableLines[$name] = $line;
+        $this->variables->set($name, $value, $line);
     }
 
     private function isSassNull(mixed $value): bool

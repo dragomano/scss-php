@@ -12,6 +12,8 @@ use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StatementNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\Visitable;
+use Bugo\SCSS\Runtime\AtRuleContextEntry;
+use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Context;
@@ -19,7 +21,9 @@ use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Style;
-use Bugo\SCSS\Utils\SourceMapMapping;
+use Bugo\SCSS\Utils\DeferredChunk;
+use Bugo\SCSS\Utils\OutputChunk;
+use Bugo\SCSS\Utils\RawChunk;
 
 use function array_splice;
 use function array_values;
@@ -29,14 +33,6 @@ use function str_contains;
 use function strtolower;
 use function trim;
 
-/**
- * @phpstan-type AtRuleStackEntry array{
- *     type: string,
- *     name?: string,
- *     prelude?: string,
- *     condition?: string
- * }
- */
 final readonly class DeferredChunkManager
 {
     public function __construct(
@@ -48,18 +44,8 @@ final readonly class DeferredChunkManager
     ) {}
 
     /**
-     * @param array<int, array{
-     *     chunk:string,
-     *     baseLine:int,
-     *     baseColumn:int,
-     *     mappings:array<int, SourceMapMapping>
-     * }|string> $leadingRootChunks
-     * @param array<int, array{
-     *     chunk:string,
-     *     baseLine:int,
-     *     baseColumn:int,
-     *     mappings:array<int, SourceMapMapping>
-     * }|string> $trailingRootChunks
+     * @param list<OutputChunk> $leadingRootChunks
+     * @param list<OutputChunk> $trailingRootChunks
      */
     public function buildRuleResult(
         string $output,
@@ -117,33 +103,23 @@ final readonly class DeferredChunkManager
 
     public function appendDeferredAtRuleChunk(int $levels, string $chunk): bool
     {
-        $atRuleStackIndex = count($this->render->outputState()->deferredAtRuleStack) - 1;
+        $atRuleStackIndex = count($this->render->outputState()->deferral->atRuleStack) - 1;
 
         if ($atRuleStackIndex < 0) {
             return false;
         }
 
-        $this->render->outputState()->deferredAtRuleStack[$atRuleStackIndex][] = [
-            'levels' => $levels,
-            'chunk'  => $chunk,
-        ];
+        $this->render->outputState()->deferral->atRuleStack[$atRuleStackIndex][] = new DeferredAtRuleChunk(
+            $levels,
+            $chunk,
+        );
 
         return true;
     }
 
     /**
-     * @param array<int, array{
-     *     chunk:string,
-     *     baseLine:int,
-     *     baseColumn:int,
-     *     mappings:array<int, SourceMapMapping>
-     * }|string> $leadingRootChunks
-     * @param array<int, array{
-     *     chunk:string,
-     *     baseLine:int,
-     *     baseColumn:int,
-     *     mappings:array<int, SourceMapMapping>
-     * }|string> $trailingRootChunks
+     * @param list<OutputChunk> $leadingRootChunks
+     * @param list<OutputChunk> $trailingRootChunks
      */
     public function collectRuleBubblingChunk(
         array &$leadingRootChunks,
@@ -211,12 +187,7 @@ final readonly class DeferredChunkManager
     }
 
     /**
-     * @param array<int, array{
-     *     chunk:string,
-     *     baseLine:int,
-     *     baseColumn:int,
-     *     mappings:array<int, SourceMapMapping>
-     * }|string> $trailingRootChunks
+     * @param list<OutputChunk> $trailingRootChunks
      */
     public function collectRuleAtRootChunk(array &$trailingRootChunks, AtRootNode $child, TraversalContext $ctx): void
     {
@@ -240,38 +211,28 @@ final readonly class DeferredChunkManager
     }
 
     /**
-     * @param array<int, array{
-     *     chunk:string,
-     *     baseLine:int,
-     *     baseColumn:int,
-     *     mappings:array<int, SourceMapMapping>
-     * }|string> $trailingRootChunks
+     * @param list<OutputChunk> $trailingRootChunks
      */
     public function collectDeferredIncludeRootChunks(array &$trailingRootChunks, int $deferredAtRootCount): void
     {
         $outputState      = $this->render->outputState();
-        $atRootStackIndex = count($outputState->deferredAtRootStack) - 1;
+        $atRootStackIndex = count($outputState->deferral->atRootStack) - 1;
 
         if ($atRootStackIndex < 0) {
             return;
         }
 
-        $deferred      = $outputState->deferredAtRootStack[$atRootStackIndex];
+        $deferred      = $outputState->deferral->atRootStack[$atRootStackIndex];
         $deferredCount = count($deferred);
 
         if ($deferredCount <= $deferredAtRootCount) {
             return;
         }
 
-        /** @var array<int, array{
-         *     chunk:string,
-         *     baseLine:int,
-         *     baseColumn:int,
-         *     mappings:array<int, SourceMapMapping>
-         * }|string> $newChunks */
+        /** @var list<OutputChunk> $newChunks */
         $newChunks = array_splice($deferred, $deferredAtRootCount);
 
-        $outputState->deferredAtRootStack[$atRootStackIndex] = $deferred;
+        $outputState->deferral->atRootStack[$atRootStackIndex] = $deferred;
 
         foreach ($newChunks as $chunk) {
             $trailingRootChunks[] = $chunk;
@@ -332,16 +293,16 @@ final readonly class DeferredChunkManager
             return;
         }
 
-        $stackIndex = count($this->render->outputState()->deferredBubblingStack) - 1;
+        $stackIndex = count($this->render->outputState()->deferral->bubblingStack) - 1;
 
         if ($stackIndex >= 0) {
             if ($this->shouldDeferBubblingChunkToTrailingRoot($child)) {
                 $this->render->restorePosition($preparedChunk['saved']);
 
-                $atRootStackIndex = count($this->render->outputState()->deferredAtRootStack) - 1;
+                $atRootStackIndex = count($this->render->outputState()->deferral->atRootStack) - 1;
 
                 if ($atRootStackIndex >= 0) {
-                    $this->render->outputState()->deferredAtRootStack[$atRootStackIndex][] = $preparedChunk['deferredChunk'];
+                    $this->render->outputState()->deferral->atRootStack[$atRootStackIndex][] = $preparedChunk['deferredChunk'];
                 } else {
                     $this->appendDeferredBubblingChunk($preparedChunk['deferredChunk']);
                 }
@@ -367,7 +328,7 @@ final readonly class DeferredChunkManager
         $compiled = $this->compileNestedPropertyBlock($child, $childSelector, $ctx, $ctx->indent);
 
         if ($compiled !== null && $compiled !== '') {
-            $this->appendOutputChunk($output, $first, $compiled);
+            $this->appendOutputChunk($output, $first, new RawChunk($compiled));
 
             return;
         }
@@ -403,10 +364,7 @@ final readonly class DeferredChunkManager
         $this->appendOutputChunk($output, $first, $preparedChunk['deferredChunk']);
     }
 
-    /**
-     * @param array{chunk:string, baseLine:int, baseColumn:int, mappings:array<int, SourceMapMapping>}|string $chunk
-     */
-    public function appendOutputChunk(string &$output, bool &$first, array|string $chunk): void
+    public function appendOutputChunk(string &$output, bool &$first, OutputChunk $chunk): void
     {
         if (! $first) {
             $this->render->appendChunk($output, "\n");
@@ -417,34 +375,28 @@ final readonly class DeferredChunkManager
         $first = false;
     }
 
-    /**
-     * @param array{chunk:string, baseLine:int, baseColumn:int, mappings:array<int, SourceMapMapping>}|string $chunk
-     */
-    public function appendDeferredRootChunk(array|string $chunk): bool
+    public function appendDeferredRootChunk(OutputChunk $chunk): bool
     {
-        $stackIndex = count($this->render->outputState()->deferredAtRootStack) - 1;
+        $stackIndex = count($this->render->outputState()->deferral->atRootStack) - 1;
 
         if ($stackIndex < 0) {
             return false;
         }
 
-        $this->render->outputState()->deferredAtRootStack[$stackIndex][] = $chunk;
+        $this->render->outputState()->deferral->atRootStack[$stackIndex][] = $chunk;
 
         return true;
     }
 
-    /**
-     * @param array{chunk:string, baseLine:int, baseColumn:int, mappings:array<int, SourceMapMapping>}|string $chunk
-     */
-    public function appendDeferredBubblingChunk(array|string $chunk): bool
+    public function appendDeferredBubblingChunk(OutputChunk $chunk): bool
     {
-        $stackIndex = count($this->render->outputState()->deferredBubblingStack) - 1;
+        $stackIndex = count($this->render->outputState()->deferral->bubblingStack) - 1;
 
         if ($stackIndex < 0) {
             return false;
         }
 
-        $this->render->outputState()->deferredBubblingStack[$stackIndex][] = $chunk;
+        $this->render->outputState()->deferral->bubblingStack[$stackIndex][] = $chunk;
 
         return true;
     }
@@ -478,12 +430,7 @@ final readonly class DeferredChunkManager
     }
 
     /**
-     * @param array<int, array{
-     *     chunk:string,
-     *     baseLine:int,
-     *     baseColumn:int,
-     *     mappings:array<int, SourceMapMapping>
-     * }|string> $trailingRootChunks
+     * @param list<OutputChunk> $trailingRootChunks
      */
     public function collectNestedRuleChunk(
         string &$output,
@@ -562,33 +509,33 @@ final readonly class DeferredChunkManager
     }
 
     /**
-     * @param array<int, AtRuleStackEntry> $stack
+     * @param list<AtRuleContextEntry> $stack
      */
     private function findLastMediaPrelude(array $stack): ?string
     {
         for ($index = count($stack) - 1; $index >= 0; $index--) {
             $entry = $stack[$index];
 
-            if ($entry['type'] !== 'directive' || ($entry['name'] ?? '') !== 'media') {
+            if ($entry->type !== 'directive' || $entry->name !== 'media') {
                 continue;
             }
 
-            return trim($entry['prelude'] ?? '');
+            return trim($entry->prelude ?? '');
         }
 
         return null;
     }
 
     /**
-     * @param array<int, AtRuleStackEntry> $stack
-     * @return array<int, AtRuleStackEntry>
+     * @param list<AtRuleContextEntry> $stack
+     * @return list<AtRuleContextEntry>
      */
     private function removeLastMediaEntryFromAtRuleStack(array $stack): array
     {
         for ($index = count($stack) - 1; $index >= 0; $index--) {
             $entry = $stack[$index];
 
-            if ($entry['type'] === 'directive' && isset($entry['name']) && $entry['name'] === 'media') {
+            if ($entry->type === 'directive' && $entry->name === 'media') {
                 unset($stack[$index]);
 
                 return array_values($stack);
@@ -610,7 +557,7 @@ final readonly class DeferredChunkManager
     /**
      * @return array{
      *     chunk:string,
-     *     deferredChunk:array{chunk:string, baseLine:int, baseColumn:int, mappings:array<int, SourceMapMapping>},
+     *     deferredChunk:DeferredChunk,
      *     escapeLevels:int,
      *     saved:array{0: int, 1: int, 2: int}
      * }|null
@@ -638,7 +585,7 @@ final readonly class DeferredChunkManager
     /**
      * @return array{
      *     chunk:string,
-     *     deferredChunk:array{chunk:string, baseLine:int, baseColumn:int, mappings:array<int, SourceMapMapping>},
+     *     deferredChunk:DeferredChunk,
      *     saved:array{0: int, 1: int, 2: int}
      * }|null
      */
@@ -663,11 +610,11 @@ final readonly class DeferredChunkManager
     }
 
     /**
-     * @param array<int, AtRuleStackEntry> $atRuleStack
+     * @param list<AtRuleContextEntry> $atRuleStack
      * @param array{0: int, 1: int, 2: int} $saved
      * @return array{
      *     chunk:string,
-     *     deferredChunk:array{chunk:string, baseLine:int, baseColumn:int, mappings:array<int, SourceMapMapping>}
+     *     deferredChunk:DeferredChunk
      * }
      */
     private function compileMergedMediaChunk(
@@ -701,17 +648,18 @@ final readonly class DeferredChunkManager
     }
 
     /**
-     * @param array{chunk:string, baseLine:int, baseColumn:int, mappings:array<int, SourceMapMapping>}|string $chunk
-     */
-    /**
-     * @return array{chunk:string, baseLine:int, baseColumn:int, mappings:array<int, SourceMapMapping>}|null
+     * @param string $selector
+     * @param Scope $scope
+     * @param AstNode $child
+     * @param TraversalContext $ctx
+     * @return DeferredChunk|null
      */
     public function compileInterleavedBubblingChunk(
         string $selector,
         Scope $scope,
         AstNode $child,
         TraversalContext $ctx,
-    ): ?array {
+    ): ?DeferredChunk {
         /** @var StatementNode $child */
         $bubblingNode = $this->evaluation->normalizeBubblingNodeForSelector($child, $selector);
         $saved        = $this->render->savePosition();
@@ -763,17 +711,8 @@ final readonly class DeferredChunkManager
         return $deferredChunk;
     }
 
-    /**
-     * @param array{chunk:string, baseLine:int, baseColumn:int, mappings:array<int, SourceMapMapping>}|string $chunk
-     */
-    public function appendResolvedChunk(string &$output, array|string $chunk): void
+    public function appendResolvedChunk(string &$output, OutputChunk $chunk): void
     {
-        if (is_string($chunk)) {
-            $this->render->appendChunk($output, $chunk);
-
-            return;
-        }
-
-        $this->render->appendDeferredChunk($output, $chunk);
+        $this->render->appendOutputChunk($output, $chunk);
     }
 }

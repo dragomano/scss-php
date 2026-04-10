@@ -11,6 +11,7 @@ use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -155,13 +156,13 @@ final readonly class CssArgumentEvaluator
             $expanded = [];
 
             foreach ($spread->pairs as $pair) {
-                $key = $pair['key'];
+                $key = $pair->key;
 
                 if (! ($key instanceof StringNode)) {
                     throw new SassErrorException('Keyword argument names from spread maps must be strings, ' . $key::class . ' given.');
                 }
 
-                $expanded[] = new NamedArgumentNode($key->value, $pair['value']);
+                $expanded[] = new NamedArgumentNode($key->value, $pair->value);
             }
 
             return $expanded;
@@ -258,8 +259,8 @@ final readonly class CssArgumentEvaluator
     }
 
     /**
-     * @param array<int, array{key: AstNode, value: AstNode}> $pairs
-     * @return array{0: array<int, array{key: AstNode, value: AstNode}>, 1: bool}
+     * @param list<MapPair> $pairs
+     * @return array{0: list<MapPair>, 1: bool}
      */
     private function evaluateFallbackPairs(array $pairs, Environment $env): array
     {
@@ -267,17 +268,14 @@ final readonly class CssArgumentEvaluator
         $changed        = false;
 
         foreach ($pairs as $pair) {
-            $evaluatedKey   = $this->evaluateFallbackCssArgument($pair['key'], $env);
-            $evaluatedValue = $this->evaluateFallbackCssArgument($pair['value'], $env);
+            $evaluatedKey   = $this->evaluateFallbackCssArgument($pair->key, $env);
+            $evaluatedValue = $this->evaluateFallbackCssArgument($pair->value, $env);
 
-            if ($evaluatedKey !== $pair['key'] || $evaluatedValue !== $pair['value']) {
+            if ($evaluatedKey !== $pair->key || $evaluatedValue !== $pair->value) {
                 $changed = true;
             }
 
-            $evaluatedPairs[] = [
-                'key'   => $evaluatedKey,
-                'value' => $evaluatedValue,
-            ];
+            $evaluatedPairs[] = new MapPair($evaluatedKey, $evaluatedValue);
         }
 
         return [$evaluatedPairs, $changed];
@@ -331,8 +329,8 @@ final readonly class CssArgumentEvaluator
         if ($node instanceof MapNode) {
             foreach ($node->pairs as $pair) {
                 if (
-                    $this->shouldPreserveCssArgument($pair['key'])
-                    || $this->shouldPreserveCssArgument($pair['value'])
+                    $this->shouldPreserveCssArgument($pair->key)
+                    || $this->shouldPreserveCssArgument($pair->value)
                 ) {
                     return true;
                 }

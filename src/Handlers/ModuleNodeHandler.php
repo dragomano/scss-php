@@ -12,6 +12,7 @@ use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Module;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
+use Bugo\SCSS\Utils\RawChunk;
 
 use function count;
 use function str_contains;
@@ -98,11 +99,13 @@ final readonly class ModuleNodeHandler
 
             if ($parentSelector !== null && $parentSelector !== '') {
                 $qualifiedCss = $this->module->qualifyImportedCssWithParentSelector($css, $parentSelector);
-                $stackIndex   = count($outputState->deferredAtRootStack) - 1;
+                $stackIndex   = count($outputState->deferral->atRootStack) - 1;
 
                 if ($stackIndex >= 0) {
-                    $outputState->deferredAtRootStack[$stackIndex][] = $this->render->trimTrailingNewlines(
-                        $qualifiedCss,
+                    $outputState->deferral->atRootStack[$stackIndex][] = new RawChunk(
+                        $this->render->trimTrailingNewlines(
+                            $qualifiedCss,
+                        ),
                     );
 
                     continue;
@@ -141,19 +144,18 @@ final readonly class ModuleNodeHandler
 
         $moduleState = $this->module->moduleState();
 
-        if (! isset($moduleState->loadedModules[$namespace])) {
+        $loaded = $moduleState->getByNamespace($namespace);
+
+        if ($loaded === null) {
             return '';
         }
 
-        $moduleData = $moduleState->loadedModules[$namespace];
-        $moduleId   = $moduleData['id'];
-
-        if (isset($moduleState->emittedUseCss[$moduleId])) {
+        if (isset($moduleState->emittedUseCss[$loaded->id])) {
             return '';
         }
 
-        $moduleState->emittedUseCss[$moduleId] = true;
+        $moduleState->emittedUseCss[$loaded->id] = true;
 
-        return $moduleData['css'];
+        return $loaded->css;
     }
 }

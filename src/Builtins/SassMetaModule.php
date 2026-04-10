@@ -19,6 +19,7 @@ use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\MixinRefNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -410,10 +411,7 @@ final class SassMetaModule extends AbstractModule
             $pairs = [];
 
             foreach ($value->keywords as $name => $keywordValue) {
-                $pairs[] = [
-                    'key'   => new StringNode($name),
-                    'value' => $keywordValue,
-                ];
+                $pairs[] = new MapPair(new StringNode($name), $keywordValue);
             }
 
             return new MapNode($pairs);
@@ -463,10 +461,10 @@ final class SassMetaModule extends AbstractModule
                 $pairs = [];
 
                 foreach ($builtinFunctions as $function) {
-                    $pairs[] = [
-                        'key'   => new StringNode($function),
-                        'value' => new FunctionNode($module . '.' . $function, capturedScope: $scope),
-                    ];
+                    $pairs[] = new MapPair(
+                        new StringNode($function),
+                        new FunctionNode($module . '.' . $function, capturedScope: $scope),
+                    );
                 }
 
                 return new MapNode($pairs);
@@ -482,10 +480,10 @@ final class SassMetaModule extends AbstractModule
         $pairs = [];
 
         foreach ($scope->getFunctions() as $name => $_function) {
-            $pairs[] = [
-                'key'   => new StringNode($name),
-                'value' => new FunctionNode($module . '.' . $name, capturedScope: $scope),
-            ];
+            $pairs[] = new MapPair(
+                new StringNode($name),
+                new FunctionNode($module . '.' . $name, capturedScope: $scope),
+            );
         }
 
         return new MapNode($pairs);
@@ -506,7 +504,7 @@ final class SassMetaModule extends AbstractModule
         $pairs = [];
 
         foreach ($scope->getMixins() as $name => $_mixin) {
-            $pairs[] = ['key' => new StringNode($name), 'value' => new MixinRefNode($module . '.' . $name)];
+            $pairs[] = new MapPair(new StringNode($name), new MixinRefNode($module . '.' . $name));
         }
 
         return new MapNode($pairs);
@@ -531,7 +529,7 @@ final class SassMetaModule extends AbstractModule
                 continue;
             }
 
-            $pairs[] = ['key' => new StringNode($name), 'value' => $value];
+            $pairs[] = new MapPair(new StringNode($name), $value);
         }
 
         return new MapNode($pairs);

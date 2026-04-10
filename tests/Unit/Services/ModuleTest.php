@@ -14,6 +14,7 @@ use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
+use Bugo\SCSS\States\LoadedModule;
 use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
@@ -110,17 +111,16 @@ describe('Module service', function () {
     });
 
     it('handleUse() reuses already loaded modules by file id', function () {
-        $env   = new Environment();
-        $scope = new Scope();
+        $env    = new Environment();
+        $scope  = new Scope();
+        $module = new LoadedModule('/tmp/_theme.scss', $scope, '');
 
-        $moduleData = ['id' => '/tmp/_theme.scss', 'scope' => $scope, 'css' => ''];
-
-        $this->ctx->moduleState->loadedModulesById['/tmp/_theme.scss'] = $moduleData;
+        $this->ctx->moduleState->addByNamespace('/tmp/_theme.scss', $module);
         $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
 
         $this->module->handleUse(new UseNode('theme', 'theme'), $env);
 
-        expect($this->ctx->moduleState->loadedModules['theme'])->toBe($moduleData)
+        expect($this->ctx->moduleState->getByNamespace('theme'))->toBeInstanceOf(LoadedModule::class)
             ->and($env->getCurrentScope()->getModule('theme'))->toBe($scope)
             ->and($env->getGlobalScope()->getModule('theme'))->toBe($scope);
     });

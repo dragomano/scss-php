@@ -9,6 +9,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 
 final class AstValueTransformer
@@ -52,10 +53,10 @@ final class AstValueTransformer
             $pairs = [];
 
             foreach ($node->pairs as $pair) {
-                $pairs[] = [
-                    'key'   => self::map($pair['key'], $transform),
-                    'value' => self::map($pair['value'], $transform),
-                ];
+                $pairs[] = new MapPair(
+                    self::map($pair->key, $transform),
+                    self::map($pair->value, $transform),
+                );
             }
 
             return $transform(new MapNode($pairs));

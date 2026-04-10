@@ -17,6 +17,8 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\Visitable;
+use Bugo\SCSS\Runtime\AtRuleContextEntry;
+use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Utils\SelectorHelper;
@@ -32,7 +34,6 @@ use function ctype_digit;
 use function implode;
 use function in_array;
 use function str_contains;
-use function str_replace;
 use function strlen;
 use function strpos;
 use function strtolower;
@@ -40,8 +41,6 @@ use function trim;
 
 final readonly class Selector
 {
-    private ExtendsResolver $extends;
-
     private SelectorRuleOptimizer $optimizer;
 
     /**
@@ -51,10 +50,6 @@ final readonly class Selector
      * @param Closure(string): bool $shouldCompressNamedColorForProperty
      * @param Closure(AstNode): AstNode $compressNamedColorsForOutput
      * @param Closure(AstNode, Environment): string $format
-     * @param Closure(string, Environment): bool|null $evaluateFunctionCondition
-     * @param Closure(AstNode, Environment): bool|null $applyVariableDeclaration
-     * @param Closure(AstNode): array<int, AstNode>|null $eachIterableItems
-     * @param Closure(array<int, string>, AstNode, Environment): void|null $assignEachVariables
      */
     public function __construct(
         private CompilerContext $ctx,
@@ -62,36 +57,14 @@ final readonly class Selector
         private Text $text,
         private SelectorTokenizer $tokenizer,
         private NodeDispatcherInterface $dispatcher,
+        private ExtendsResolver $extends,
         private Closure $evaluateValue,
         private Closure $assignModuleVariable,
         private Closure $isSassNullValue,
         private Closure $shouldCompressNamedColorForProperty,
         private Closure $compressNamedColorsForOutput,
         private Closure $format,
-        ?Closure $evaluateFunctionCondition = null,
-        ?Closure $applyVariableDeclaration = null,
-        ?Closure $eachIterableItems = null,
-        ?Closure $assignEachVariables = null,
     ) {
-        $evaluateFunctionCondition ??= static fn(string $condition, Environment $env): bool => false;
-        $applyVariableDeclaration  ??= static fn(AstNode $node, Environment $env): bool => false;
-        $eachIterableItems         ??= static fn(AstNode $value): array => [$value];
-        $assignEachVariables       ??= static function (array $variables, AstNode $item, Environment $env): void {};
-
-        $this->extends = new ExtendsResolver(
-            $this->ctx,
-            $this->text,
-            $this->tokenizer,
-            fn(string $s): array => $this->splitTopLevelSelectorList($s),
-            fn(string $s, string $p): string => $this->resolveNestedSelector($s, $p),
-            fn(AstNode $node, Environment $env): AstNode => ($this->evaluateValue)($node, $env),
-            fn(string $condition, Environment $env): bool => $evaluateFunctionCondition($condition, $env),
-            fn(AstNode $node, Environment $env): bool => $applyVariableDeclaration($node, $env),
-            fn(AstNode $value): array => $eachIterableItems($value),
-            fn(array $variables, AstNode $item, Environment $env) => $assignEachVariables($variables, $item, $env),
-            fn(AstNode $node, Environment $env): string => ($this->format)($node, $env),
-        );
-
         $this->optimizer = new SelectorRuleOptimizer();
     }
 
@@ -101,7 +74,7 @@ final readonly class Selector
     }
 
     /**
-     * @return array<int, array{type: string, name?: string, prelude?: string, condition?: string}>
+     * @return list<AtRuleContextEntry>
      */
     public function getCurrentAtRuleStack(Environment $env): array
     {
@@ -115,54 +88,17 @@ final readonly class Selector
             return [];
         }
 
+        /** @var list<AtRuleContextEntry|array<string, mixed>> $stack */
         $normalized = [];
 
         foreach ($stack as $entry) {
-            if (! is_array($entry) || ! isset($entry['type']) || ! is_string($entry['type'])) {
+            $normalizedEntry = $this->normalizeAtRuleStackEntry($entry);
+
+            if ($normalizedEntry === null) {
                 continue;
             }
 
-            $rawType = $entry['type'];
-
-            $type = match ($rawType) {
-                'directive',
-                'supports' => $rawType,
-                default    => strtolower($this->normalizeAtRuleText($rawType)),
-            };
-
-            if ($type === 'directive') {
-                if (! isset($entry['name']) || ! is_string($entry['name'])) {
-                    continue;
-                }
-
-                $rawName = $entry['name'];
-
-                $name = match ($rawName) {
-                    'media' => 'media',
-                    default => strtolower($this->normalizeAtRuleText($rawName)),
-                };
-
-                $normalized[] = [
-                    'type'    => 'directive',
-                    'name'    => $name,
-                    'prelude' => isset($entry['prelude']) && is_string($entry['prelude'])
-                        ? $this->normalizeAtRuleText($entry['prelude'])
-                        : '',
-                ];
-
-                continue;
-            }
-
-            if ($type === 'supports') {
-                if (! isset($entry['condition']) || ! is_string($entry['condition'])) {
-                    continue;
-                }
-
-                $normalized[] = [
-                    'type'      => 'supports',
-                    'condition' => $this->normalizeAtRuleText($entry['condition']),
-                ];
-            }
+            $normalized[] = $normalizedEntry;
         }
 
         return $normalized;
@@ -248,12 +184,12 @@ final readonly class Selector
     public function drainDeferredAtRuleEscapes(): array
     {
         $outputState     = $this->ctx->outputState;
-        $deferredEscapes = array_pop($outputState->deferredAtRuleStack) ?? [];
+        $deferredEscapes = array_pop($outputState->deferral->atRuleStack) ?? [];
         $outsideChunks   = [];
 
         foreach ($deferredEscapes as $deferredEscape) {
-            $levels = $deferredEscape['levels'];
-            $chunk  = $deferredEscape['chunk'];
+            $levels = $deferredEscape->levels;
+            $chunk  = $deferredEscape->chunk;
 
             if ($chunk === '') {
                 continue;
@@ -265,13 +201,13 @@ final readonly class Selector
                 continue;
             }
 
-            $parentAtRuleIndex = count($outputState->deferredAtRuleStack) - 1;
+            $parentAtRuleIndex = count($outputState->deferral->atRuleStack) - 1;
 
             if ($parentAtRuleIndex >= 0) {
-                $outputState->deferredAtRuleStack[$parentAtRuleIndex][] = [
-                    'levels' => $levels - 1,
-                    'chunk'  => $chunk,
-                ];
+                $outputState->deferral->atRuleStack[$parentAtRuleIndex][] = new DeferredAtRuleChunk(
+                    $levels - 1,
+                    $chunk,
+                );
             } else {
                 $outsideChunks[] = $chunk;
             }
@@ -492,26 +428,7 @@ final readonly class Selector
 
     public function resolveNestedSelector(string $selector, string $parentSelector): string
     {
-        $selectorParts = SelectorHelper::splitList($selector);
-        $parentParts   = SelectorHelper::splitList($parentSelector);
-
-        if ($selectorParts === [] || $parentParts === []) {
-            return $selector;
-        }
-
-        $resolved = [];
-
-        foreach ($parentParts as $parentPart) {
-            foreach ($selectorParts as $selectorPart) {
-                if (str_contains($selectorPart, '&')) {
-                    $resolved[] = str_replace('&', $parentPart, $selectorPart);
-                } else {
-                    $resolved[] = $selectorPart;
-                }
-            }
-        }
-
-        return $this->implodeUniqueSelectorList($resolved);
+        return SelectorHelper::resolveNested($selector, $parentSelector);
     }
 
     public function combineNestedSelectorWithParent(string $selector, string $parentSelector): string
@@ -613,9 +530,9 @@ final readonly class Selector
     }
 
     /**
-     * @param array<int, array{type: string, name?: string, prelude?: string, condition?: string}> $stack
+     * @param list<AtRuleContextEntry> $stack
      * @param array<int, string> $queryRules
-     * @return array<int, array{type: string, name?: string, prelude?: string, condition?: string}>
+     * @return list<AtRuleContextEntry>
      */
     private function filterAtRootStackByQuery(array $stack, ?string $queryMode, array $queryRules): array
     {
@@ -683,24 +600,19 @@ final readonly class Selector
     }
 
     /**
-     * @param array{type: string, name?: string, prelude?: string, condition?: string} $entry
      * @param array<int, string> $rules
      */
-    private function matchesAtRootQueryRule(array $entry, array $rules): bool
+    private function matchesAtRootQueryRule(AtRuleContextEntry $entry, array $rules): bool
     {
         if (in_array('rule', $rules, true)) {
             return false;
         }
 
-        if ($entry['type'] === 'supports') {
+        if ($entry->type === 'supports') {
             return in_array('supports', $rules, true);
         }
 
-        if ($entry['type'] !== 'directive') {
-            return false;
-        }
-
-        $name = $entry['name'] ?? '';
+        $name = $entry->name ?? '';
 
         if ($name !== '' && in_array($name, $rules, true)) {
             return true;
@@ -749,7 +661,7 @@ final readonly class Selector
     }
 
     /**
-     * @param array<int, array{type: string, name?: string, prelude?: string, condition?: string}> $stack
+     * @param list<AtRuleContextEntry> $stack
      */
     private function compileAtRootChild(
         AstNode $child,
@@ -775,7 +687,7 @@ final readonly class Selector
     }
 
     /**
-     * @param array<int, array{type: string, name?: string, prelude?: string, condition?: string}> $stack
+     * @param list<AtRuleContextEntry> $stack
      * @return Visitable&AstNode
      */
     private function wrapNodeWithAtRuleStack(AstNode $node, array $stack): Visitable
@@ -786,15 +698,15 @@ final readonly class Selector
         for ($index = count($stack) - 1; $index >= 0; $index--) {
             $entry = $stack[$index];
 
-            if ($entry['type'] === 'supports') {
-                $wrapped = new SupportsNode($entry['condition'] ?? '', [$wrapped]);
+            if ($entry->type === 'supports') {
+                $wrapped = new SupportsNode($entry->condition ?? '', [$wrapped]);
 
                 continue;
             }
 
             $wrapped = new DirectiveNode(
-                $entry['name'] ?? '',
-                $entry['prelude'] ?? '',
+                $entry->name ?? '',
+                $entry->prelude ?? '',
                 [$wrapped],
                 true,
             );
@@ -825,7 +737,7 @@ final readonly class Selector
             }
 
             $resolvedSelector = str_contains($child->selector, '&')
-                ? $this->resolveNestedSelector($child->selector, $selector)
+                ? SelectorHelper::resolveNested($child->selector, $selector)
                 : $this->combineNestedSelectorWithParent($child->selector, $selector);
 
             return new RuleNode(
@@ -860,5 +772,45 @@ final readonly class Selector
         $name = strtolower($node->name);
 
         return $name === 'container' || $name === 'media';
+    }
+
+    private function normalizeAtRuleStackEntry(mixed $entry): ?AtRuleContextEntry
+    {
+        if ($entry instanceof AtRuleContextEntry) {
+            return $entry;
+        }
+
+        if (! is_array($entry) || ! isset($entry['type']) || ! is_string($entry['type'])) {
+            return null;
+        }
+
+        $type = match ($entry['type']) {
+            'directive',
+            'supports' => $entry['type'],
+            default    => strtolower($this->normalizeAtRuleText($entry['type'])),
+        };
+
+        if ($type === 'directive') {
+            if (! isset($entry['name']) || ! is_string($entry['name'])) {
+                return null;
+            }
+
+            $name = match ($entry['name']) {
+                'media' => 'media',
+                default => strtolower($this->normalizeAtRuleText($entry['name'])),
+            };
+
+            $prelude = isset($entry['prelude']) && is_string($entry['prelude'])
+                ? $this->normalizeAtRuleText($entry['prelude'])
+                : '';
+
+            return AtRuleContextEntry::directive($name, $prelude);
+        }
+
+        if ($type !== 'supports' || ! isset($entry['condition']) || ! is_string($entry['condition'])) {
+            return null;
+        }
+
+        return AtRuleContextEntry::supports($this->normalizeAtRuleText($entry['condition']));
     }
 }

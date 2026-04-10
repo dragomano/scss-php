@@ -14,16 +14,7 @@ final class NameHelper
      */
     public static function splitQualifiedName(string $name): array
     {
-        if (! str_contains($name, '.')) {
-            return ['namespace' => $name, 'member' => null];
-        }
-
-        $parts = explode('.', $name, 2);
-
-        return [
-            'namespace' => $parts[0],
-            'member'    => $parts[1] ?? null,
-        ];
+        return self::split($name, null);
     }
 
     /**
@@ -31,16 +22,29 @@ final class NameHelper
      */
     public static function splitNamespacedName(string $name): array
     {
-        $parts = explode('.', $name, 2);
-
-        return [
-            'namespace' => $parts[0],
-            'member'    => $parts[1] ?? '',
-        ];
+        /** @var array{namespace: string, member: string} */
+        return self::split($name, '');
     }
 
     public static function hasNamespace(string $name): bool
     {
         return str_contains($name, '.');
+    }
+
+    /**
+     * @return array{namespace: string, member: string|null}
+     */
+    private static function split(string $name, ?string $defaultMember): array
+    {
+        if (! str_contains($name, '.')) {
+            return ['namespace' => $name, 'member' => $defaultMember];
+        }
+
+        $parts = explode('.', $name, 2);
+
+        return [
+            'namespace' => $parts[0],
+            'member'    => $parts[1] ?? $defaultMember,
+        ];
     }
 }

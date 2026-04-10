@@ -25,6 +25,7 @@ use Bugo\SCSS\Services\Module;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Utils\NameHelper;
+use Bugo\SCSS\Utils\RawChunk;
 
 use function array_slice;
 use function str_contains;
@@ -141,7 +142,7 @@ final readonly class MixinHandler
         if ($parentSelector !== null && $parentSelector !== '') {
             $qualifiedCss = $this->module->qualifyImportedCssWithParentSelector($css, $parentSelector);
 
-            if ($this->chunks->appendDeferredBubblingChunk($qualifiedCss)) {
+            if ($this->chunks->appendDeferredBubblingChunk(new RawChunk($qualifiedCss))) {
                 return '';
             }
 
@@ -342,11 +343,11 @@ final readonly class MixinHandler
         $configuration = [];
 
         foreach ($value->pairs as $pair) {
-            if (! ($pair['key'] instanceof StringNode)) {
+            if (! ($pair->key instanceof StringNode)) {
                 continue;
             }
 
-            $configuration[$pair['key']->value] = $pair['value'];
+            $configuration[$pair->key->value] = $pair->value;
         }
 
         return $configuration;

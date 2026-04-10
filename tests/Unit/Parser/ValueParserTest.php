@@ -254,9 +254,9 @@ describe('ValueParser', function () {
             expect($decl->value)->toBeInstanceOf(MapNode::class);
 
             $pair = $decl->value->pairs[0];
-            expect($pair['key'])->toBeInstanceOf(StringNode::class)
-                ->and($pair['key']->value)->toBe('primary')
-                ->and($pair['value'])->toBeInstanceOf(ColorNode::class);
+            expect($pair->key)->toBeInstanceOf(StringNode::class)
+                ->and($pair->key->value)->toBe('primary')
+                ->and($pair->value)->toBeInstanceOf(ColorNode::class);
         });
     });
 

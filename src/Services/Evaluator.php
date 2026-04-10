@@ -7,9 +7,9 @@ namespace Bugo\SCSS\Services;
 use Bugo\SCSS\Builtins\Color\Conversion\HexColorConverter;
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
-use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
-use Bugo\SCSS\Exceptions\SassThrowable;
+use Bugo\SCSS\Exceptions\SassArgumentException;
+use Bugo\SCSS\Exceptions\SassException;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\ArgumentNode;
@@ -17,7 +17,6 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
-use Bugo\SCSS\Nodes\DeprecatedExpressionNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
@@ -32,9 +31,19 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\ParserInterface;
-use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
+use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
+use Bugo\SCSS\Services\Evaluation\EvaluationStrategyRegistry;
+use Bugo\SCSS\Services\Evaluation\Strategy\ArgumentListNodeStrategy;
+use Bugo\SCSS\Services\Evaluation\Strategy\DeprecatedExpressionStrategy;
+use Bugo\SCSS\Services\Evaluation\Strategy\FunctionNodeStrategy;
+use Bugo\SCSS\Services\Evaluation\Strategy\ListNodeStrategy;
+use Bugo\SCSS\Services\Evaluation\Strategy\MapNodeStrategy;
+use Bugo\SCSS\Services\Evaluation\Strategy\NamedArgumentNodeStrategy;
+use Bugo\SCSS\Services\Evaluation\Strategy\PassthroughNodeStrategy;
+use Bugo\SCSS\Services\Evaluation\Strategy\StringNodeStrategy;
+use Bugo\SCSS\Services\Evaluation\Strategy\VariableReferenceStrategy;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\NameNormalizer;
@@ -46,7 +55,6 @@ use LogicException;
 
 use function array_slice;
 use function count;
-use function implode;
 use function in_array;
 use function str_contains;
 use function str_starts_with;
@@ -70,6 +78,8 @@ final readonly class Evaluator
     private CssArgumentEvaluator $cssArgument;
 
     private CallArgumentResolver $callArguments;
+
+    private EvaluationStrategyRegistry $registry;
 
     /**
      * @param Closure(ModuleVarDeclarationNode, Environment): void $assignModuleVariable
@@ -137,6 +147,52 @@ final readonly class Evaluator
             $this->userFunction,
             fn(AstNode $node, Environment $env): AstNode => $this->evaluateValue($node, $env),
         );
+
+        $evaluateValueClosure = fn(
+            AstNode $node,
+            Environment $env,
+            EvaluationOptions $opts = new EvaluationOptions(),
+        ): AstNode => $this->evaluateValue($node, $env, $opts->skipSlashArithmetic);
+
+        $this->registry = new EvaluationStrategyRegistry([
+            new PassthroughNodeStrategy(),
+            new DeprecatedExpressionStrategy(
+                $evaluateValueClosure,
+                $this->handleDiagnosticDirective,
+            ),
+            new VariableReferenceStrategy(
+                $evaluateValueClosure,
+                fn(string $name, Environment $env): AstNode => $this->resolveVariable($name, $env),
+            ),
+            new StringNodeStrategy(
+                fn(Environment $env): ?StringNode => $this->getCurrentParentSelector($env),
+                fn(): AstNode => $this->ctx->valueFactory->createNullNode(),
+                fn(string $value, Environment $env): string => $this->text->replaceInterpolations($value, $env),
+            ),
+            new ListNodeStrategy(
+                $evaluateValueClosure,
+                fn(ListNode $list, Environment $env): ?AstNode => $this->conditional->evaluateLogicalList($list, $env),
+                fn(ListNode $list, bool $strict, Environment $env): ?AstNode => $this->evaluateArithmeticList($list, $strict, $env),
+                fn(ListNode $list, ?Environment $env): ?AstNode => $this->evaluateStringConcatenationList($list, $env),
+            ),
+            new ArgumentListNodeStrategy($evaluateValueClosure),
+            new MapNodeStrategy($evaluateValueClosure),
+            new NamedArgumentNodeStrategy($evaluateValueClosure),
+            new FunctionNodeStrategy(
+                $this->ctx,
+                $this->options,
+                $this->userFunction,
+                $this->calculation,
+                $this->conditional,
+                $this->hexColorConverter,
+                $evaluateValueClosure,
+                fn(array $args, Environment $env): array => $this->resolveCallArguments($args, $env),
+                fn(array $args, Environment $env): array => $this->expandCallArguments($args, $env),
+                fn(array $args, Environment $env): array => $this->cssArgument->expandCssCallArguments($args, $env),
+                $this->handleDiagnosticDirective,
+                fn(AstNode $node, Environment $env): string => $this->format($node, $env),
+            ),
+        ]);
     }
 
     public function interpolateText(string $text, Environment $env): string
@@ -146,337 +202,13 @@ final readonly class Evaluator
 
     public function evaluateValue(AstNode $node, Environment $env, bool $skipSlashArithmetic = false): AstNode
     {
-        if ($node instanceof DeprecatedExpressionNode) {
-            ($this->handleDiagnosticDirective)(
-                'warn',
-                new StringNode($node->message, true),
-                $env,
-                $node,
-            );
-
-            return $this->evaluateValue($node->expression, $env, $skipSlashArithmetic);
-        }
-
-        if ($node instanceof VariableReferenceNode) {
-            return $this->evaluateValue($this->resolveVariable($node->name, $env), $env, $skipSlashArithmetic);
-        }
-
-        if (
-            $node instanceof BooleanNode
-            || $node instanceof ColorNode
-            || $node instanceof MixinRefNode
-            || $node instanceof NullNode
-            || $node instanceof NumberNode
-        ) {
-            return $node;
-        }
-
-        if ($node instanceof StringNode) {
-            if (! $node->quoted && $node->value === '&') {
-                $selectorValue = $this->getCurrentParentSelector($env);
-
-                if ($selectorValue !== null) {
-                    return $selectorValue;
-                }
-
-                return $this->ctx->valueFactory->createNullNode();
-            }
-
-            if (! str_contains($node->value, '#{')) {
-                return $node;
-            }
-
-            return new StringNode(
-                $this->text->replaceInterpolations($node->value, $env),
-                $node->quoted,
-            );
-        }
-
-        if ($node instanceof ListNode) {
-            $items   = null;
-            $itemIdx = 0;
-
-            foreach ($node->items as $item) {
-                if ($item instanceof ListNode
-                    && $item->separator === 'space'
-                    && count($item->items) === 3
-                ) {
-                    [$itemFirst, $itemMid, $itemLast] = $item->items;
-
-                    if ($itemFirst instanceof NumberNode
-                        && $itemMid instanceof StringNode
-                        && $itemMid->value === '/'
-                        && $itemLast instanceof NumberNode
-                    ) {
-                        if ($items !== null) {
-                            $items[] = $item;
-                        }
-
-                        $itemIdx++;
-
-                        continue;
-                    }
-                }
-
-                $evaluatedItem = $this->evaluateValue($item, $env, $skipSlashArithmetic);
-
-                if ($items !== null) {
-                    $items[] = $evaluatedItem;
-                } elseif ($evaluatedItem !== $item) {
-                    $items   = $itemIdx > 0 ? array_slice($node->items, 0, $itemIdx) : [];
-                    $items[] = $evaluatedItem;
-                }
-
-                $itemIdx++;
-            }
-
-            $evaluated = $items !== null
-                ? new ListNode($items, $node->separator, $node->bracketed)
-                : $node;
-
-            $logical = $this->conditional->evaluateLogicalList($evaluated, $env);
-
-            if ($logical !== null) {
-                return $logical;
-            }
-
-            if (! $skipSlashArithmetic) {
-                $arithmetic = $this->evaluateArithmeticList($evaluated, true, $env);
-
-                if ($arithmetic !== null) {
-                    return $arithmetic;
-                }
-            }
-
-            $concatenation = $this->evaluateStringConcatenationList($evaluated, $env);
-
-            return $concatenation ?? $evaluated;
-        }
-
-        if ($node instanceof ArgumentListNode) {
-            $items   = null;
-            $itemIdx = 0;
-
-            foreach ($node->items as $item) {
-                $evaluatedItem = $this->evaluateValue($item, $env);
-
-                if ($items !== null) {
-                    $items[] = $evaluatedItem;
-                } elseif ($evaluatedItem !== $item) {
-                    $items   = $itemIdx > 0 ? array_slice($node->items, 0, $itemIdx) : [];
-                    $items[] = $evaluatedItem;
-                }
-
-                $itemIdx++;
-            }
-
-            $keywords = null;
-
-            foreach ($node->keywords as $name => $keywordValue) {
-                $evaluatedKeywordValue = $this->evaluateValue($keywordValue, $env);
-
-                if ($keywords !== null) {
-                    $keywords[$name] = $evaluatedKeywordValue;
-                } elseif ($evaluatedKeywordValue !== $keywordValue) {
-                    $keywords        = $node->keywords;
-                    $keywords[$name] = $evaluatedKeywordValue;
-                }
-            }
-
-            if ($items === null && $keywords === null) {
-                return $node;
-            }
-
-            return new ArgumentListNode(
-                $items ?? $node->items,
-                $node->separator,
-                $node->bracketed,
-                $keywords ?? $node->keywords,
-            );
-        }
-
-        if ($node instanceof MapNode) {
-            // Lazily allocate $pairs only on first change
-            $pairs   = null;
-            $pairIdx = 0;
-
-            foreach ($node->pairs as $pair) {
-                $evaluatedKey   = $this->evaluateValue($pair['key'], $env);
-                $evaluatedValue = $this->evaluateValue($pair['value'], $env);
-
-                if ($pairs !== null) {
-                    $pairs[] = ['key' => $evaluatedKey, 'value' => $evaluatedValue];
-                } elseif ($evaluatedKey !== $pair['key'] || $evaluatedValue !== $pair['value']) {
-                    $pairs   = $pairIdx > 0 ? array_slice($node->pairs, 0, $pairIdx) : [];
-                    $pairs[] = ['key' => $evaluatedKey, 'value' => $evaluatedValue];
-                }
-
-                $pairIdx++;
-            }
-
-            if ($pairs === null) {
-                return $node;
-            }
-
-            return new MapNode($pairs);
-        }
-
-        if ($node instanceof NamedArgumentNode) {
-            $value = $this->evaluateValue($node->value, $env);
-
-            if ($value === $node->value) {
-                return $node;
-            }
-
-            return new NamedArgumentNode($node->name, $value);
-        }
-
-        if ($node instanceof FunctionNode) {
-            if ($node->capturedScope !== null && $node->arguments === []) {
-                return $node;
-            }
-
-            $currentScope     = $env->getCurrentScope();
-            $userFunction     = null;
-            $userFunctionName = $node->name;
-
-            if (NameHelper::hasNamespace($node->name)) {
-                $parts = NameHelper::splitQualifiedName($node->name);
-
-                $namespace    = $parts['namespace'];
-                $functionName = $parts['member'] ?? '';
-                $moduleScope  = $currentScope->getModule($namespace);
-
-                if ($functionName !== '' && $moduleScope !== null) {
-                    $userFunction = $moduleScope->findFunction($functionName)?->definition;
-                }
-
-                if ($userFunction !== null) {
-                    $userFunctionName  = $functionName;
-                }
-            } elseif ($node->capturedScope !== null) {
-                $userFunction = $node->capturedScope->findFunction($node->name)?->definition;
-            }
-
-            if ($userFunction === null) {
-                $userFunction = $currentScope->findFunction($node->name)?->definition;
-            }
-
-            if ($userFunction !== null) {
-                [$positionalArguments, $namedArguments] = $this->resolveCallArguments(
-                    $node->arguments,
-                    $env,
-                );
-
-                if (++$this->ctx->moduleState->callDepth > 100) {
-                    $this->ctx->moduleState->callDepth--;
-
-                    throw new MaxIterationsExceededException('@function');
-                }
-
-                try {
-                    return $this->userFunction->executeDefinition(
-                        $userFunctionName,
-                        $userFunction,
-                        $positionalArguments,
-                        $namedArguments,
-                        $env,
-                    );
-                } finally {
-                    $this->ctx->moduleState->callDepth--;
-                }
-            }
-
-            $arguments = $this->expandCallArguments($node->arguments, $env);
-            $arguments = $this->calculation->normalizeArguments($node->name, $arguments);
-
-            if (strtolower($node->name) === 'if' && count($arguments) >= 2 && ! $node->modernSyntax) {
-                $rawCond = $node->arguments[0] ?? $arguments[0];
-                $condStr = $rawCond instanceof VariableReferenceNode
-                    ? '$' . $rawCond->name
-                    : $this->format($arguments[0], $env);
-
-                $suggestion = 'if(sass(' . $condStr . '): ' . $this->format($arguments[1], $env);
-
-                if (isset($arguments[2])) {
-                    $suggestion .= '; else: ' . $this->format($arguments[2], $env);
-                }
-
-                $suggestion .= ')';
-
-                ($this->handleDiagnosticDirective)(
-                    'warn',
-                    new StringNode(implode(' ', [
-                        'The Sass if() syntax is deprecated in favor of the modern CSS syntax.',
-                        'Use `' . $suggestion . '` instead.',
-                    ])),
-                    $env,
-                    $node
-                );
-            }
-
-            $inlineIf  = $this->conditional->evaluateInlineIfFunction($node->name, $arguments, $env);
-
-            if ($inlineIf !== null) {
-                return $inlineIf;
-            }
-
-            $urlFunction = $this->conditional->evaluateSpecialUrlFunction($node->name, $arguments, $env);
-
-            if ($urlFunction !== null) {
-                return $urlFunction;
-            }
-
-            $simplifiedFunction = $this->calculation->simplifyFunction($node->name, $arguments, $env);
-
-            $context = new BuiltinCallContext(
-                $env,
-                $this->ctx->functionRegistry,
-                fn(string $msg) => ($this->handleDiagnosticDirective)('warn', new StringNode($msg), $env, $node),
-                null,
-                $node->arguments,
-                $node->line,
-            );
-
-            $preferBuiltin = in_array(strtolower($node->name), ['max', 'min', 'clamp'], true);
-
-            if (! $preferBuiltin && $simplifiedFunction !== null) {
-                return $simplifiedFunction;
-            }
-
-            $resolved = $this->ctx->functionRegistry->tryCall($node->name, $arguments, $context);
-
-            if ($resolved !== null) {
-                if ($resolved instanceof FunctionNode && $resolved->name !== $node->name) {
-                    return $this->evaluateValue($resolved, $env);
-                }
-
-                return $resolved;
-            }
-
-            if ($preferBuiltin && $simplifiedFunction !== null) {
-                return $simplifiedFunction;
-            }
-
-            $fallbackArguments = $this->cssArgument->expandCssCallArguments($node->arguments, $env);
-
-            $fallback = new FunctionNode(
-                $node->name,
-                $this->calculation->normalizeArguments($node->name, $fallbackArguments),
-            );
-
-            if ($this->options->style === Style::COMPRESSED) {
-                $compressedColor = $this->hexColorConverter->tryConvert($fallback);
-
-                if ($compressedColor !== null) {
-                    return $compressedColor;
-                }
-            }
-
-            return $fallback;
-        }
-
-        return $node;
+        return $this->registry->evaluate(
+            $node,
+            $env,
+            $skipSlashArithmetic
+                ? EvaluationOptions::default()->withSkipSlashArithmetic()
+                : EvaluationOptions::default(),
+        );
     }
 
     public function evaluateDeclarationValue(AstNode $value, string $property, Environment $env): AstNode
@@ -634,7 +366,7 @@ final readonly class Evaluator
             $items = [];
 
             foreach ($value->pairs as $pair) {
-                $items[] = new ListNode([$pair['key'], $pair['value']], 'space');
+                $items[] = new ListNode([$pair->key, $pair->value], 'space');
             }
 
             return $items;
@@ -713,7 +445,7 @@ final readonly class Evaluator
             $evaluatedValue = $this->evaluateValue($firstDeclaration->value, $env);
 
             return $evaluatedValue !== $value ? $evaluatedValue : null;
-        } catch (SassThrowable) {
+        } catch (SassException|SassArgumentException) {
             // Reparsing the formatted value failed (e.g. invalid slash expression).
             // Return null to signal "no rewrite needed" — the caller keeps the original value.
             return null;
@@ -775,8 +507,8 @@ final readonly class Evaluator
 
             foreach ($value->pairs as $pair) {
                 $pairs[] = [
-                    'key'   => $this->calculation->toSassValue($pair['key'], $env),
-                    'value' => $this->calculation->toSassValue($pair['value'], $env),
+                    'key'   => $this->calculation->toSassValue($pair->key, $env),
+                    'value' => $this->calculation->toSassValue($pair->value, $env),
                 ];
             }
 
