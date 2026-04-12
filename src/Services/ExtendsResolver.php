@@ -286,6 +286,10 @@ final readonly class ExtendsResolver
 
     public function applyExtendsToSelector(string $selector): string
     {
+        if (! $this->hasCollectedExtends() && ! str_contains($selector, '%')) {
+            return $selector;
+        }
+
         $parts  = SelectorHelper::splitList($selector, false);
         $result = [];
         $exact  = [];
@@ -311,6 +315,15 @@ final readonly class ExtendsResolver
         $uniqueExact = array_values(array_unique($exact));
 
         return implode(', ', $this->trimRedundantSelectors($unique, $uniqueExact));
+    }
+
+    public function hasCollectedExtends(): bool
+    {
+        $state = $this->ctx->outputState->extends;
+
+        return $state->extendMap !== []
+            || $state->pendingExtends !== []
+            || $state->selectorContexts !== [];
     }
 
     /**

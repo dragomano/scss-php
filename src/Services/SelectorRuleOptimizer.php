@@ -10,6 +10,7 @@ use function ctype_digit;
 use function explode;
 use function implode;
 use function ltrim;
+use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;
@@ -23,9 +24,17 @@ final class SelectorRuleOptimizer
 {
     public function optimizeRuleBlock(string $ruleBlock): string
     {
+        if (substr_count($ruleBlock, ';') < 2 && ! str_contains($ruleBlock, "\n\n")) {
+            return $ruleBlock;
+        }
+
         $lines = explode("\n", $ruleBlock);
 
         if (count($lines) < 3) {
+            return $ruleBlock;
+        }
+
+        if (! $this->hasPotentialDuplicateTopLevelProperty($lines)) {
             return $ruleBlock;
         }
 
@@ -37,20 +46,12 @@ final class SelectorRuleOptimizer
         $declarationPropertyCounts     = [];
         $lastDeclarationLineByProperty = [];
 
-        $hasInnerBlankLines      = false;
-        $hasDuplicateDeclaration = false;
-        $hasDuplicateProperty    = false;
-
         $depth = 0;
 
         foreach ($lines as $index => $line) {
             $trimmedLine = trim($line);
 
             if ($depth === 1) {
-                if ($trimmedLine === '') {
-                    $hasInnerBlankLines = true;
-                }
-
                 $declarationKey = $this->extractDeclarationKey($trimmedLine);
 
                 if ($declarationKey !== null) {
@@ -60,20 +61,12 @@ final class SelectorRuleOptimizer
                     $lastDeclarationLineByKey[$declarationKey] = $index;
                     $declarationKeyCounts[$declarationKey]     = ($declarationKeyCounts[$declarationKey] ?? 0) + 1;
 
-                    if ($declarationKeyCounts[$declarationKey] > 1) {
-                        $hasDuplicateDeclaration = true;
-                    }
-
                     if ($property !== null) {
                         $declarationProperties[$index]            = $property;
                         $lastDeclarationLineByProperty[$property] = $index;
                         $declarationPropertyCounts[$property]     = ($declarationPropertyCounts[$property] ?? 0) + 1;
                         $propertyHasVendorValue[$property]        = ($propertyHasVendorValue[$property] ?? false)
                             || $this->declarationHasVendorValue($trimmedLine);
-
-                        if ($declarationPropertyCounts[$property] > 1) {
-                            $hasDuplicateProperty = true;
-                        }
                     }
                 }
             }
@@ -82,10 +75,6 @@ final class SelectorRuleOptimizer
         }
 
         if ($declarationKeys === []) {
-            return $ruleBlock;
-        }
-
-        if (! $hasDuplicateDeclaration && ! $hasDuplicateProperty && ! $hasInnerBlankLines) {
             return $ruleBlock;
         }
 
@@ -211,6 +200,39 @@ final class SelectorRuleOptimizer
         }
 
         return implode("\n", $result);
+    }
+
+    /**
+     * @param array<int, string> $lines
+     */
+    private function hasPotentialDuplicateTopLevelProperty(array $lines): bool
+    {
+        $seenProperties = [];
+        $depth          = 0;
+
+        foreach ($lines as $line) {
+            $trimmedLine = trim($line);
+
+            if ($depth === 1) {
+                if ($trimmedLine === '') {
+                    return true;
+                }
+
+                $property = $this->extractDeclarationProperty($trimmedLine);
+
+                if ($property !== null) {
+                    if (isset($seenProperties[$property])) {
+                        return true;
+                    }
+
+                    $seenProperties[$property] = true;
+                }
+            }
+
+            $depth += substr_count($line, '{') - substr_count($line, '}');
+        }
+
+        return false;
     }
 
     private function extractDeclarationKey(string $line): ?string

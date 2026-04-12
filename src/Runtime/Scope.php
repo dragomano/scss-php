@@ -24,6 +24,8 @@ final class Scope
     /** @var array<string, Scope> */
     private array $modules = [];
 
+    private ?Scope $globalScope = null;
+
     public function __construct(private readonly ?Scope $parent = null)
     {
         $this->variables = new VariableRegistry();
@@ -38,13 +40,17 @@ final class Scope
 
     public function getGlobalScope(): Scope
     {
+        if ($this->globalScope !== null) {
+            return $this->globalScope;
+        }
+
         $current = $this;
 
         while ($current->parent !== null) {
             $current = $current->parent;
         }
 
-        return $current;
+        return $this->globalScope = $current;
     }
 
     public function setVariable(
@@ -62,12 +68,12 @@ final class Scope
             return;
         }
 
-        if (
-            $default
-            && $this->hasVariableNormalized($name)
-            && ! $this->isSassNull($this->getVariableNormalized($name))
-        ) {
-            return;
+        if ($default) {
+            $existingScope = $this->findScopeForVariable($name);
+
+            if ($existingScope !== null && ! $this->isSassNull($existingScope->variables->get($name))) {
+                return;
+            }
         }
 
         $this->variables->set($name, $value, $line);
@@ -77,12 +83,12 @@ final class Scope
     {
         $name = $this->normalizeName($name);
 
-        if (
-            $default
-            && $this->hasVariableNormalized($name)
-            && ! $this->isSassNull($this->getVariableNormalized($name))
-        ) {
-            return;
+        if ($default) {
+            $existingScope = $this->findScopeForVariable($name);
+
+            if ($existingScope !== null && ! $this->isSassNull($existingScope->variables->get($name))) {
+                return;
+            }
         }
 
         $this->variables->set($name, $value, $line);

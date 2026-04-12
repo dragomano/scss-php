@@ -143,6 +143,12 @@ describe('Selector service', function () {
             expect($this->selector->optimizeRuleBlock($input))->toBe($input);
         });
 
+        it('returns two-line rule blocks unchanged even when they contain multiple declarations on one line', function () {
+            $input = ".a {\n  color: red; margin: 0;";
+
+            expect($this->selector->optimizeRuleBlock($input))->toBe($input);
+        });
+
         it('deduplicates repeated declarations', function () {
             $result = $this->selector->optimizeRuleBlock(".a {\n  color: red;\n  color: red;\n}");
 
@@ -165,6 +171,12 @@ describe('Selector service', function () {
 
         it('returns blocks without declarations unchanged', function () {
             $input = ".a {\n  .b {\n  }\n}";
+
+            expect($this->selector->optimizeRuleBlock($input))->toBe($input);
+        });
+
+        it('returns nested-only blocks with inner blank lines unchanged when no declarations were collected', function () {
+            $input = ".a {\n\n  .b {\n  }\n}";
 
             expect($this->selector->optimizeRuleBlock($input))->toBe($input);
         });
@@ -381,14 +393,14 @@ describe('Selector service', function () {
         });
 
         it('normalizes at-root children and wraps nodes with at-rule stack entries', function () {
-            $rule = new RuleNode('.child', []);
+            $rule   = new RuleNode('.child', []);
             $atRoot = new AtRootNode([]);
-            $decl = new DeclarationNode('color', new StringNode('red'));
+            $decl   = new DeclarationNode('color', new StringNode('red'));
 
-            $normalizedRule = $this->accessor->callMethod('normalizeAtRootChild', [$rule, '.parent', true]);
+            $normalizedRule   = $this->accessor->callMethod('normalizeAtRootChild', [$rule, '.parent', true]);
             $normalizedAtRoot = $this->accessor->callMethod('normalizeAtRootChild', [$atRoot, '.parent', true]);
-            $wrappedDecl = $this->accessor->callMethod('normalizeAtRootChild', [$decl, '.parent', true]);
-            $wrappedStack = $this->accessor->callMethod('wrapNodeWithAtRuleStack', [$decl, [
+            $wrappedDecl      = $this->accessor->callMethod('normalizeAtRootChild', [$decl, '.parent', true]);
+            $wrappedStack     = $this->accessor->callMethod('wrapNodeWithAtRuleStack', [$decl, [
                 AtRuleContextEntry::supports('(display: grid)'),
             ]]);
 
@@ -403,7 +415,8 @@ describe('Selector service', function () {
 
         it('normalizes bubbling children and parent selector attachment decisions', function () {
             $rule = new RuleNode('.child', []);
-            $unchangedRule = $this->accessor->callMethod('normalizeBubblingChild', [$rule, '.parent', false]);
+
+            $unchangedRule      = $this->accessor->callMethod('normalizeBubblingChild', [$rule, '.parent', false]);
             $wrappedDeclaration = $this->accessor->callMethod('normalizeBubblingChild', [
                 new DeclarationNode('color', new StringNode('red')),
                 '.parent',

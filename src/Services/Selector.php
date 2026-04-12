@@ -456,6 +456,10 @@ final readonly class Selector
 
     public function applyExtendsToSelector(string $selector): string
     {
+        if (! $this->extends->hasCollectedExtends() && ! str_contains($selector, '%')) {
+            return $selector;
+        }
+
         return $this->extends->applyExtendsToSelector($selector);
     }
 

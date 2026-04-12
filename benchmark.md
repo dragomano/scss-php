@@ -17,7 +17,7 @@ This file contains a performance comparison of SCSS compilation runs across thre
 
 | Compiler | Time (sec) | CSS Size (KB) | Memory (MB) |
 |------------|-------------|---------------|-------------|
-| bugo/scss-php | 0.7159 | 314.84 | 0.31 |
+| bugo/scss-php | 0.6683 | 314.84 | 0.31 |
 | bugo/scss-php+cache | 0.0001 | 314.84 | 0.00 |
-| bugo/sass-embedded-php | 0.1261 | 318.20 | 0.65 |
-| scssphp/scssphp | 0.5874 | 318.38 | 10.48 |
+| bugo/sass-embedded-php | 0.1264 | 318.20 | 0.65 |
+| scssphp/scssphp | 0.5519 | 318.38 | 10.48 |

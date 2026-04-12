@@ -43,14 +43,19 @@ final class UnitConverter
             return true;
         }
 
+        /** @var array<string, bool> $cache */
+        static $cache = [];
+
+        $key = $left . "\0" . $right;
+
+        if (isset($cache[$key])) {
+            return $cache[$key];
+        }
+
         $leftInfo  = self::CONVERSIONS[$left] ?? null;
         $rightInfo = self::CONVERSIONS[$right] ?? null;
 
-        if ($leftInfo === null || $rightInfo === null) {
-            return false;
-        }
-
-        return $leftInfo['group'] === $rightInfo['group'];
+        return $cache[$key] = ($leftInfo !== null && $rightInfo !== null && $leftInfo['group'] === $rightInfo['group']);
     }
 
     public static function convert(float $value, ?string $fromUnit, ?string $toUnit): float
@@ -106,6 +111,17 @@ final class UnitConverter
             return [[], []];
         }
 
+        /** @var array<string, array{0: array<int, string>, 1: array<int, string>}> $cache */
+        static $cache = [];
+
+        return $cache[$unit] ??= self::parsePartsInternal($unit);
+    }
+
+    /**
+     * @return array{0: array<int, string>, 1: array<int, string>}
+     */
+    private static function parsePartsInternal(string $unit): array
+    {
         $numerator   = [];
         $denominator = [];
         $token       = '';

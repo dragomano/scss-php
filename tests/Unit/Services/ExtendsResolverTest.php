@@ -7,6 +7,9 @@ use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
 use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\DirectiveNode;
+use Bugo\SCSS\Nodes\EachNode;
 use Bugo\SCSS\Nodes\ElseIfNode;
 use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\ForNode;
@@ -15,9 +18,12 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Nodes\SupportsNode;
+use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Runtime\VariableDefinition;
 use Bugo\SCSS\Services\ExtendsResolver;
 use Bugo\SCSS\Services\Text;
 use Bugo\SCSS\Utils\SelectorTokenizer;
@@ -26,6 +32,7 @@ use Tests\ReflectionAccessor;
 describe('ExtendsResolver', function () {
     beforeEach(function () {
         $this->ctx = new CompilerContext();
+
         $this->iterationValues  = [];
         $this->conditionResults = [];
 
@@ -118,8 +125,163 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->pendingExtends)->toBe([
             [
-                'target' => '%picked-target',
-                'source' => '.picked',
+                'target'  => '%picked-target',
+                'source'  => '.picked',
+                'context' => '',
+            ],
+        ]);
+    });
+
+    it('collects root variables before traversing nested nodes and preserves declaration line', function () {
+        $env = new Environment();
+
+        $node = new RootNode([
+            new VariableDeclarationNode('theme-color', new StringNode('red'), global: true, line: 12),
+            new RuleNode('.picked', [new ExtendNode('%picked-target')]),
+        ]);
+
+        $this->resolver->collectExtends($node, $env);
+
+        /** @var VariableDefinition $definition */
+        $definition = $env->getCurrentScope()->findVariableDefinition('theme-color');
+
+        expect($env->getCurrentScope()->getVariable('theme-color'))->toBeInstanceOf(StringNode::class)
+            ->and($definition)->not->toBeNull()
+            ->and($definition->line())->toBe(12)
+            ->and($this->ctx->outputState->extends->pendingExtends)->toBe([
+                [
+                    'target'  => '%picked-target',
+                    'source'  => '.picked',
+                    'context' => '',
+                ],
+            ]);
+    });
+
+    it('resolves nested selectors against the current parent selector when collecting rule extends', function () {
+        $env = new Environment();
+        $env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.parent'));
+
+        $this->resolver->collectExtends(
+            new RuleNode('&:hover', [new ExtendNode('%hover-target')]),
+            $env,
+        );
+
+        expect($this->ctx->outputState->extends->selectorContexts)->toHaveKey('.parent:hover')
+            ->and($this->ctx->outputState->extends->pendingExtends)->toBe([
+                [
+                    'target'  => '%hover-target',
+                    'source'  => '.parent:hover',
+                    'context' => '',
+                ],
+            ]);
+    });
+
+    it('collects extends inside supports and block directives and skips directives without blocks', function () {
+        $env = new Environment();
+
+        $this->resolver->collectExtends(
+            new SupportsNode('  (display: grid)  ', [
+                new RuleNode('.grid', [new ExtendNode('%grid-target')]),
+            ]),
+            $env,
+        );
+
+        $this->resolver->collectExtends(
+            new DirectiveNode('Media', '  screen  ', [
+                new RuleNode('.screen', [new ExtendNode('%screen-target')]),
+            ], true),
+            $env,
+        );
+
+        $this->resolver->collectExtends(
+            new DirectiveNode('media', 'print', [
+                new RuleNode('.ignored', [new ExtendNode('%ignored-target')]),
+            ], false),
+            $env,
+        );
+
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([
+            [
+                'target'  => '%grid-target',
+                'source'  => '.grid',
+                'context' => '@supports (display: grid)',
+            ],
+            [
+                'target'  => '%screen-target',
+                'source'  => '.screen',
+                'context' => '@media screen',
+            ],
+        ]);
+    });
+
+    it('iterates through each nodes and collects children for every assigned item', function () {
+        $assigned = [];
+
+        $resolver = new ExtendsResolver(
+            $this->ctx,
+            new Text(
+                new class implements ParserInterface {
+                    public function setTrackSourceLocations(bool $track): void {}
+
+                    public function parse(string $source): RootNode
+                    {
+                        return new RootNode();
+                    }
+                },
+                static fn(AstNode $node, Environment $env): AstNode => $node,
+                static fn(AstNode $node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
+            ),
+            new SelectorTokenizer(),
+            static fn(AstNode $node, Environment $env): AstNode => $node,
+            static fn(string $condition, Environment $env): bool => false,
+            static fn(AstNode $node, Environment $env): bool => false,
+            static fn(AstNode $node): array => [new StringNode('first'), new StringNode('second')],
+            function (array $variables, AstNode $item, Environment $env) use (&$assigned): void {
+                if ($item instanceof StringNode) {
+                    $assigned[] = $item->value;
+                    $env->getCurrentScope()->setVariableLocal($variables[0] ?? 'item', $item);
+                }
+            },
+            static fn(AstNode $node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
+        );
+
+        $resolver->collectExtends(
+            new EachNode(['item'], new StringNode('list'), [
+                new RuleNode('.item', [new ExtendNode('%item-target')]),
+            ]),
+            new Environment(),
+        );
+
+        expect($assigned)->toBe(['first', 'second'])
+            ->and($this->ctx->outputState->extends->pendingExtends)->toBe([
+                [
+                    'target'  => '%item-target',
+                    'source'  => '.item',
+                    'context' => '',
+                ],
+                [
+                    'target'  => '%item-target',
+                    'source'  => '.item',
+                    'context' => '',
+                ],
+            ]);
+    });
+
+    it('returns early for while nodes without matching conditions and collects at-root children', function () {
+        $env = new Environment();
+
+        $this->resolver->collectExtends(new WhileNode('never', [
+            new RuleNode('.ignored', [new ExtendNode('%ignored-target')]),
+        ]), $env);
+
+        $this->resolver->collectExtends(new AtRootNode([
+            new RuleNode('.rooted', [new ExtendNode('%root-target')]),
+        ]), $env);
+
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([
+            [
+                'target'  => '%root-target',
+                'source'  => '.rooted',
                 'context' => '',
             ],
         ]);
@@ -186,6 +348,11 @@ describe('ExtendsResolver', function () {
         expect($result)->toBe('.foo');
     });
 
+    it('returns selector unchanged when applyExtendsToSelector has no extend state and no placeholders', function () {
+        expect($this->resolver->applyExtendsToSelector('.plain:hover'))->toBe('.plain:hover')
+            ->and($this->resolver->hasCollectedExtends())->toBeFalse();
+    });
+
     it('deduplicates extenders when the same extender appears via multiple paths', function () {
         // .a extended by .b and .c; .c also extended by .b
         // When resolving transitive extenders of .a: pending=[.c,.b], then .c adds .b again
@@ -217,5 +384,28 @@ describe('ExtendsResolver', function () {
             ->and($result)->toContain('.c')
             ->and($result)->toContain('.d')
             ->and(substr_count($result, '.d'))->toBe(1);
+    });
+
+    it('returns the matching if body or else body from resolveIfBranch', function () {
+        $env = new Environment();
+
+        $this->conditionResults['if-true'] = true;
+        $this->conditionResults['if-false'] = false;
+
+        $ifBodyNode   = new RuleNode('.if-body', []);
+        $elseBodyNode = new RuleNode('.else-body', []);
+
+        $matching = $this->accessor->callMethod('resolveIfBranch', [
+            new IfNode('if-true', [$ifBodyNode], [new ElseIfNode('elseif', [new RuleNode('.elseif', [])])], [$elseBodyNode]),
+            $env,
+        ]);
+
+        $fallback = $this->accessor->callMethod('resolveIfBranch', [
+            new IfNode('if-false', [$ifBodyNode], [new ElseIfNode('elseif-false', [new RuleNode('.elseif', [])])], [$elseBodyNode]),
+            $env,
+        ]);
+
+        expect($matching)->toBe([$ifBodyNode])
+            ->and($fallback)->toBe([$elseBodyNode]);
     });
 });

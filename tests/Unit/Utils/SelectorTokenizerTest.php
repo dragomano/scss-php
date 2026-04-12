@@ -29,6 +29,12 @@ describe('SelectorTokenizer', function () {
         expect($tokens)->toContain(':hover');
     });
 
+    it('tokenizeCompound() handles pseudo-class functions with bracket groups', function () {
+        $tokens = $this->tokenizer->tokenizeCompound('a:not(.foo, .bar)');
+
+        expect($tokens)->toContain(':not(.foo, .bar)');
+    });
+
     it('tokenizeCompound() handles pseudo-element', function () {
         $tokens = $this->tokenizer->tokenizeCompound('p::before');
         expect($tokens)->toContain('::before');

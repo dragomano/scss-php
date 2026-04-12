@@ -17,11 +17,19 @@ use Closure;
 
 use function count;
 use function fmod;
-use function in_array;
 use function trim;
 
 final readonly class ArithmeticEvaluator
 {
+    /** @var array<string, true> */
+    private const ARITHMETIC_OPERATORS = [
+        '+' => true,
+        '-' => true,
+        '*' => true,
+        '/' => true,
+        '%' => true,
+    ];
+
     /**
      * @param Closure(array<int, AstNode>): ?string|null $onUnsupportedOperation
      */
@@ -82,7 +90,7 @@ final readonly class ArithmeticEvaluator
 
     public function applyOperator(NumberNode $left, string $operator, NumberNode $right): NumberNode
     {
-        if (in_array($operator, ['+', '-'], true)) {
+        if ($operator === '+' || $operator === '-') {
             if (! UnitConverter::compatible($left->unit, $right->unit)) {
                 throw new IncompatibleUnitsException(
                     (string) new SassNumber($left->value, $left->unit),
@@ -184,7 +192,7 @@ final readonly class ArithmeticEvaluator
 
             if (
                 $index % 2 === 1
-                && (! ($token instanceof StringNode) || ! in_array($token->value, ['+', '-', '*', '/', '%'], true))
+                && (! ($token instanceof StringNode) || ! isset(self::ARITHMETIC_OPERATORS[$token->value]))
             ) {
                 return null;
             }
@@ -203,7 +211,11 @@ final readonly class ArithmeticEvaluator
             /** @var NumberNode $next */
             $next = $items[$i + 1];
 
-            if (in_array($operator->value, ['*', '/', '%'], true)) {
+            if (
+                $operator->value === '*'
+                || $operator->value === '/'
+                || $operator->value === '%'
+            ) {
                 $current = $this->applyOperator($current, $operator->value, $next);
 
                 continue;
@@ -263,7 +275,7 @@ final readonly class ArithmeticEvaluator
                 ! ($current instanceof NumberNode)
                 || $i + 2 >= $count
                 || ! ($nextToken instanceof StringNode)
-                || ! in_array($nextToken->value, ['+', '-', '*', '/', '%'], true)
+                || ! isset(self::ARITHMETIC_OPERATORS[$nextToken->value])
                 || ! ($items[$i + 2] instanceof NumberNode)
             ) {
                 $result[] = $current;
@@ -276,7 +288,7 @@ final readonly class ArithmeticEvaluator
             while (
                 $i + 2 < $count
                 && ($nextToken = $items[$i + 1] ?? null) instanceof StringNode
-                && in_array($nextToken->value, ['+', '-', '*', '/', '%'], true)
+                && isset(self::ARITHMETIC_OPERATORS[$nextToken->value])
                 && ($nextItem = $items[$i + 2]) instanceof NumberNode
                 && ! ($nextToken->value === '/' && $value->isLiteral && $nextItem->isLiteral)
             ) {

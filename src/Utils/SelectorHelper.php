@@ -31,6 +31,24 @@ final class SelectorHelper
 
     public static function resolveNested(string $selector, string $parentSelector): string
     {
+        return self::computeNested($selector, $parentSelector);
+    }
+
+    private static function computeNested(string $selector, string $parentSelector): string
+    {
+        if (! str_contains($selector, ',') && ! str_contains($parentSelector, ',')) {
+            $selector       = trim($selector);
+            $parentSelector = trim($parentSelector);
+
+            if ($selector === '' || $parentSelector === '') {
+                return $selector;
+            }
+
+            return str_contains($selector, '&')
+                ? str_replace('&', $parentSelector, $selector)
+                : $selector;
+        }
+
         $selectorParts = self::splitList($selector);
         $parentParts   = self::splitList($parentSelector);
 

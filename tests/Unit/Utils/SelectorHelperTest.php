@@ -41,4 +41,15 @@ describe('SelectorHelper', function () {
                 ->and(array_keys($result))->toBe([0, 1]);
         });
     });
+
+    describe('resolveNested()', function () {
+        it('returns selector unchanged when selector list is non-empty but parent list becomes empty after filtering', function () {
+            expect(SelectorHelper::resolveNested('.child, .icon', ', ,'))->toBe('.child, .icon');
+        });
+
+        it('keeps selector parts without ampersand when resolving selector lists', function () {
+            expect(SelectorHelper::resolveNested('&:hover, .icon', '.button, .link'))
+                ->toBe('.button:hover, .icon, .link:hover');
+        });
+    });
 });

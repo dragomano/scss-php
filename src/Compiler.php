@@ -13,6 +13,7 @@ use Psr\Log\NullLogger;
 
 use function basename;
 use function file_put_contents;
+use function str_contains;
 
 final class Compiler implements CompilerInterface
 {
@@ -43,11 +44,12 @@ final class Compiler implements CompilerInterface
 
         $this->ctx->currentSourceFile = basename($sourceFile ?: $this->options->sourceFile);
 
-        try {
-            $syntax ??= Syntax::SCSS;
+        $syntax ??= Syntax::SCSS;
 
-            $ast         = $this->parse($source, $syntax);
-            $environment = $this->buildEnvironment($ast);
+        try {
+            $source      = $this->normalizeSource($source, $syntax);
+            $ast         = $this->parse($source);
+            $environment = $this->buildEnvironment($ast, str_contains($source, '@extend'));
             $compiled    = $this->compileAst($ast, $environment);
 
             return $this->postProcess($compiled, $source);
@@ -64,7 +66,11 @@ final class Compiler implements CompilerInterface
             ? $this->options->sourceFile
             : $path;
 
-        return $this->compileString($loaded['content'], Syntax::fromPath($path, $loaded['content']), $sourceFile);
+        return $this->compileString(
+            $loaded['content'],
+            Syntax::fromPath($path, $loaded['content']),
+            $sourceFile,
+        );
     }
 
     private function createContext(): CompilerContext
@@ -83,21 +89,21 @@ final class Compiler implements CompilerInterface
         $this->ctx->sourceMapState->reset();
     }
 
-    private function parse(string $source, Syntax $syntax): RootNode
+    private function parse(string $source): RootNode
     {
-        $source = $this->normalizeSource($source, $syntax);
-
         $this->parser->setTrackSourceLocations(true);
 
         return $this->parser->parse($source);
     }
 
-    private function buildEnvironment(RootNode $ast): Environment
+    private function buildEnvironment(RootNode $ast, bool $collectExtends): Environment
     {
         $environment = new Environment();
 
-        $this->runtime->selector()->collectExtends($ast, $environment);
-        $this->runtime->selector()->finalizeCollectedExtends();
+        if ($collectExtends) {
+            $this->runtime->selector()->collectExtends($ast, $environment);
+            $this->runtime->selector()->finalizeCollectedExtends();
+        }
 
         return $environment;
     }
