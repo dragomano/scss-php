@@ -682,5 +682,33 @@ describe('Compiler', function () {
                 ->and($this->logger->records[3]['message'])->toBe('%')
                 ->and($this->logger->records[4]['message'])->toBe('!important');
         });
+
+        it('emits deprecation warning and omits output for bogus multiple combinators', function () {
+            $compiler = new Compiler(
+                options: new CompilerOptions(verboseLogging: true),
+                logger: $this->logger,
+            );
+
+            $source = <<<'SCSS'
+            a > + b { color: red; }
+            .ok { color: blue; }
+            SCSS;
+
+            $css = $compiler->compileString($source);
+
+            $expected = /** @lang text */ <<<'CSS'
+            .ok {
+              color: blue;
+            }
+            CSS;
+
+            expect($css)->toEqualCss($expected)
+                ->and($this->logger->records)->toHaveCount(1)
+                ->and($this->logger->records[0]['level'])->toBe('warning')
+                ->and($this->logger->records[0]['message'])->toContain('multiple consecutive combinators')
+                ->and($this->logger->records[0]['message'])->toContain('deprecated')
+                ->and($this->logger->records[0]['context']['line'])->toBe(1)
+                ->and($this->logger->records[0]['context']['file'])->toBe('input.scss');
+        });
     });
 });

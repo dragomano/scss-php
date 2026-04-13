@@ -70,7 +70,7 @@ final readonly class BlockNodeHandler
         );
 
         $this->compilationSteps = [
-            new SelectorResolutionStep($this->evaluation, $this->selector, $this->render),
+            new SelectorResolutionStep($this->evaluation, $this->selector, $this->render, $this->context),
             new NestedPropertyCheckStep($this->chunks, $this->render),
             new ChildrenCompilationStep($this->dispatcher, $this->evaluation, $this->render, $this->chunks),
         ];

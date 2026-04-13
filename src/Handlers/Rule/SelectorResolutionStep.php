@@ -6,11 +6,13 @@ namespace Bugo\SCSS\Handlers\Rule;
 
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Services\Context;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 
 use function array_pop;
+use function implode;
 use function str_contains;
 
 final readonly class SelectorResolutionStep implements CompilationStepInterface
@@ -19,6 +21,7 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
         private Evaluator $evaluation,
         private Selector $selector,
         private Render $render,
+        private Context $context,
     ) {}
 
     public function execute(RuleCompilationContext $ruleCtx): ?string
@@ -47,6 +50,16 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
         $ruleCtx->parentSelector    = $selector;
         $ruleCtx->selector          = $this->selector->applyExtendsToSelector($selector);
         $ruleCtx->omitOwnRuleOutput = $this->selector->hasBogusTopLevelCombinatorSequence($ruleCtx->selector);
+
+        if ($ruleCtx->omitOwnRuleOutput) {
+            $this->context->logWarning(
+                implode(', ', [
+                    "The selector \"$selector\" uses multiple consecutive combinators",
+                    'which is deprecated and will be an error in a future release.',
+                ]),
+                $node->line,
+            );
+        }
 
         if ($ruleCtx->selector === '') {
             $outputState = $this->render->outputState();
