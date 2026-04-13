@@ -382,7 +382,7 @@ final readonly class Condition
             );
         }
 
-        return abs($leftValue - $rightValue) < 0.0000000001;
+        return abs($leftValue - $rightValue) < 0.00000000001;
     }
 
     private function areStringsEqual(StringNode $left, StringNode $right): bool
@@ -473,7 +473,7 @@ final readonly class Condition
             );
         }
 
-        $equals = abs($leftValue - $rightValue) < 0.0000000001;
+        $equals = abs($leftValue - $rightValue) < 0.00000000001;
 
         if ($operator === '==') {
             return $equals;
@@ -494,7 +494,7 @@ final readonly class Condition
 
     private function normalizeNumberPrecision(float $value): float
     {
-        return round($value, 10);
+        return round($value, 11);
     }
 
     private function compareValues(mixed $left, string $operator, mixed $right): bool

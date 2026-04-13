@@ -129,7 +129,10 @@ describe('Condition', function () {
     it('compares scalar values and normalizes numeric precision', function () {
         expect($this->condition->compare(new StringNode('b'), '>', new StringNode('a'), $this->env))->toBeTrue()
             ->and($this->condition->compare(new StringNode('a'), '<', new StringNode('b'), $this->env))->toBeTrue()
-            ->and($this->condition->compare(new NumberNode(1.12345678906), '==', new NumberNode(1.1234567891), $this->env))->toBeTrue();
+            // Numbers within 1e-11 fuzzy-equal range (differ by 4e-12 < 5e-12): equal
+            ->and($this->condition->compare(new NumberNode(1.000000000004), '==', new NumberNode(1.0), $this->env))->toBeTrue()
+            // Numbers outside 1e-11 range (differ by 4e-11): not equal per spec
+            ->and($this->condition->compare(new NumberNode(1.12345678906), '==', new NumberNode(1.1234567891), $this->env))->toBeFalse();
     });
 
     it('returns false for list and map mismatches at each comparison guard', function () {

@@ -109,7 +109,7 @@ describe('SassListModule', function () {
     });
 
     it('accepts near-integer index for nth', function () {
-        $result = $this->module->call('nth', [$this->list, new NumberNode(2.00000000009)], []);
+        $result = $this->module->call('nth', [$this->list, new NumberNode(2.000000000004)], []);
         expect($result->value)->toBe('b');
     });
 
@@ -262,7 +262,7 @@ describe('SassListModule', function () {
     });
 
     it('covers private integer and index helpers', function () {
-        $rounded  = $this->accessor->callMethod('requireInteger', [new NumberNode(2.00000000001), 'list.nth() index']);
+        $rounded  = $this->accessor->callMethod('requireInteger', [new NumberNode(2.000000000004), 'list.nth() index']);
         $autoJoin = $this->accessor->callMethod('autoJoinSeparator', ['space', 'comma']);
 
         expect($rounded)->toBe(2)

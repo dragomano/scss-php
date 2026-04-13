@@ -455,7 +455,7 @@ final class SassListModule extends AbstractModule
         $number         = $value->value;
         $nearestInteger = (int) round($number);
 
-        if (abs($number - (float) $nearestInteger) < 0.0000000001) {
+        if (abs($number - (float) $nearestInteger) < 0.00000000001) {
             return $nearestInteger;
         }
 
