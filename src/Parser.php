@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS;
 
+use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Lexer\Token;
 use Bugo\SCSS\Lexer\Tokenizer;
 use Bugo\SCSS\Lexer\TokenStream;
@@ -11,9 +12,14 @@ use Bugo\SCSS\Lexer\TokenType;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
+use Bugo\SCSS\Nodes\DirectiveNode;
+use Bugo\SCSS\Nodes\ForwardNode;
+use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Nodes\UseNode;
+use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Parser\DirectiveParser;
 use Bugo\SCSS\Parser\RuleParser;
 use Bugo\SCSS\Parser\ValueParser;
@@ -74,7 +80,8 @@ final class Parser implements ParserInterface
      */
     protected function parseStatements(bool $insideBlock = false): array
     {
-        $statements = [];
+        $statements             = [];
+        $seenNonModuleStatement = false;
 
         while (! $this->stream->isEof()) {
             $this->stream->skipWhitespace();
@@ -108,6 +115,22 @@ final class Parser implements ParserInterface
             $statement = $this->parseStatement();
 
             if ($statement !== null) {
+                if (! $insideBlock) {
+                    if ($statement instanceof UseNode || $statement instanceof ForwardNode) {
+                        if ($seenNonModuleStatement) {
+                            throw ModuleResolutionException::useOrForwardAfterRules(
+                                $statement instanceof UseNode ? 'use' : 'forward',
+                            );
+                        }
+                    } elseif (
+                        ! ($statement instanceof VariableDeclarationNode)
+                        && ! ($statement instanceof ModuleVarDeclarationNode)
+                        && ! ($statement instanceof DirectiveNode && $statement->name === 'charset')
+                    ) {
+                        $seenNonModuleStatement = true;
+                    }
+                }
+
                 $statements[] = $statement;
             }
         }

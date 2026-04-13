@@ -56,4 +56,9 @@ final class ModuleResolutionException extends SassException
     {
         return new self("Built-in module '$module' can't be configured.");
     }
+
+    public static function useOrForwardAfterRules(string $directive): self
+    {
+        return new self("@$directive rules must be written before any other rules.");
+    }
 }

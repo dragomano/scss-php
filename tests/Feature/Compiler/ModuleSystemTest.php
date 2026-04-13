@@ -18,7 +18,7 @@ describe('Compiler', function () {
 
     describe('compileString()', function () {
         it('compiles external mixins via @use', function () {
-            $loader = new Loader([__DIR__ . '/../../fixtures']);
+            $loader   = new Loader([__DIR__ . '/../../fixtures']);
             $compiler = new Compiler(loader: $loader);
 
             $source = <<<'SCSS'
@@ -38,7 +38,7 @@ describe('Compiler', function () {
         });
 
         it('compiles external functions via @use', function () {
-            $loader = new Loader([__DIR__ . '/../../fixtures']);
+            $loader   = new Loader([__DIR__ . '/../../fixtures']);
             $compiler = new Compiler(loader: $loader);
 
             $source = <<<'SCSS'
@@ -146,7 +146,7 @@ describe('Compiler', function () {
         });
 
         it('supports @use with configuration', function () {
-            $loader = new Loader([__DIR__ . '/../../fixtures']);
+            $loader   = new Loader([__DIR__ . '/../../fixtures']);
             $compiler = new Compiler(loader: $loader);
 
             $source = <<<'SCSS'
@@ -172,7 +172,7 @@ describe('Compiler', function () {
         });
 
         it('emits module css for @use with configuration', function () {
-            $loader = new Loader([__DIR__ . '/../../fixtures']);
+            $loader   = new Loader([__DIR__ . '/../../fixtures']);
             $compiler = new Compiler(loader: $loader);
 
             $source = <<<'SCSS'
@@ -192,7 +192,7 @@ describe('Compiler', function () {
         });
 
         it('applies namespaced configure mixin updates to module styles mixin', function () {
-            $loader = new Loader([__DIR__ . '/../../fixtures']);
+            $loader   = new Loader([__DIR__ . '/../../fixtures']);
             $compiler = new Compiler(loader: $loader);
 
             $source = <<<'SCSS'
@@ -274,7 +274,10 @@ describe('Compiler', function () {
             SCSS;
 
             expect(fn() => $this->compiler->compileString($source))
-                ->toThrow(CannotModifyBuiltInVariableException::class, 'Cannot modify built-in variable.');
+                ->toThrow(
+                    CannotModifyBuiltInVariableException::class,
+                    'Cannot modify built-in variable.',
+                );
         });
 
         it('throws when configuring a built-in module via @use', function () {
@@ -283,11 +286,60 @@ describe('Compiler', function () {
             SCSS;
 
             expect(fn() => $this->compiler->compileString($source))
-                ->toThrow(ModuleResolutionException::class, "Built-in module 'sass:math' can't be configured.");
+                ->toThrow(
+                    ModuleResolutionException::class,
+                    "Built-in module 'sass:math' can't be configured.",
+                );
+        });
+
+        it('throws when @use appears after a style rule', function () {
+            $source = <<<'SCSS'
+            .rule { color: red; }
+            @use "sass:math";
+            SCSS;
+
+            expect(fn() => $this->compiler->compileString($source))
+                ->toThrow(
+                    ModuleResolutionException::class,
+                    '@use rules must be written before any other rules',
+                );
+        });
+
+        it('throws when @forward appears after a style rule', function () {
+            $loader   = new Loader([__DIR__ . '/../../fixtures']);
+            $compiler = new Compiler(loader: $loader);
+
+            $source = <<<'SCSS'
+            .rule { color: red; }
+            @forward "_test.scss";
+            SCSS;
+
+            expect(fn() => $compiler->compileString($source))
+                ->toThrow(
+                    ModuleResolutionException::class,
+                    '@forward rules must be written before any other rules',
+                );
+        });
+
+        it('allows variable declarations between @use rules', function () {
+            $source = <<<'SCSS'
+            @use "sass:math";
+            $base: 10px;
+            @use "sass:color";
+            .result { width: math.round($base); }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .result {
+              width: 10px;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
         });
 
         it('supports @import for css output and exported members', function () {
-            $loader = new Loader([__DIR__ . '/../../fixtures']);
+            $loader   = new Loader([__DIR__ . '/../../fixtures']);
             $compiler = new Compiler(loader: $loader);
 
             $source = <<<'SCSS'
@@ -342,7 +394,7 @@ describe('Compiler', function () {
             SCSS);
 
             try {
-                $loader = new Loader([$tmpDir]);
+                $loader   = new Loader([$tmpDir]);
                 $compiler = new Compiler(loader: $loader);
 
                 $source = <<<'SCSS'
@@ -609,7 +661,7 @@ describe('Compiler', function () {
 
             mkdir($tmpDir, 0777, true);
 
-            $basePath = $tmpDir . '/_base.scss';
+            $basePath  = $tmpDir . '/_base.scss';
             $themePath = $tmpDir . '/_theme.scss';
 
             file_put_contents($basePath, <<<'SCSS'
@@ -730,7 +782,7 @@ describe('Compiler', function () {
             SCSS);
 
             try {
-                $loader = new Loader([$tmpDir, __DIR__ . '/../../fixtures']);
+                $loader   = new Loader([$tmpDir, __DIR__ . '/../../fixtures']);
                 $compiler = new Compiler(loader: $loader);
 
                 $source = <<<'SCSS'
@@ -776,7 +828,7 @@ describe('Compiler', function () {
             SCSS);
 
             try {
-                $loader = new Loader([$tmpDir, __DIR__ . '/../../fixtures']);
+                $loader   = new Loader([$tmpDir, __DIR__ . '/../../fixtures']);
                 $compiler = new Compiler(loader: $loader);
 
                 $source = <<<'SCSS'
@@ -814,7 +866,7 @@ describe('Compiler', function () {
             $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
             mkdir($tmpDir, 0777, true);
 
-            $codePath = $tmpDir . '/_code.scss';
+            $codePath  = $tmpDir . '/_code.scss';
             $listsPath = $tmpDir . '/_lists.scss';
 
             file_put_contents($codePath, <<<'SCSS'
@@ -879,7 +931,7 @@ describe('Compiler', function () {
             SCSS);
 
             try {
-                $loader = new Loader([$tmpDir, __DIR__ . '/../../fixtures']);
+                $loader   = new Loader([$tmpDir, __DIR__ . '/../../fixtures']);
                 $compiler = new Compiler(loader: $loader);
 
                 $source = <<<'SCSS'
@@ -912,7 +964,7 @@ describe('Compiler', function () {
             SCSS);
 
             try {
-                $loader = new Loader([$tmpDir, __DIR__ . '/../../fixtures']);
+                $loader   = new Loader([$tmpDir, __DIR__ . '/../../fixtures']);
                 $compiler = new Compiler(loader: $loader);
 
                 $source = <<<'SCSS'
@@ -1181,7 +1233,10 @@ describe('Compiler', function () {
             SCSS;
 
             expect(fn() => $compiler->compileString($source))
-                ->toThrow(UndefinedSymbolException::class, "Undefined variable \$-hidden in module 'priv'.");
+                ->toThrow(
+                    UndefinedSymbolException::class,
+                    "Undefined variable \$-hidden in module 'priv'.",
+                );
         });
 
         it('does not import private variables into scope for wildcard namespace', function () {
@@ -1213,7 +1268,7 @@ describe('Compiler', function () {
             SASS);
 
             try {
-                $loader = new Loader([$tmpDir]);
+                $loader   = new Loader([$tmpDir]);
                 $compiler = new Compiler(loader: $loader);
 
                 $source = <<<'SCSS'
@@ -1290,7 +1345,7 @@ describe('Compiler', function () {
             mkdir($moduleDir, 0777, true);
 
             $indexPath = $moduleDir . '/_index.scss';
-            $codePath = $moduleDir . '/_code.scss';
+            $codePath  = $moduleDir . '/_code.scss';
 
             file_put_contents($indexPath, <<<'SCSS'
             @use "code";
