@@ -38,7 +38,6 @@ describe('CallArgumentResolver', function () {
                 }
             },
             $this->cssArg,
-            $this->userFn,
             $this->evaluate,
         );
 
@@ -58,7 +57,6 @@ describe('CallArgumentResolver', function () {
                 }
             },
             $this->cssArg,
-            $this->userFn,
             $this->evaluate,
         );
 

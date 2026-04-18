@@ -77,7 +77,11 @@ final readonly class Evaluator
 
     private CssArgumentEvaluator $cssArgument;
 
+    private CallableParameterBinder $parameterBinder;
+
     private CallArgumentResolver $callArguments;
+
+    private FunctionCallEvaluator $functionCalls;
 
     private EvaluationStrategyRegistry $registry;
 
@@ -102,8 +106,11 @@ final readonly class Evaluator
             fn(AstNode $node, Environment $env): string => $this->format($node, $env),
         );
 
+        $this->parameterBinder = new CallableParameterBinder();
+
         $this->userFunction = new UserFunctionExecutor(
             $this->condition,
+            $this->parameterBinder,
             fn(AstNode $node, Environment $env): AstNode => $this->evaluateValue($node, $env),
             fn(AstNode $node, Environment $env): bool => $this->applyVariableDeclaration($node, $env),
             fn(AstNode $value): array => $this->eachIterableItems($value),
@@ -144,7 +151,6 @@ final readonly class Evaluator
         $this->callArguments = new CallArgumentResolver(
             $this->parser,
             $this->cssArgument,
-            $this->userFunction,
             fn(AstNode $node, Environment $env): AstNode => $this->evaluateValue($node, $env),
         );
 
@@ -153,6 +159,19 @@ final readonly class Evaluator
             Environment $env,
             EvaluationOptions $opts = new EvaluationOptions(),
         ): AstNode => $this->evaluateValue($node, $env, $opts->skipSlashArithmetic);
+
+        $this->functionCalls = new FunctionCallEvaluator(
+            $this->ctx,
+            $this->options,
+            $this->userFunction,
+            $this->callArguments,
+            $this->calculation,
+            $this->conditional,
+            $this->hexColorConverter,
+            $evaluateValueClosure,
+            $this->handleDiagnosticDirective,
+            fn(AstNode $node, Environment $env): string => $this->format($node, $env),
+        );
 
         $this->registry = new EvaluationStrategyRegistry([
             new PassthroughNodeStrategy(),
@@ -178,20 +197,7 @@ final readonly class Evaluator
             new ArgumentListNodeStrategy($evaluateValueClosure),
             new MapNodeStrategy($evaluateValueClosure),
             new NamedArgumentNodeStrategy($evaluateValueClosure),
-            new FunctionNodeStrategy(
-                $this->ctx,
-                $this->options,
-                $this->userFunction,
-                $this->calculation,
-                $this->conditional,
-                $this->hexColorConverter,
-                $evaluateValueClosure,
-                fn(array $args, Environment $env): array => $this->resolveCallArguments($args, $env),
-                fn(array $args, Environment $env): array => $this->expandCallArguments($args, $env),
-                fn(array $args, Environment $env): array => $this->cssArgument->expandCssCallArguments($args, $env),
-                $this->handleDiagnosticDirective,
-                fn(AstNode $node, Environment $env): string => $this->format($node, $env),
-            ),
+            new FunctionNodeStrategy($this->functionCalls),
         ]);
     }
 
@@ -311,7 +317,7 @@ final readonly class Evaluator
     {
         if ($node instanceof VariableDeclarationNode) {
             $evaluatedValue = $this->evaluateValueWithSlashDivision($node->value, $env);
-            $currentScope = $env->getCurrentScope();
+            $currentScope   = $env->getCurrentScope();
 
             if ($node->global) {
                 $moduleScopeTarget = $currentScope->getScopeVariable('__module_global_target');
@@ -641,7 +647,7 @@ final readonly class Evaluator
         array $resolvedNamed,
         Scope $scope,
     ): void {
-        $this->callArguments->bindParametersToCurrentScope($parameters, $resolvedPositional, $resolvedNamed, $scope);
+        $this->userFunction->bindParametersToCurrentScope($parameters, $resolvedPositional, $resolvedNamed, $scope);
     }
 
     /**

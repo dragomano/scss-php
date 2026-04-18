@@ -13,7 +13,6 @@ use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
-use Bugo\SCSS\Runtime\Scope;
 use Closure;
 
 use function array_filter;
@@ -30,7 +29,6 @@ final readonly class CallArgumentResolver
     public function __construct(
         private ParserInterface $parser,
         private CssArgumentEvaluator $cssArgument,
-        private UserFunctionExecutor $userFunction,
         private Closure $evaluateValue,
     ) {}
 
@@ -137,25 +135,20 @@ final readonly class CallArgumentResolver
     }
 
     /**
-     * @param array<int, ArgumentNode> $parameters
-     * @param array<int, AstNode> $resolvedPositional
-     * @param array<string, AstNode> $resolvedNamed
-     */
-    public function bindParametersToCurrentScope(
-        array $parameters,
-        array $resolvedPositional,
-        array $resolvedNamed,
-        Scope $scope,
-    ): void {
-        $this->userFunction->bindParametersToCurrentScope($parameters, $resolvedPositional, $resolvedNamed, $scope);
-    }
-
-    /**
      * @param array<int, AstNode> $arguments
      * @return array<int, AstNode>
      */
     public function expandCallArguments(array $arguments, Environment $env): array
     {
         return $this->cssArgument->expandCallArguments($arguments, $env);
+    }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     * @return array<int, AstNode>
+     */
+    public function expandCssCallArguments(array $arguments, Environment $env): array
+    {
+        return $this->cssArgument->expandCssCallArguments($arguments, $env);
     }
 }

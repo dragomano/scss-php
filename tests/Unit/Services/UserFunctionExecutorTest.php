@@ -20,6 +20,7 @@ use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\CallableParameterBinder;
 use Bugo\SCSS\Services\UserFunctionExecutor;
 use Tests\RuntimeFactory;
 
@@ -39,6 +40,7 @@ describe('UserFunctionExecutor', function () {
 
         $this->executor = new UserFunctionExecutor(
             RuntimeFactory::createRuntime()->condition(),
+            new CallableParameterBinder(),
             $evaluateValue,
             static fn(AstNode $statement, Environment $env): bool => false,
             static fn(AstNode $iterable): array => $iterable instanceof ListNode ? $iterable->items : [$iterable],

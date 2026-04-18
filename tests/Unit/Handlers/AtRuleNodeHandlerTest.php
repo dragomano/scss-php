@@ -9,6 +9,7 @@ use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Runtime\Scope;
@@ -150,6 +151,25 @@ it('handles block directives', function () {
     expect($runtime->atRule()->handleDirective($node, $ctx))->toEqualCss($expected);
 });
 
+it('skips variable declarations while compiling directive bodies', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+    $node    = new DirectiveNode('media', 'screen', [
+        new VariableDeclarationNode('tone', new StringNode('red')),
+        new RuleNode('.box', [new DeclarationNode('color', new VariableReferenceNode('tone'))]),
+    ], true);
+
+    $expected = /** @lang text */ <<<'CSS'
+    @media screen {
+      .box {
+        color: red;
+      }
+    }
+    CSS;
+
+    expect($runtime->atRule()->handleDirective($node, $ctx))->toEqualCss($expected);
+});
+
 it('ignores empty merged nested media chunks and keeps other directive content', function () {
     $runtime = RuntimeFactory::createRuntime();
     $ctx     = RuntimeFactory::context();
@@ -277,4 +297,43 @@ it('wraps @content in the parent rule when the current at-rule stack requires it
 
     expect($runtime->atRule()->handleDirective(new DirectiveNode('content', '', [], false), $ctx))
         ->toEqualCss($expected);
+});
+
+it('skips empty compiled nodes inside @content blocks', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+    $scope   = $ctx->env->getCurrentScope();
+
+    $scope->setVariableLocal('__meta_content_block', [
+        new VariableDeclarationNode('tone', new StringNode('red')),
+        new DeclarationNode('color', new VariableReferenceNode('tone')),
+    ]);
+
+    expect($runtime->atRule()->handleDirective(new DirectiveNode('content', '', [], false), $ctx))
+        ->toEqualCss('color: red;');
+});
+
+it('does not wrap @content when the at-rule stack contains non-directive entries', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+    $scope   = $ctx->env->getCurrentScope();
+
+    /** @var AtRuleContextEntry $layerEntry */
+    $layerEntry = unserialize(
+        str_replace(
+            's:9:"directive"',
+            's:5:"layer"',
+            serialize(AtRuleContextEntry::directive('media')),
+        ),
+        ['allowed_classes' => [AtRuleContextEntry::class]],
+    );
+
+    $scope->setVariableLocal('__meta_content_block', [
+        new DeclarationNode('color', new StringNode('red')),
+    ]);
+    $scope->setVariableLocal('__parent_selector', new StringNode('.host'));
+    $scope->setVariableLocal('__at_rule_stack', [$layerEntry]);
+
+    expect($runtime->atRule()->handleDirective(new DirectiveNode('content', '', [], false), $ctx))
+        ->toEqualCss('color: red;');
 });

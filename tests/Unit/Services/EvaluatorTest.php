@@ -77,6 +77,30 @@ it('parses content call arguments and concatenates strings', function () {
     expect($concatenated->value)->toBe('foobar');
 });
 
+it('expands call arguments through evaluator delegation', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+
+    $arguments = $runtime->evaluation()->expandCallArguments([
+        new SpreadArgumentNode(new ListNode([
+            new NumberNode(1),
+            new NumberNode(2),
+        ], 'comma')),
+        new NamedArgumentNode('tone', new StringNode('red')),
+    ], $env);
+
+    expect($arguments)->toHaveCount(3)
+        ->and($arguments[0])->toBeInstanceOf(NumberNode::class)
+        ->and($arguments[1])->toBeInstanceOf(NumberNode::class)
+        ->and($arguments[2])->toBeInstanceOf(NamedArgumentNode::class);
+
+    /** @var NamedArgumentNode $namedArgument */
+    $namedArgument = $arguments[2];
+
+    expect($namedArgument->name)->toBe('tone')
+        ->and($namedArgument->value)->toBeInstanceOf(StringNode::class);
+});
+
 it('evaluates logical operators in list expressions', function () {
     $runtime = RuntimeFactory::createRuntime();
     $env     = new Environment();
