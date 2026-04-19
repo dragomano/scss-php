@@ -166,6 +166,19 @@ describe('ColorNodeConverter', function () {
             ->and($this->converter->isInGamut($displayP3))->toBeFalse();
     });
 
+    it('ignores missing generic color channels during gamut checks', function () {
+        $displayP3 = new FunctionNode('color', [
+            new ListNode([
+                new StringNode('display-p3'),
+                new StringNode('none'),
+                new NumberNode(0.5),
+                new NumberNode(0.25),
+            ], 'space'),
+        ]);
+
+        expect($this->converter->isInGamut($displayP3))->toBeTrue();
+    });
+
     it('converts srgb percentages to unclamped rgb bytes', function () {
         $color = new FunctionNode('color', [new ListNode([
             new StringNode('srgb'),

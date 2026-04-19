@@ -83,6 +83,23 @@ describe('Sass Selector Module Feature', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('ignores empty selector parts caused by trailing commas', function () {
+            $scss = <<<'SCSS'
+            @use "sass:selector";
+            .selector-extend-empty-parts { value: selector.extend(".alert, ", ".alert, ", ".message"); }
+            SCSS;
+
+            $css = $this->compiler->compileString($scss);
+
+            $expected = /** @lang text */ <<<'CSS'
+            .selector-extend-empty-parts {
+              value: .alert, .message;
+            }
+            CSS;
+
+            expect($css)->toEqualCss($expected);
+        });
+
         it('throws for complex selector target', function () {
             $scss = <<<'SCSS'
             @use "sass:selector";

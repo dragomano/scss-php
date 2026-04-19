@@ -13,7 +13,6 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
-use Closure;
 
 use function count;
 use function ctype_alpha;
@@ -31,14 +30,10 @@ use function trim;
 
 final readonly class Text
 {
-    /**
-     * @param Closure(AstNode, Environment): AstNode $evaluateValue
-     * @param Closure(AstNode, Environment): string $format
-     */
     public function __construct(
         private ParserInterface $parser,
-        private Closure $evaluateValue,
-        private Closure $format,
+        private AstValueEvaluatorInterface $valueEvaluator,
+        private AstValueFormatterInterface $valueFormatter,
     ) {}
 
     public function interpolateText(string $text, Environment $env): string
@@ -177,13 +172,13 @@ final readonly class Text
             }
 
             $name     = substr($value, $pos + 1, $nameLen);
-            $resolved = ($this->evaluateValue)(new VariableReferenceNode($name), $env);
+            $resolved = $this->valueEvaluator->evaluate(new VariableReferenceNode($name), $env);
             $index    = $pos + 1 + $nameLen;
 
             if ($resolved instanceof StringNode) {
                 $result .= $resolved->value;
             } else {
-                $result .= ($this->format)($resolved, $env);
+                $result .= $this->valueFormatter->format($resolved, $env);
             }
         }
 
@@ -564,7 +559,7 @@ final readonly class Text
             $name = substr($expr, 1);
 
             if ($this->isVariableName($name)) {
-                $value = ($this->evaluateValue)(new VariableReferenceNode($name), $env);
+                $value = $this->valueEvaluator->evaluate(new VariableReferenceNode($name), $env);
 
                 return $this->formatInterpolationValue($value, $env);
             }
@@ -585,7 +580,7 @@ final readonly class Text
             : null;
 
         if ($firstRuleChild instanceof DeclarationNode) {
-            $valueNode = ($this->evaluateValue)($firstRuleChild->value, $env);
+            $valueNode = $this->valueEvaluator->evaluate($firstRuleChild->value, $env);
 
             return $this->formatInterpolationValue($valueNode, $env);
         }
@@ -621,7 +616,7 @@ final readonly class Text
             return $formatted;
         }
 
-        return ($this->format)($value, $env);
+        return $this->valueFormatter->format($value, $env);
     }
 
     private function collapsePlusConcatenation(string $value): string

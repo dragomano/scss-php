@@ -12,6 +12,7 @@ use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\StringHelper;
+use Bugo\SCSS\Values\ValueFactory;
 use Closure;
 
 use function array_key_exists;
@@ -29,20 +30,15 @@ use function trim;
 final readonly class ConditionalEvaluator
 {
     /**
-     * @param Closure(AstNode, Environment): AstNode $evaluateValue
-     * @param Closure(AstNode, Environment): string $format
      * @param Closure(ListNode, Environment): ?AstNode $evaluateComparisonList
-     * @param Closure(bool): AstNode $createBooleanNode
-     * @param Closure(): AstNode $createNullNode
      */
     public function __construct(
         private Condition $condition,
         private Text $text,
-        private Closure $evaluateValue,
-        private Closure $format,
+        private AstValueEvaluatorInterface $valueEvaluator,
+        private AstValueFormatterInterface $valueFormatter,
         private Closure $evaluateComparisonList,
-        private Closure $createBooleanNode,
-        private Closure $createNullNode,
+        private ValueFactory $valueFactory,
     ) {}
 
     /**
@@ -55,9 +51,9 @@ final readonly class ConditionalEvaluator
         }
 
         $condition = $arguments[0];
-        $truthy    = $arguments[1] ?? ($this->createNullNode)();
+        $truthy    = $arguments[1] ?? $this->valueFactory->createNullNode();
         $hasElse   = array_key_exists(2, $arguments);
-        $falsy     = $arguments[2] ?? ($this->createNullNode)();
+        $falsy     = $arguments[2] ?? $this->valueFactory->createNullNode();
         $result    = $this->evaluateInlineIfCondition($condition, $env);
 
         if ($result['kind'] === 'bool') {
@@ -65,19 +61,25 @@ final readonly class ConditionalEvaluator
             $value = $result['value'];
 
             if ($value) {
-                return ($this->evaluateValue)($truthy, $env);
+                return $this->valueEvaluator->evaluate($truthy, $env);
             }
 
-            return ($this->evaluateValue)($falsy, $env);
+            return $this->valueEvaluator->evaluate($falsy, $env);
         }
 
-        $truthyText = ($this->format)(($this->evaluateValue)($truthy, $env), $env);
+        $truthyText = $this->valueFormatter->format(
+            $this->valueEvaluator->evaluate($truthy, $env),
+            $env,
+        );
 
         /** @var array{kind: 'css', expression: string} $result */
         $expression = 'if(' . $result['expression'] . ': ' . $truthyText;
 
         if ($hasElse) {
-            $falsyText   = ($this->format)(($this->evaluateValue)($falsy, $env), $env);
+            $falsyText   = $this->valueFormatter->format(
+                $this->valueEvaluator->evaluate($falsy, $env),
+                $env,
+            );
             $expression .= '; else: ' . $falsyText;
         }
 
@@ -107,7 +109,7 @@ final readonly class ConditionalEvaluator
             return new FunctionNode('url', [new StringNode($value, $argument->quoted)]);
         }
 
-        $value = ($this->format)($argument, $env);
+        $value = $this->valueFormatter->format($argument, $env);
         $value = $this->text->replaceInterpolations($value, $env);
         $value = $this->text->replaceVariableReferencesInText($value, $env);
         $value = $this->collapseUrlStringConcatenation($value);
@@ -133,7 +135,7 @@ final readonly class ConditionalEvaluator
      */
     private function evaluateInlineIfCondition(AstNode $condition, Environment $env, bool $forceBoolean = false): array
     {
-        $resolved = ($this->evaluateValue)($condition, $env);
+        $resolved = $this->valueEvaluator->evaluate($condition, $env);
 
         if (
             $resolved instanceof FunctionNode
@@ -170,7 +172,7 @@ final readonly class ConditionalEvaluator
         }
 
         if ($resolved instanceof FunctionNode) {
-            return ['kind' => 'css', 'expression' => ($this->format)($resolved, $env)];
+            return ['kind' => 'css', 'expression' => $this->valueFormatter->format($resolved, $env)];
         }
 
         return ['kind' => 'bool', 'value' => $this->condition->isTruthy($resolved)];
@@ -382,7 +384,7 @@ final readonly class ConditionalEvaluator
 
         return [
             'kind'       => 'css',
-            'expression' => ($this->format)(new ListNode(array_values($items), 'space'), $env),
+            'expression' => $this->valueFormatter->format(new ListNode(array_values($items), 'space'), $env),
         ];
     }
 
@@ -431,8 +433,8 @@ final readonly class ConditionalEvaluator
             return null;
         }
 
-        $left  = ($this->evaluateValue)($items[0], $env);
-        $right = ($this->evaluateValue)($items[2], $env);
+        $left  = $this->valueEvaluator->evaluate($items[0], $env);
+        $right = $this->valueEvaluator->evaluate($items[2], $env);
 
         return $this->condition->compare($left, $operator, $right, $env);
     }
@@ -493,7 +495,7 @@ final readonly class ConditionalEvaluator
             $rest = array_slice($items, 1);
 
             if ($rest === []) {
-                return ($this->createBooleanNode)(false);
+                return $this->valueFactory->createBooleanNode(false);
             }
 
             $result = $this->evaluateLogicalItems($rest, $env);
@@ -502,7 +504,7 @@ final readonly class ConditionalEvaluator
                 return null;
             }
 
-            return ($this->createBooleanNode)(! $this->condition->isTruthy($result));
+            return $this->valueFactory->createBooleanNode(! $this->condition->isTruthy($result));
         }
 
         if (count($items) === 1) {
@@ -513,7 +515,7 @@ final readonly class ConditionalEvaluator
                 && strtolower($item->name) === 'sass'
                 && count($item->arguments) >= 1
             ) {
-                return ($this->evaluateValue)($item->arguments[0], $env);
+                return $this->valueEvaluator->evaluate($item->arguments[0], $env);
             }
 
             return $item;

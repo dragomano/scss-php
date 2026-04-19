@@ -30,11 +30,10 @@ final readonly class CssArgumentEvaluator
     private const OPERATORS = ['==', '!=', '>=', '<=', '>', '<', 'and', 'or', 'not'];
 
     /**
-     * @param Closure(AstNode, Environment): AstNode $evaluateValue
      * @param Closure(string, array<int, AstNode>): array<int, AstNode> $normalizeCalculationArguments
      */
     public function __construct(
-        private Closure $evaluateValue,
+        private AstValueEvaluatorInterface $valueEvaluator,
         private Closure $normalizeCalculationArguments,
     ) {}
 
@@ -62,7 +61,7 @@ final readonly class CssArgumentEvaluator
 
         if ($allPositional) {
             foreach ($arguments as $argument) {
-                $expanded[] = ($this->evaluateValue)($argument, $env);
+                $expanded[] = $this->valueEvaluator->evaluate($argument, $env);
             }
 
             return $expanded;
@@ -70,7 +69,7 @@ final readonly class CssArgumentEvaluator
 
         foreach ($arguments as $argument) {
             if ($argument instanceof SpreadArgumentNode) {
-                $spread = ($this->evaluateValue)($argument->value, $env);
+                $spread = $this->valueEvaluator->evaluate($argument->value, $env);
 
                 foreach ($this->expandSpreadValue($spread) as $spreadArgument) {
                     $expanded[] = $spreadArgument;
@@ -82,13 +81,13 @@ final readonly class CssArgumentEvaluator
             if ($argument instanceof NamedArgumentNode) {
                 $expanded[] = new NamedArgumentNode(
                     $argument->name,
-                    ($this->evaluateValue)($argument->value, $env),
+                    $this->valueEvaluator->evaluate($argument->value, $env),
                 );
 
                 continue;
             }
 
-            $expanded[] = ($this->evaluateValue)($argument, $env);
+            $expanded[] = $this->valueEvaluator->evaluate($argument, $env);
         }
 
         return $expanded;
@@ -104,7 +103,7 @@ final readonly class CssArgumentEvaluator
 
         foreach ($arguments as $argument) {
             if ($argument instanceof SpreadArgumentNode) {
-                $spread = ($this->evaluateValue)($argument->value, $env);
+                $spread = $this->valueEvaluator->evaluate($argument->value, $env);
 
                 foreach ($this->expandSpreadValue($spread) as $spreadArgument) {
                     $expanded[] = $spreadArgument instanceof NamedArgumentNode
@@ -174,7 +173,7 @@ final readonly class CssArgumentEvaluator
     private function evaluateFallbackCssArgument(AstNode $node, Environment $env): AstNode
     {
         if (! $this->shouldPreserveCssArgument($node)) {
-            return ($this->evaluateValue)($node, $env);
+            return $this->valueEvaluator->evaluate($node, $env);
         }
 
         if ($node instanceof ListNode) {

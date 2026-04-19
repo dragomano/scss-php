@@ -159,10 +159,6 @@ final class SassSelectorModule extends AbstractModule
         foreach ($this->splitSelectorList($target) as $targetPart) {
             $targetPart = trim($targetPart);
 
-            if ($targetPart === '') {
-                continue;
-            }
-
             if ($this->hasUnsupportedTopLevelCombinator($targetPart)) {
                 throw new SassErrorException(
                     'Complex selectors may not be extended. Use a simple selector target in @extend.',
@@ -190,10 +186,6 @@ final class SassSelectorModule extends AbstractModule
         $parts  = $this->splitSelectorList($selector);
 
         foreach ($parts as $part) {
-            if ($part === '') {
-                continue;
-            }
-
             $result[] = $part;
 
             foreach ($this->replaceExtendTargetInSelectorPart($part, $target, $source) as $extendedPart) {

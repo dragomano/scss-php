@@ -23,7 +23,6 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\UnitConverter;
 use Bugo\SCSS\Values\SassNumber;
 use Bugo\SCSS\Values\SassValue;
-use Closure;
 
 use function abs;
 use function array_key_exists;
@@ -46,16 +45,12 @@ use function trim;
 
 final readonly class Condition
 {
-    /**
-     * @param Closure(AstNode, Environment): AstNode $evaluateValue
-     * @param Closure(AstNode, Environment): string $format
-     */
     public function __construct(
         private CompilerContext $ctx,
         private ParserInterface $parser,
         private Text $text,
-        private Closure $evaluateValue,
-        private Closure $format,
+        private AstValueEvaluatorInterface $valueEvaluator,
+        private AstValueFormatterInterface $valueFormatter,
     ) {}
 
     public function evaluate(string $condition, Environment $env): bool
@@ -516,7 +511,7 @@ final readonly class Condition
     {
         return $this->ctx->valueFactory->fromAst(
             $node,
-            fn(AstNode $inner): string => ($this->format)($inner, $env),
+            fn(AstNode $inner): string => $this->valueFormatter->format($inner, $env),
         );
     }
 
@@ -586,7 +581,7 @@ final readonly class Condition
         $value = trim($raw);
 
         if (str_starts_with($value, '$')) {
-            return ($this->evaluateValue)(new VariableReferenceNode(substr($value, 1)), $env);
+            return $this->valueEvaluator->evaluate(new VariableReferenceNode(substr($value, 1)), $env);
         }
 
         if (str_contains($value, '(')) {
@@ -598,7 +593,7 @@ final readonly class Condition
                 : null;
 
             if ($firstDeclaration instanceof DeclarationNode) {
-                return ($this->evaluateValue)($firstDeclaration->value, $env);
+                return $this->valueEvaluator->evaluate($firstDeclaration->value, $env);
             }
         }
 

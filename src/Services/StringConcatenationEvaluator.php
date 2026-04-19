@@ -9,7 +9,6 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
-use Closure;
 
 use function count;
 use function ctype_alpha;
@@ -19,10 +18,7 @@ use function trim;
 
 final readonly class StringConcatenationEvaluator
 {
-    /**
-     * @param Closure(AstNode, Environment): string $format
-     */
-    public function __construct(private Closure $format) {}
+    public function __construct(private AstValueFormatterInterface $valueFormatter) {}
 
     public function evaluate(ListNode $list, ?Environment $env = null): ?AstNode
     {
@@ -38,7 +34,7 @@ final readonly class StringConcatenationEvaluator
             && $list->items[0] instanceof StringNode
             && in_array($list->items[0]->value, ['-', '/'], true)
         ) {
-            return new StringNode($list->items[0]->value . ($this->format)($list->items[1], $env));
+            return new StringNode($list->items[0]->value . $this->valueFormatter->format($list->items[1], $env));
         }
 
         if ($count === 3) {
@@ -95,7 +91,7 @@ final readonly class StringConcatenationEvaluator
                 $quoted  = $quoted || $item->quoted;
                 $result .= $item->value;
             } else {
-                $result .= ($this->format)($item, $env);
+                $result .= $this->valueFormatter->format($item, $env);
             }
         }
 

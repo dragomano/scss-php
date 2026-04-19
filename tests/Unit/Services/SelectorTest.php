@@ -13,6 +13,9 @@ use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\ClosureAstValueEvaluator;
+use Bugo\SCSS\Services\ClosureAstValueFormatter;
+use Bugo\SCSS\Services\ClosureModuleVariableAssigner;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 use Tests\ReflectionAccessor;
@@ -280,20 +283,26 @@ describe('Selector service', function () {
                 new SelectorTokenizer(),
                 $this->runtime->dispatcher(),
                 $this->runtime->extends(),
-                function ($node, Environment $env) {
-                    if ($node instanceof StringNode && $node->value === 'nullish') {
-                        return new StringNode('nullish');
-                    }
+                new ClosureAstValueEvaluator(
+                    function ($node, Environment $env) {
+                        if ($node instanceof StringNode && $node->value === 'nullish') {
+                            return new StringNode('nullish');
+                        }
 
-                    return $node;
-                },
-                function (ModuleVarDeclarationNode $node, Environment $env): void {
-                    $this->assignedModuleVar = true;
-                },
+                        return $node;
+                    },
+                ),
+                new ClosureModuleVariableAssigner(
+                    function (ModuleVarDeclarationNode $node, Environment $env): void {
+                        $this->assignedModuleVar = true;
+                    },
+                ),
                 static fn($value): bool => $value instanceof StringNode && $value->value === 'nullish',
                 static fn(string $property): bool => $property === 'border-color',
                 static fn($value) => new StringNode('compressed'),
-                static fn($node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
+                new ClosureAstValueFormatter(
+                    static fn($node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
+                ),
             );
         });
 

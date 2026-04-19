@@ -7,6 +7,8 @@ use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\ClosureAstValueEvaluator;
+use Bugo\SCSS\Services\ClosureAstValueFormatter;
 use Bugo\SCSS\Services\Text;
 use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
@@ -181,8 +183,8 @@ describe('Text service', function () {
                         return new RootNode([new StringNode('ignored')]);
                     }
                 },
-                static fn($node, $env) => new StringNode('unused'),
-                static fn($node, $env): string => 'unused',
+                new ClosureAstValueEvaluator(static fn($node, $env) => new StringNode('unused')),
+                new ClosureAstValueFormatter(static fn($node, $env): string => 'unused'),
             );
             $accessor = new ReflectionAccessor($text);
 

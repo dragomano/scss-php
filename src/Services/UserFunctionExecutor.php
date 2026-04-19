@@ -21,27 +21,17 @@ use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
-use Closure;
 
 final readonly class UserFunctionExecutor
 {
-    /**
-     * @param Closure(AstNode, Environment): AstNode $evaluateValue
-     * @param Closure(AstNode, Environment): bool $applyVariableDeclaration
-     * @param Closure(AstNode): array<int, AstNode> $eachIterableItems
-     * @param Closure(array<int, string>, AstNode, Environment): void $assignEachVariables
-     * @param Closure(AstNode, Environment): AstNode $evaluateValueWithSlashDivision
-     * @param Closure(string, AstNode, Environment, AstNode|null): void $handleDiagnosticDirective
-     */
     public function __construct(
         private Condition $condition,
         private CallableParameterBinder $parameterBinder,
-        private Closure $evaluateValue,
-        private Closure $applyVariableDeclaration,
-        private Closure $eachIterableItems,
-        private Closure $assignEachVariables,
-        private Closure $evaluateValueWithSlashDivision,
-        private Closure $handleDiagnosticDirective,
+        private AstValueEvaluatorInterface $valueEvaluator,
+        private VariableDeclarationApplierInterface $variableDeclarationApplier,
+        private EachLoopBinderInterface $eachLoopBinder,
+        private AstValueEvaluatorInterface $slashDivisionValueEvaluator,
+        private DiagnosticDirectiveHandlerInterface $diagnosticHandler,
     ) {}
 
     /**
@@ -67,7 +57,7 @@ final readonly class UserFunctionExecutor
                 $currentScope,
                 function (string $argName, ?AstNode $defaultValue) use ($currentScope, $env, $name): void {
                     if ($defaultValue !== null) {
-                        $currentScope->setVariableLocal($argName, ($this->evaluateValue)($defaultValue, $env));
+                        $currentScope->setVariableLocal($argName, $this->valueEvaluator->evaluate($defaultValue, $env));
 
                         return;
                     }
@@ -118,16 +108,16 @@ final readonly class UserFunctionExecutor
     private function runStatements(array $statements, Environment $env): ?AstNode
     {
         foreach ($statements as $statement) {
-            if (($this->applyVariableDeclaration)($statement, $env)) {
+            if ($this->variableDeclarationApplier->apply($statement, $env)) {
                 continue;
             }
 
             if ($statement instanceof EachNode) {
-                $iterableValue = ($this->evaluateValue)($statement->list, $env);
-                $items         = ($this->eachIterableItems)($iterableValue);
+                $iterableValue = $this->valueEvaluator->evaluate($statement->list, $env);
+                $items         = $this->eachLoopBinder->items($iterableValue);
 
                 foreach ($items as $item) {
-                    ($this->assignEachVariables)($statement->variables, $item, $env);
+                    $this->eachLoopBinder->assign($statement->variables, $item, $env);
 
                     $result = $this->runStatements($statement->body, $env);
 
@@ -171,7 +161,7 @@ final readonly class UserFunctionExecutor
             }
 
             if ($statement instanceof ReturnNode) {
-                return ($this->evaluateValueWithSlashDivision)($statement->value, $env);
+                return $this->slashDivisionValueEvaluator->evaluate($statement->value, $env);
             }
 
             if ($statement instanceof WhileNode) {
@@ -196,19 +186,19 @@ final readonly class UserFunctionExecutor
             }
 
             if ($statement instanceof DebugNode) {
-                ($this->handleDiagnosticDirective)('debug', $statement->message, $env, $statement);
+                $this->diagnosticHandler->handle('debug', $statement->message, $env, $statement);
 
                 continue;
             }
 
             if ($statement instanceof WarnNode) {
-                ($this->handleDiagnosticDirective)('warn', $statement->message, $env, $statement);
+                $this->diagnosticHandler->handle('warn', $statement->message, $env, $statement);
 
                 continue;
             }
 
             if ($statement instanceof ErrorNode) {
-                ($this->handleDiagnosticDirective)('error', $statement->message, $env, $statement);
+                $this->diagnosticHandler->handle('error', $statement->message, $env, $statement);
             }
 
             if ($statement instanceof IfNode) {
@@ -258,7 +248,7 @@ final readonly class UserFunctionExecutor
 
     private function loopBoundary(AstNode $node, Environment $env): int
     {
-        $resolved = ($this->evaluateValue)($node, $env);
+        $resolved = $this->valueEvaluator->evaluate($node, $env);
 
         if ($resolved instanceof NumberNode) {
             return (int) $resolved->value;

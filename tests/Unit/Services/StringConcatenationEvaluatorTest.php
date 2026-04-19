@@ -7,17 +7,20 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\ClosureAstValueFormatter;
 use Bugo\SCSS\Services\StringConcatenationEvaluator;
 use Tests\ReflectionAccessor;
 
 describe('StringConcatenationEvaluator', function () {
     beforeEach(function () {
         $this->evaluator = new StringConcatenationEvaluator(
-            fn(AstNode $node, Environment $env): string => match (true) {
-                $node instanceof NumberNode => "$node->value" . ($node->unit ?? ''),
-                $node instanceof StringNode => $node->value,
-                default                     => '',
-            },
+            new ClosureAstValueFormatter(
+                fn(AstNode $node, Environment $env): string => match (true) {
+                    $node instanceof NumberNode => "$node->value" . ($node->unit ?? ''),
+                    $node instanceof StringNode => $node->value,
+                    default                     => '',
+                },
+            ),
         );
         $this->accessor = new ReflectionAccessor($this->evaluator);
     });

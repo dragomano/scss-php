@@ -29,7 +29,6 @@ final readonly class FunctionCallEvaluator
 {
     /**
      * @param Closure(AstNode, Environment, EvaluationOptions): AstNode $evaluateValue
-     * @param Closure(string, AstNode, Environment, AstNode|null): void $handleDiagnosticDirective
      * @param Closure(AstNode, Environment): string $format
      */
     public function __construct(
@@ -41,7 +40,7 @@ final readonly class FunctionCallEvaluator
         private ConditionalEvaluator $conditional,
         private HexColorConverter $hexColorConverter,
         private Closure $evaluateValue,
-        private Closure $handleDiagnosticDirective,
+        private DiagnosticDirectiveHandlerInterface $diagnosticHandler,
         private Closure $format,
     ) {}
 
@@ -146,7 +145,7 @@ final readonly class FunctionCallEvaluator
 
             $suggestion .= ')';
 
-            ($this->handleDiagnosticDirective)(
+            $this->diagnosticHandler->handle(
                 'warn',
                 new StringNode(implode(' ', [
                     'The Sass if() syntax is deprecated in favor of the modern CSS syntax.',
@@ -174,7 +173,7 @@ final readonly class FunctionCallEvaluator
         $context = new BuiltinCallContext(
             $env,
             $this->ctx->functionRegistry,
-            fn(string $msg) => ($this->handleDiagnosticDirective)('warn', new StringNode($msg), $env, $node),
+            fn(string $msg) => $this->diagnosticHandler->handle('warn', new StringNode($msg), $env, $node),
             null,
             $node->arguments,
             $node->line,

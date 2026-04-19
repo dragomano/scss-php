@@ -15,7 +15,6 @@ use Bugo\SCSS\Utils\OutputChunk;
 use Bugo\SCSS\Utils\SourceMapMapping;
 use Bugo\SCSS\Utils\SourceMapOptions;
 use Bugo\SCSS\Utils\SourceMapPosition;
-use Closure;
 
 use function abs;
 use function count;
@@ -34,13 +33,10 @@ use function substr_count;
 
 final readonly class Render
 {
-    /**
-     * @param Closure(AstNode, Environment): string $format
-     */
     public function __construct(
         private CompilerContext $ctx,
         private CompilerOptions $options,
-        private Closure $format,
+        private AstValueFormatterInterface $valueFormatter,
     ) {}
 
     public function indentPrefix(int $indent): string
@@ -50,7 +46,7 @@ final readonly class Render
 
     public function format(AstNode $node, Environment $env): string
     {
-        return ($this->format)($node, $env);
+        return $this->valueFormatter->format($node, $env);
     }
 
     public function optimize(string $compiled): string

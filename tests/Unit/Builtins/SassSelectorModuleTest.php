@@ -7,8 +7,11 @@ use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
+use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Tests\ReflectionAccessor;
 
 describe('SassSelectorModule', function () {
@@ -210,5 +213,19 @@ describe('SassSelectorModule', function () {
             ->and($pruned)->toBe([])
             ->and($selectorParts)->toBe([':'])
             ->and($untokenizedCompound)->toBe(['#']);
+    });
+
+    it('skips named raw arguments when building deprecated suggestions', function () {
+        $this->accessor->setProperty('activeBuiltinContext', new BuiltinCallContext(rawArguments: [
+            new StringNode('.button'),
+            new NamedArgumentNode('suffix', new StringNode('.primary')),
+            new NumberNode(2),
+        ]));
+
+        $rawPositional = $this->accessor->callMethod('rawPositionalArguments');
+
+        expect($rawPositional)->toHaveCount(2)
+            ->and($rawPositional[0])->toBeInstanceOf(StringNode::class)
+            ->and($rawPositional[1])->toBeInstanceOf(NumberNode::class);
     });
 });

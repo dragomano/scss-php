@@ -10,7 +10,10 @@ use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\ClosureAstValueEvaluator;
+use Bugo\SCSS\Services\ClosureAstValueFormatter;
 use Bugo\SCSS\Services\ConditionalEvaluator;
+use Bugo\SCSS\Values\ValueFactory;
 use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
@@ -54,13 +57,14 @@ describe('ConditionalEvaluator', function () {
         $this->evaluator = new ConditionalEvaluator(
             $runtime->condition(),
             $runtime->text(),
-            fn(AstNode $node, Environment $env): AstNode => $this->evaluatedValues[spl_object_id($node)] ?? $node,
-            $format,
+            new ClosureAstValueEvaluator(
+                fn(AstNode $node, Environment $env): AstNode => $this->evaluatedValues[spl_object_id($node)] ?? $node,
+            ),
+            new ClosureAstValueFormatter($format),
             fn(ListNode $node, Environment $env): ?AstNode => $this->comparisonListResults[
                 $format($node, $env)
             ] ?? null,
-            fn(bool $value): AstNode => new BooleanNode($value),
-            fn(): AstNode => new NullNode(),
+            new ValueFactory(),
         );
         $this->accessor = new ReflectionAccessor($this->evaluator);
     });

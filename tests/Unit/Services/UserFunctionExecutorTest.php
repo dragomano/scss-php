@@ -21,6 +21,10 @@ use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\CallableParameterBinder;
+use Bugo\SCSS\Services\ClosureAstValueEvaluator;
+use Bugo\SCSS\Services\ClosureDiagnosticDirectiveHandler;
+use Bugo\SCSS\Services\ClosureEachLoopBinder;
+use Bugo\SCSS\Services\ClosureVariableDeclarationApplier;
 use Bugo\SCSS\Services\UserFunctionExecutor;
 use Tests\RuntimeFactory;
 
@@ -41,16 +45,22 @@ describe('UserFunctionExecutor', function () {
         $this->executor = new UserFunctionExecutor(
             RuntimeFactory::createRuntime()->condition(),
             new CallableParameterBinder(),
-            $evaluateValue,
-            static fn(AstNode $statement, Environment $env): bool => false,
-            static fn(AstNode $iterable): array => $iterable instanceof ListNode ? $iterable->items : [$iterable],
-            static function (array $variables, AstNode $item, Environment $env): void {
-                $env->getCurrentScope()->setVariable($variables[0] ?? 'item', $item);
-            },
-            $evaluateValue,
-            function (string $kind, AstNode $message, Environment $env, ?AstNode $statement): void {
-                $this->diagnostics[] = $kind;
-            },
+            new ClosureAstValueEvaluator($evaluateValue),
+            new ClosureVariableDeclarationApplier(
+                static fn(AstNode $statement, Environment $env): bool => false,
+            ),
+            new ClosureEachLoopBinder(
+                static fn(AstNode $iterable): array => $iterable instanceof ListNode ? $iterable->items : [$iterable],
+                static function (array $variables, AstNode $item, Environment $env): void {
+                    $env->getCurrentScope()->setVariable($variables[0] ?? 'item', $item);
+                },
+            ),
+            new ClosureAstValueEvaluator($evaluateValue),
+            new ClosureDiagnosticDirectiveHandler(
+                function (string $kind, AstNode $message, Environment $env, ?AstNode $statement): void {
+                    $this->diagnostics[] = $kind;
+                },
+            ),
         );
     });
 

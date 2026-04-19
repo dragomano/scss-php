@@ -17,6 +17,13 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
+use Bugo\SCSS\Services\ClosureAstValueEvaluator;
+use Bugo\SCSS\Services\ClosureAstValueFormatter;
+use Bugo\SCSS\Services\ClosureDiagnosticDirectiveHandler;
+use Bugo\SCSS\Services\ClosureEachLoopBinder;
+use Bugo\SCSS\Services\ClosureFunctionConditionEvaluator;
+use Bugo\SCSS\Services\ClosureModuleVariableAssigner;
+use Bugo\SCSS\Services\ClosureVariableDeclarationApplier;
 use Bugo\SCSS\Services\Condition;
 use Bugo\SCSS\Services\Context;
 use Bugo\SCSS\Services\Evaluator;
@@ -86,7 +93,97 @@ final class CompilerRuntime
 
     public function module(): Module
     {
-        return $this->module ??= new Module(
+        return $this->module ??= $this->createModule();
+    }
+
+    public function evaluation(): Evaluator
+    {
+        return $this->evaluation ??= $this->createEvaluator();
+    }
+
+    public function condition(): Condition
+    {
+        return $this->condition ??= $this->createCondition();
+    }
+
+    public function extends(): ExtendsResolver
+    {
+        return $this->extends ??= $this->createExtendsResolver();
+    }
+
+    public function selector(): Selector
+    {
+        return $this->selector ??= $this->createSelector();
+    }
+
+    private function selectorTokenizer(): SelectorTokenizer
+    {
+        return $this->selectorTokenizer ??= new SelectorTokenizer();
+    }
+
+    public function text(): Text
+    {
+        return $this->text ??= $this->createText();
+    }
+
+    public function render(): Render
+    {
+        return $this->render ??= $this->createRender();
+    }
+
+    public function context(): Context
+    {
+        return $this->context ??= new Context($this->ctx, $this->options, $this->logger);
+    }
+
+    public function comment(): CommentNodeHandler
+    {
+        return $this->commentHandler ??= $this->createCommentHandler();
+    }
+
+    public function atRule(): AtRuleNodeHandler
+    {
+        return $this->atRuleHandler ??= $this->createAtRuleHandler();
+    }
+
+    public function block(): BlockNodeHandler
+    {
+        return $this->blockHandler ??= $this->createBlockHandler();
+    }
+
+    public function declaration(): DeclarationNodeHandler
+    {
+        return $this->declarationHandler ??= $this->createDeclarationHandler();
+    }
+
+    public function definition(): DefinitionNodeHandler
+    {
+        return $this->definitionHandler ??= $this->createDefinitionHandler();
+    }
+
+    public function diagnostic(): DiagnosticNodeHandler
+    {
+        return $this->diagnosticHandler ??= $this->createDiagnosticHandler();
+    }
+
+    public function flow(): FlowControlNodeHandler
+    {
+        return $this->flowControlHandler ??= $this->createFlowHandler();
+    }
+
+    public function moduleLoad(): ModuleNodeHandler
+    {
+        return $this->moduleLoadHandler ??= $this->createModuleNodeHandler();
+    }
+
+    public function root(): RootNodeHandler
+    {
+        return $this->rootHandler ??= $this->createRootHandler();
+    }
+
+    private function createModule(): Module
+    {
+        return new Module(
             $this->ctx,
             $this->loader,
             $this->parser,
@@ -96,16 +193,181 @@ final class CompilerRuntime
         );
     }
 
-    public function evaluation(): Evaluator
+    private function createEvaluator(): Evaluator
     {
-        return $this->evaluation ??= new Evaluator(
+        return new Evaluator(
             $this->ctx,
             $this->options,
             $this->parser,
             $this->selector(),
             $this->text(),
             $this->condition(),
+            $this->createModuleVariableAssigner(),
+            $this->createDiagnosticDirectiveHandler(),
+        );
+    }
+
+    private function createCondition(): Condition
+    {
+        return new Condition(
+            $this->ctx,
+            $this->parser,
+            $this->text(),
+            $this->createAstValueEvaluator(),
+            $this->createAstValueFormatter(),
+        );
+    }
+
+    private function createExtendsResolver(): ExtendsResolver
+    {
+        return new ExtendsResolver(
+            $this->ctx,
+            $this->text(),
+            $this->selectorTokenizer(),
+            $this->createAstValueEvaluator(),
+            new ClosureFunctionConditionEvaluator(
+                fn(string $condition, Environment $env): bool => $this->evaluation()->evaluateFunctionCondition($condition, $env),
+            ),
+            new ClosureVariableDeclarationApplier(
+                fn(AstNode $node, Environment $env): bool => $this->evaluation()->applyVariableDeclaration($node, $env),
+            ),
+            new ClosureEachLoopBinder(
+                fn(AstNode $value): array => $this->evaluation()->eachIterableItems($value),
+                fn(array $variables, AstNode $item, Environment $env) => $this->evaluation()->assignEachVariables($variables, $item, $env),
+            ),
+            $this->createAstValueFormatter(),
+        );
+    }
+
+    private function createSelector(): Selector
+    {
+        return new Selector(
+            $this->ctx,
+            $this->render(),
+            $this->text(),
+            $this->selectorTokenizer(),
+            $this->dispatcher,
+            $this->extends(),
+            $this->createAstValueEvaluator(),
+            $this->createModuleVariableAssigner(),
+            fn(AstNode $value): bool => $this->evaluation()->isSassNullValue($value),
+            fn(string $property): bool => $this->evaluation()->shouldCompressNamedColorForProperty($property),
+            fn(AstNode $value): AstNode => $this->evaluation()->compressNamedColorsForOutput($value),
+            $this->createAstValueFormatter(),
+        );
+    }
+
+    private function createText(): Text
+    {
+        return new Text(
+            $this->parser,
+            $this->createAstValueEvaluator(),
+            $this->createAstValueFormatter(),
+        );
+    }
+
+    private function createRender(): Render
+    {
+        return new Render(
+            $this->ctx,
+            $this->options,
+            $this->createAstValueFormatter(),
+        );
+    }
+
+    private function createCommentHandler(): CommentNodeHandler
+    {
+        return new CommentNodeHandler(
+            $this->context(),
+            $this->evaluation(),
+            $this->render(),
+        );
+    }
+
+    private function createAtRuleHandler(): AtRuleNodeHandler
+    {
+        return new AtRuleNodeHandler(
+            $this->dispatcher,
+            $this->evaluation(),
+            $this->render(),
+            $this->selector(),
+        );
+    }
+
+    private function createBlockHandler(): BlockNodeHandler
+    {
+        return new BlockNodeHandler(
+            $this->dispatcher,
+            $this->context(),
+            $this->evaluation(),
+            $this->ctx->functionRegistry,
+            $this->module(),
+            $this->render(),
+            $this->selector(),
+        );
+    }
+
+    private function createDeclarationHandler(): DeclarationNodeHandler
+    {
+        return new DeclarationNodeHandler(
+            $this->evaluation(),
+            $this->render(),
+            $this->text(),
+        );
+    }
+
+    private function createDefinitionHandler(): DefinitionNodeHandler
+    {
+        return new DefinitionNodeHandler(
+            $this->evaluation(),
+            $this->module(),
+            $this->context(),
+        );
+    }
+
+    private function createDiagnosticHandler(): DiagnosticNodeHandler
+    {
+        return new DiagnosticNodeHandler(
+            $this->context(),
+            $this->evaluation(),
+            $this->render(),
+        );
+    }
+
+    private function createFlowHandler(): FlowControlNodeHandler
+    {
+        return new FlowControlNodeHandler(
+            $this->dispatcher,
+            $this->evaluation(),
+            $this->render(),
+        );
+    }
+
+    private function createModuleNodeHandler(): ModuleNodeHandler
+    {
+        return new ModuleNodeHandler(
+            $this->evaluation(),
+            $this->module(),
+            $this->render(),
+            $this->selector(),
+        );
+    }
+
+    private function createRootHandler(): RootNodeHandler
+    {
+        return new RootNodeHandler($this->dispatcher, $this->render());
+    }
+
+    private function createModuleVariableAssigner(): ClosureModuleVariableAssigner
+    {
+        return new ClosureModuleVariableAssigner(
             fn(ModuleVarDeclarationNode $node, Environment $env) => $this->module()->assignModuleVariable($node, $env),
+        );
+    }
+
+    private function createDiagnosticDirectiveHandler(): ClosureDiagnosticDirectiveHandler
+    {
+        return new ClosureDiagnosticDirectiveHandler(
             fn(
                 string $directive,
                 AstNode $messageNode,
@@ -120,158 +382,17 @@ final class CompilerRuntime
         );
     }
 
-    public function condition(): Condition
+    private function createAstValueEvaluator(): ClosureAstValueEvaluator
     {
-        return $this->condition ??= new Condition(
-            $this->ctx,
-            $this->parser,
-            $this->text(),
+        return new ClosureAstValueEvaluator(
             fn(AstNode $node, Environment $env): AstNode => $this->evaluation()->evaluateValue($node, $env),
+        );
+    }
+
+    private function createAstValueFormatter(): ClosureAstValueFormatter
+    {
+        return new ClosureAstValueFormatter(
             fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
         );
-    }
-
-    public function extends(): ExtendsResolver
-    {
-        return $this->extends ??= new ExtendsResolver(
-            $this->ctx,
-            $this->text(),
-            $this->selectorTokenizer(),
-            fn(AstNode $node, Environment $env): AstNode => $this->evaluation()->evaluateValue($node, $env),
-            fn(string $condition, Environment $env): bool => $this->evaluation()->evaluateFunctionCondition($condition, $env),
-            fn(AstNode $node, Environment $env): bool => $this->evaluation()->applyVariableDeclaration($node, $env),
-            fn(AstNode $value): array => $this->evaluation()->eachIterableItems($value),
-            fn(array $variables, AstNode $item, Environment $env) => $this->evaluation()->assignEachVariables($variables, $item, $env),
-            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
-        );
-    }
-
-    public function selector(): Selector
-    {
-        return $this->selector ??= new Selector(
-            $this->ctx,
-            $this->render(),
-            $this->text(),
-            $this->selectorTokenizer(),
-            $this->dispatcher,
-            $this->extends(),
-            fn(AstNode $node, Environment $env): AstNode => $this->evaluation()->evaluateValue($node, $env),
-            fn(ModuleVarDeclarationNode $node, Environment $env) => $this->module()->assignModuleVariable($node, $env),
-            fn(AstNode $value): bool => $this->evaluation()->isSassNullValue($value),
-            fn(string $property): bool => $this->evaluation()->shouldCompressNamedColorForProperty($property),
-            fn(AstNode $value): AstNode => $this->evaluation()->compressNamedColorsForOutput($value),
-            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
-        );
-    }
-
-    private function selectorTokenizer(): SelectorTokenizer
-    {
-        return $this->selectorTokenizer ??= new SelectorTokenizer();
-    }
-
-    public function text(): Text
-    {
-        return $this->text ??= new Text(
-            $this->parser,
-            fn(AstNode $node, Environment $env): AstNode => $this->evaluation()->evaluateValue($node, $env),
-            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
-        );
-    }
-
-    public function render(): Render
-    {
-        return $this->render ??= new Render(
-            $this->ctx,
-            $this->options,
-            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
-        );
-    }
-
-    public function context(): Context
-    {
-        return $this->context ??= new Context($this->ctx, $this->options, $this->logger);
-    }
-
-    public function comment(): CommentNodeHandler
-    {
-        return $this->commentHandler ??= new CommentNodeHandler(
-            $this->context(),
-            $this->evaluation(),
-            $this->render(),
-        );
-    }
-
-    public function atRule(): AtRuleNodeHandler
-    {
-        return $this->atRuleHandler ??= new AtRuleNodeHandler(
-            $this->dispatcher,
-            $this->evaluation(),
-            $this->render(),
-            $this->selector(),
-        );
-    }
-
-    public function block(): BlockNodeHandler
-    {
-        return $this->blockHandler ??= new BlockNodeHandler(
-            $this->dispatcher,
-            $this->context(),
-            $this->evaluation(),
-            $this->ctx->functionRegistry,
-            $this->module(),
-            $this->render(),
-            $this->selector(),
-        );
-    }
-
-    public function declaration(): DeclarationNodeHandler
-    {
-        return $this->declarationHandler ??= new DeclarationNodeHandler(
-            $this->evaluation(),
-            $this->render(),
-            $this->text(),
-        );
-    }
-
-    public function definition(): DefinitionNodeHandler
-    {
-        return $this->definitionHandler ??= new DefinitionNodeHandler(
-            $this->evaluation(),
-            $this->module(),
-            $this->context(),
-        );
-    }
-
-    public function diagnostic(): DiagnosticNodeHandler
-    {
-        return $this->diagnosticHandler ??= new DiagnosticNodeHandler(
-            $this->context(),
-            $this->evaluation(),
-            $this->render(),
-        );
-    }
-
-    public function flow(): FlowControlNodeHandler
-    {
-        return $this->flowControlHandler ??= new FlowControlNodeHandler(
-            $this->dispatcher,
-            $this->evaluation(),
-            $this->render(),
-        );
-    }
-
-    public function moduleLoad(): ModuleNodeHandler
-    {
-        return $this->moduleLoadHandler ??= new ModuleNodeHandler(
-            $this->evaluation(),
-            $this->module(),
-            $this->render(),
-            $this->selector(),
-        );
-    }
-
-    public function root(): RootNodeHandler
-    {
-        return $this->rootHandler ??= new RootNodeHandler($this->dispatcher, $this->render());
     }
 }

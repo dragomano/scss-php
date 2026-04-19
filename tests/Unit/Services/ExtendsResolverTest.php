@@ -24,6 +24,11 @@ use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\VariableDefinition;
+use Bugo\SCSS\Services\ClosureAstValueEvaluator;
+use Bugo\SCSS\Services\ClosureAstValueFormatter;
+use Bugo\SCSS\Services\ClosureEachLoopBinder;
+use Bugo\SCSS\Services\ClosureFunctionConditionEvaluator;
+use Bugo\SCSS\Services\ClosureVariableDeclarationApplier;
 use Bugo\SCSS\Services\ExtendsResolver;
 use Bugo\SCSS\Services\Text;
 use Bugo\SCSS\Utils\SelectorTokenizer;
@@ -59,30 +64,40 @@ describe('ExtendsResolver', function () {
             return '';
         };
 
-        $text = new Text($parser, $evaluateValue, $format);
+        $text = new Text(
+            $parser,
+            new ClosureAstValueEvaluator($evaluateValue),
+            new ClosureAstValueFormatter($format),
+        );
 
         $this->resolver = new ExtendsResolver(
             $this->ctx,
             $text,
             new SelectorTokenizer(),
-            $evaluateValue,
-            fn(string $condition, Environment $env): bool => $this->conditionResults[$condition] ?? false,
-            function (AstNode $node, Environment $env): bool {
-                if (! $node instanceof StringNode || $node->value !== 'tick') {
-                    return false;
-                }
+            new ClosureAstValueEvaluator($evaluateValue),
+            new ClosureFunctionConditionEvaluator(
+                fn(string $condition, Environment $env): bool => $this->conditionResults[$condition] ?? false,
+            ),
+            new ClosureVariableDeclarationApplier(
+                function (AstNode $node, Environment $env): bool {
+                    if (! $node instanceof StringNode || $node->value !== 'tick') {
+                        return false;
+                    }
 
-                $value = $env->getCurrentScope()->getAstVariable('i');
+                    $value = $env->getCurrentScope()->getAstVariable('i');
 
-                if ($value instanceof NumberNode) {
-                    $this->iterationValues[] = $value->value;
-                }
+                    if ($value instanceof NumberNode) {
+                        $this->iterationValues[] = $value->value;
+                    }
 
-                return true;
-            },
-            static fn(AstNode $node): array => [],
-            static function (array $variables, AstNode $item, Environment $env): void {},
-            $format,
+                    return true;
+                },
+            ),
+            new ClosureEachLoopBinder(
+                static fn(AstNode $node): array => [],
+                static function (array $variables, AstNode $item, Environment $env): void {},
+            ),
+            new ClosureAstValueFormatter($format),
         );
 
         $this->accessor = new ReflectionAccessor($this->resolver);
@@ -228,21 +243,31 @@ describe('ExtendsResolver', function () {
                         return new RootNode();
                     }
                 },
-                static fn(AstNode $node, Environment $env): AstNode => $node,
-                static fn(AstNode $node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
+                new ClosureAstValueEvaluator(static fn(AstNode $node, Environment $env): AstNode => $node),
+                new ClosureAstValueFormatter(
+                    static fn(AstNode $node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
+                ),
             ),
             new SelectorTokenizer(),
-            static fn(AstNode $node, Environment $env): AstNode => $node,
-            static fn(string $condition, Environment $env): bool => false,
-            static fn(AstNode $node, Environment $env): bool => false,
-            static fn(AstNode $node): array => [new StringNode('first'), new StringNode('second')],
-            function (array $variables, AstNode $item, Environment $env) use (&$assigned): void {
-                if ($item instanceof StringNode) {
-                    $assigned[] = $item->value;
-                    $env->getCurrentScope()->setVariableLocal($variables[0] ?? 'item', $item);
-                }
-            },
-            static fn(AstNode $node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
+            new ClosureAstValueEvaluator(static fn(AstNode $node, Environment $env): AstNode => $node),
+            new ClosureFunctionConditionEvaluator(
+                static fn(string $condition, Environment $env): bool => false,
+            ),
+            new ClosureVariableDeclarationApplier(
+                static fn(AstNode $node, Environment $env): bool => false,
+            ),
+            new ClosureEachLoopBinder(
+                static fn(AstNode $node): array => [new StringNode('first'), new StringNode('second')],
+                function (array $variables, AstNode $item, Environment $env) use (&$assigned): void {
+                    if ($item instanceof StringNode) {
+                        $assigned[] = $item->value;
+                        $env->getCurrentScope()->setVariableLocal($variables[0] ?? 'item', $item);
+                    }
+                },
+            ),
+            new ClosureAstValueFormatter(
+                static fn(AstNode $node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
+            ),
         );
 
         $resolver->collectExtends(

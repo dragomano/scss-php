@@ -78,7 +78,7 @@ final class Parser implements ParserInterface
     /**
      * @return array<int, AstNode>
      */
-    protected function parseStatements(bool $insideBlock = false): array
+    private function parseStatements(bool $insideBlock = false): array
     {
         $statements             = [];
         $seenNonModuleStatement = false;
@@ -138,7 +138,7 @@ final class Parser implements ParserInterface
         return $statements;
     }
 
-    protected function parseStatement(): ?AstNode
+    private function parseStatement(): ?AstNode
     {
         $this->stream->skipWhitespace();
 
@@ -168,7 +168,7 @@ final class Parser implements ParserInterface
     /**
      * @return array<int, AstNode>
      */
-    protected function parseBlock(): array
+    private function parseBlock(): array
     {
         $body = [];
 
@@ -190,7 +190,7 @@ final class Parser implements ParserInterface
     /**
      * @return array<int, AstNode>
      */
-    protected function parseStatementsInsideBlock(): array
+    private function parseStatementsInsideBlock(): array
     {
         $statements = [];
         $loopCount  = 0;
@@ -238,7 +238,7 @@ final class Parser implements ParserInterface
         return $statements;
     }
 
-    protected function parseRuleFromSelector(string $selector, int $line = 1, int $column = 1): RuleNode
+    private function parseRuleFromSelector(string $selector, int $line = 1, int $column = 1): RuleNode
     {
         $this->stream->skipWhitespace();
 
@@ -261,7 +261,7 @@ final class Parser implements ParserInterface
         return new RuleNode($selector, $children, $line, $column);
     }
 
-    protected function parseInlineValue(string $expression): AstNode
+    private function parseInlineValue(string $expression): AstNode
     {
         $expr = trim($expression);
 

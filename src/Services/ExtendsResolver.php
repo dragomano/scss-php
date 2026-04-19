@@ -26,7 +26,6 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\SelectorTokenizer;
-use Closure;
 
 use function array_flip;
 use function array_keys;
@@ -48,106 +47,39 @@ use function trim;
 
 final readonly class ExtendsResolver
 {
-    /**
-     * @param Closure(AstNode, Environment): AstNode $evaluateValue
-     * @param Closure(string, Environment): bool $evaluateFunctionCondition
-     * @param Closure(AstNode, Environment): bool $applyVariableDeclaration
-     * @param Closure(AstNode): array<int, AstNode> $eachIterableItems
-     * @param Closure(array<int, string>, AstNode, Environment): void $assignEachVariables
-     * @param Closure(AstNode, Environment): string $format
-     */
     public function __construct(
         private CompilerContext $ctx,
         private Text $text,
         private SelectorTokenizer $tokenizer,
-        private Closure $evaluateValue,
-        private Closure $evaluateFunctionCondition,
-        private Closure $applyVariableDeclaration,
-        private Closure $eachIterableItems,
-        private Closure $assignEachVariables,
-        private Closure $format,
+        private AstValueEvaluatorInterface $valueEvaluator,
+        private FunctionConditionEvaluatorInterface $conditionEvaluator,
+        private VariableDeclarationApplierInterface $variableDeclarationApplier,
+        private EachLoopBinderInterface $eachLoopBinder,
+        private AstValueFormatterInterface $valueFormatter,
     ) {}
 
     public function collectExtends(AstNode $node, Environment $env): void
     {
         if ($node instanceof RootNode) {
-            foreach ($node->children as $child) {
-                if ($child instanceof VariableDeclarationNode) {
-                    $env->getCurrentScope()->setVariable(
-                        $child->name,
-                        $child->value,
-                        $child->global,
-                        $child->default,
-                        $child->line,
-                    );
-
-                    continue;
-                }
-
-                $this->collectExtends($child, $env);
-            }
+            $this->collectRootExtends($node, $env);
 
             return;
         }
 
         if ($node instanceof RuleNode) {
-            $selector = $this->text->interpolateText($node->selector, $env);
-
-            $parentSelectorNode = $env->getCurrentScope()->getStringVariable('__parent_selector');
-            $parentSelector     = $parentSelectorNode?->value;
-
-            if (
-                $parentSelector !== null
-                && str_contains($selector, '&')
-                && ! str_contains($parentSelector, '%')
-            ) {
-                $selector = SelectorHelper::resolveNested($selector, $parentSelector);
-            }
-
-            $currentContext = $this->getCurrentExtendDirectiveContext($env);
-            $outputState    = $this->ctx->outputState;
-
-            foreach ($this->splitTopLevelSelectorList($selector) as $selectorPart) {
-                if ($selectorPart === '') {
-                    continue;
-                }
-
-                $outputState->extends->selectorContexts[$selectorPart] ??= [];
-                $outputState->extends->selectorContexts[$selectorPart][$currentContext] = true;
-            }
-
-            $env->enterScope();
-            $env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode($selector));
-
-            $this->collectChildren($node->children, $env, $selector, $currentContext);
-
-            $env->exitScope();
+            $this->collectRuleExtends($node, $env);
 
             return;
         }
 
         if ($node instanceof SupportsNode) {
-            $condition      = trim($node->condition);
-            $contextSegment = '@supports' . ($condition !== '' ? ' ' . $condition : '');
-
-            $this->collectExtendsInDirectiveContext($node->body, $contextSegment, $env);
+            $this->collectSupportsExtends($node, $env);
 
             return;
         }
 
         if ($node instanceof DirectiveNode) {
-            if (! $node->hasBlock) {
-                return;
-            }
-
-            $name           = strtolower(trim($node->name));
-            $prelude        = trim($node->prelude);
-            $contextSegment = '@' . $name . ($prelude !== '' ? ' ' . $prelude : '');
-
-            /** @var array<int, AstNode> $body */
-            $body = $node->body;
-
-            $this->collectExtendsInDirectiveContext($body, $contextSegment, $env);
+            $this->collectDirectiveExtends($node, $env);
 
             return;
         }
@@ -161,68 +93,19 @@ final readonly class ExtendsResolver
         }
 
         if ($node instanceof EachNode) {
-            $iterableValue = ($this->evaluateValue)($node->list, $env);
-
-            /** @var array<int, AstNode> $items */
-            $items = ($this->eachIterableItems)($iterableValue);
-
-            $env->enterScope();
-
-            foreach ($items as $item) {
-                ($this->assignEachVariables)($node->variables, $item, $env);
-
-                $this->collectChildren($node->body, $env, applyDeclarations: true);
-            }
-
-            $env->exitScope();
+            $this->collectEachExtends($node, $env);
 
             return;
         }
 
         if ($node instanceof ForNode) {
-            $from = (int) $this->toLoopNumber($node->from, $env);
-            $to   = (int) $this->toLoopNumber($node->to, $env);
-
-            if (! $node->inclusive) {
-                $to += $from <= $to ? -1 : 1;
-            }
-
-            $step          = $from <= $to ? 1 : -1;
-            $iterations    = 0;
-            $maxIterations = 10000;
-
-            $env->enterScope();
-
-            for ($i = $from; $step > 0 ? $i <= $to : $i >= $to; $i += $step) {
-                $iterations++;
-
-                if ($iterations > $maxIterations) {
-                    throw new MaxIterationsExceededException('@for');
-                }
-
-                $env->getCurrentScope()->setVariable($node->variable, new NumberNode($i));
-
-                $this->collectChildren($node->body, $env, applyDeclarations: true);
-            }
-
-            $env->exitScope();
+            $this->collectForExtends($node, $env);
 
             return;
         }
 
         if ($node instanceof WhileNode) {
-            $iterations    = 0;
-            $maxIterations = 10000;
-
-            while (($this->evaluateFunctionCondition)($node->condition, $env)) {
-                $iterations++;
-
-                if ($iterations > $maxIterations) {
-                    throw new MaxIterationsExceededException('@while');
-                }
-
-                $this->collectChildren($node->body, $env, applyDeclarations: true);
-            }
+            $this->collectWhileExtends($node, $env);
 
             return;
         }
@@ -324,6 +207,140 @@ final readonly class ExtendsResolver
         return $state->extendMap !== []
             || $state->pendingExtends !== []
             || $state->selectorContexts !== [];
+    }
+
+    private function collectRootExtends(RootNode $node, Environment $env): void
+    {
+        foreach ($node->children as $child) {
+            if ($child instanceof VariableDeclarationNode) {
+                $env->getCurrentScope()->setVariable(
+                    $child->name,
+                    $child->value,
+                    $child->global,
+                    $child->default,
+                    $child->line,
+                );
+
+                continue;
+            }
+
+            $this->collectExtends($child, $env);
+        }
+    }
+
+    private function collectRuleExtends(RuleNode $node, Environment $env): void
+    {
+        $selector = $this->text->interpolateText($node->selector, $env);
+
+        $parentSelectorNode = $env->getCurrentScope()->getStringVariable('__parent_selector');
+        $parentSelector     = $parentSelectorNode?->value;
+
+        if (
+            $parentSelector !== null
+            && str_contains($selector, '&')
+            && ! str_contains($parentSelector, '%')
+        ) {
+            $selector = SelectorHelper::resolveNested($selector, $parentSelector);
+        }
+
+        $currentContext = $this->getCurrentExtendDirectiveContext($env);
+        $outputState    = $this->ctx->outputState;
+
+        foreach ($this->splitTopLevelSelectorList($selector) as $selectorPart) {
+            if ($selectorPart === '') {
+                continue;
+            }
+
+            $outputState->extends->selectorContexts[$selectorPart] ??= [];
+            $outputState->extends->selectorContexts[$selectorPart][$currentContext] = true;
+        }
+
+        $env->enterScope();
+        $env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode($selector));
+
+        $this->collectChildren($node->children, $env, $selector, $currentContext);
+
+        $env->exitScope();
+    }
+
+    private function collectSupportsExtends(SupportsNode $node, Environment $env): void
+    {
+        $condition      = trim($node->condition);
+        $contextSegment = '@supports' . ($condition !== '' ? ' ' . $condition : '');
+
+        $this->collectExtendsInDirectiveContext($node->body, $contextSegment, $env);
+    }
+
+    private function collectDirectiveExtends(DirectiveNode $node, Environment $env): void
+    {
+        if (! $node->hasBlock) {
+            return;
+        }
+
+        $name           = strtolower(trim($node->name));
+        $prelude        = trim($node->prelude);
+        $contextSegment = '@' . $name . ($prelude !== '' ? ' ' . $prelude : '');
+
+        /** @var array<int, AstNode> $body */
+        $body = $node->body;
+
+        $this->collectExtendsInDirectiveContext($body, $contextSegment, $env);
+    }
+
+    private function collectEachExtends(EachNode $node, Environment $env): void
+    {
+        $iterableValue = $this->valueEvaluator->evaluate($node->list, $env);
+        $items         = $this->eachLoopBinder->items($iterableValue);
+
+        $env->enterScope();
+
+        foreach ($items as $item) {
+            $this->eachLoopBinder->assign($node->variables, $item, $env);
+
+            $this->collectChildren($node->body, $env, applyDeclarations: true);
+        }
+
+        $env->exitScope();
+    }
+
+    private function collectForExtends(ForNode $node, Environment $env): void
+    {
+        $from = (int) $this->toLoopNumber($node->from, $env);
+        $to   = (int) $this->toLoopNumber($node->to, $env);
+
+        if (! $node->inclusive) {
+            $to += $from <= $to ? -1 : 1;
+        }
+
+        $step       = $from <= $to ? 1 : -1;
+        $iterations = 0;
+
+        $env->enterScope();
+
+        for ($i = $from; $step > 0 ? $i <= $to : $i >= $to; $i += $step) {
+            $iterations++;
+
+            $this->assertIterationLimit($iterations, '@for');
+
+            $env->getCurrentScope()->setVariable($node->variable, new NumberNode($i));
+
+            $this->collectChildren($node->body, $env, applyDeclarations: true);
+        }
+
+        $env->exitScope();
+    }
+
+    private function collectWhileExtends(WhileNode $node, Environment $env): void
+    {
+        $iterations = 0;
+
+        while ($this->conditionEvaluator->evaluate($node->condition, $env)) {
+            $iterations++;
+
+            $this->assertIterationLimit($iterations, '@while');
+
+            $this->collectChildren($node->body, $env, applyDeclarations: true);
+        }
     }
 
     /**
@@ -586,7 +603,7 @@ final readonly class ExtendsResolver
                 continue;
             }
 
-            if ($applyDeclarations && ($this->applyVariableDeclaration)($child, $env)) {
+            if ($applyDeclarations && $this->variableDeclarationApplier->apply($child, $env)) {
                 continue;
             }
 
@@ -599,12 +616,12 @@ final readonly class ExtendsResolver
      */
     private function resolveIfBranch(IfNode $node, Environment $env): array
     {
-        if (($this->evaluateFunctionCondition)($node->condition, $env)) {
+        if ($this->conditionEvaluator->evaluate($node->condition, $env)) {
             return $node->body;
         }
 
         foreach ($node->elseIfBranches as $elseIfBranch) {
-            if (($this->evaluateFunctionCondition)($elseIfBranch->condition, $env)) {
+            if ($this->conditionEvaluator->evaluate($elseIfBranch->condition, $env)) {
                 return $elseIfBranch->body;
             }
         }
@@ -614,19 +631,26 @@ final readonly class ExtendsResolver
 
     private function toLoopNumber(AstNode $node, Environment $env): float
     {
-        $resolved = ($this->evaluateValue)($node, $env);
+        $resolved = $this->valueEvaluator->evaluate($node, $env);
 
         if ($resolved instanceof NumberNode) {
             return (float) $resolved->value;
         }
 
-        $formatted = ($this->format)($resolved, $env);
+        $formatted = $this->valueFormatter->format($resolved, $env);
 
         if (! is_numeric($formatted)) {
             throw new InvalidLoopBoundaryException($formatted);
         }
 
         return (float) $formatted;
+    }
+
+    private function assertIterationLimit(int $iterations, string $atRule): void
+    {
+        if ($iterations > 10000) {
+            throw new MaxIterationsExceededException($atRule);
+        }
     }
 
     private function getCurrentExtendDirectiveContext(Environment $env): string

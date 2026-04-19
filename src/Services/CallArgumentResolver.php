@@ -13,7 +13,6 @@ use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
-use Closure;
 
 use function array_filter;
 use function array_values;
@@ -23,13 +22,10 @@ use function trim;
 
 final readonly class CallArgumentResolver
 {
-    /**
-     * @param Closure(AstNode, Environment): AstNode $evaluateValue
-     */
     public function __construct(
         private ParserInterface $parser,
         private CssArgumentEvaluator $cssArgument,
-        private Closure $evaluateValue,
+        private AstValueEvaluatorInterface $valueEvaluator,
     ) {}
 
     /**
@@ -107,7 +103,7 @@ final readonly class CallArgumentResolver
 
         foreach ($arguments as $argument) {
             if ($argument instanceof SpreadArgumentNode) {
-                $spread = ($this->evaluateValue)($argument->value, $env);
+                $spread = $this->valueEvaluator->evaluate($argument->value, $env);
 
                 foreach ($this->cssArgument->expandSpreadValue($spread) as $spreadArgument) {
                     if ($spreadArgument instanceof NamedArgumentNode) {
@@ -123,12 +119,12 @@ final readonly class CallArgumentResolver
             }
 
             if ($argument instanceof NamedArgumentNode) {
-                $named[$argument->name] = ($this->evaluateValue)($argument->value, $env);
+                $named[$argument->name] = $this->valueEvaluator->evaluate($argument->value, $env);
 
                 continue;
             }
 
-            $positional[] = ($this->evaluateValue)($argument, $env);
+            $positional[] = $this->valueEvaluator->evaluate($argument, $env);
         }
 
         return [$positional, $named];

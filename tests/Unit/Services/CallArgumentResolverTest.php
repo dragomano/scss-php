@@ -12,6 +12,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\CallArgumentResolver;
+use Bugo\SCSS\Services\ClosureAstValueEvaluator;
 use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
@@ -38,7 +39,7 @@ describe('CallArgumentResolver', function () {
                 }
             },
             $this->cssArg,
-            $this->evaluate,
+            new ClosureAstValueEvaluator($this->evaluate),
         );
 
         expect($resolver->parseContentCallArguments('(1, 2)'))->toBe([]);
@@ -57,7 +58,7 @@ describe('CallArgumentResolver', function () {
                 }
             },
             $this->cssArg,
-            $this->evaluate,
+            new ClosureAstValueEvaluator($this->evaluate),
         );
 
         expect($resolver->parseContentCallArguments('(1, 2)'))->toBe([]);

@@ -41,12 +41,10 @@ final readonly class CachingCompiler implements CompilerInterface
     public function compileFile(string $path): string
     {
         $resolvedPath = $this->trackingLoader->load($path)['path'];
+        $key          = $this->buildCacheKey($resolvedPath);
+        $cached       = $this->getCacheEntry($key);
 
-        $key    = $this->buildCacheKey($resolvedPath);
-        /** @psalm-suppress MixedAssignment */
-        $cached = $this->cache->get($key);
-
-        if ($this->isValidCacheEntry($cached) && $this->isEntryFresh($cached)) {
+        if ($cached !== null && $this->isEntryFresh($cached)) {
             $this->restoreSourceMap($cached);
 
             return $cached['css'];
@@ -83,6 +81,20 @@ final readonly class CachingCompiler implements CompilerInterface
         return 'scss_' . hash('xxh32', implode('|', $parts));
     }
 
+    /**
+     * @return array{
+     *     css: string,
+     *     source_map: string|null,
+     *     source_map_file: string|null,
+     *     deps: array<string, int>
+     * }|null
+     * @throws InvalidArgumentException
+     */
+    private function getCacheEntry(string $key): ?array
+    {
+        return $this->normalizeCacheEntry($this->cache->get($key));
+    }
+
     private function readSourceMap(): ?string
     {
         if ($this->options->sourceMapFile === null || ! file_exists($this->options->sourceMapFile)) {
@@ -92,6 +104,24 @@ final readonly class CachingCompiler implements CompilerInterface
         $sourceMap = file_get_contents($this->options->sourceMapFile);
 
         return is_string($sourceMap) ? $sourceMap : null;
+    }
+
+    /**
+     * @param mixed $cached
+     * @return array{
+     *     css: string,
+     *     source_map: string|null,
+     *     source_map_file: string|null,
+     *     deps: array<string, int>
+     * }|null
+     */
+    private function normalizeCacheEntry(mixed $cached): ?array
+    {
+        if (! $this->isValidCacheEntry($cached)) {
+            return null;
+        }
+
+        return $cached;
     }
 
     /**

@@ -44,12 +44,9 @@ final readonly class Selector
     private SelectorRuleOptimizer $optimizer;
 
     /**
-     * @param Closure(AstNode, Environment): AstNode $evaluateValue
-     * @param Closure(ModuleVarDeclarationNode, Environment): void $assignModuleVariable
      * @param Closure(AstNode): bool $isSassNullValue
      * @param Closure(string): bool $shouldCompressNamedColorForProperty
      * @param Closure(AstNode): AstNode $compressNamedColorsForOutput
-     * @param Closure(AstNode, Environment): string $format
      */
     public function __construct(
         private CompilerContext $ctx,
@@ -58,12 +55,12 @@ final readonly class Selector
         private SelectorTokenizer $tokenizer,
         private NodeDispatcherInterface $dispatcher,
         private ExtendsResolver $extends,
-        private Closure $evaluateValue,
-        private Closure $assignModuleVariable,
+        private AstValueEvaluatorInterface $valueEvaluator,
+        private ModuleVariableAssignerInterface $moduleVariableAssigner,
         private Closure $isSassNullValue,
         private Closure $shouldCompressNamedColorForProperty,
         private Closure $compressNamedColorsForOutput,
-        private Closure $format,
+        private AstValueFormatterInterface $valueFormatter,
     ) {
         $this->optimizer = new SelectorRuleOptimizer();
     }
@@ -346,7 +343,7 @@ final readonly class Selector
             if ($child instanceof VariableDeclarationNode) {
                 $env->getCurrentScope()->setVariable(
                     $child->name,
-                    ($this->evaluateValue)($child->value, $env),
+                    $this->valueEvaluator->evaluate($child->value, $env),
                     $child->global,
                     $child->default,
                 );
@@ -355,7 +352,7 @@ final readonly class Selector
             }
 
             if ($child instanceof ModuleVarDeclarationNode) {
-                ($this->assignModuleVariable)($child, $env);
+                $this->moduleVariableAssigner->assign($child, $env);
 
                 continue;
             }
@@ -363,7 +360,7 @@ final readonly class Selector
             if ($child instanceof DeclarationNode) {
                 $property       = $this->text->interpolateText($child->property, $env);
                 $fullProperty   = $baseProperty . '-' . $property;
-                $evaluatedValue = ($this->evaluateValue)($child->value, $env);
+                $evaluatedValue = $this->valueEvaluator->evaluate($child->value, $env);
 
                 if (($this->isSassNullValue)($evaluatedValue)) {
                     continue;
@@ -373,7 +370,7 @@ final readonly class Selector
                     $evaluatedValue = ($this->compressNamedColorsForOutput)($evaluatedValue);
                 }
 
-                $value     = ($this->format)($evaluatedValue, $env);
+                $value     = $this->valueFormatter->format($evaluatedValue, $env);
                 $value     = $this->text->interpolateText($value, $env);
                 $important = $child->important ? ' !important' : '';
                 $line      = $prefix . $fullProperty . ': ' . $value . $important . ';';
@@ -679,7 +676,10 @@ final readonly class Selector
         $wrappedRootChild = $this->wrapNodeWithAtRuleStack($rootChild, $stack);
 
         $env->enterScope();
-        $env->getCurrentScope()->setVariableLocal('__at_root_context', $this->ctx->valueFactory->createBooleanNode(true));
+        $env->getCurrentScope()->setVariableLocal(
+            '__at_root_context',
+            $this->ctx->valueFactory->createBooleanNode(true),
+        );
 
         $compiled = $this->render->trimTrailingNewlines(
             $this->dispatcher->compileWithContext($wrappedRootChild, $rootCtx),
@@ -721,7 +721,6 @@ final readonly class Selector
 
     private function isBubblingDirective(DirectiveNode $node): bool
     {
-        // match compiles to O(1) hash lookup vs in_array's O(n) linear search
         return match (strtolower($node->name)) {
             'container',
             'media',
