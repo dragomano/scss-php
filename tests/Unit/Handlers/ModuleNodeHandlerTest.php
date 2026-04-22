@@ -119,3 +119,26 @@ it('returns empty string when namespace is absent from loaded modules state', fu
 
     expect($handler->handleUse($use, $ctx))->toBe('');
 });
+
+it('skips sass imports that resolve to an empty path', function () {
+    $runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);
+    $ctx     = RuntimeFactory::context();
+
+    $module = mock(Module::class);
+    $module->shouldReceive('resolveImport')->once()->with('"_missing.scss"')->andReturn([
+        'type' => 'sass',
+        'path' => '',
+    ]);
+    $module->shouldNotReceive('loadAndEvaluateModule');
+    $module->shouldNotReceive('extractAstVariables');
+    $module->shouldNotReceive('mergeScopeExports');
+
+    $handler = new ModuleNodeHandler(
+        $runtime->evaluation(),
+        $module,
+        $runtime->render(),
+        $runtime->selector(),
+    );
+
+    expect($handler->handleImport(new ImportNode(['"_missing.scss"']), $ctx))->toBe('');
+});

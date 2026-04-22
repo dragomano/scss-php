@@ -20,12 +20,12 @@ use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\CallableParameterBinder;
-use Bugo\SCSS\Services\ClosureAstValueEvaluator;
-use Bugo\SCSS\Services\ClosureDiagnosticDirectiveHandler;
-use Bugo\SCSS\Services\ClosureEachLoopBinder;
-use Bugo\SCSS\Services\ClosureVariableDeclarationApplier;
+use Bugo\SCSS\Services\DiagnosticDirectiveHandlerInterface;
+use Bugo\SCSS\Services\EachLoopBinderInterface;
 use Bugo\SCSS\Services\UserFunctionExecutor;
+use Bugo\SCSS\Services\VariableDeclarationApplierInterface;
 use Tests\RuntimeFactory;
 
 describe('UserFunctionExecutor', function () {
@@ -45,22 +45,47 @@ describe('UserFunctionExecutor', function () {
         $this->executor = new UserFunctionExecutor(
             RuntimeFactory::createRuntime()->condition(),
             new CallableParameterBinder(),
-            new ClosureAstValueEvaluator($evaluateValue),
-            new ClosureVariableDeclarationApplier(
-                static fn(AstNode $statement, Environment $env): bool => false,
-            ),
-            new ClosureEachLoopBinder(
-                static fn(AstNode $iterable): array => $iterable instanceof ListNode ? $iterable->items : [$iterable],
-                static function (array $variables, AstNode $item, Environment $env): void {
+            new class ($evaluateValue) implements AstValueEvaluatorInterface {
+                public function __construct(private readonly Closure $evaluateValue) {}
+
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return ($this->evaluateValue)($node, $env);
+                }
+            },
+            new class implements VariableDeclarationApplierInterface {
+                public function apply(AstNode $node, Environment $env): bool
+                {
+                    return false;
+                }
+            },
+            new class implements EachLoopBinderInterface {
+                public function items(AstNode $iterableValue): array
+                {
+                    return $iterableValue instanceof ListNode ? $iterableValue->items : [$iterableValue];
+                }
+
+                public function assign(array $variables, AstNode $item, Environment $env): void
+                {
                     $env->getCurrentScope()->setVariable($variables[0] ?? 'item', $item);
-                },
-            ),
-            new ClosureAstValueEvaluator($evaluateValue),
-            new ClosureDiagnosticDirectiveHandler(
-                function (string $kind, AstNode $message, Environment $env, ?AstNode $statement): void {
-                    $this->diagnostics[] = $kind;
-                },
-            ),
+                }
+            },
+            new class ($evaluateValue) implements AstValueEvaluatorInterface {
+                public function __construct(private readonly Closure $evaluateValue) {}
+
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return ($this->evaluateValue)($node, $env);
+                }
+            },
+            new class ($this) implements DiagnosticDirectiveHandlerInterface {
+                public function __construct(private readonly object $testCase) {}
+
+                public function handle(string $kind, AstNode $message, Environment $env, ?AstNode $statement = null): void
+                {
+                    $this->testCase->diagnostics[] = $kind;
+                }
+            },
         );
     });
 
@@ -179,6 +204,31 @@ describe('UserFunctionExecutor', function () {
         }
 
         expect($result->value)->toBe('elseif-result');
+    });
+
+    it('skips else body after executing a non-returning else-if branch', function () {
+        $env = new Environment();
+        $function = new CallableDefinition([], [
+            new IfNode('false', [], [
+                new ElseIfNode('true', [
+                    new WarnNode(new StringNode('elseif-warn')),
+                ]),
+            ], [
+                new ReturnNode(new StringNode('else-result')),
+            ]),
+            new ReturnNode(new StringNode('after-if')),
+        ], $env->getCurrentScope(), 1);
+
+        $result = $this->executor->executeDefinition('if-elseif-continue', $function, [], [], $env);
+
+        expect($result)->toBeInstanceOf(StringNode::class);
+
+        if (! $result instanceof StringNode) {
+            throw new RuntimeException('Expected result to be StringNode.');
+        }
+
+        expect($result->value)->toBe('after-if')
+            ->and($this->diagnostics)->toBe(['warn']);
     });
 
     it('builds rest argument lists using only unmatched named arguments', function () {

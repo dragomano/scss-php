@@ -227,6 +227,16 @@ describe('Condition', function () {
             ->and($ctx->conditionCacheState->comparison['foo >= bar'])->toBe($comparison);
     });
 
+    it('ignores incomplete comparison operands and caches the miss', function () {
+        $accessor = new ReflectionAccessor($this->condition);
+        $ctx      = (new ReflectionAccessor($this->runtime))->getProperty('ctx');
+
+        $comparison = $accessor->callMethod('splitComparison', ['>= 10']);
+
+        expect($comparison)->toBeNull()
+            ->and($ctx->conditionCacheState->comparison['>= 10'])->toBeNull();
+    });
+
     it('handles number and color literal edge cases', function () {
         $accessor = new ReflectionAccessor($this->condition);
 

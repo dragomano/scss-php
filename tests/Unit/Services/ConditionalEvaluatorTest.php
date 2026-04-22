@@ -10,8 +10,9 @@ use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
-use Bugo\SCSS\Services\ClosureAstValueEvaluator;
-use Bugo\SCSS\Services\ClosureAstValueFormatter;
+use Bugo\SCSS\Services\AstValueEvaluatorInterface;
+use Bugo\SCSS\Services\AstValueFormatterInterface;
+use Bugo\SCSS\Services\ComparisonListEvaluatorInterface;
 use Bugo\SCSS\Services\ConditionalEvaluator;
 use Bugo\SCSS\Values\ValueFactory;
 use Tests\ReflectionAccessor;
@@ -57,13 +58,35 @@ describe('ConditionalEvaluator', function () {
         $this->evaluator = new ConditionalEvaluator(
             $runtime->condition(),
             $runtime->text(),
-            new ClosureAstValueEvaluator(
-                fn(AstNode $node, Environment $env): AstNode => $this->evaluatedValues[spl_object_id($node)] ?? $node,
-            ),
-            new ClosureAstValueFormatter($format),
-            fn(ListNode $node, Environment $env): ?AstNode => $this->comparisonListResults[
-                $format($node, $env)
-            ] ?? null,
+            new class ($this) implements AstValueEvaluatorInterface {
+                public function __construct(private readonly object $testCase) {}
+
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return $this->testCase->evaluatedValues[spl_object_id($node)] ?? $node;
+                }
+            },
+            new class ($format) implements AstValueFormatterInterface {
+                public function __construct(private readonly Closure $format) {}
+
+                public function format(AstNode $node, Environment $env): string
+                {
+                    return ($this->format)($node, $env);
+                }
+            },
+            new class ($this, $format) implements ComparisonListEvaluatorInterface {
+                public function __construct(
+                    private readonly object  $testCase,
+                    private readonly Closure $format,
+                ) {}
+
+                public function evaluate(ListNode $list, Environment $env): ?AstNode
+                {
+                    return $this->testCase->comparisonListResults[
+                        ($this->format)($list, $env)
+                    ] ?? null;
+                }
+            },
             new ValueFactory(),
         );
         $this->accessor = new ReflectionAccessor($this->evaluator);

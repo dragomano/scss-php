@@ -10,4 +10,4 @@ describe(NumberNode::class, function () {
             ->and((string) new NumberNode(INF))->toBe('infinity')
             ->and((string) new NumberNode(-INF))->toBe('-infinity');
     });
-})->covers(NumberNode::class);
+});

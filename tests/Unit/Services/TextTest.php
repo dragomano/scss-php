@@ -7,8 +7,8 @@ use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
-use Bugo\SCSS\Services\ClosureAstValueEvaluator;
-use Bugo\SCSS\Services\ClosureAstValueFormatter;
+use Bugo\SCSS\Services\AstValueEvaluatorInterface;
+use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\Text;
 use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
@@ -137,6 +137,20 @@ describe('Text service', function () {
             expect($this->text->extractStringKeyedArrayItems('nope'))->toBe([]);
         });
 
+        it('skips non-array items when extracting typed array items', function () {
+            $items = $this->text->extractStringKeyedArrayItems([
+                ['type' => 'atom', 'value' => 'display: grid'],
+                'skip-me',
+                123,
+                ['type' => 'atom', 'value' => 'color: red'],
+            ]);
+
+            expect($items)->toBe([
+                ['type' => 'atom', 'value' => 'display: grid'],
+                ['type' => 'atom', 'value' => 'color: red'],
+            ]);
+        });
+
         it('keeps the rest of supports condition when closing parenthesis is missing', function () {
             $result = $this->text->resolveSupportsCondition('display and (color: red', $this->env);
 
@@ -183,8 +197,18 @@ describe('Text service', function () {
                         return new RootNode([new StringNode('ignored')]);
                     }
                 },
-                new ClosureAstValueEvaluator(static fn($node, $env) => new StringNode('unused')),
-                new ClosureAstValueFormatter(static fn($node, $env): string => 'unused'),
+                new class implements AstValueEvaluatorInterface {
+                    public function evaluate(Bugo\SCSS\Nodes\AstNode $node, Environment $env): Bugo\SCSS\Nodes\AstNode
+                    {
+                        return new StringNode('unused');
+                    }
+                },
+                new class implements AstValueFormatterInterface {
+                    public function format(Bugo\SCSS\Nodes\AstNode $node, Environment $env): string
+                    {
+                        return 'unused';
+                    }
+                },
             );
             $accessor = new ReflectionAccessor($text);
 

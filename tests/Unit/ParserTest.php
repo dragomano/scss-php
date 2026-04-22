@@ -881,13 +881,29 @@ describe('Parser', function () {
         expect(invokeParserMethod($this->parser, 'parseStatement'))->toBeNull();
     });
 
-    it('handles malformed input gracefully', function () {
-        $source = '.unclosed { color: red';
-
-        $ast = $this->parser->parse($source);
+    it('stops parsing a directive block when the next statement cannot be parsed', function () {
+        $ast = $this->parser->parse('@mixin sample { x }');
 
         expect($ast)->toBeInstanceOf(RootNode::class)
-            ->and(count($ast->children))->toBe(1);
+            ->and($ast->children)->not->toBe([])
+            ->and($ast->children[0])->toBeInstanceOf(MixinNode::class)
+            ->and($ast->children[0]->body)->toHaveCount(0);
+    });
+
+    it('breaks out of directive block parsing after the loop guard threshold', function () {
+        $comments = [];
+
+        for ($i = 0; $i < 1001; $i++) {
+            $comments[] = '/*! kept */';
+        }
+
+        $ast = $this->parser->parse('@mixin sample { ' . implode(' ', $comments) . ' }');
+
+        expect($ast)->toBeInstanceOf(RootNode::class)
+            ->and($ast->children)->toHaveCount(2)
+            ->and($ast->children[0])->toBeInstanceOf(MixinNode::class)
+            ->and($ast->children[0]->body)->toHaveCount(1000)
+            ->and($ast->children[0]->body[0])->toBeInstanceOf(CommentNode::class);
     });
 
     it('parses legacy = operator in function arguments for IE compatibility', function () {

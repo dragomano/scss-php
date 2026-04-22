@@ -10,8 +10,12 @@ use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\ArithmeticListEvaluatorInterface;
+use Bugo\SCSS\Services\AstToSassValueConverterInterface;
+use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\CalculationEvaluator;
 use Bugo\SCSS\Values\SassString;
+use Bugo\SCSS\Values\SassValue;
 
 function createCalculationEvaluator(?Closure $evaluateArithmetic = null): CalculationEvaluator
 {
@@ -52,9 +56,34 @@ function createCalculationEvaluator(?Closure $evaluateArithmetic = null): Calcul
     };
 
     return new CalculationEvaluator(
-        $format,
-        $evaluateArithmetic ?? static fn(ListNode $node, bool $inCalc, Environment $env): ?AstNode => null,
-        static fn(AstNode $node, callable $format): SassString => new SassString($format($node)),
+        new class ($format) implements AstValueFormatterInterface {
+            public function __construct(private Closure $format) {}
+
+            public function format(AstNode $node, Environment $env): string
+            {
+                return ($this->format)($node, $env);
+            }
+        },
+        new class ($evaluateArithmetic) implements ArithmeticListEvaluatorInterface {
+            public function __construct(private ?Closure $evaluateArithmetic) {}
+
+            public function evaluate(ListNode $list, bool $strict, Environment $env): ?AstNode
+            {
+                if ($this->evaluateArithmetic === null) {
+                    return null;
+                }
+
+                return ($this->evaluateArithmetic)($list, $strict, $env);
+            }
+        },
+        new class ($format) implements AstToSassValueConverterInterface {
+            public function __construct(private Closure $format) {}
+
+            public function convert(AstNode $node, Environment $env): SassValue
+            {
+                return new SassString(($this->format)($node, $env));
+            }
+        },
     );
 }
 

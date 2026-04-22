@@ -440,6 +440,32 @@ describe('DeferredChunkManager', function () {
             ]);
     });
 
+    it('finds the last media prelude even when newer non-media entries are above it on the stack', function () {
+        $scope = $this->ctx->env->getCurrentScope();
+        $scope->setVariableLocal('__at_rule_stack', [
+            AtRuleContextEntry::directive('media', 'screen'),
+            AtRuleContextEntry::supports('(display: grid)'),
+        ]);
+
+        $chunk = $this->manager->compileInterleavedBubblingChunk(
+            '.host',
+            $scope,
+            new DirectiveNode('media', 'print', [
+                new RuleNode('.item', [
+                    new DeclarationNode('color', new StringNode('red')),
+                ]),
+            ], true),
+            $this->ctx,
+        );
+
+        expect($chunk)->not->toBeNull()
+            ->and($chunk->content())->toContain('@media screen and print')
+            ->and($scope->getVariable('__at_rule_stack'))->toEqual([
+                AtRuleContextEntry::directive('media', 'screen'),
+                AtRuleContextEntry::supports('(display: grid)'),
+            ]);
+    });
+
     it('flushes trailing root chunks before appending standalone nested rule chunks', function () {
         $output             = ".host {\n  color: red;\n}";
         $trailingRootChunks = [new RawChunk(".outside {\n  color: blue;\n}")];

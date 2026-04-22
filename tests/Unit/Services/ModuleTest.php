@@ -214,4 +214,28 @@ describe('Module service', function () {
 
         expect($accessor->callMethod('isCssImportPath', ['   ']))->toBeFalse();
     });
+
+    it('mergeScopeExports() skips functions that are not included by show visibility', function () {
+        $from = new Scope();
+        $to   = new Scope();
+
+        $from->defineFunction('keep-me', [], []);
+        $from->defineFunction('skip-me', [], []);
+
+        $this->module->mergeScopeExports($from, $to, visibility: 'show', members: ['keep-me']);
+
+        expect($to->hasFunction('keep-me'))->toBeTrue()
+            ->and($to->hasFunction('skip-me'))->toBeFalse();
+    });
+
+    it('mergeScopeExports() ignores empty forward members while exporting listed names', function () {
+        $from = new Scope();
+        $to   = new Scope();
+
+        $from->defineFunction('keep-me', [], []);
+
+        $this->module->mergeScopeExports($from, $to, visibility: 'show', members: ['', 'keep-me']);
+
+        expect($to->hasFunction('keep-me'))->toBeTrue();
+    });
 });

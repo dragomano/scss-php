@@ -8,6 +8,8 @@ use Bugo\SCSS\Lexer\TokenType;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Nodes\UseNode;
+use Bugo\SCSS\Parser\ModuleDirectiveContextInterface;
 use Bugo\SCSS\Parser\ModuleDirectiveParser;
 use Bugo\SCSS\Parser\StreamUtils;
 
@@ -55,13 +57,41 @@ function createModuleDirectiveParser(array $tokens, array $overrides = []): Modu
         'important' => false,
     ];
 
-    return new ModuleDirectiveParser(
-        $stream,
+    $context = new class (
         $parseString,
         $consumeIdentifier,
         $parseValueUntil,
         $parseValueModifiers,
-    );
+    ) implements ModuleDirectiveContextInterface {
+        public function __construct(
+            private readonly Closure $parseString,
+            private readonly Closure $consumeIdentifier,
+            private readonly Closure $parseValueUntil,
+            private readonly Closure $parseValueModifiers,
+        ) {}
+
+        public function parseString(): string
+        {
+            return ($this->parseString)();
+        }
+
+        public function consumeIdentifier(): string
+        {
+            return ($this->consumeIdentifier)();
+        }
+
+        public function parseValueUntil(array $stopTokens): ?AstNode
+        {
+            return ($this->parseValueUntil)($stopTokens);
+        }
+
+        public function parseValueModifiers(): array
+        {
+            return ($this->parseValueModifiers)();
+        }
+    };
+
+    return new ModuleDirectiveParser($stream, $context);
 }
 
 describe('ModuleDirectiveParser', function () {
@@ -105,5 +135,197 @@ describe('ModuleDirectiveParser', function () {
             ->and($node->members)->toBe(['$public'])
             ->and($node->configuration)->toHaveKey('primary')
             ->and($node->configuration['primary']['default'])->toBeTrue();
+    });
+
+    it('keeps an empty forward configuration when with is not followed by parentheses', function () {
+        $parser = createModuleDirectiveParser([
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::STRING, 'forwarded'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'with'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::SEMICOLON, ';'),
+            moduleDirectiveToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseForwardDirective();
+
+        expect($node)->toBeInstanceOf(ForwardNode::class)
+            ->and($node->path)->toBe('forwarded')
+            ->and($node->configuration)->toBe([]);
+    });
+
+    it('accepts an empty forward configuration list', function () {
+        $parser = createModuleDirectiveParser([
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::STRING, 'forwarded'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'with'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::LPAREN, '('),
+            moduleDirectiveToken(TokenType::RPAREN, ')'),
+            moduleDirectiveToken(TokenType::SEMICOLON, ';'),
+            moduleDirectiveToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseForwardDirective();
+
+        expect($node)->toBeInstanceOf(ForwardNode::class)
+            ->and($node->path)->toBe('forwarded')
+            ->and($node->configuration)->toBe([]);
+    });
+
+    it('stops parsing forward configuration when the variable sigil is missing', function () {
+        $parser = createModuleDirectiveParser([
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::STRING, 'forwarded'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'with'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::LPAREN, '('),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'primary'),
+            moduleDirectiveToken(TokenType::COLON, ':'),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'blue'),
+            moduleDirectiveToken(TokenType::RPAREN, ')'),
+            moduleDirectiveToken(TokenType::SEMICOLON, ';'),
+            moduleDirectiveToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseForwardDirective();
+
+        expect($node)->toBeInstanceOf(ForwardNode::class)
+            ->and($node->path)->toBe('forwarded')
+            ->and($node->configuration)->toBe([]);
+    });
+
+    it('stops parsing forward configuration when the colon after a variable name is missing', function () {
+        $parser = createModuleDirectiveParser([
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::STRING, 'forwarded'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'with'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::LPAREN, '('),
+            moduleDirectiveToken(TokenType::DOLLAR, '$'),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'primary'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'blue'),
+            moduleDirectiveToken(TokenType::RPAREN, ')'),
+            moduleDirectiveToken(TokenType::SEMICOLON, ';'),
+            moduleDirectiveToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseForwardDirective();
+
+        expect($node)->toBeInstanceOf(ForwardNode::class)
+            ->and($node->path)->toBe('forwarded')
+            ->and($node->configuration)->toBe([]);
+    });
+
+    it('stops parsing forward directive when a non-identifier token follows the path', function () {
+        $parser = createModuleDirectiveParser([
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::STRING, 'forwarded'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::COLON, ':'),
+            moduleDirectiveToken(TokenType::SEMICOLON, ';'),
+            moduleDirectiveToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseForwardDirective();
+
+        expect($node)->toBeInstanceOf(ForwardNode::class)
+            ->and($node->path)->toBe('forwarded')
+            ->and($node->prefix)->toBeNull()
+            ->and($node->visibility)->toBeNull()
+            ->and($node->members)->toBe([])
+            ->and($node->configuration)->toBe([]);
+    });
+
+    it('stops parsing forward directive when it encounters an unknown keyword', function () {
+        $parser = createModuleDirectiveParser([
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::STRING, 'forwarded'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'bogus'),
+            moduleDirectiveToken(TokenType::SEMICOLON, ';'),
+            moduleDirectiveToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseForwardDirective();
+
+        expect($node)->toBeInstanceOf(ForwardNode::class)
+            ->and($node->path)->toBe('forwarded')
+            ->and($node->prefix)->toBeNull()
+            ->and($node->visibility)->toBeNull()
+            ->and($node->members)->toBe([])
+            ->and($node->configuration)->toBe([]);
+    });
+
+    it('accepts an empty use configuration list', function () {
+        $parser = createModuleDirectiveParser([
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::STRING, 'theme'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'with'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::LPAREN, '('),
+            moduleDirectiveToken(TokenType::RPAREN, ')'),
+            moduleDirectiveToken(TokenType::SEMICOLON, ';'),
+            moduleDirectiveToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseUseDirective();
+
+        expect($node)->toBeInstanceOf(UseNode::class)
+            ->and($node->path)->toBe('theme')
+            ->and($node->configuration)->toBe([]);
+    });
+
+    it('stops parsing use configuration when the variable sigil is missing', function () {
+        $parser = createModuleDirectiveParser([
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::STRING, 'theme'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'with'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::LPAREN, '('),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'primary'),
+            moduleDirectiveToken(TokenType::COLON, ':'),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'blue'),
+            moduleDirectiveToken(TokenType::RPAREN, ')'),
+            moduleDirectiveToken(TokenType::SEMICOLON, ';'),
+            moduleDirectiveToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseUseDirective();
+
+        expect($node)->toBeInstanceOf(UseNode::class)
+            ->and($node->path)->toBe('theme')
+            ->and($node->configuration)->toBe([]);
+    });
+
+    it('stops parsing use configuration when the colon after a variable name is missing', function () {
+        $parser = createModuleDirectiveParser([
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::STRING, 'theme'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'with'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::LPAREN, '('),
+            moduleDirectiveToken(TokenType::DOLLAR, '$'),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'primary'),
+            moduleDirectiveToken(TokenType::WHITESPACE, ' '),
+            moduleDirectiveToken(TokenType::IDENTIFIER, 'blue'),
+            moduleDirectiveToken(TokenType::RPAREN, ')'),
+            moduleDirectiveToken(TokenType::SEMICOLON, ';'),
+            moduleDirectiveToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseUseDirective();
+
+        expect($node)->toBeInstanceOf(UseNode::class)
+            ->and($node->path)->toBe('theme')
+            ->and($node->configuration)->toBe([]);
     });
 });

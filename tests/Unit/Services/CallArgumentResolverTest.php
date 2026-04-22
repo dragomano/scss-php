@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
@@ -11,8 +12,8 @@ use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\CallArgumentResolver;
-use Bugo\SCSS\Services\ClosureAstValueEvaluator;
 use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
@@ -39,7 +40,14 @@ describe('CallArgumentResolver', function () {
                 }
             },
             $this->cssArg,
-            new ClosureAstValueEvaluator($this->evaluate),
+            new class ($this->evaluate) implements AstValueEvaluatorInterface {
+                public function __construct(private readonly Closure $evaluate) {}
+
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return ($this->evaluate)($node, $env);
+                }
+            },
         );
 
         expect($resolver->parseContentCallArguments('(1, 2)'))->toBe([]);
@@ -58,7 +66,14 @@ describe('CallArgumentResolver', function () {
                 }
             },
             $this->cssArg,
-            new ClosureAstValueEvaluator($this->evaluate),
+            new class ($this->evaluate) implements AstValueEvaluatorInterface {
+                public function __construct(private readonly Closure $evaluate) {}
+
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return ($this->evaluate)($node, $env);
+                }
+            },
         );
 
         expect($resolver->parseContentCallArguments('(1, 2)'))->toBe([]);

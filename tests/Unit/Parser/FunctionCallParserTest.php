@@ -12,6 +12,8 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Parser\FunctionCallParser;
+use Bugo\SCSS\Parser\FunctionCallParsingContextInterface;
+use Bugo\SCSS\Parser\InlineValueParserInterface;
 use Bugo\SCSS\Parser\StreamUtils;
 use Tests\ReflectionAccessor;
 
@@ -129,17 +131,50 @@ function createFunctionCallParser(array $tokens, array $overrides = []): array
         return new StringNode($buffer);
     };
 
-    return [
-        new FunctionCallParser(
-            $stream,
-            $parseInlineValue,
-            $parseSingleValue,
-            $parseValueUntil,
-            $parseVariableReference,
-            $parseCommaSeparatedValue,
-        ),
-        $stream,
-    ];
+    $inlineValueParser = new class ($parseInlineValue) implements InlineValueParserInterface {
+        public function __construct(private readonly Closure $parseInlineValue) {}
+
+        public function parseInlineValue(string $expression): AstNode
+        {
+            return ($this->parseInlineValue)($expression);
+        }
+    };
+
+    $parsingContext = new class (
+        $parseSingleValue,
+        $parseValueUntil,
+        $parseVariableReference,
+        $parseCommaSeparatedValue,
+    ) implements FunctionCallParsingContextInterface {
+        public function __construct(
+            private readonly Closure $parseSingleValue,
+            private readonly Closure $parseValueUntil,
+            private readonly Closure $parseVariableReference,
+            private readonly Closure $parseCommaSeparatedValue,
+        ) {}
+
+        public function parseSingleValue(): ?AstNode
+        {
+            return ($this->parseSingleValue)();
+        }
+
+        public function parseValueUntil(array $stopTokens): ?AstNode
+        {
+            return ($this->parseValueUntil)($stopTokens);
+        }
+
+        public function parseVariableReference(): VariableReferenceNode
+        {
+            return ($this->parseVariableReference)();
+        }
+
+        public function parseCommaSeparatedValue(): ?AstNode
+        {
+            return ($this->parseCommaSeparatedValue)();
+        }
+    };
+
+    return [new FunctionCallParser($stream, $inlineValueParser, $parsingContext), $stream];
 }
 
 describe('FunctionCallParser', function () {
@@ -255,5 +290,38 @@ describe('FunctionCallParser', function () {
         $node = new class extends AstNode {};
 
         expect($accessor->callMethod('nodeToString', [$node]))->toBe('');
+    });
+
+    it('breaks out of the function argument loop after the iteration guard is hit', function () {
+        [$parser, $stream] = createFunctionCallParser([
+            functionCallToken(TokenType::LPAREN, '('),
+            functionCallToken(TokenType::IDENTIFIER, 'stuck'),
+            functionCallToken(TokenType::EOF),
+        ], [
+            'parseSingleValue' => static fn(): ?AstNode => new StringNode('stuck'),
+            'parseCommaSeparatedValue' => static fn(): ?AstNode => null,
+        ]);
+
+        $node = $parser->parseFunctionFromName('loop');
+
+        expect($node)->toBeInstanceOf(FunctionNode::class)
+            ->and($node->arguments)->toBe([])
+            ->and($stream->current()->type)->toBe(TokenType::IDENTIFIER);
+    });
+
+    it('stops parsing function arguments when no parser can consume the current token', function () {
+        [$parser, $stream] = createFunctionCallParser([
+            functionCallToken(TokenType::LPAREN, '('),
+            functionCallToken(TokenType::AT, '@'),
+            functionCallToken(TokenType::EOF),
+        ], [
+            'parseCommaSeparatedValue' => static fn(): ?AstNode => null,
+        ]);
+
+        $node = $parser->parseFunctionFromName('broken');
+
+        expect($node)->toBeInstanceOf(FunctionNode::class)
+            ->and($node->arguments)->toBe([])
+            ->and($stream->current()->type)->toBe(TokenType::AT);
     });
 });

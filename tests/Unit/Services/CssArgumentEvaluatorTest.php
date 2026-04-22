@@ -16,23 +16,30 @@ use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\Environment;
-use Bugo\SCSS\Services\ClosureAstValueEvaluator;
+use Bugo\SCSS\Services\AstValueEvaluatorInterface;
+use Bugo\SCSS\Services\CalculationArgumentNormalizerInterface;
 use Bugo\SCSS\Services\CssArgumentEvaluator;
 use Tests\ReflectionAccessor;
 
 describe('CssArgumentEvaluator', function () {
     beforeEach(function () {
         $this->evaluator = new CssArgumentEvaluator(
-            new ClosureAstValueEvaluator(
-                function (AstNode $node, Environment $env): AstNode {
+            new class implements AstValueEvaluatorInterface {
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
                     if ($node instanceof VariableReferenceNode) {
                         return $env->getCurrentScope()->getVariable($node->name);
                     }
 
                     return $node;
-                },
-            ),
-            static fn(string $name, array $arguments): array => $arguments,
+                }
+            },
+            new class implements CalculationArgumentNormalizerInterface {
+                public function normalize(string $name, array $arguments): array
+                {
+                    return $arguments;
+                }
+            },
         );
         $this->accessor = new ReflectionAccessor($this->evaluator);
     });

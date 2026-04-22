@@ -18,6 +18,29 @@ describe('SelectorRuleOptimizer', function () {
             ->toBe($input);
     });
 
+    it('stops merging adjacent sibling rules when a later matching block is unterminated', function () {
+        $input = /** @lang text */ <<<'CSS'
+        .a {
+          color: red;
+        }
+        .a {
+          margin: 0;
+        }
+        .a {
+          padding: 0;
+        CSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .a {
+          color: red;
+          margin: 0;
+          padding: 0;
+        CSS;
+
+        expect($this->optimizer->optimizeAdjacentSiblingRuleBlocks($input))
+            ->toBe($expected);
+    });
+
     it('returns null for malformed declaration keys and properties', function () {
         expect($this->accessor->callMethod('extractDeclarationKey', ['color red;']))->toBeNull()
             ->and($this->accessor->callMethod('extractDeclarationProperty', ['']))->toBeNull()

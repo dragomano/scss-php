@@ -24,13 +24,13 @@ use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\VariableDefinition;
-use Bugo\SCSS\Services\ClosureAstValueEvaluator;
-use Bugo\SCSS\Services\ClosureAstValueFormatter;
-use Bugo\SCSS\Services\ClosureEachLoopBinder;
-use Bugo\SCSS\Services\ClosureFunctionConditionEvaluator;
-use Bugo\SCSS\Services\ClosureVariableDeclarationApplier;
+use Bugo\SCSS\Services\AstValueEvaluatorInterface;
+use Bugo\SCSS\Services\AstValueFormatterInterface;
+use Bugo\SCSS\Services\EachLoopBinderInterface;
 use Bugo\SCSS\Services\ExtendsResolver;
+use Bugo\SCSS\Services\FunctionConditionEvaluatorInterface;
 use Bugo\SCSS\Services\Text;
+use Bugo\SCSS\Services\VariableDeclarationApplierInterface;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 use Tests\ReflectionAccessor;
 
@@ -66,20 +66,49 @@ describe('ExtendsResolver', function () {
 
         $text = new Text(
             $parser,
-            new ClosureAstValueEvaluator($evaluateValue),
-            new ClosureAstValueFormatter($format),
+            new class ($evaluateValue) implements AstValueEvaluatorInterface {
+                public function __construct(private readonly Closure $evaluateValue) {}
+
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return ($this->evaluateValue)($node, $env);
+                }
+            },
+            new class ($format) implements AstValueFormatterInterface {
+                public function __construct(private readonly Closure $format) {}
+
+                public function format(AstNode $node, Environment $env): string
+                {
+                    return ($this->format)($node, $env);
+                }
+            },
         );
 
         $this->resolver = new ExtendsResolver(
             $this->ctx,
             $text,
             new SelectorTokenizer(),
-            new ClosureAstValueEvaluator($evaluateValue),
-            new ClosureFunctionConditionEvaluator(
-                fn(string $condition, Environment $env): bool => $this->conditionResults[$condition] ?? false,
-            ),
-            new ClosureVariableDeclarationApplier(
-                function (AstNode $node, Environment $env): bool {
+            new class ($evaluateValue) implements AstValueEvaluatorInterface {
+                public function __construct(private readonly Closure $evaluateValue) {}
+
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return ($this->evaluateValue)($node, $env);
+                }
+            },
+            new class ($this) implements FunctionConditionEvaluatorInterface {
+                public function __construct(private readonly object $testCase) {}
+
+                public function evaluate(string $condition, Environment $env): bool
+                {
+                    return $this->testCase->conditionResults[$condition] ?? false;
+                }
+            },
+            new class ($this) implements VariableDeclarationApplierInterface {
+                public function __construct(private readonly object $testCase) {}
+
+                public function apply(AstNode $node, Environment $env): bool
+                {
                     if (! $node instanceof StringNode || $node->value !== 'tick') {
                         return false;
                     }
@@ -87,17 +116,28 @@ describe('ExtendsResolver', function () {
                     $value = $env->getCurrentScope()->getAstVariable('i');
 
                     if ($value instanceof NumberNode) {
-                        $this->iterationValues[] = $value->value;
+                        $this->testCase->iterationValues[] = $value->value;
                     }
 
                     return true;
-                },
-            ),
-            new ClosureEachLoopBinder(
-                static fn(AstNode $node): array => [],
-                static function (array $variables, AstNode $item, Environment $env): void {},
-            ),
-            new ClosureAstValueFormatter($format),
+                }
+            },
+            new class implements EachLoopBinderInterface {
+                public function items(AstNode $iterableValue): array
+                {
+                    return [];
+                }
+
+                public function assign(array $variables, AstNode $item, Environment $env): void {}
+            },
+            new class ($format) implements AstValueFormatterInterface {
+                public function __construct(private readonly Closure $format) {}
+
+                public function format(AstNode $node, Environment $env): string
+                {
+                    return ($this->format)($node, $env);
+                }
+            },
         );
 
         $this->accessor = new ReflectionAccessor($this->resolver);
@@ -230,7 +270,8 @@ describe('ExtendsResolver', function () {
     });
 
     it('iterates through each nodes and collects children for every assigned item', function () {
-        $assigned = [];
+        $state = new stdClass();
+        $state->assigned = [];
 
         $resolver = new ExtendsResolver(
             $this->ctx,
@@ -243,31 +284,60 @@ describe('ExtendsResolver', function () {
                         return new RootNode();
                     }
                 },
-                new ClosureAstValueEvaluator(static fn(AstNode $node, Environment $env): AstNode => $node),
-                new ClosureAstValueFormatter(
-                    static fn(AstNode $node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
-                ),
-            ),
-            new SelectorTokenizer(),
-            new ClosureAstValueEvaluator(static fn(AstNode $node, Environment $env): AstNode => $node),
-            new ClosureFunctionConditionEvaluator(
-                static fn(string $condition, Environment $env): bool => false,
-            ),
-            new ClosureVariableDeclarationApplier(
-                static fn(AstNode $node, Environment $env): bool => false,
-            ),
-            new ClosureEachLoopBinder(
-                static fn(AstNode $node): array => [new StringNode('first'), new StringNode('second')],
-                function (array $variables, AstNode $item, Environment $env) use (&$assigned): void {
-                    if ($item instanceof StringNode) {
-                        $assigned[] = $item->value;
-                        $env->getCurrentScope()->setVariableLocal($variables[0] ?? 'item', $item);
+                new class implements AstValueEvaluatorInterface {
+                    public function evaluate(AstNode $node, Environment $env): AstNode
+                    {
+                        return $node;
+                    }
+                },
+                new class implements AstValueFormatterInterface {
+                    public function format(AstNode $node, Environment $env): string
+                    {
+                        return $node instanceof StringNode ? $node->value : '';
                     }
                 },
             ),
-            new ClosureAstValueFormatter(
-                static fn(AstNode $node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
-            ),
+            new SelectorTokenizer(),
+            new class implements AstValueEvaluatorInterface {
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return $node;
+                }
+            },
+            new class implements FunctionConditionEvaluatorInterface {
+                public function evaluate(string $condition, Environment $env): bool
+                {
+                    return false;
+                }
+            },
+            new class implements VariableDeclarationApplierInterface {
+                public function apply(AstNode $node, Environment $env): bool
+                {
+                    return false;
+                }
+            },
+            new class ($state) implements EachLoopBinderInterface {
+                public function __construct(private readonly object $state) {}
+
+                public function items(AstNode $iterableValue): array
+                {
+                    return [new StringNode('first'), new StringNode('second')];
+                }
+
+                public function assign(array $variables, AstNode $item, Environment $env): void
+                {
+                    if ($item instanceof StringNode) {
+                        $this->state->assigned[] = $item->value;
+                        $env->getCurrentScope()->setVariableLocal($variables[0] ?? 'item', $item);
+                    }
+                }
+            },
+            new class implements AstValueFormatterInterface {
+                public function format(AstNode $node, Environment $env): string
+                {
+                    return $node instanceof StringNode ? $node->value : '';
+                }
+            },
         );
 
         $resolver->collectExtends(
@@ -277,7 +347,7 @@ describe('ExtendsResolver', function () {
             new Environment(),
         );
 
-        expect($assigned)->toBe(['first', 'second'])
+        expect($state->assigned)->toBe(['first', 'second'])
             ->and($this->ctx->outputState->extends->pendingExtends)->toBe([
                 [
                     'target'  => '%item-target',
@@ -379,7 +449,7 @@ describe('ExtendsResolver', function () {
     });
 
     it('deduplicates extenders when the same extender appears via multiple paths', function () {
-        // .a extended by .b and .c; .c also extended by .b
+        // .a selector extended by .b and .c; .c also extended by .b
         // When resolving transitive extenders of .a: pending=[.c,.b], then .c adds .b again
         $this->resolver->registerExtend('.a', '.b');
         $this->resolver->registerExtend('.a', '.c');

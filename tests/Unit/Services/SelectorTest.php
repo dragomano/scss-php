@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
@@ -13,10 +16,14 @@ use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
 use Bugo\SCSS\Runtime\Environment;
-use Bugo\SCSS\Services\ClosureAstValueEvaluator;
-use Bugo\SCSS\Services\ClosureAstValueFormatter;
-use Bugo\SCSS\Services\ClosureModuleVariableAssigner;
+use Bugo\SCSS\Runtime\Scope;
+use Bugo\SCSS\Services\AstValueEvaluatorInterface;
+use Bugo\SCSS\Services\AstValueFormatterInterface;
+use Bugo\SCSS\Services\CalculationArgumentNormalizerInterface;
+use Bugo\SCSS\Services\CssArgumentEvaluator;
+use Bugo\SCSS\Services\ModuleVariableAssigner;
 use Bugo\SCSS\Services\Selector;
+use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
@@ -274,49 +281,67 @@ describe('Selector service', function () {
 
     describe('compileNestedPropertyBlockChildren()', function () {
         beforeEach(function () {
-            $this->assignedModuleVar = false;
+            $valueEvaluator = new class implements AstValueEvaluatorInterface {
+                public function evaluate($node, Environment $env): Bugo\SCSS\Nodes\AstNode
+                {
+                    if ($node instanceof StringNode && $node->value === 'nullish') {
+                        return new NullNode();
+                    }
+
+                    return $node;
+                }
+            };
 
             $this->testSelector = new Selector(
                 $this->ctx,
+                new CompilerOptions(style: Style::COMPRESSED),
                 $this->runtime->render(),
                 $this->runtime->text(),
                 new SelectorTokenizer(),
                 $this->runtime->dispatcher(),
                 $this->runtime->extends(),
-                new ClosureAstValueEvaluator(
-                    function ($node, Environment $env) {
-                        if ($node instanceof StringNode && $node->value === 'nullish') {
-                            return new StringNode('nullish');
+                new ModuleVariableAssigner($this->runtime),
+                new CssArgumentEvaluator(
+                    $valueEvaluator,
+                    new class implements CalculationArgumentNormalizerInterface {
+                        public function normalize(string $name, array $arguments): array
+                        {
+                            return $arguments;
+                        }
+                    },
+                ),
+                $valueEvaluator,
+                new class implements AstValueFormatterInterface {
+                    public function format($node, Environment $env): string
+                    {
+                        if ($node instanceof StringNode || $node instanceof ColorNode) {
+                            return $node->value;
                         }
 
-                        return $node;
-                    },
-                ),
-                new ClosureModuleVariableAssigner(
-                    function (ModuleVarDeclarationNode $node, Environment $env): void {
-                        $this->assignedModuleVar = true;
-                    },
-                ),
-                static fn($value): bool => $value instanceof StringNode && $value->value === 'nullish',
-                static fn(string $property): bool => $property === 'border-color',
-                static fn($value) => new StringNode('compressed'),
-                new ClosureAstValueFormatter(
-                    static fn($node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
-                ),
+                        return '';
+                    }
+                },
             );
         });
 
         it('applies variable and module declarations without producing output', function () {
             $env = new Environment();
+            $moduleScope = new Scope();
+
+            $env->getCurrentScope()->addModule('theme', $moduleScope);
 
             $result = $this->testSelector->compileNestedPropertyBlockChildren([
                 new VariableDeclarationNode('local-var', new StringNode('set')),
                 new ModuleVarDeclarationNode('theme', 'accent', new StringNode('x')),
             ], $env, 0, 'border');
 
+            /** @var StringNode $assignedValue */
+            $assignedValue = $moduleScope->getAstVariable('accent');
+
             expect($result)->toBe('')
                 ->and($env->getCurrentScope()->getVariable('local-var'))->toBeInstanceOf(StringNode::class)
-                ->and($this->assignedModuleVar)->toBeTrue();
+                ->and($assignedValue)->toBeInstanceOf(StringNode::class)
+                ->and($assignedValue->value)->toBe('x');
         });
 
         it('skips null values and compresses named colors when required', function () {
@@ -327,7 +352,7 @@ describe('Selector service', function () {
                 new DeclarationNode('color', new StringNode('red')),
             ], $env, 0, 'border');
 
-            expect($result)->toBe('border-color: compressed;');
+            expect($result)->toBe('border-color: #f00;');
         });
 
         it('ignores non-rule children and rules without nested-property selectors', function () {
@@ -353,7 +378,7 @@ describe('Selector service', function () {
                 ]),
             ], $env, 0, 'border', 'solid');
 
-            expect($result)->toBe("border: solid;\nborder-accent-shade: blue;");
+            expect($result)->toBe("border: solid;\nborder-accent-shade: #00f;");
         });
     });
 
