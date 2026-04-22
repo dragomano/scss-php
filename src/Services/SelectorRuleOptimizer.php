@@ -189,9 +189,12 @@ final class SelectorRuleOptimizer
             }
 
             $result[] = $line;
-
             foreach ($body as $bodyLine) {
                 $result[] = $bodyLine;
+            }
+
+            if ($index >= $count) {
+                break;
             }
 
             $result[] = $lines[$index];

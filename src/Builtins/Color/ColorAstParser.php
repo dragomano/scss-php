@@ -6,10 +6,8 @@ namespace Bugo\SCSS\Builtins\Color;
 
 use Bugo\SCSS\Lexer\Tokenizer;
 use Bugo\SCSS\Lexer\TokenStream;
-use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
-use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Parser\ValueParser;
 
 final readonly class ColorAstParser
@@ -18,7 +16,7 @@ final readonly class ColorAstParser
     {
         $tokenizer = new Tokenizer();
         $stream    = new TokenStream($tokenizer->tokenize($value));
-        $parser    = new ValueParser($stream, static fn(string $expression): AstNode => new StringNode($expression));
+        $parser    = new ValueParser($stream, new ColorInlineValueParser());
         $parsed    = $parser->parseValue();
 
         if ($parsed instanceof FunctionNode || $parsed instanceof ColorNode) {

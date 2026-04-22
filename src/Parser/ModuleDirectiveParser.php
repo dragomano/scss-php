@@ -13,32 +13,22 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\UseNode;
 use Closure;
 
-use function array_filter;
 use function max;
 use function strtolower;
 use function trim;
 
 final readonly class ModuleDirectiveParser
 {
-    /**
-     * @param Closure(): string $parseString
-     * @param Closure(): string $consumeIdentifier
-     * @param Closure(array<int, TokenType>): ?AstNode $parseValueUntil
-     * @param Closure(): array{global: bool, default: bool, important: bool} $parseValueModifiers
-     */
     public function __construct(
         private TokenStream $stream,
-        private Closure $parseString,
-        private Closure $consumeIdentifier,
-        private Closure $parseValueUntil,
-        private Closure $parseValueModifiers,
+        private ModuleDirectiveContextInterface $context,
     ) {}
 
     public function parseUseDirective(): UseNode
     {
         $this->stream->skipWhitespace();
 
-        $path = ($this->parseString)();
+        $path = $this->context->parseString();
 
         $namespace     = null;
         $configuration = [];
@@ -49,7 +39,7 @@ final readonly class ModuleDirectiveParser
             if ($this->stream->consume(TokenType::STAR)) {
                 $namespace = '*';
             } else {
-                $namespace = ($this->consumeIdentifier)();
+                $namespace = $this->context->consumeIdentifier();
             }
         }
 
@@ -91,7 +81,7 @@ final readonly class ModuleDirectiveParser
     {
         $this->stream->skipWhitespace();
 
-        $path = ($this->parseString)();
+        $path = $this->context->parseString();
 
         $prefix        = null;
         $visibility    = null;
@@ -110,7 +100,7 @@ final readonly class ModuleDirectiveParser
             if ($keyword === 'as') {
                 StreamUtils::consumeKeyword($this->stream, $keyword, true);
 
-                $prefix = ($this->consumeIdentifier)();
+                $prefix = $this->context->consumeIdentifier();
 
                 $this->stream->skipWhitespace();
                 $this->stream->consume(TokenType::STAR);
@@ -121,7 +111,7 @@ final readonly class ModuleDirectiveParser
 
                 while (! $this->stream->isEof() && ! $this->stream->is(TokenType::SEMICOLON)) {
                     $isVariable = $this->stream->consume(TokenType::DOLLAR) !== null;
-                    $name       = ($this->consumeIdentifier)();
+                    $name       = $this->context->consumeIdentifier();
 
                     if ($name !== '') {
                         $members[] = $isVariable ? '$' . $name : $name;
@@ -150,12 +140,7 @@ final readonly class ModuleDirectiveParser
      */
     private function parseUseConfiguration(): array
     {
-        $rawConfiguration = $this->parseModuleConfiguration(false);
-
-        return array_filter(
-            $rawConfiguration,
-            fn(AstNode|array $value): bool => $value instanceof AstNode,
-        );
+        return $this->parseModuleConfiguration();
     }
 
     private function parseImportEntry(): string
@@ -204,28 +189,44 @@ final readonly class ModuleDirectiveParser
      */
     private function parseForwardConfiguration(): array
     {
-        $rawConfiguration = $this->parseModuleConfiguration(true);
-
-        $configuration = [];
-
-        foreach ($rawConfiguration as $name => $entry) {
-            if ($entry instanceof AstNode) {
-                continue;
-            }
-
-            $configuration[$name] = [
-                'value'   => $entry['value'],
-                'default' => $entry['default'],
-            ];
-        }
-
-        return $configuration;
+        return $this->parseModuleConfigurationWithDefaultModifier();
     }
 
     /**
-     * @return array<string, AstNode|array{value: AstNode, default: bool}>
+     * @return array<string, AstNode>
      */
-    private function parseModuleConfiguration(bool $withDefaultModifier): array
+    private function parseModuleConfiguration(): array
+    {
+        return $this->parseModuleConfigurationEntries(
+            static fn(AstNode $value): AstNode => $value,
+        );
+    }
+
+    /**
+     * @return array<string, array{value: AstNode, default: bool}>
+     */
+    private function parseModuleConfigurationWithDefaultModifier(): array
+    {
+        return $this->parseModuleConfigurationEntries(
+            function (AstNode $value): array {
+                $modifiers = $this->context->parseValueModifiers();
+
+                return [
+                    'value'   => $value,
+                    'default' => $modifiers['default'],
+                ];
+            },
+        );
+    }
+
+    /**
+     * @template TEntry of AstNode|array{value: AstNode, default: bool}
+     *
+     * @param Closure(AstNode): TEntry $buildEntry
+     *
+     * @return array<string, TEntry>
+     */
+    private function parseModuleConfigurationEntries(Closure $buildEntry): array
     {
         $configuration = [];
 
@@ -244,7 +245,7 @@ final readonly class ModuleDirectiveParser
                 break;
             }
 
-            $name = ($this->consumeIdentifier)();
+            $name = $this->context->consumeIdentifier();
 
             $this->stream->skipWhitespace();
 
@@ -252,18 +253,10 @@ final readonly class ModuleDirectiveParser
                 break;
             }
 
-            $value = ($this->parseValueUntil)([TokenType::COMMA, TokenType::RPAREN]) ?? new ListNode([], 'comma');
+            $value = $this->context
+                ->parseValueUntil([TokenType::COMMA, TokenType::RPAREN]) ?? new ListNode([], 'comma');
 
-            if ($withDefaultModifier) {
-                $modifiers = ($this->parseValueModifiers)();
-
-                $configuration[$name] = [
-                    'value'   => $value,
-                    'default' => $modifiers['default'],
-                ];
-            } else {
-                $configuration[$name] = $value;
-            }
+            $configuration[$name] = $buildEntry($value);
 
             $this->stream->skipWhitespace();
 

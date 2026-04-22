@@ -17,7 +17,6 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
-use Closure;
 
 use function implode;
 use function in_array;
@@ -31,21 +30,10 @@ use function trim;
 
 final readonly class FunctionCallParser
 {
-    /**
-     * @param TokenStream $stream
-     * @param Closure(string): AstNode $parseInlineValue
-     * @param Closure(): ?AstNode $parseSingleValue
-     * @param Closure(array<int, TokenType>): ?AstNode $parseValueUntil
-     * @param Closure(): VariableReferenceNode $parseVariableReference
-     * @param Closure(): ?AstNode $parseCommaSeparatedValue
-     */
     public function __construct(
         private TokenStream $stream,
-        private Closure $parseInlineValue,
-        private Closure $parseSingleValue,
-        private Closure $parseValueUntil,
-        private Closure $parseVariableReference,
-        private Closure $parseCommaSeparatedValue,
+        private InlineValueParserInterface $inlineValueParser,
+        private FunctionCallParsingContextInterface $parsingContext,
     ) {}
 
     public function parseIdentifierOrFunction(): AstNode
@@ -120,7 +108,7 @@ final readonly class FunctionCallParser
         $this->stream->skipWhitespace();
 
         if ($this->stream->consume(TokenType::COMMA)) {
-            $fallback = ($this->parseValueUntil)([TokenType::RPAREN]);
+            $fallback = $this->parsingContext->parseValueUntil([TokenType::RPAREN]);
 
             if ($fallback !== null) {
                 $arguments[] = $fallback;
@@ -203,7 +191,7 @@ final readonly class FunctionCallParser
             return new FunctionNode('url', [new StringNode($argument)]);
         }
 
-        return new FunctionNode('url', [($this->parseInlineValue)($argument)]);
+        return new FunctionNode('url', [$this->inlineValueParser->parseInlineValue($argument)]);
     }
 
     public function parseFunctionFromName(string $name): FunctionNode
@@ -270,14 +258,14 @@ final readonly class FunctionCallParser
                     $this->stream->setPosition($savedPos);
 
                     if ($this->stream->is(TokenType::DOLLAR)) {
-                        $varRef = ($this->parseVariableReference)();
+                        $varRef = $this->parsingContext->parseVariableReference();
 
                         $this->stream->skipWhitespace();
 
                         if ($this->stream->consume(TokenType::COLON)) {
                             $this->stream->skipWhitespace();
 
-                            $value = ($this->parseCommaSeparatedValue)();
+                            $value = $this->parsingContext->parseCommaSeparatedValue();
 
                             if ($value !== null) {
                                 $arguments[] = new NamedArgumentNode($varRef->name, $value);
@@ -319,12 +307,12 @@ final readonly class FunctionCallParser
 
     private function parseSingleValueNode(): ?AstNode
     {
-        return ($this->parseSingleValue)();
+        return $this->parsingContext->parseSingleValue();
     }
 
     private function parseFunctionArgument(): ?AstNode
     {
-        $argument = ($this->parseCommaSeparatedValue)();
+        $argument = $this->parsingContext->parseCommaSeparatedValue();
 
         if ($argument !== null && StreamUtils::consumeEllipsis($this->stream)) {
             return new SpreadArgumentNode($argument);
@@ -363,7 +351,7 @@ final readonly class FunctionCallParser
         $savedPosition = $this->stream->getPosition();
 
         $arguments = [];
-        $condition = ($this->parseValueUntil)([TokenType::COLON, TokenType::COMMA, TokenType::RPAREN]);
+        $condition = $this->parsingContext->parseValueUntil([TokenType::COLON, TokenType::COMMA, TokenType::RPAREN]);
 
         if ($condition === null) {
             $this->stream->setPosition($savedPosition);
@@ -382,7 +370,7 @@ final readonly class FunctionCallParser
         $this->stream->advance();
         $this->stream->skipWhitespace();
 
-        $truthy = ($this->parseValueUntil)([TokenType::SEMICOLON, TokenType::RPAREN, TokenType::COMMA]);
+        $truthy = $this->parsingContext->parseValueUntil([TokenType::SEMICOLON, TokenType::RPAREN, TokenType::COMMA]);
 
         if ($truthy !== null) {
             $arguments[] = $truthy;
@@ -403,7 +391,7 @@ final readonly class FunctionCallParser
                 $this->stream->skipWhitespace();
             }
 
-            $falsy = ($this->parseValueUntil)([TokenType::RPAREN]);
+            $falsy = $this->parsingContext->parseValueUntil([TokenType::RPAREN]);
 
             if ($falsy !== null) {
                 $arguments[] = $falsy;

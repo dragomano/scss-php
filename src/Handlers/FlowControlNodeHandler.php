@@ -151,25 +151,35 @@ final readonly class FlowControlNodeHandler
      */
     private function compileBody(array $body, TraversalContext $ctx, string &$output, bool &$first): void
     {
-        foreach ($body as $child) {
-            if ($this->evaluation->applyVariableDeclaration($child, $ctx->env)) {
-                continue;
+        $scope            = $ctx->env->getCurrentScope();
+        $hadGuard         = $scope->hasVariable('__flow_control_declaration_guard');
+        $previousGuardSet = $hadGuard && $scope->getVariable('__flow_control_declaration_guard') === true;
+
+        $scope->setVariableLocal('__flow_control_declaration_guard', true);
+
+        try {
+            foreach ($body as $child) {
+                if ($this->evaluation->applyVariableDeclaration($child, $ctx->env)) {
+                    continue;
+                }
+
+                /** @var Visitable $child */
+                $compiled = $this->dispatcher->compileWithContext($child, $ctx);
+
+                if ($compiled === '') {
+                    continue;
+                }
+
+                if (! $first && ! str_ends_with($output, "\n")) {
+                    $this->render->appendChunk($output, "\n");
+                }
+
+                $output .= $compiled;
+
+                $first = false;
             }
-
-            /** @var Visitable $child */
-            $compiled = $this->dispatcher->compileWithContext($child, $ctx);
-
-            if ($compiled === '') {
-                continue;
-            }
-
-            if (! $first && ! str_ends_with($output, "\n")) {
-                $this->render->appendChunk($output, "\n");
-            }
-
-            $output .= $compiled;
-
-            $first = false;
+        } finally {
+            $scope->setVariableLocal('__flow_control_declaration_guard', $hadGuard ? $previousGuardSet : false);
         }
     }
 

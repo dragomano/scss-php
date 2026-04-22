@@ -13,7 +13,6 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\StringHelper;
 use Bugo\SCSS\Values\ValueFactory;
-use Closure;
 
 use function array_key_exists;
 use function array_slice;
@@ -29,15 +28,12 @@ use function trim;
 
 final readonly class ConditionalEvaluator
 {
-    /**
-     * @param Closure(ListNode, Environment): ?AstNode $evaluateComparisonList
-     */
     public function __construct(
         private Condition $condition,
         private Text $text,
         private AstValueEvaluatorInterface $valueEvaluator,
         private AstValueFormatterInterface $valueFormatter,
-        private Closure $evaluateComparisonList,
+        private ComparisonListEvaluatorInterface $comparisonListEvaluator,
         private ValueFactory $valueFactory,
     ) {}
 
@@ -521,7 +517,7 @@ final readonly class ConditionalEvaluator
             return $item;
         }
 
-        return ($this->evaluateComparisonList)(new ListNode(array_values($items), 'space'), $env);
+        return $this->comparisonListEvaluator->evaluate(new ListNode(array_values($items), 'space'), $env);
     }
 
     /**

@@ -503,14 +503,10 @@ final readonly class Text
         $childNodes = [];
 
         if (isset($node['children']) && is_array($node['children'])) {
-            $childNodes = $node['children'];
+            $childNodes = $this->extractStringKeyedArrayItems($node['children']);
         }
 
         foreach ($childNodes as $child) {
-            if (! is_array($child)) {
-                continue;
-            }
-
             /** @var array<string, mixed> $child */
             $childText = $this->renderSupportsExpression($child);
             $childType = 'atom';

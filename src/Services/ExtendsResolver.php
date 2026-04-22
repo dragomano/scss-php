@@ -247,10 +247,6 @@ final readonly class ExtendsResolver
         $outputState    = $this->ctx->outputState;
 
         foreach ($this->splitTopLevelSelectorList($selector) as $selectorPart) {
-            if ($selectorPart === '') {
-                continue;
-            }
-
             $outputState->extends->selectorContexts[$selectorPart] ??= [];
             $outputState->extends->selectorContexts[$selectorPart][$currentContext] = true;
         }

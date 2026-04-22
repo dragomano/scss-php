@@ -20,13 +20,16 @@ use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
+use Bugo\SCSS\Parser\CallableDirectiveParsingContextInterface;
 use Bugo\SCSS\Parser\DirectiveParser;
+use Bugo\SCSS\Parser\InlineValueParserInterface;
 use Bugo\SCSS\Parser\RuleParser;
+use Bugo\SCSS\Parser\RuleParserContextInterface;
 use Bugo\SCSS\Parser\ValueParser;
 
 use function trim;
 
-final class Parser implements ParserInterface
+final class Parser implements CallableDirectiveParsingContextInterface, InlineValueParserInterface, ParserInterface, RuleParserContextInterface
 {
     protected TokenStream $stream;
 
@@ -73,6 +76,138 @@ final class Parser implements ParserInterface
         $this->initSubParsers();
 
         return new RootNode($children);
+    }
+
+    public function parseRuleFromSelector(string $selector, int $line = 1, int $column = 1): RuleNode
+    {
+        $this->stream->skipWhitespace();
+
+        if (! $this->stream->is(TokenType::LBRACE)) {
+            return new RuleNode($selector, [], $line, $column);
+        }
+
+        $this->stream->advance();
+
+        $this->blockDepth++;
+
+        $children = $this->parseStatements(true);
+
+        if ($this->stream->is(TokenType::RBRACE)) {
+            $this->blockDepth--;
+
+            $this->stream->advance();
+        }
+
+        return new RuleNode($selector, $children, $line, $column);
+    }
+
+    public function parseInlineValue(string $expression): AstNode
+    {
+        $expr = trim($expression);
+
+        if ($expr === '') {
+            return new StringNode('');
+        }
+
+        $inlineParser = new self();
+        $inlineParser->setTrackSourceLocations($this->trackSourceLocations);
+
+        $ast = $inlineParser->parse(".__tmp__ { __tmp__: $expr; }");
+
+        return $this->extractInlineValueFromAst($ast, $expr);
+    }
+
+    public function isInsideBraces(): bool
+    {
+        return $this->blockDepth > 0;
+    }
+
+    /**
+     * @return array<int, AstNode>
+     */
+    public function parseBlock(): array
+    {
+        $body = [];
+
+        $this->stream->skipWhitespace();
+
+        if ($this->stream->consume(TokenType::LBRACE)) {
+            $this->blockDepth++;
+
+            $body = $this->parseStatementsInsideBlock();
+
+            $this->blockDepth--;
+
+            $this->stream->consume(TokenType::RBRACE);
+        }
+
+        return $body;
+    }
+
+    /**
+     * @return array<int, AstNode>
+     */
+    public function parseStatementsInsideBlock(): array
+    {
+        $statements = [];
+        $loopCount  = 0;
+
+        while (! $this->stream->isEof()) {
+            $loopCount++;
+
+            if ($loopCount > 1000) {
+                break;
+            }
+
+            $this->stream->skipWhitespace();
+
+            if (
+                $this->stream->is(TokenType::COMMENT_LOUD)
+                || $this->stream->is(TokenType::COMMENT_PRESERVED)
+            ) {
+                $token = $this->stream->current();
+
+                $statements[] = new CommentNode(
+                    trim($token->value),
+                    $token->type === TokenType::COMMENT_PRESERVED,
+                    $token->line,
+                    $token->column,
+                );
+
+                $this->stream->advance();
+
+                continue;
+            }
+
+            if ($this->stream->is(TokenType::RBRACE)) {
+                break;
+            }
+
+            $statement = $this->parseStatement();
+
+            if ($statement !== null) {
+                $statements[] = $statement;
+            } else {
+                break;
+            }
+        }
+
+        return $statements;
+    }
+
+    public function consumeIdentifier(): string
+    {
+        return $this->values->consumeIdentifier();
+    }
+
+    public function incrementBlockDepth(): void
+    {
+        $this->blockDepth++;
+    }
+
+    public function decrementBlockDepth(): void
+    {
+        $this->blockDepth--;
     }
 
     /**
@@ -165,161 +300,26 @@ final class Parser implements ParserInterface
         return $this->rules->parseRuleOrDeclaration();
     }
 
-    /**
-     * @return array<int, AstNode>
-     */
-    private function parseBlock(): array
-    {
-        $body = [];
-
-        $this->stream->skipWhitespace();
-
-        if ($this->stream->consume(TokenType::LBRACE)) {
-            $this->blockDepth++;
-
-            $body = $this->parseStatementsInsideBlock();
-
-            $this->blockDepth--;
-
-            $this->stream->consume(TokenType::RBRACE);
-        }
-
-        return $body;
-    }
-
-    /**
-     * @return array<int, AstNode>
-     */
-    private function parseStatementsInsideBlock(): array
-    {
-        $statements = [];
-        $loopCount  = 0;
-
-        while (! $this->stream->isEof()) {
-            $loopCount++;
-
-            if ($loopCount > 1000) {
-                break;
-            }
-
-            $this->stream->skipWhitespace();
-
-            if (
-                $this->stream->is(TokenType::COMMENT_LOUD)
-                || $this->stream->is(TokenType::COMMENT_PRESERVED)
-            ) {
-                $token = $this->stream->current();
-
-                $statements[] = new CommentNode(
-                    trim($token->value),
-                    $token->type === TokenType::COMMENT_PRESERVED,
-                    $token->line,
-                    $token->column,
-                );
-
-                $this->stream->advance();
-
-                continue;
-            }
-
-            if ($this->stream->is(TokenType::RBRACE)) {
-                break;
-            }
-
-            $statement = $this->parseStatement();
-
-            if ($statement !== null) {
-                $statements[] = $statement;
-            } else {
-                break;
-            }
-        }
-
-        return $statements;
-    }
-
-    private function parseRuleFromSelector(string $selector, int $line = 1, int $column = 1): RuleNode
-    {
-        $this->stream->skipWhitespace();
-
-        if (! $this->stream->is(TokenType::LBRACE)) {
-            return new RuleNode($selector, [], $line, $column);
-        }
-
-        $this->stream->advance();
-
-        $this->blockDepth++;
-
-        $children = $this->parseStatements(true);
-
-        if ($this->stream->is(TokenType::RBRACE)) {
-            $this->blockDepth--;
-
-            $this->stream->advance();
-        }
-
-        return new RuleNode($selector, $children, $line, $column);
-    }
-
-    private function parseInlineValue(string $expression): AstNode
-    {
-        $expr = trim($expression);
-
-        if ($expr === '') {
-            return new StringNode('');
-        }
-
-        $inlineParser = new self();
-        $inlineParser->setTrackSourceLocations($this->trackSourceLocations);
-
-        $ast = $inlineParser->parse(".__tmp__ { __tmp__: $expr; }");
-
-        return $this->extractInlineValueFromAst($ast, $expr);
-    }
-
     private function initSubParsers(): void
     {
         $this->values = new ValueParser(
             $this->stream,
-            fn(string $expr): AstNode => $this->parseInlineValue($expr),
+            $this,
         );
 
         $this->rules = new RuleParser(
             $this->stream,
-            fn(): AstNode => $this->values->parseValue(),
-            fn(): array => $this->values->parseValueModifiers(),
-            fn(): string => $this->values->parseCustomPropertyValue(),
-            fn(): bool => $this->blockDepth > 0,
-            fn(string $selector, int $line, int $column): RuleNode => $this->parseRuleFromSelector(
-                $selector,
-                $line,
-                $column,
-            ),
+            $this->values,
+            $this,
             $this->trackSourceLocations,
         );
 
         $this->directives = new DirectiveParser(
             $this->stream,
-            fn(): array => $this->parseBlock(),
-            fn(): array => $this->parseStatementsInsideBlock(),
-            fn(): AstNode => $this->values->parseValue(),
-            fn(array $stopTokens): ?AstNode => $this->values->parseValueUntil($stopTokens),
-            fn(): array => $this->values->parseValueModifiers(),
-            fn(): array => $this->values->parseArgumentList(),
-            fn(): string => $this->values->parseString(),
-            fn(): string => $this->values->consumeIdentifier(),
-            fn(string $selector, int $line, int $column): RuleNode => $this->parseRuleFromSelector(
-                $selector,
-                $line,
-                $column,
-            ),
-            fn(string $expr): AstNode => $this->parseInlineValue($expr),
-            function (): void {
-                $this->blockDepth++;
-            },
-            function (): void {
-                $this->blockDepth--;
-            },
+            $this,
+            $this,
+            $this->values,
+            $this->values,
         );
     }
 

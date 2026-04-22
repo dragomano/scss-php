@@ -13,10 +13,8 @@ use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MixinNode;
 use Bugo\SCSS\Nodes\ReturnNode;
-use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Utils\NameHelper;
-use Closure;
 
 use function count;
 use function str_starts_with;
@@ -26,28 +24,10 @@ use function trim;
 
 final readonly class CallableDirectiveParser
 {
-    /**
-     * @param Closure(): array<int, AstNode> $parseBlock
-     * @param Closure(): array<int, AstNode> $parseStatementsInsideBlock
-     * @param Closure(): AstNode $parseValue
-     * @param Closure(array<int, TokenType>): ?AstNode $parseValueUntil
-     * @param Closure(): array<int, AstNode> $parseArgumentList
-     * @param Closure(): string $consumeIdentifier
-     * @param Closure(string, int, int): RuleNode $parseRuleFromSelector
-     * @param Closure(): void $incrementBlockDepth
-     * @param Closure(): void $decrementBlockDepth
-     */
     public function __construct(
         private TokenStream $stream,
-        private Closure $parseBlock,
-        private Closure $parseStatementsInsideBlock,
-        private Closure $parseValue,
-        private Closure $parseValueUntil,
-        private Closure $parseArgumentList,
-        private Closure $consumeIdentifier,
-        private Closure $parseRuleFromSelector,
-        private Closure $incrementBlockDepth,
-        private Closure $decrementBlockDepth,
+        private CallableDirectiveParsingContextInterface $parsingContext,
+        private CallableDirectiveValueContextInterface $valueContext,
     ) {}
 
     public function parseIncludeDirective(): IncludeNode
@@ -73,7 +53,7 @@ final readonly class CallableDirectiveParser
         $this->stream->skipWhitespace();
 
         if ($this->stream->is(TokenType::LPAREN)) {
-            $arguments = ($this->parseArgumentList)();
+            $arguments = $this->valueContext->parseArgumentList();
         }
 
         $contentBlock     = [];
@@ -88,11 +68,11 @@ final readonly class CallableDirectiveParser
         }
 
         if ($this->stream->consume(TokenType::LBRACE)) {
-            ($this->incrementBlockDepth)();
+            $this->parsingContext->incrementBlockDepth();
 
-            $contentBlock = ($this->parseStatementsInsideBlock)();
+            $contentBlock = $this->parsingContext->parseStatementsInsideBlock();
 
-            ($this->decrementBlockDepth)();
+            $this->parsingContext->decrementBlockDepth();
             $this->stream->consume(TokenType::RBRACE);
         } else {
             StreamUtils::consumeSemicolonFromStream($this->stream);
@@ -105,9 +85,9 @@ final readonly class CallableDirectiveParser
     {
         $this->stream->skipWhitespace();
 
-        $name      = ($this->consumeIdentifier)();
+        $name      = $this->parsingContext->consumeIdentifier();
         $arguments = $this->parseParameterList();
-        $body      = ($this->parseBlock)();
+        $body      = $this->parsingContext->parseBlock();
 
         return new MixinNode($name, $arguments, $body, $line);
     }
@@ -119,7 +99,7 @@ final readonly class CallableDirectiveParser
         $name = '';
 
         if ($this->stream->is(TokenType::IDENTIFIER)) {
-            $name = ($this->consumeIdentifier)();
+            $name = $this->parsingContext->consumeIdentifier();
         } elseif ($this->stream->is(TokenType::CSS_VARIABLE)) {
             $rawName = $this->stream->current()->value;
 
@@ -160,11 +140,11 @@ final readonly class CallableDirectiveParser
 
             $this->stream->skipWhitespace();
 
-            return ($this->parseRuleFromSelector)($selector, $line, $column);
+            return $this->parsingContext->parseRuleFromSelector($selector, $line, $column);
         }
 
         $arguments = $this->parseParameterList();
-        $body      = ($this->parseBlock)();
+        $body      = $this->parsingContext->parseBlock();
 
         return new FunctionDeclarationNode($name, $arguments, $body, $line, $column);
     }
@@ -173,7 +153,7 @@ final readonly class CallableDirectiveParser
     {
         $this->stream->skipWhitespace();
 
-        $value = ($this->parseValue)();
+        $value = $this->valueContext->parseValue();
 
         StreamUtils::consumeSemicolonFromStream($this->stream);
 
@@ -201,7 +181,7 @@ final readonly class CallableDirectiveParser
             }
 
             if ($this->stream->consume(TokenType::DOLLAR)) {
-                $varName = ($this->consumeIdentifier)();
+                $varName = $this->parsingContext->consumeIdentifier();
 
                 $this->stream->skipWhitespace();
 
@@ -221,7 +201,7 @@ final readonly class CallableDirectiveParser
                     break;
                 }
             } else {
-                $argument = ($this->consumeIdentifier)();
+                $argument = $this->parsingContext->consumeIdentifier();
 
                 if ($argument !== '') {
                     $arguments[] = new ArgumentNode($argument);
@@ -242,7 +222,7 @@ final readonly class CallableDirectiveParser
     {
         $savedPos = $this->stream->getPosition();
 
-        $defaultValue = ($this->parseValueUntil)([TokenType::COMMA, TokenType::RPAREN]);
+        $defaultValue = $this->valueContext->parseValueUntil([TokenType::COMMA, TokenType::RPAREN]);
 
         if (! ($defaultValue instanceof ListNode) || count($defaultValue->items) !== 0) {
             return $defaultValue;

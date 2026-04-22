@@ -15,10 +15,8 @@ use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
-use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\NameHelper;
-use Closure;
 
 use function count;
 use function implode;
@@ -27,10 +25,6 @@ use function strtolower;
 
 final readonly class FunctionCallEvaluator
 {
-    /**
-     * @param Closure(AstNode, Environment, EvaluationOptions): AstNode $evaluateValue
-     * @param Closure(AstNode, Environment): string $format
-     */
     public function __construct(
         private CompilerContext $ctx,
         private CompilerOptions $options,
@@ -39,9 +33,9 @@ final readonly class FunctionCallEvaluator
         private CalculationEvaluator $calculation,
         private ConditionalEvaluator $conditional,
         private HexColorConverter $hexColorConverter,
-        private Closure $evaluateValue,
         private DiagnosticDirectiveHandlerInterface $diagnosticHandler,
-        private Closure $format,
+        private AstValueEvaluatorInterface $valueEvaluator,
+        private AstValueFormatterInterface $valueFormatter,
     ) {}
 
     public function evaluate(FunctionNode $node, Environment $env): AstNode
@@ -135,12 +129,12 @@ final readonly class FunctionCallEvaluator
             $rawCond = $node->arguments[0] ?? $arguments[0];
             $condStr = $rawCond instanceof VariableReferenceNode
                 ? '$' . $rawCond->name
-                : ($this->format)($arguments[0], $env);
+                : $this->valueFormatter->format($arguments[0], $env);
 
-            $suggestion = 'if(sass(' . $condStr . '): ' . ($this->format)($arguments[1], $env);
+            $suggestion = 'if(sass(' . $condStr . '): ' . $this->valueFormatter->format($arguments[1], $env);
 
             if (isset($arguments[2])) {
-                $suggestion .= '; else: ' . ($this->format)($arguments[2], $env);
+                $suggestion .= '; else: ' . $this->valueFormatter->format($arguments[2], $env);
             }
 
             $suggestion .= ')';
@@ -189,7 +183,7 @@ final readonly class FunctionCallEvaluator
 
         if ($resolved !== null) {
             if ($resolved instanceof FunctionNode && $resolved->name !== $node->name) {
-                return ($this->evaluateValue)($resolved, $env, EvaluationOptions::default());
+                return $this->valueEvaluator->evaluate($resolved, $env);
             }
 
             return $resolved;

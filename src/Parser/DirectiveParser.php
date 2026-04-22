@@ -24,7 +24,6 @@ use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Nodes\WhileNode;
-use Closure;
 
 use function ctype_alnum;
 use function in_array;
@@ -42,54 +41,22 @@ final readonly class DirectiveParser
 
     private CallableDirectiveParser $callable;
 
-    /**
-     * @param Closure(): array<int, AstNode> $parseBlock
-     * @param Closure(): array<int, AstNode> $parseStatementsInsideBlock
-     * @param Closure(): AstNode $parseValue
-     * @param Closure(array<int, TokenType>): ?AstNode $parseValueUntil
-     * @param Closure(): array{global: bool, default: bool, important: bool} $parseValueModifiers
-     * @param Closure(): array<int, AstNode> $parseArgumentList
-     * @param Closure(): string $parseString
-     * @param Closure(): string $consumeIdentifier
-     * @param Closure(string, int, int): RuleNode $parseRuleFromSelector
-     * @param Closure(string): AstNode $parseInlineValue
-     * @param Closure(): void $incrementBlockDepth
-     * @param Closure(): void $decrementBlockDepth
-     */
     public function __construct(
         private TokenStream $stream,
-        private Closure $parseBlock,
-        private Closure $parseStatementsInsideBlock,
-        private Closure $parseValue,
-        private Closure $parseValueUntil,
-        private Closure $parseValueModifiers,
-        private Closure $parseArgumentList,
-        private Closure $parseString,
-        private Closure $consumeIdentifier,
-        private Closure $parseRuleFromSelector,
-        private Closure $parseInlineValue,
-        private Closure $incrementBlockDepth,
-        private Closure $decrementBlockDepth,
+        private CallableDirectiveParsingContextInterface $parsingContext,
+        private InlineValueParserInterface $inlineValueParser,
+        private CallableDirectiveValueContextInterface $callableValueContext,
+        private ModuleDirectiveContextInterface $moduleValueContext,
     ) {
         $this->modules = new ModuleDirectiveParser(
             $this->stream,
-            $this->parseString,
-            $this->consumeIdentifier,
-            $this->parseValueUntil,
-            $this->parseValueModifiers,
+            $this->moduleValueContext,
         );
 
         $this->callable = new CallableDirectiveParser(
             $this->stream,
-            $this->parseBlock,
-            $this->parseStatementsInsideBlock,
-            $this->parseValue,
-            $this->parseValueUntil,
-            $this->parseArgumentList,
-            $this->consumeIdentifier,
-            $this->parseRuleFromSelector,
-            $this->incrementBlockDepth,
-            $this->decrementBlockDepth,
+            $this->parsingContext,
+            $this->callableValueContext,
         );
     }
 
@@ -99,13 +66,13 @@ final readonly class DirectiveParser
 
         $this->stream->skipWhitespace();
 
-        $name = ($this->consumeIdentifier)();
+        $name = $this->moduleValueContext->consumeIdentifier();
 
         return match ($name) {
             'use'       => $this->parseUseDirective(),
             'import'    => $this->parseImportDirective(),
             'forward'   => $this->parseForwardDirective(),
-            'font-face' => ($this->parseRuleFromSelector)('@font-face', $atToken->line, $atToken->column),
+            'font-face' => $this->parsingContext->parseRuleFromSelector('@font-face', $atToken->line, $atToken->column),
             'include'   => $this->parseIncludeDirective(),
             'mixin'     => $this->parseMixinDirective($atToken->line),
             'function'  => $this->parseFunctionDirective($atToken->line, $atToken->column),
@@ -180,7 +147,7 @@ final readonly class DirectiveParser
             $prelude = trim($this->readPreludeUntilBlock());
         }
 
-        $body = ($this->parseBlock)();
+        $body = $this->parsingContext->parseBlock();
 
         if ($prelude === '') {
             return new AtRootNode($body);
@@ -215,7 +182,7 @@ final readonly class DirectiveParser
         $this->stream->skipWhitespace();
 
         $condition = $this->parseCondition();
-        $ifBody    = ($this->parseBlock)();
+        $ifBody    = $this->parsingContext->parseBlock();
 
         $elseIfBranches = [];
         $elseBody       = [];
@@ -236,7 +203,7 @@ final readonly class DirectiveParser
             $this->stream->advance();
             $this->stream->skipWhitespace();
 
-            $keyword = ($this->consumeIdentifier)();
+            $keyword = $this->moduleValueContext->consumeIdentifier();
 
             if ($keyword !== 'else') {
                 $this->stream->setPosition($savedPos);
@@ -257,11 +224,11 @@ final readonly class DirectiveParser
                 $this->stream->skipWhitespace();
 
                 $elseIfCondition = $this->parseCondition();
-                $elseIfBody      = ($this->parseBlock)();
+                $elseIfBody      = $this->parsingContext->parseBlock();
 
                 $elseIfBranches[] = new ElseIfNode($elseIfCondition, $elseIfBody);
             } else {
-                $elseBody = ($this->parseBlock)();
+                $elseBody = $this->parsingContext->parseBlock();
 
                 break;
             }
@@ -278,7 +245,7 @@ final readonly class DirectiveParser
             return $this->parseGenericDirective('for');
         }
 
-        $variable = ($this->consumeIdentifier)();
+        $variable = $this->moduleValueContext->consumeIdentifier();
 
         $this->stream->skipWhitespace();
 
@@ -298,12 +265,12 @@ final readonly class DirectiveParser
         $this->stream->skipWhitespace();
 
         $endExpr = StreamUtils::readRawUntilToken($this->stream, TokenType::LBRACE);
-        $body    = ($this->parseBlock)();
+        $body    = $this->parsingContext->parseBlock();
 
         return new ForNode(
             $variable,
-            ($this->parseInlineValue)($startExpr),
-            ($this->parseInlineValue)($endExpr),
+            $this->inlineValueParser->parseInlineValue($startExpr),
+            $this->inlineValueParser->parseInlineValue($endExpr),
             $inclusive,
             $body,
         );
@@ -317,7 +284,7 @@ final readonly class DirectiveParser
             return $this->parseGenericDirective('each');
         }
 
-        $variables = [($this->consumeIdentifier)()];
+        $variables = [$this->moduleValueContext->consumeIdentifier()];
 
         while (true) {
             $savedPos = $this->stream->getPosition();
@@ -338,7 +305,7 @@ final readonly class DirectiveParser
                 break;
             }
 
-            $variables[] = ($this->consumeIdentifier)();
+            $variables[] = $this->moduleValueContext->consumeIdentifier();
         }
 
         $this->stream->skipWhitespace();
@@ -348,9 +315,9 @@ final readonly class DirectiveParser
         }
 
         $listExpr = StreamUtils::readRawUntilToken($this->stream, TokenType::LBRACE);
-        $body     = ($this->parseBlock)();
+        $body     = $this->parsingContext->parseBlock();
 
-        return new EachNode($variables, ($this->parseInlineValue)($listExpr), $body);
+        return new EachNode($variables, $this->inlineValueParser->parseInlineValue($listExpr), $body);
     }
 
     public function parseWhileDirective(): AstNode
@@ -447,11 +414,11 @@ final readonly class DirectiveParser
         }
 
         if ($this->stream->consume(TokenType::LBRACE)) {
-            ($this->incrementBlockDepth)();
+            $this->parsingContext->incrementBlockDepth();
 
-            $body = ($this->parseStatementsInsideBlock)();
+            $body = $this->parsingContext->parseStatementsInsideBlock();
 
-            ($this->decrementBlockDepth)();
+            $this->parsingContext->decrementBlockDepth();
 
             $this->stream->consume(TokenType::RBRACE);
 
@@ -564,7 +531,7 @@ final readonly class DirectiveParser
     {
         $this->stream->skipWhitespace();
 
-        $message = ($this->parseValue)();
+        $message = $this->callableValueContext->parseValue();
 
         StreamUtils::consumeSemicolonFromStream($this->stream);
 
@@ -578,6 +545,6 @@ final readonly class DirectiveParser
     {
         $this->stream->skipWhitespace();
 
-        return [$this->parseCondition(), ($this->parseBlock)()];
+        return [$this->parseCondition(), $this->parsingContext->parseBlock()];
     }
 }

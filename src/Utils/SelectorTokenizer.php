@@ -777,10 +777,6 @@ final readonly class SelectorTokenizer
         $hasClassLike = false;
 
         foreach ($tokens as $token) {
-            if ($token === '') {
-                continue;
-            }
-
             if ($token[0] === ':') {
                 $hasPseudo = true;
 

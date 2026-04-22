@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Services;
 
 use Bugo\SCSS\CompilerContext;
+use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StatementNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -21,9 +23,9 @@ use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
+use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\SelectorTokenizer;
-use Closure;
 
 use function array_map;
 use function array_unique;
@@ -34,6 +36,7 @@ use function ctype_digit;
 use function implode;
 use function in_array;
 use function str_contains;
+use function str_starts_with;
 use function strlen;
 use function strpos;
 use function strtolower;
@@ -43,23 +46,17 @@ final readonly class Selector
 {
     private SelectorRuleOptimizer $optimizer;
 
-    /**
-     * @param Closure(AstNode): bool $isSassNullValue
-     * @param Closure(string): bool $shouldCompressNamedColorForProperty
-     * @param Closure(AstNode): AstNode $compressNamedColorsForOutput
-     */
     public function __construct(
         private CompilerContext $ctx,
+        private CompilerOptions $options,
         private Render $render,
         private Text $text,
         private SelectorTokenizer $tokenizer,
         private NodeDispatcherInterface $dispatcher,
         private ExtendsResolver $extends,
-        private AstValueEvaluatorInterface $valueEvaluator,
         private ModuleVariableAssignerInterface $moduleVariableAssigner,
-        private Closure $isSassNullValue,
-        private Closure $shouldCompressNamedColorForProperty,
-        private Closure $compressNamedColorsForOutput,
+        private CssArgumentEvaluator $cssArgumentEvaluator,
+        private AstValueEvaluatorInterface $valueEvaluator,
         private AstValueFormatterInterface $valueFormatter,
     ) {
         $this->optimizer = new SelectorRuleOptimizer();
@@ -362,12 +359,12 @@ final readonly class Selector
                 $fullProperty   = $baseProperty . '-' . $property;
                 $evaluatedValue = $this->valueEvaluator->evaluate($child->value, $env);
 
-                if (($this->isSassNullValue)($evaluatedValue)) {
+                if ($evaluatedValue instanceof NullNode) {
                     continue;
                 }
 
-                if (($this->shouldCompressNamedColorForProperty)($fullProperty)) {
-                    $evaluatedValue = ($this->compressNamedColorsForOutput)($evaluatedValue);
+                if ($this->options->style === Style::COMPRESSED && ! str_starts_with($fullProperty, '--')) {
+                    $evaluatedValue = $this->cssArgumentEvaluator->compressNamedColorsForOutput($evaluatedValue);
                 }
 
                 $value     = $this->valueFormatter->format($evaluatedValue, $env);
