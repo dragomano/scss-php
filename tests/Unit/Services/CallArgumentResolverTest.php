@@ -14,19 +14,16 @@ use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\CallArgumentResolver;
-use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
 describe('CallArgumentResolver', function () {
     beforeEach(function () {
-        $runtime         = RuntimeFactory::createRuntime();
-        $evaluation      = $runtime->evaluation();
-        $accessor        = new ReflectionAccessor($evaluation);
-        $this->env       = new Environment();
-        $this->resolver  = $accessor->getProperty('callArguments');
-        $this->cssArg    = $accessor->getProperty('cssArgument');
-        $this->userFn    = $accessor->getProperty('userFunction');
-        $this->evaluate  = fn($node, $env) => $node;
+        $runtime = RuntimeFactory::createRuntime();
+
+        $this->env      = new Environment();
+        $this->resolver = $runtime->evaluation();
+        $this->cssArg   = $runtime->cssArgumentEvaluator();
+        $this->evaluate = fn($node, $env) => $node;
     });
 
     it('returns an empty list when content call parsing does not start with a rule node', function () {

@@ -660,10 +660,6 @@ final readonly class ExtendsResolver
     {
         $target = trim($target);
 
-        if ($target === '') {
-            return;
-        }
-
         if ($this->tokenizer->hasUnsupportedTopLevelCombinator($target)) {
             throw new SassErrorException(
                 'Complex selectors may not be extended. Use a simple selector target in @extend.',
@@ -732,12 +728,7 @@ final readonly class ExtendsResolver
             return null;
         }
 
-        $targetTokens = $this->tokenizeSelectorCompound($target);
-
-        if ($targetTokens === []) {
-            return null;
-        }
-
+        $targetTokens      = $this->tokenizeSelectorCompound($target);
         $partCompounds     = $this->splitSelectorCompoundsByDescendant($part);
         $extenderCompounds = $this->splitSelectorCompoundsByDescendant($extender);
 
@@ -752,14 +743,10 @@ final readonly class ExtendsResolver
     {
         $partLength   = strlen($part);
         $targetLength = strlen($target);
+        $offset       = 0;
+        $replacement  = null;
 
-        if ($targetLength === 0 || $partLength < $targetLength) {
-            return null;
-        }
-
-        $position = strpos($part, $target);
-
-        while ($position !== false) {
+        while (($position = strpos($part, $target, $offset)) !== false) {
             $start      = $position;
             $end        = $start + $targetLength;
             $beforeChar = $start > 0 ? $part[$start - 1] : '';
@@ -773,16 +760,20 @@ final readonly class ExtendsResolver
                 );
 
                 if ($woven !== null) {
-                    return $woven;
+                    $replacement = $woven;
+
+                    break;
                 }
 
-                return substr($part, 0, $start) . $extender . substr($part, $end);
+                $replacement = substr($part, 0, $start) . $extender . substr($part, $end);
+
+                break;
             }
 
-            $position = strpos($part, $target, $start + 1);
+            $offset = $start + 1;
         }
 
-        return null;
+        return $replacement;
     }
 
     private function weaveFallbackExtendedSelector(string $before, string $after, string $extender): ?string

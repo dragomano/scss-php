@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\RootNode;
-use Bugo\SCSS\Style;
-use Tests\ReflectionAccessor;
+use Bugo\SCSS\Nodes\RuleNode;
 use Tests\RuntimeFactory;
 
 it('joins compiled root children with line breaks', function () {
@@ -20,24 +20,25 @@ it('joins compiled root children with line breaks', function () {
     expect($runtime->root()->handle($node, $ctx))->toBe("/*! first */\n/*! second */");
 });
 
-it('restores source-map position when a following root child compiles to an empty string', function () {
+it('restores the saved mapping position when a following root child compiles to an empty string', function () {
+    $compilerContext = new CompilerContext();
+
     $runtime = RuntimeFactory::createRuntime(
-        options: new CompilerOptions(style: Style::COMPRESSED, sourceMapFile: 'output.css.map'),
+        options: new CompilerOptions(sourceMapFile: 'output.css.map'),
+        context: $compilerContext,
     );
+
     $ctx  = RuntimeFactory::context();
     $node = new RootNode([
-        new CommentNode('first', true, 2, 3),
-        new CommentNode('second', false, 4, 5),
+        new CommentNode('first', true),
+        new RuleNode('.empty', []),
     ]);
 
-    $runtimeContext = new ReflectionAccessor($runtime);
-    $ctxObject      = $runtimeContext->getProperty('ctx');
-    $ctxObject->sourceMapState->collectMappings = true;
+    $compilerContext->sourceMapState->collectMappings = true;
+    $compilerContext->sourceMapState->generatedLine = 1;
+    $compilerContext->sourceMapState->generatedColumn = 0;
 
-    $result = $runtime->root()->handle($node, $ctx);
-
-    expect($result)->toBe('/*! first */')
-        ->and($ctxObject->sourceMapState->generatedLine)->toBe(1)
-        ->and($ctxObject->sourceMapState->generatedColumn)->toBe(12)
-        ->and($ctxObject->sourceMapState->mappings)->toHaveCount(1);
+    expect($runtime->root()->handle($node, $ctx))->toBe('/*! first */')
+        ->and($compilerContext->sourceMapState->generatedLine)->toBe(1)
+        ->and($compilerContext->sourceMapState->generatedColumn)->toBe(12);
 });

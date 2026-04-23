@@ -406,10 +406,6 @@ final readonly class FunctionCallParser
 
     private function isValidUnquotedUrl(string $argument): bool
     {
-        if ($argument === '') {
-            return false;
-        }
-
         if (str_contains($argument, '$') || str_contains($argument, '+')) {
             return false;
         }

@@ -29,7 +29,11 @@ use Bugo\SCSS\Parser\ValueParser;
 
 use function trim;
 
-final class Parser implements CallableDirectiveParsingContextInterface, InlineValueParserInterface, ParserInterface, RuleParserContextInterface
+final class Parser implements
+    CallableDirectiveParsingContextInterface,
+    InlineValueParserInterface,
+    ParserInterface,
+    RuleParserContextInterface
 {
     protected TokenStream $stream;
 
@@ -326,12 +330,7 @@ final class Parser implements CallableDirectiveParsingContextInterface, InlineVa
     private function extractInlineValueFromAst(RootNode $ast, string $expr): AstNode
     {
         $ruleNode = $ast->children[0] ?? null;
-
-        if (! $ruleNode instanceof RuleNode) {
-            return new StringNode($expr);
-        }
-
-        $declaration = $ruleNode->children[0] ?? null;
+        $declaration = $ruleNode instanceof RuleNode ? ($ruleNode->children[0] ?? null) : null;
         if (! $declaration instanceof DeclarationNode) {
             return new StringNode($expr);
         }

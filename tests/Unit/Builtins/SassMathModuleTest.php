@@ -72,26 +72,31 @@ describe('SassMathModule', function () {
 
     it('evaluates abs', function () {
         $result = $this->module->call('abs', [new NumberNode(-10, 'px')], []);
+
         expect($result->value)->toBe(10)->and($result->unit)->toBe('px');
     });
 
     it('evaluates acos', function () {
         $result = $this->module->call('acos', [new NumberNode(0)], []);
         expect($result->unit)->toBe('deg')->and($result->value)->toBeCloseTo(90.0, 0.001);
+
     });
 
     it('evaluates asin', function () {
         $result = $this->module->call('asin', [new NumberNode(1)], []);
+
         expect($result->value)->toBeCloseTo(90.0, 0.001);
     });
 
     it('evaluates atan', function () {
         $result = $this->module->call('atan', [new NumberNode(1)], []);
+
         expect($result->value)->toBeCloseTo(45.0, 0.001);
     });
 
     it('evaluates atan2', function () {
         $result = $this->module->call('atan2', [new NumberNode(1), new NumberNode(1)], []);
+
         expect($result->value)->toBeCloseTo(45.0, 0.001);
     });
 
@@ -102,16 +107,18 @@ describe('SassMathModule', function () {
 
     it('evaluates ceil', function () {
         $result = $this->module->call('ceil', [new NumberNode(1.2, 'px')], []);
+
         expect($result->value)->toBe(2)->and($result->unit)->toBe('px');
     });
 
     it('evaluates clamp', function () {
         $result = $this->module->call('clamp', [new NumberNode(1), new NumberNode(10), new NumberNode(5)], []);
+
         expect($result->value)->toBe(5);
     });
 
     it('returns min and middle values for clamp and rethrows non-css errors', function () {
-        $min = $this->module->call('clamp', [new NumberNode(10), new NumberNode(5), new NumberNode(20)], []);
+        $min    = $this->module->call('clamp', [new NumberNode(10), new NumberNode(5), new NumberNode(20)], []);
         $middle = $this->module->call('clamp', [new NumberNode(1), new NumberNode(3), new NumberNode(5)], []);
 
         expect($min->value)->toBe(10)
@@ -122,22 +129,25 @@ describe('SassMathModule', function () {
 
     it('evaluates compatible', function () {
         $result = $this->module->call('compatible', [new NumberNode(1, 'px'), new NumberNode(2, 'px')], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)
             ->and($result->value)->toBeTrue();
     });
 
     it('evaluates cos', function () {
         $result = $this->module->call('cos', [new NumberNode(0, 'deg')], []);
+
         expect($result->value)->toBeCloseTo(1.0, 0.001);
     });
 
     it('evaluates div', function () {
         $result = $this->module->call('div', [new NumberNode(10, 'px'), new NumberNode(2)], []);
+
         expect($result->value)->toBe(5.0)->and($result->unit)->toBe('px');
     });
 
     it('handles division by zero edge cases', function () {
-        $nan = $this->module->call('div', [new NumberNode(0), new NumberNode(0)], []);
+        $nan              = $this->module->call('div', [new NumberNode(0), new NumberNode(0)], []);
         $positiveInfinity = $this->module->call('div', [new NumberNode(10), new NumberNode(0)], []);
         $negativeInfinity = $this->module->call('div', [new NumberNode(-10), new NumberNode(0)], []);
 
@@ -148,11 +158,13 @@ describe('SassMathModule', function () {
 
     it('evaluates floor', function () {
         $result = $this->module->call('floor', [new NumberNode(1.8, 'px')], []);
+
         expect($result->value)->toBe(1)->and($result->unit)->toBe('px');
     });
 
     it('evaluates hypot', function () {
         $result = $this->module->call('hypot', [new NumberNode(3), new NumberNode(4)], []);
+
         expect($result->value)->toBeCloseTo(5.0, 0.001);
     });
 
@@ -165,19 +177,21 @@ describe('SassMathModule', function () {
 
     it('evaluates is-unitless', function () {
         $result = $this->module->call('is-unitless', [new NumberNode(3)], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)
             ->and($result->value)->toBeTrue();
     });
 
     it('evaluates log', function () {
         $result = $this->module->call('log', [new NumberNode(8), new NumberNode(2)], []);
+
         expect($result->value)->toBeCloseTo(3.0, 0.001);
     });
 
     it('handles log edge cases', function () {
         $baseZero = $this->module->call('log', [new NumberNode(8), new NumberNode(0)], []);
-        $baseOne = $this->module->call('log', [new NumberNode(8), new NumberNode(1)], []);
-        $natural = $this->module->call('log', [new NumberNode(8)], []);
+        $baseOne  = $this->module->call('log', [new NumberNode(8), new NumberNode(1)], []);
+        $natural  = $this->module->call('log', [new NumberNode(8)], []);
 
         expect(is_nan($baseZero->value))->toBeTrue()
             ->and(is_nan($baseOne->value))->toBeTrue()
@@ -186,11 +200,13 @@ describe('SassMathModule', function () {
 
     it('evaluates max', function () {
         $result = $this->module->call('max', [new NumberNode(1), new NumberNode(5), new NumberNode(2)], []);
+
         expect($result->value)->toBe(5);
     });
 
     it('evaluates min', function () {
         $result = $this->module->call('min', [new NumberNode(1), new NumberNode(5), new NumberNode(2)], []);
+
         expect($result->value)->toBe(1);
     });
 
@@ -205,21 +221,25 @@ describe('SassMathModule', function () {
 
     it('evaluates percentage', function () {
         $result = $this->module->call('percentage', [new NumberNode(0.25)], []);
+
         expect($result->value)->toBe(25.0)->and($result->unit)->toBe('%');
     });
 
     it('evaluates pow', function () {
         $result = $this->module->call('pow', [new NumberNode(2), new NumberNode(3)], []);
+
         expect($result->value)->toBe(8.0);
     });
 
     it('evaluates random without limit', function () {
         $result = $this->module->call('random', [], []);
+
         expect($result->value)->toBeGreaterThanOrEqual(0)->toBeLessThanOrEqual(1);
     });
 
     it('evaluates random with integer limit', function () {
         $result = $this->module->call('random', [new NumberNode(3)], []);
+
         expect($result->value)->toBeGreaterThanOrEqual(1)->toBeLessThanOrEqual(3);
     });
 
@@ -232,6 +252,7 @@ describe('SassMathModule', function () {
 
     it('evaluates round', function () {
         $result = $this->module->call('round', [new NumberNode(1.8, 'px')], []);
+
         expect($result->value)->toBe(2)->and($result->unit)->toBe('px');
     });
 
@@ -244,27 +265,31 @@ describe('SassMathModule', function () {
 
     it('evaluates sin', function () {
         $result = $this->module->call('sin', [new NumberNode(90, 'deg')], []);
+
         expect($result->value)->toBeCloseTo(1.0, 0.001);
     });
 
     it('evaluates sqrt', function () {
         $result = $this->module->call('sqrt', [new NumberNode(9)], []);
+
         expect($result->value)->toBe(3.0);
     });
 
     it('evaluates tan', function () {
         $result = $this->module->call('tan', [new NumberNode(45, 'deg')], []);
+
         expect($result->value)->toBeCloseTo(1.0, 0.01);
     });
 
     it('evaluates unit', function () {
         $result = $this->module->call('unit', [new NumberNode(10, 'px')], []);
+
         expect($result->value)->toBe('px');
     });
 
     it('uses raw arguments when formatting deprecated global math suggestions', function () {
         $warnings = [];
-        $context = new BuiltinCallContext(
+        $context  = new BuiltinCallContext(
             logWarning: static function (string $message) use (&$warnings): void {
                 $warnings[] = $message;
             },
@@ -280,8 +305,8 @@ describe('SassMathModule', function () {
 
     it('converts unitless turn and grad angles to radians for trig functions', function () {
         $unitless = $this->module->call('cos', [new NumberNode(M_PI)], []);
-        $turn = $this->module->call('sin', [new NumberNode(0.25, 'turn')], []);
-        $grad = $this->module->call('sin', [new NumberNode(100, 'grad')], []);
+        $turn     = $this->module->call('sin', [new NumberNode(0.25, 'turn')], []);
+        $grad     = $this->module->call('sin', [new NumberNode(100, 'grad')], []);
 
         expect($unitless->value)->toBeCloseTo(-1.0, 0.001)
             ->and($turn->value)->toBeCloseTo(1.0, 0.001)

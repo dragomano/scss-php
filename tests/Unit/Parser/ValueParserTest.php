@@ -24,11 +24,11 @@ use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Parser;
 use Bugo\SCSS\Parser\InlineValueParserInterface;
 use Bugo\SCSS\Parser\ValueParser;
-use Tests\ReflectionAccessor;
 
 describe('ValueParser', function () {
     beforeEach(function () {
         $this->parser = new Parser();
+
         $this->createValueParser = function (string $source): array {
             $stream = new TokenStream((new Tokenizer())->tokenize($source));
             $parser = new ValueParser(
@@ -359,8 +359,8 @@ describe('ValueParser', function () {
             [$valueParser, $stream] = ($this->createValueParser)('! 10');
 
             expect($valueParser->parseValueModifiers())->toBe([
-                'default' => false,
-                'global' => false,
+                'default'   => false,
+                'global'    => false,
                 'important' => false,
             ])
                 ->and($stream->current()->type)->toBe(TokenType::EXCLAMATION);
@@ -370,8 +370,8 @@ describe('ValueParser', function () {
             [$valueParser] = ($this->createValueParser)('!default !global !important');
 
             expect($valueParser->parseValueModifiers())->toBe([
-                'default' => true,
-                'global' => true,
+                'default'   => true,
+                'global'    => true,
                 'important' => true,
             ]);
         });
@@ -404,6 +404,7 @@ describe('ValueParser', function () {
                 new Token(TokenType::NUMBER, '+', 1, 1),
                 new Token(TokenType::EOF, '', 1, 2),
             ]);
+
             $valueParser = new ValueParser(
                 $stream,
                 new class implements InlineValueParserInterface {
@@ -433,6 +434,7 @@ describe('ValueParser', function () {
 
             /** @var SpreadArgumentNode $spread */
             $spread = $arguments[1];
+
             expect($spread->value)->toBeInstanceOf(StringNode::class);
 
             /** @var StringNode $spreadValue */
@@ -471,15 +473,15 @@ describe('ValueParser', function () {
             expect($valueParser->consumeIdentifier())->toBe('');
         });
 
-        it('returns null for empty grouped values in buildListFromGroups', function () {
+        it('returns null when parseValueUntil reaches eof without consuming values', function () {
             [$valueParser] = ($this->createValueParser)('');
 
-            $result = (new ReflectionAccessor($valueParser))->callMethod('buildListFromGroups', [[]]);
+            $result = $valueParser->parseValueUntil([TokenType::EOF]);
 
             expect($result)->toBeNull();
         });
 
-        it('restores stream position when tryParseModuleVariable has no member identifier', function () {
+        it('restores the parse position when a module variable is missing its member name', function () {
             $stream = new TokenStream([
                 new Token(TokenType::IDENTIFIER, 'theme', 1, 1),
                 new Token(TokenType::DOT, '.', 1, 6),
@@ -495,20 +497,37 @@ describe('ValueParser', function () {
                     }
                 },
             );
-            $accessor = new ReflectionAccessor($valueParser);
 
-            $result = $accessor->callMethod('tryParseModuleVariable');
+            $result = $valueParser->parseValueUntil([TokenType::EOF]);
 
-            expect($result)->toBeNull()
-                ->and($stream->getPosition())->toBe(0);
+            expect($result)->toBeInstanceOf(ListNode::class)
+                ->and($result->items)->toHaveCount(2)
+                ->and($result->items[0])->toBeInstanceOf(StringNode::class)
+                ->and($result->items[0]->value)->toBe('theme.')
+                ->and($result->items[1])->toBeInstanceOf(VariableReferenceNode::class)
+                ->and($result->items[1]->name)->toBe('');
         });
 
-        it('returns 0 as numeric prefix length for empty strings', function () {
-            [$valueParser] = ($this->createValueParser)('');
+        it('parses empty number tokens as zero', function () {
+            $stream = new TokenStream([
+                new Token(TokenType::NUMBER, '', 1, 1),
+                new Token(TokenType::EOF, '', 1, 1),
+            ]);
+            $valueParser = new ValueParser(
+                $stream,
+                new class implements InlineValueParserInterface {
+                    public function parseInlineValue(string $expression): AstNode
+                    {
+                        return new StringNode($expression);
+                    }
+                },
+            );
 
-            $length = (new ReflectionAccessor($valueParser))->callMethod('readNumericPrefixLength', ['']);
+            $number = $valueParser->parseNumber();
 
-            expect($length)->toBe(0);
+            expect($number)->toBeInstanceOf(NumberNode::class)
+                ->and($number->value)->toBe(0)
+                ->and($number->unit)->toBeNull();
         });
 
         it('wraps ambiguous strict unary expressions in a deprecated expression node', function () {

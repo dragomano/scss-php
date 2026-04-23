@@ -493,10 +493,6 @@ final readonly class SassNormalizer implements SourceNormalizer
 
     private function looksLikeDirectiveHeaderContinuation(string $line): bool
     {
-        if ($line === '') {
-            return false;
-        }
-
         if (str_starts_with($line, '$') || ctype_digit($line[0])) {
             return true;
         }

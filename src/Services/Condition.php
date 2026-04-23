@@ -448,34 +448,16 @@ final readonly class Condition
         $rightValue = $this->normalizeNumberPrecision((float) $right->value);
 
         if (! UnitConverter::compatible($left->unit, $right->unit)) {
-            if (in_array($operator, ['>', '>=', '<', '<='], true)) {
-                throw new IncompatibleUnitsException(
-                    (string) new SassNumber($left->value, $left->unit),
-                    (string) new SassNumber($right->value, $right->unit),
-                );
-            }
-
-            if ($operator === '!=') {
-                return true;
-            }
-
-            return false;
+            throw new IncompatibleUnitsException(
+                (string) new SassNumber($left->value, $left->unit),
+                (string) new SassNumber($right->value, $right->unit),
+            );
         }
 
         if ($left->unit !== $right->unit) {
             $rightValue = $this->normalizeNumberPrecision(
                 UnitConverter::convert($rightValue, $right->unit, $left->unit),
             );
-        }
-
-        $equals = abs($leftValue - $rightValue) < 0.00000000001;
-
-        if ($operator === '==') {
-            return $equals;
-        }
-
-        if ($operator === '!=') {
-            return ! $equals;
         }
 
         return match ($operator) {
@@ -494,11 +476,7 @@ final readonly class Condition
 
     private function compareValues(mixed $left, string $operator, mixed $right): bool
     {
-        $equals = fn(mixed $left, mixed $right): bool => $left === $right;
-
         return match ($operator) {
-            '=='    => $equals($left, $right),
-            '!='    => ! $equals($left, $right),
             '>='    => $left >= $right,
             '<='    => $left <= $right,
             '>'     => $left > $right,
@@ -522,14 +500,6 @@ final readonly class Condition
             && $this->ctx->conditionCacheState->literalValue[$value] instanceof AstNode
         ) {
             return $this->ctx->conditionCacheState->literalValue[$value];
-        }
-
-        if ($value === '') {
-            $literal = new StringNode('');
-
-            $this->ctx->conditionCacheState->literalValue[$value] = $literal;
-
-            return $literal;
         }
 
         if ($value === 'true' || $value === 'false') {

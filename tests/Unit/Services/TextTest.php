@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Exceptions\UndefinedSymbolException;
+use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -10,7 +13,6 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\Text;
-use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
 describe('Text service', function () {
@@ -35,6 +37,24 @@ describe('Text service', function () {
             $this->env->getCurrentScope()->setVariable('b', new StringNode('y'));
 
             expect($this->text->interpolateText('#{$a}-#{$b}', $this->env))->toBe('x-y');
+        });
+
+        it('formats slash-separated lists in interpolations', function () {
+            $this->env->getCurrentScope()->setVariable(
+                'list',
+                new ListNode([new NumberNode(1), new NumberNode(2)], 'slash'),
+            );
+
+            expect($this->text->interpolateText('#{$list}', $this->env))->toBe('1 / 2');
+        });
+
+        it('formats bracketed space-separated lists in interpolations', function () {
+            $this->env->getCurrentScope()->setVariable(
+                'list',
+                new ListNode([new StringNode('alpha'), new StringNode('beta')], 'space', true),
+            );
+
+            expect($this->text->interpolateText('#{$list}', $this->env))->toBe('[alpha beta]');
         });
 
         it('keeps trailing text when interpolation is not closed', function () {
@@ -129,10 +149,6 @@ describe('Text service', function () {
     });
 
     describe('internal helpers', function () {
-        beforeEach(function () {
-            $this->accessor = new ReflectionAccessor($this->text);
-        });
-
         it('returns empty typed items when input is not an array', function () {
             expect($this->text->extractStringKeyedArrayItems('nope'))->toBe([]);
         });
@@ -175,6 +191,12 @@ describe('Text service', function () {
             expect($result)->toBe('a or (b and c)');
         });
 
+        it('keeps plus concatenation unchanged when plus is not followed by a variable token', function () {
+            $result = $this->text->resolveSupportsCondition('display + (color: red)', $this->env);
+
+            expect($result)->toBe('display + (color: red)');
+        });
+
         it('returns empty string for empty interpolation expressions', function () {
             $result = $this->text->interpolateText('#{}', $this->env);
 
@@ -182,77 +204,52 @@ describe('Text service', function () {
         });
 
         it('returns original interpolation expression when parser does not yield a declaration', function () {
-            $result = $this->text->interpolateText('#{1 + 2}', $this->env);
+            $result = $this->text->interpolateText('#{@if true {a:b}}', $this->env);
 
-            expect($result)->toBe('3');
+            expect($result)->toBe('@if true {a:b}');
         });
 
-        it('returns interpolation expression as is when parser root does not contain a rule', function () {
+        it('returns original interpolation expression when parser does not yield a rule node', function () {
             $text = new Text(
                 new class implements ParserInterface {
                     public function setTrackSourceLocations(bool $track): void {}
 
                     public function parse(string $source): RootNode
                     {
-                        return new RootNode([new StringNode('ignored')]);
+                        return new RootNode([new StringNode('not-a-rule')]);
                     }
                 },
                 new class implements AstValueEvaluatorInterface {
-                    public function evaluate(Bugo\SCSS\Nodes\AstNode $node, Environment $env): Bugo\SCSS\Nodes\AstNode
+                    public function evaluate(AstNode $node, Environment $env): AstNode
                     {
-                        return new StringNode('unused');
+                        return $node;
                     }
                 },
                 new class implements AstValueFormatterInterface {
-                    public function format(Bugo\SCSS\Nodes\AstNode $node, Environment $env): string
+                    public function format(AstNode $node, Environment $env): string
                     {
-                        return 'unused';
+                        return '';
                     }
                 },
             );
-            $accessor = new ReflectionAccessor($text);
 
-            expect($accessor->callMethod('resolveInterpolationExpression', ['literal-token', $this->env]))
-                ->toBe('literal-token');
+            expect($text->interpolateText('#{plain-token}', $this->env))->toBe('plain-token');
         });
 
-        it('formats slash-separated bracketed interpolation lists', function () {
-            $result = $this->accessor->callMethod('formatInterpolationValue', [
-                new Bugo\SCSS\Nodes\ListNode(
-                    [new StringNode('alpha'), new StringNode('beta')],
-                    'slash',
-                    true,
-                ),
-                $this->env,
-            ]);
-
-            expect($result)->toBe('[alpha / beta]');
+        it('throws for interpolations with an empty variable name', function () {
+            expect(fn() => $this->text->interpolateText('#{$}', $this->env))
+                ->toThrow(UndefinedSymbolException::class, 'Undefined variable: $');
         });
 
-        it('formats space-separated interpolation lists with the default separator', function () {
-            $result = $this->accessor->callMethod('formatInterpolationValue', [
-                new Bugo\SCSS\Nodes\ListNode(
-                    [new StringNode('alpha'), new StringNode('beta')],
-                    'space',
-                ),
-                $this->env,
-            ]);
-
-            expect($result)->toBe('alpha beta');
+        it('throws for interpolations whose variable token contains invalid characters', function () {
+            expect(fn() => $this->text->interpolateText('#{$foo!}', $this->env))
+                ->toThrow(UndefinedSymbolException::class, 'Undefined variable: $foo');
         });
 
-        it('keeps plus concatenation unchanged when the right side is not a variable name token', function () {
-            $result = $this->accessor->callMethod('collapsePlusConcatenation', ['foo + !bar']);
+        it('still evaluates arithmetic interpolations', function () {
+            $result = $this->text->interpolateText('#{1 + 2}', $this->env);
 
-            expect($result)->toBe('foo + !bar');
-        });
-
-        it('rejects empty variable names', function () {
-            expect($this->accessor->callMethod('isVariableName', ['']))->toBeFalse();
-        });
-
-        it('rejects variable names with unsupported characters', function () {
-            expect($this->accessor->callMethod('isVariableName', ['foo!']))->toBeFalse();
+            expect($result)->toBe('3');
         });
     });
 });

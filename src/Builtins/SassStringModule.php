@@ -368,7 +368,10 @@ final class SassStringModule extends AbstractModule
      */
     private function deprecatedStringSuggestion(string $name, array $positional): string
     {
-        $arguments = $this->hasRawArguments() ? $this->rawPositionalArguments() : $positional;
+        $rawArguments = $this->activeBuiltinContext?->rawArguments;
+        $arguments = $rawArguments !== null
+            ? $this->rawPositionalArguments($rawArguments)
+            : $positional;
 
         return 'string.' . $name . '(' . implode(', ', $this->describeArguments($arguments)) . ')';
     }

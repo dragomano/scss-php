@@ -383,7 +383,7 @@ final class SassListModule extends AbstractModule
         $arguments = match ($name) {
             'append'    => $this->appendSuggestionArguments($positional, $named),
             'join'      => $this->joinSuggestionArguments($positional, $named),
-            'separator' => [$this->describeValue($positional[0] ?? null)],
+            'separator' => [$this->describeValue($positional[0])],
             default     => $this->describeArguments($positional),
         };
 
@@ -437,7 +437,7 @@ final class SassListModule extends AbstractModule
         return AstValueSuggestionDescriber::describeArguments($arguments);
     }
 
-    private function describeValue(?AstNode $value): string
+    private function describeValue(AstNode $value): string
     {
         return AstValueSuggestionDescriber::describe($value);
     }

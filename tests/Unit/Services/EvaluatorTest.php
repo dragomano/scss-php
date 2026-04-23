@@ -2,7 +2,11 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Builtins\FunctionRegistry;
+use Bugo\SCSS\Builtins\ModuleInterface;
+use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Exceptions\SassErrorException;
@@ -28,11 +32,11 @@ use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Parser;
 use Bugo\SCSS\ParserInterface;
+use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Style;
-use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
 it('evaluates variable references and resolves spread arguments', function () {
@@ -293,7 +297,7 @@ it('evaluates argument list items and keywords lazily', function () {
         'comma',
         false,
         [
-            'primary' => new VariableReferenceNode('named'),
+            'primary'   => new VariableReferenceNode('named'),
             'secondary' => new StringNode('kept'),
         ],
     ), $env);
@@ -400,29 +404,53 @@ it('rebuilds named arguments when their value changes', function () {
 });
 
 it('throws when user function recursion exceeds the evaluator limit', function () {
-    $runtime = RuntimeFactory::createRuntime();
+    $ctx = new CompilerContext();
+    $ctx->moduleState->callDepth = 100;
+
+    $runtime = RuntimeFactory::createRuntime(context: $ctx);
 
     $env = new Environment();
     $env->getCurrentScope()->setFunction('loop', new CallableDefinition([], [
         new ReturnNode(new StringNode('done')),
     ], $env->getCurrentScope(), 1));
 
-    $ctx = (new ReflectionAccessor($runtime))->getProperty('ctx');
-    $ctx->moduleState->callDepth = 100;
-
     expect(fn() => $runtime->evaluation()->evaluateValue(new FunctionNode('loop'), $env))
         ->toThrow(MaxIterationsExceededException::class);
 });
 
 it('returns simplified max() calls when builtins defer to css', function () {
-    $runtime = RuntimeFactory::createRuntime();
+    $runtime = RuntimeFactory::createRuntime(
+        context: new CompilerContext(functionRegistry: new FunctionRegistry([
+            new class implements ModuleInterface {
+                public function getName(): string
+                {
+                    return 'test-max';
+                }
+
+                public function getFunctions(): array
+                {
+                    return ['defer-max'];
+                }
+
+                public function getVariables(): array
+                {
+                    return [];
+                }
+
+                public function getGlobalAliases(): array
+                {
+                    return ['max' => 'defer-max'];
+                }
+
+                public function call(string $name, array $positional, array $named, ?BuiltinCallContext $context): AstNode
+                {
+                    throw new DeferToCssFunctionException();
+                }
+            },
+        ])),
+    );
 
     $env = new Environment();
-    $ctx = (new ReflectionAccessor($runtime))->getProperty('ctx');
-
-    $functionRegistry = new ReflectionAccessor($ctx->functionRegistry);
-    $functionRegistry->setProperty('globalAliases', []);
-    $functionRegistry->setProperty('moduleFactories', []);
 
     $result = $runtime->evaluation()->evaluateValue(new FunctionNode('max', [
         new NumberNode(1),
@@ -439,16 +467,41 @@ it('returns simplified max() calls when builtins defer to css', function () {
 });
 
 it('compresses fallback hsl() functions to hex colors in compressed mode', function () {
+    $ctx = new CompilerContext(functionRegistry: new FunctionRegistry([
+        new class implements ModuleInterface {
+            public function getName(): string
+            {
+                return 'test-hsl';
+            }
+
+            public function getFunctions(): array
+            {
+                return ['defer-hsl'];
+            }
+
+            public function getVariables(): array
+            {
+                return [];
+            }
+
+            public function getGlobalAliases(): array
+            {
+                return ['hsl' => 'defer-hsl'];
+            }
+
+            public function call(string $name, array $positional, array $named, ?BuiltinCallContext $context): AstNode
+            {
+                throw new DeferToCssFunctionException();
+            }
+        },
+    ]));
+
     $runtime = RuntimeFactory::createRuntime(
         options: new CompilerOptions(style: Style::COMPRESSED),
+        context: $ctx,
     );
 
     $env = new Environment();
-    $ctx = (new ReflectionAccessor($runtime))->getProperty('ctx');
-
-    $functionRegistry = new ReflectionAccessor($ctx->functionRegistry);
-    $functionRegistry->setProperty('globalAliases', []);
-    $functionRegistry->setProperty('moduleFactories', []);
 
     $result = $runtime->evaluation()->evaluateValue(new FunctionNode('hsl', [
         new NumberNode(0, 'deg'),
@@ -581,11 +634,10 @@ it('falls back to plain string formatting when no parent selector is set', funct
 it('throws when resolving malformed or missing namespaced variables', function () {
     $runtime  = RuntimeFactory::createRuntime();
     $env      = new Environment();
-    $accessor = new ReflectionAccessor($runtime->evaluation());
 
-    expect(fn() => $accessor->callMethod('resolveVariable', ['theme.color', $env]))
+    expect(fn() => $runtime->evaluation()->evaluateValue(new VariableReferenceNode('theme.color'), $env))
         ->toThrow(ModuleResolutionException::class)
-        ->and(fn() => $accessor->callMethod('resolveVariable', ['theme.', $env]))
+        ->and(fn() => $runtime->evaluation()->evaluateValue(new VariableReferenceNode('theme.'), $env))
         ->toThrow(
             LogicException::class,
             'Qualified variable reference must include a member name.',

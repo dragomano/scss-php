@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Lexer\Tokenizer;
-use Bugo\SCSS\Lexer\TokenStream;
 use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\BooleanNode;
@@ -38,24 +36,6 @@ use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Parser;
-use Tests\ReflectionAccessor;
-
-function invokeParserMethod(Parser $parser, string $method, mixed ...$args): mixed
-{
-    return (new ReflectionAccessor($parser))->callMethod($method, $args);
-}
-
-function prepareParserForMethodTest(Parser $parser, string $source): void
-{
-    $accessor = new ReflectionAccessor($parser);
-
-    /** @var Tokenizer $tokenizer */
-    $tokenizer = $accessor->getProperty('tokenizer');
-
-    $accessor->setProperty('stream', new TokenStream($tokenizer->tokenize($source)));
-    $accessor->setProperty('blockDepth', 0);
-    $accessor->callMethod('initSubParsers');
-}
 
 describe('Parser', function () {
     beforeEach(function () {
@@ -875,10 +855,34 @@ describe('Parser', function () {
             ->and(count($ast->children))->toBe(0);
     });
 
-    it('returns null when parsing a statement at eof', function () {
-        prepareParserForMethodTest($this->parser, '');
+    it('stops parsing a block when only whitespace remains before eof', function () {
+        $ast = $this->parser->parse('@mixin sample {   ');
 
-        expect(invokeParserMethod($this->parser, 'parseStatement'))->toBeNull();
+        expect($ast)->toBeInstanceOf(RootNode::class)
+            ->and($ast->children)->toHaveCount(1)
+            ->and($ast->children[0])->toBeInstanceOf(MixinNode::class)
+            ->and($ast->children[0]->body)->toBe([]);
+    });
+
+    it('returns an empty string node for blank inline expressions through public api', function () {
+        $value = $this->parser->parseInlineValue('   ');
+
+        expect($value)->toBeInstanceOf(StringNode::class)
+            ->and($value->value)->toBe('');
+    });
+
+    it('returns the raw inline expression when inline parsing produces a non-declaration child', function () {
+        $value = $this->parser->parseInlineValue('@if true {a:b}');
+
+        expect($value)->toBeInstanceOf(StringNode::class)
+            ->and($value->value)->toBe('@if true {a:b}');
+    });
+
+    it('returns the raw inline expression when it cannot extract a declaration value', function () {
+        $value = $this->parser->parseInlineValue('broken');
+
+        expect($value)->toBeInstanceOf(StringNode::class)
+            ->and($value->value)->toBe('broken');
     });
 
     it('stops parsing a directive block when the next statement cannot be parsed', function () {
@@ -928,24 +932,5 @@ describe('Parser', function () {
         expect($argument)->toBeInstanceOf(StringNode::class)
             ->and($argument->value)->toBe('color=#0000ff')
             ->and($argument->quoted)->toBeFalse();
-    });
-
-    it('returns an empty string node for blank inline expressions', function () {
-        $value = invokeParserMethod($this->parser, 'parseInlineValue', '   ');
-
-        expect($value)->toBeInstanceOf(StringNode::class)
-            ->and($value->value)->toBe('');
-    });
-
-    it('returns the raw inline expression when parsed ast does not start with a rule', function () {
-        $value = invokeParserMethod(
-            $this->parser,
-            'extractInlineValueFromAst',
-            new RootNode([new StringNode('broken')]),
-            'broken',
-        );
-
-        expect($value)->toBeInstanceOf(StringNode::class)
-            ->and($value->value)->toBe('broken');
     });
 });

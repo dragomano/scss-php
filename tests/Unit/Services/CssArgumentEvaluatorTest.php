@@ -19,7 +19,6 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\CalculationArgumentNormalizerInterface;
 use Bugo\SCSS\Services\CssArgumentEvaluator;
-use Tests\ReflectionAccessor;
 
 describe('CssArgumentEvaluator', function () {
     beforeEach(function () {
@@ -41,7 +40,6 @@ describe('CssArgumentEvaluator', function () {
                 }
             },
         );
-        $this->accessor = new ReflectionAccessor($this->evaluator);
     });
 
     it('expands css spread arguments and evaluates fallback positional and named values', function () {
@@ -125,11 +123,13 @@ describe('CssArgumentEvaluator', function () {
 
         /** @var NamedArgumentNode $named */
         $named = $result[0];
+
         expect($named->name)->toBe('size')
             ->and($named->value)->toBeInstanceOf(ListNode::class);
 
         /** @var ListNode $namedValue */
         $namedValue = $named->value;
+
         expect($namedValue->items[0])->toBeInstanceOf(StringNode::class);
 
         /** @var StringNode $firstNamedValueItem */
@@ -155,6 +155,7 @@ describe('CssArgumentEvaluator', function () {
 
         /** @var NamedArgumentNode $named */
         $named = $expanded[2];
+
         expect($named->name)->toBe('tone')
             ->and($named->value)->toBeInstanceOf(StringNode::class);
 
@@ -174,6 +175,7 @@ describe('CssArgumentEvaluator', function () {
 
         /** @var NamedArgumentNode $named */
         $named = $expanded[0];
+
         expect($named->name)->toBe('width')
             ->and($named->value)->toBeInstanceOf(NumberNode::class);
 
@@ -224,36 +226,44 @@ describe('CssArgumentEvaluator', function () {
 
         /** @var ListNode $list */
         $list = $arguments[0];
+
         expect($list->items[0])->toBeInstanceOf(ColorNode::class)
             ->and($list->items[1])->toBeInstanceOf(ArgumentListNode::class);
 
         /** @var ColorNode $firstListItem */
         $firstListItem = $list->items[0];
+
         expect($firstListItem->value)->toBe('#f00');
 
         /** @var ArgumentListNode $argumentList */
         $argumentList = $list->items[1];
+
         expect($argumentList->items[0])->toBeInstanceOf(StringNode::class)
             ->and($argumentList->keywords['tone'])->toBeInstanceOf(ColorNode::class);
 
         /** @var StringNode $quotedItem */
         $quotedItem = $argumentList->items[0];
+
         expect($quotedItem->value)->toBe('blue');
 
         /** @var ColorNode $keywordTone */
         $keywordTone = $argumentList->keywords['tone'];
+
         expect($keywordTone->value)->toBe('#008000');
 
         /** @var MapNode $map */
         $map = $arguments[1];
+
         expect($map->pairs[0]->value)->toBeInstanceOf(NamedArgumentNode::class);
 
         /** @var NamedArgumentNode $named */
         $named = $map->pairs[0]->value;
+
         expect($named->value)->toBeInstanceOf(ColorNode::class);
 
         /** @var ColorNode $namedValue */
         $namedValue = $named->value;
+
         expect($namedValue->value)->toBe('#000080');
     });
 
@@ -275,6 +285,7 @@ describe('CssArgumentEvaluator', function () {
                 new StringNode('literal'),
             ], 'space')],
         );
+
         $map = new MapNode([
             new MapPair(
                 new ListNode([
@@ -289,11 +300,13 @@ describe('CssArgumentEvaluator', function () {
                 ], 'space'),
             ),
         ]);
+
         $named = new NamedArgumentNode('accent', new ListNode([
             new VariableReferenceNode('fallback'),
             new StringNode('and'),
             new StringNode('literal'),
         ], 'space'));
+
         $function = new FunctionNode('calc', [
             new ListNode([
                 new VariableReferenceNode('fallback'),
@@ -301,15 +314,20 @@ describe('CssArgumentEvaluator', function () {
                 new StringNode('literal'),
             ], 'space'),
         ]);
-        $reference = new VariableReferenceNode('fallback');
-        $plain = new NumberNode(3);
 
-        $evaluatedArgumentList = $this->accessor->callMethod('evaluateFallbackCssArgument', [$argumentList, $env]);
-        $evaluatedMap = $this->accessor->callMethod('evaluateFallbackCssArgument', [$map, $env]);
-        $evaluatedNamed = $this->accessor->callMethod('evaluateFallbackCssArgument', [$named, $env]);
-        $evaluatedFunction = $this->accessor->callMethod('evaluateFallbackCssArgument', [$function, $env]);
-        $evaluatedReference = $this->accessor->callMethod('evaluateFallbackCssArgument', [$reference, $env]);
-        $evaluatedPlain = $this->accessor->callMethod('evaluateFallbackCssArgument', [$plain, $env]);
+        $reference = new VariableReferenceNode('fallback');
+        $plain     = new NumberNode(3);
+
+        $expanded = $this->evaluator->expandCssCallArguments([
+            $argumentList,
+            $map,
+            $named,
+            $function,
+            $reference,
+            $plain,
+        ], $env);
+
+        [$evaluatedArgumentList, $evaluatedMap, $evaluatedNamed, $evaluatedFunction, $evaluatedReference, $evaluatedPlain] = $expanded;
 
         expect($evaluatedArgumentList)->toBeInstanceOf(ArgumentListNode::class)
             ->and($evaluatedArgumentList->items[0])->toBeInstanceOf(ListNode::class)
@@ -340,69 +358,145 @@ describe('CssArgumentEvaluator', function () {
 
     it('keeps fallback css arguments unchanged when nested values do not change', function () {
         $env = new Environment();
+
         $argumentList = new ArgumentListNode(
             [new StringNode('alpha')],
             'comma',
             false,
             ['tone' => new StringNode('beta')],
         );
+
         $map = new MapNode([
             new MapPair(new StringNode('alpha'), new StringNode('beta')),
         ]);
+
         $named = new NamedArgumentNode('accent', new ListNode([new StringNode('or')], 'space'));
 
-        expect($this->accessor->callMethod('evaluateFallbackCssArgument', [$argumentList, $env]))
-            ->toBe($argumentList)
-            ->and($this->accessor->callMethod('evaluateFallbackCssArgument', [$map, $env]))
-            ->toBe($map)
-            ->and($this->accessor->callMethod('evaluateFallbackCssArgument', [$named, $env]))
-            ->toBe($named);
+        $expanded = $this->evaluator->expandCssCallArguments([$argumentList, $map, $named], $env);
+
+        expect($expanded[0])->toBe($argumentList)
+            ->and($expanded[1])->toBe($map)
+            ->and($expanded[2])->toBeInstanceOf(NamedArgumentNode::class)
+            ->and($expanded[2])->not->toBe($named)
+            ->and($expanded[2]->name)->toBe('accent')
+            ->and($expanded[2]->value)->toBe($named->value);
     });
 
-    it('detects css-preserving arguments recursively across nested node types', function () {
+    it('preserves nested named arguments when fallback css values do not change', function () {
+        $env         = new Environment();
+        $nestedNamed = new NamedArgumentNode('accent', new ListNode([new StringNode('or')], 'space'));
+        $map         = new MapNode([
+            new MapPair(new StringNode('alpha'), $nestedNamed),
+        ]);
+
+        $expanded = $this->evaluator->expandCssCallArguments([$map], $env);
+
+        expect($expanded[0])->toBe($map)
+            ->and($expanded[0]->pairs[0]->value)->toBe($nestedNamed);
+    });
+
+    it('preserves css fallback evaluation recursively across nested node types', function () {
+        $env = new Environment();
+        $env->getCurrentScope()->setVariable('left', new StringNode('resolved-left'));
+        $env->getCurrentScope()->setVariable('tone', new StringNode('resolved-tone'));
+        $env->getCurrentScope()->setVariable('accent', new StringNode('resolved-accent'));
+        $env->getCurrentScope()->setVariable('key', new StringNode('resolved-key'));
+        $env->getCurrentScope()->setVariable('value', new StringNode('resolved-value'));
+
         $list = new ListNode([
-            new StringNode('literal'),
             new ListNode([
-                new StringNode('left'),
+                new VariableReferenceNode('left'),
                 new StringNode('and'),
                 new StringNode('right'),
             ], 'space'),
         ], 'comma');
+
         $function = new FunctionNode('calc', [
-            new ListNode([new StringNode('or')], 'space'),
+            new ListNode([
+                new VariableReferenceNode('accent'),
+                new StringNode('or'),
+                new StringNode('fallback'),
+            ], 'space'),
         ]);
+
         $argumentList = new ArgumentListNode(
             [new StringNode('plain')],
             'comma',
             false,
-            ['tone' => new ListNode([new StringNode('value'), new StringNode('and')], 'space')],
+            ['tone' => new ListNode([new VariableReferenceNode('tone'), new StringNode('and')], 'space')],
         );
-        $named = new NamedArgumentNode('accent', new ListNode([new StringNode('or')], 'space'));
+
+        $named = new NamedArgumentNode('accent', new ListNode([
+            new VariableReferenceNode('accent'),
+            new StringNode('or'),
+            new StringNode('fallback'),
+        ], 'space'));
+
         $map = new MapNode([
-            new MapPair(new ListNode([new StringNode('and')], 'space'), new StringNode('plain')),
+            new MapPair(
+                new ListNode([new VariableReferenceNode('key'), new StringNode('and')], 'space'),
+                new ListNode([new VariableReferenceNode('value'), new StringNode('or')], 'space'),
+            ),
         ]);
 
-        expect($this->accessor->callMethod('shouldPreserveCssArgument', [$list]))->toBeTrue()
-            ->and($this->accessor->callMethod('shouldPreserveCssArgument', [$function]))->toBeTrue()
-            ->and($this->accessor->callMethod('shouldPreserveCssArgument', [$argumentList]))->toBeTrue()
-            ->and($this->accessor->callMethod('shouldPreserveCssArgument', [$named]))->toBeTrue()
-            ->and($this->accessor->callMethod('shouldPreserveCssArgument', [$map]))->toBeTrue();
+        $expanded = $this->evaluator->expandCssCallArguments([$list, $function, $argumentList, $named, $map], $env);
+
+        expect($expanded[0])->toBeInstanceOf(ListNode::class)
+            ->and($expanded[0]->items[0])->toBeInstanceOf(ListNode::class)
+            ->and($expanded[0]->items[0]->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($expanded[0]->items[0]->items[0]->value)->toBe('resolved-left')
+            ->and($expanded[1])->toBeInstanceOf(FunctionNode::class)
+            ->and($expanded[1]->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($expanded[1]->arguments[0]->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($expanded[1]->arguments[0]->items[0]->value)->toBe('resolved-accent')
+            ->and($expanded[2])->toBeInstanceOf(ArgumentListNode::class)
+            ->and($expanded[2]->keywords['tone'])->toBeInstanceOf(ListNode::class)
+            ->and($expanded[2]->keywords['tone']->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($expanded[2]->keywords['tone']->items[0]->value)->toBe('resolved-tone')
+            ->and($expanded[3])->toBeInstanceOf(NamedArgumentNode::class)
+            ->and($expanded[3]->value)->toBeInstanceOf(ListNode::class)
+            ->and($expanded[3]->value->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($expanded[3]->value->items[0]->value)->toBe('resolved-accent')
+            ->and($expanded[4])->toBeInstanceOf(MapNode::class)
+            ->and($expanded[4]->pairs[0]->key)->toBeInstanceOf(ListNode::class)
+            ->and($expanded[4]->pairs[0]->key->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($expanded[4]->pairs[0]->key->items[0]->value)->toBe('resolved-key')
+            ->and($expanded[4]->pairs[0]->value)->toBeInstanceOf(ListNode::class)
+            ->and($expanded[4]->pairs[0]->value->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($expanded[4]->pairs[0]->value->items[0]->value)->toBe('resolved-value');
     });
 
-    it('evaluates fallback pair helper changes and keeps rebuilt pair structure', function () {
+    it('rebuilds nested named arguments when their fallback css values change', function () {
         $env = new Environment();
-        $env->getCurrentScope()->setVariable('key', new StringNode('resolved-key'));
-        $env->getCurrentScope()->setVariable('value', new StringNode('resolved-value'));
+        $env->getCurrentScope()->setVariable('accent', new StringNode('resolved-accent'));
 
-        [$pairs, $changed] = $this->accessor->callMethod('evaluateFallbackPairs', [[
-            new MapPair(new VariableReferenceNode('key'), new VariableReferenceNode('value')),
-        ], $env]);
+        $nestedNamed = new NamedArgumentNode('accent', new ListNode([
+            new VariableReferenceNode('accent'),
+            new StringNode('or'),
+            new StringNode('fallback'),
+        ], 'space'));
 
-        expect($changed)->toBeTrue()
-            ->and($pairs[0]->key)->toBeInstanceOf(StringNode::class)
-            ->and($pairs[0]->key->value)->toBe('resolved-key')
-            ->and($pairs[0]->value)->toBeInstanceOf(StringNode::class)
-            ->and($pairs[0]->value->value)->toBe('resolved-value');
+        $list = new ListNode([$nestedNamed], 'comma');
+
+        $map = new MapNode([
+            new MapPair(new StringNode('alpha'), $nestedNamed),
+        ]);
+
+        $expanded = $this->evaluator->expandCssCallArguments([$list, $map], $env);
+
+        expect($expanded[0])->toBeInstanceOf(ListNode::class)
+            ->and($expanded[0]->items[0])->toBeInstanceOf(NamedArgumentNode::class)
+            ->and($expanded[0]->items[0])->not->toBe($nestedNamed)
+            ->and($expanded[0]->items[0]->name)->toBe('accent')
+            ->and($expanded[0]->items[0]->value)->toBeInstanceOf(ListNode::class)
+            ->and($expanded[0]->items[0]->value->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($expanded[0]->items[0]->value->items[0]->value)->toBe('resolved-accent')
+            ->and($expanded[1])->toBeInstanceOf(MapNode::class)
+            ->and($expanded[1]->pairs[0]->value)->toBeInstanceOf(NamedArgumentNode::class)
+            ->and($expanded[1]->pairs[0]->value)->not->toBe($nestedNamed)
+            ->and($expanded[1]->pairs[0]->value->value)->toBeInstanceOf(ListNode::class)
+            ->and($expanded[1]->pairs[0]->value->value->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($expanded[1]->pairs[0]->value->value->items[0]->value)->toBe('resolved-accent');
     });
 
     it('returns null for empty named colors', function () {

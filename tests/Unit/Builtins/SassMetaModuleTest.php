@@ -141,7 +141,7 @@ describe('SassMetaModule', function () {
     it('evaluates call', function () {
         $this->registry->registerUse('sass:list', null);
 
-        $fn = $this->module->call('get-function', [new StringNode('length')], ['module' => new StringNode('list')], $this->context);
+        $fn     = $this->module->call('get-function', [new StringNode('length')], ['module' => new StringNode('list')], $this->context);
         $result = $this->module->call('call', [$fn, new ListNode([new StringNode('a'), new StringNode('b')], 'space')], [], $this->context);
 
         expect($result->value)->toBe(2);
@@ -149,8 +149,8 @@ describe('SassMetaModule', function () {
 
     it('returns a function node for unresolved meta.call and validates input', function () {
         $capturedScope = new Scope();
-        $function = new FunctionNode('user-fn', capturedScope: $capturedScope);
-        $result   = $this->module->call('call', [$function, new NumberNode(2)], [], $this->context);
+        $function      = new FunctionNode('user-fn', capturedScope: $capturedScope);
+        $result        = $this->module->call('call', [$function, new NumberNode(2)], [], $this->context);
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('user-fn')
@@ -191,6 +191,7 @@ describe('SassMetaModule', function () {
 
     it('evaluates function-exists for builtins', function () {
         $exists = $this->module->call('function-exists', [new StringNode('length')], [], $this->context);
+
         expect($exists->value)->toBeTrue();
     });
 
@@ -198,12 +199,14 @@ describe('SassMetaModule', function () {
         $this->registry->registerUse('sass:list', null);
 
         $exists = $this->module->call('function-exists', [new StringNode('length')], ['module' => new StringNode('list')], $this->context);
+
         expect($exists->value)->toBeTrue();
     });
 
     it('evaluates function-exists for user modules and throws for unknown namespaces', function () {
         $moduleScope = new Scope();
         $moduleScope->defineFunction('custom-fn', [], []);
+
         $this->env->getCurrentScope()->addModule('helpers', $moduleScope);
 
         $exists  = $this->module->call('function-exists', [new StringNode('custom-fn')], ['module' => new StringNode('helpers')], $this->context);
@@ -251,6 +254,7 @@ describe('SassMetaModule', function () {
     it('evaluates get-mixin', function () {
         $moduleScope = new Scope();
         $moduleScope->defineMixin('highlight', [], []);
+
         $this->env->getCurrentScope()->addModule('functions', $moduleScope);
 
         $mixin = $this->module->call('get-mixin', [new StringNode('highlight')], ['module' => new StringNode('functions')], $this->context);
@@ -276,6 +280,7 @@ describe('SassMetaModule', function () {
     it('evaluates global-variable-exists for module variables', function () {
         $moduleScope = new Scope();
         $moduleScope->setVariable('primary-color', new ColorNode('#112233'));
+
         $this->env->getCurrentScope()->addModule('theme', $moduleScope);
 
         $global = $this->module->call('global-variable-exists', [new StringNode('primary-color')], ['module' => new StringNode('theme')], $this->context);
@@ -288,6 +293,7 @@ describe('SassMetaModule', function () {
             new MapPair(new StringNode('a'), new NumberNode(1)),
             new MapPair(new StringNode('b'), new ListNode([new StringNode('x'), new StringNode('y')], 'comma')),
         ]);
+
         $result = $this->module->call('inspect', [$value], []);
 
         expect($result->value)->toBe('(a: 1, b: x, y)');
@@ -300,8 +306,8 @@ describe('SassMetaModule', function () {
     });
 
     it('evaluates keywords for map and non-map values', function () {
-        $map = new MapNode([new MapPair(new StringNode('a'), new NumberNode(1))]);
-        $mapResult = $this->module->call('keywords', [$map], []);
+        $map         = new MapNode([new MapPair(new StringNode('a'), new NumberNode(1))]);
+        $mapResult   = $this->module->call('keywords', [$map], []);
         $emptyResult = $this->module->call('keywords', [new ListNode([])], []);
 
         expect($mapResult)->toBe($map)
@@ -312,8 +318,9 @@ describe('SassMetaModule', function () {
     it('evaluates keywords for argument lists', function () {
         $argumentList = new ArgumentListNode([], 'comma', false, [
             'alpha' => new NumberNode(1),
-            'beta' => new StringNode('two'),
+            'beta'  => new StringNode('two'),
         ]);
+
         $result = $this->module->call('keywords', [$argumentList], []);
 
         expect($result)->toBeInstanceOf(MapNode::class)
@@ -332,6 +339,7 @@ describe('SassMetaModule', function () {
     it('evaluates mixin-exists', function () {
         $moduleScope = new Scope();
         $moduleScope->defineMixin('highlight', [], []);
+
         $this->env->getCurrentScope()->addModule('functions', $moduleScope);
 
         $exists = $this->module->call('mixin-exists', [new StringNode('highlight')], ['module' => new StringNode('functions')], $this->context);
@@ -361,6 +369,7 @@ describe('SassMetaModule', function () {
     it('evaluates module-mixins', function () {
         $moduleScope = new Scope();
         $moduleScope->defineMixin('highlight', [], []);
+
         $this->env->getCurrentScope()->addModule('functions', $moduleScope);
 
         $mixins = $this->module->call('module-mixins', [new StringNode('functions')], [], $this->context);
@@ -373,6 +382,7 @@ describe('SassMetaModule', function () {
         $moduleScope = new Scope();
         $moduleScope->setVariable('primary-color', new ColorNode('#112233'));
         $moduleScope->setVariableLocal('helper', 'not-an-ast-node');
+
         $this->env->getCurrentScope()->addModule('theme', $moduleScope);
 
         $result = $this->module->call('module-variables', [new StringNode('theme')], [], $this->context);
@@ -409,12 +419,13 @@ describe('SassMetaModule', function () {
         $moduleScope->defineFunction('custom-fn', [], []);
         $moduleScope->defineMixin('custom-mixin', [], []);
         $moduleScope->setVariable('answer', new NumberNode(42));
+
         $this->env->getCurrentScope()->addModule('helpers', $moduleScope);
 
         $functions = $this->module->call('module-functions', [new StringNode('helpers')], [], $this->context);
-        $mixins = $this->module->call('module-mixins', [new StringNode('helpers')], [], $this->context);
+        $mixins    = $this->module->call('module-mixins', [new StringNode('helpers')], [], $this->context);
         $variables = $this->module->call('module-variables', [new StringNode('helpers')], [], $this->context);
-        $exists = $this->module->call('variable-exists', [new StringNode('answer')], ['module' => new StringNode('helpers')], $this->context);
+        $exists    = $this->module->call('variable-exists', [new StringNode('answer')], ['module' => new StringNode('helpers')], $this->context);
 
         expect($functions)->toBeInstanceOf(MapNode::class)
             ->and($functions->pairs[0]->key->value)->toBe('custom-fn')
@@ -429,6 +440,7 @@ describe('SassMetaModule', function () {
     it('evaluates accepts-content for namespaced mixin references and missing namespaced mixins', function () {
         $moduleScope = new Scope();
         $moduleScope->defineMixin('wrap', [], [new DirectiveNode('content')]);
+
         $this->env->getCurrentScope()->addModule('helpers', $moduleScope);
 
         $existing = $this->module->call('accepts-content', [new StringNode('helpers.wrap')], [], $this->context);
@@ -450,8 +462,8 @@ describe('SassMetaModule', function () {
         ]);
 
         $directive = $this->module->call('accepts-content', [new StringNode('directive-wrap')], [], $this->context);
-        $ifElseIf = $this->module->call('accepts-content', [new StringNode('if-wrap')], [], $this->context);
-        $rule = $this->module->call('accepts-content', [new StringNode('rule-wrap')], [], $this->context);
+        $ifElseIf  = $this->module->call('accepts-content', [new StringNode('if-wrap')], [], $this->context);
+        $rule      = $this->module->call('accepts-content', [new StringNode('rule-wrap')], [], $this->context);
 
         expect($directive->value)->toBeTrue()
             ->and($ifElseIf->value)->toBeTrue()
@@ -467,7 +479,7 @@ describe('SassMetaModule', function () {
 
     it('formats non-string deprecated meta arguments using their css value', function () {
         $warnings = [];
-        $context = new BuiltinCallContext(
+        $context  = new BuiltinCallContext(
             $this->env,
             $this->registry,
             static function (string $message) use (&$warnings): void {

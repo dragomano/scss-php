@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\ColorNode;
@@ -25,15 +26,13 @@ use Bugo\SCSS\Services\ModuleVariableAssigner;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\SelectorTokenizer;
-use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
-describe('Selector service', function () {
+describe('Selector', function () {
     beforeEach(function () {
-        $this->runtime  = RuntimeFactory::createRuntime();
+        $this->ctx      = new CompilerContext();
+        $this->runtime  = RuntimeFactory::createRuntime(context: $this->ctx);
         $this->selector = $this->runtime->selector();
-        $this->ctx      = (new ReflectionAccessor($this->runtime))->getProperty('ctx');
-        $this->accessor = new ReflectionAccessor($this->selector);
     });
 
     describe('getCurrentAtRuleStack()', function () {
@@ -48,6 +47,7 @@ describe('Selector service', function () {
             $env = new Environment();
             $env->getCurrentScope()->setVariableLocal('__at_rule_stack', [
                 'broken',
+                ['type' => ''],
                 ['type' => 'directive'],
                 ['type' => 'Media', 'name' => 'Screen', 'prelude' => '  ignored  '],
                 ['type' => 'directive', 'name' => 'Screen', 'prelude' => '  (MIN-WIDTH: 10PX)  '],
@@ -260,7 +260,7 @@ describe('Selector service', function () {
         });
     });
 
-    describe('parent selector helpers', function () {
+    describe('getCurrentParentSelector()', function () {
         it('returns null when current parent selector is not a string node', function () {
             $env = new Environment();
             $env->getCurrentScope()->setVariableLocal('__parent_selector', 'invalid');
@@ -269,11 +269,11 @@ describe('Selector service', function () {
         });
     });
 
-    describe('nested property parsing', function () {
+    describe('parseNestedPropertyBlockSelector()', function () {
         it('accepts names with a leading hyphen and rejects invalid characters', function () {
             expect($this->selector->parseNestedPropertyBlockSelector('-foo: bar'))->toBe([
                 'property' => '-foo',
-                'value' => 'bar',
+                'value'    => 'bar',
             ])->and($this->selector->parseNestedPropertyBlockSelector('foo!: bar'))->toBeNull()
                 ->and($this->selector->parseNestedPropertyBlockSelector('-: bar'))->toBeNull();
         });
@@ -325,7 +325,7 @@ describe('Selector service', function () {
         });
 
         it('applies variable and module declarations without producing output', function () {
-            $env = new Environment();
+            $env         = new Environment();
             $moduleScope = new Scope();
 
             $env->getCurrentScope()->addModule('theme', $moduleScope);
@@ -382,87 +382,165 @@ describe('Selector service', function () {
         });
     });
 
-    describe('internal helpers', function () {
-        it('returns empty string when normalizing empty at-rule text', function () {
-            expect($this->accessor->callMethod('normalizeAtRuleText', ['']))->toBe('');
-        });
-
-        it('returns original stack when at-root query rules normalize to an empty list', function () {
-            $stack = [AtRuleContextEntry::supports('(display: grid)')];
-
-            expect($this->accessor->callMethod('filterAtRootStackByQuery', [$stack, 'with', [' ', '']]))
-                ->toBe($stack);
-        });
-
-        it('matches supports entries for at-root query rules', function () {
-            $entry = AtRuleContextEntry::supports('(display: grid)');
-
-            expect($this->accessor->callMethod('matchesAtRootQueryRule', [$entry, ['supports']]))->toBeTrue();
-        });
-
-        it('uses empty prelude when prelude key is absent in array directive entry', function () {
-            $result = $this->accessor->callMethod('normalizeAtRuleStackEntry', [
+    describe('compileAtRootBody()', function () {
+        it('preserves the current stack when at-root query rules normalize to an empty list', function () {
+            $env = new Environment();
+            $env->getCurrentScope()->setVariableLocal('__at_rule_stack', [
                 ['type' => 'directive', 'name' => 'media'],
             ]);
 
-            expect($result)->toBeInstanceOf(AtRuleContextEntry::class)
-                ->and($result->prelude)->toBe('');
+            $result = $this->selector->compileAtRootBody(
+                new AtRootNode(
+                    [new DeclarationNode('color', new StringNode('red'))],
+                    'with',
+                    [' ', ''],
+                ),
+                $env,
+            );
+
+            expect($result)->toBe([
+                'chunk' => "@media {\n  color: red;\n}",
+                'escapeLevels' => 1,
+            ]);
         });
 
-        it('handles at-root rule matching and rule context flags', function () {
-            expect($this->accessor->callMethod('matchesAtRootQueryRule', [
-                AtRuleContextEntry::directive('other'),
-                ['supports'],
-            ]))->toBeFalse()
-                ->and($this->accessor->callMethod('matchesAtRootQueryRule', [
-                    AtRuleContextEntry::directive('media'),
-                    ['media'],
-                ]))->toBeTrue()
-                ->and($this->accessor->callMethod('matchesAtRootQueryRule', [
-                    AtRuleContextEntry::directive('font-face'),
-                    ['supports'],
-                ]))->toBeFalse()
-                ->and($this->accessor->callMethod('shouldKeepAtRootRuleContext', ['with', [' ', '']]))->toBeFalse()
-                ->and($this->accessor->callMethod('shouldKeepAtRootRuleContext', ['invalid', ['rule']]))->toBeFalse();
-        });
-
-        it('normalizes at-root children and wraps nodes with at-rule stack entries', function () {
-            $rule   = new RuleNode('.child', []);
-            $atRoot = new AtRootNode([]);
-            $decl   = new DeclarationNode('color', new StringNode('red'));
-
-            $normalizedRule   = $this->accessor->callMethod('normalizeAtRootChild', [$rule, '.parent', true]);
-            $normalizedAtRoot = $this->accessor->callMethod('normalizeAtRootChild', [$atRoot, '.parent', true]);
-            $wrappedDecl      = $this->accessor->callMethod('normalizeAtRootChild', [$decl, '.parent', true]);
-            $wrappedStack     = $this->accessor->callMethod('wrapNodeWithAtRuleStack', [$decl, [
-                AtRuleContextEntry::supports('(display: grid)'),
-            ]]);
-
-            expect($normalizedRule)->toBe($rule)
-                ->and($normalizedAtRoot)->toBe($atRoot)
-                ->and($wrappedDecl)->toBeInstanceOf(RuleNode::class)
-                ->and($wrappedDecl->selector)->toBe('.parent')
-                ->and($wrappedStack)->toBeInstanceOf(SupportsNode::class)
-                ->and($wrappedStack->condition)->toBe('(display: grid)')
-                ->and($wrappedStack->body[0])->toBe($decl);
-        });
-
-        it('normalizes bubbling children and parent selector attachment decisions', function () {
-            $rule = new RuleNode('.child', []);
-
-            $unchangedRule      = $this->accessor->callMethod('normalizeBubblingChild', [$rule, '.parent', false]);
-            $wrappedDeclaration = $this->accessor->callMethod('normalizeBubblingChild', [
-                new DeclarationNode('color', new StringNode('red')),
-                '.parent',
-                true,
+        it('keeps rule context only for matching at-root query modes and rules', function () {
+            $env = new Environment();
+            $env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.parent'));
+            $env->getCurrentScope()->setVariableLocal('__at_rule_stack', [
+                ['type' => 'other', 'name' => '  media  ', 'prelude' => '  screen  '],
+                ['type' => 'supports', 'condition' => '  (display: grid)  '],
             ]);
 
-            expect($unchangedRule)->toBe($rule)
-                ->and($wrappedDeclaration)->toBeInstanceOf(RuleNode::class)
-                ->and($wrappedDeclaration->selector)->toBe('.parent')
-                ->and($this->accessor->callMethod('shouldAttachParentSelectorToBubbledBody', [
-                    new StringNode('plain'),
-                ]))->toBeFalse();
+            $withSupports = $this->selector->compileAtRootBody(
+                new AtRootNode(
+                    [new DeclarationNode('color', new StringNode('red'))],
+                    'with',
+                    ['supports'],
+                ),
+                $env,
+            );
+
+            $withRule = $this->selector->compileAtRootBody(
+                new AtRootNode(
+                    [new DeclarationNode('color', new StringNode('red'))],
+                    'with',
+                    ['rule'],
+                ),
+                $env,
+            );
+
+            $withoutRule = $this->selector->compileAtRootBody(
+                new AtRootNode(
+                    [new DeclarationNode('color', new StringNode('red'))],
+                    'without',
+                    ['rule'],
+                ),
+                $env,
+            );
+
+            $invalidMode = $this->selector->compileAtRootBody(
+                new AtRootNode(
+                    [new DeclarationNode('color', new StringNode('red'))],
+                    'invalid',
+                    ['rule'],
+                ),
+                $env,
+            );
+
+            expect($withSupports['chunk'])->toBe("@supports (display: grid) {\n  color: red;\n}")
+                ->and($withRule['chunk'])->toBe('.parent {' . "\n  color: red;\n}")
+                ->and($withoutRule['chunk'])->toBe("@supports (display: grid) {\n  color: red;\n}")
+                ->and($invalidMode['chunk'])->toBe("@supports (display: grid) {\n  color: red;\n}");
         });
+
+        it('drops unmatched directive entries from at-root query filtering', function () {
+            $env = new Environment();
+            $env->getCurrentScope()->setVariableLocal('__at_rule_stack', [
+                ['type' => 'directive', 'name' => 'font-face'],
+            ]);
+
+            $result = $this->selector->compileAtRootBody(
+                new AtRootNode(
+                    [new DeclarationNode('color', new StringNode('red'))],
+                    'with',
+                    ['media'],
+                ),
+                $env,
+            );
+
+            expect($result)->toBe([
+                'chunk'        => 'color: red;',
+                'escapeLevels' => 1,
+            ]);
+        });
+
+        it('wraps declarations with the parent selector but leaves rules and nested at-root nodes unchanged', function () {
+            $env = new Environment();
+            $env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.parent'));
+
+            $result = $this->selector->compileAtRootBody(
+                new AtRootNode([
+                    new RuleNode('.child', []),
+                    new AtRootNode([]),
+                    new DeclarationNode('color', new StringNode('red')),
+                ], 'with', ['rule']),
+                $env,
+            );
+
+            expect($result['chunk'])->toBe(".parent {\n  color: red;\n}")
+                ->and($result['escapeLevels'])->toBe(0);
+        });
+    });
+
+    it('normalizes supports and media children with the parent selector and wraps declarations', function () {
+        $supports = $this->selector->normalizeBubblingNodeForSelector(
+            new SupportsNode('(display: grid)', [
+                new RuleNode('.child', []),
+                new DeclarationNode('color', new StringNode('red')),
+            ]),
+            '.parent',
+        );
+
+        $media = $this->selector->normalizeBubblingNodeForSelector(
+            new DirectiveNode('media', 'screen', [
+                new RuleNode('&:hover', []),
+                new DeclarationNode('color', new StringNode('red')),
+            ], true),
+            '.parent',
+        );
+
+        expect($supports)->toBeInstanceOf(SupportsNode::class)
+            ->and($supports->body[0])->toBeInstanceOf(RuleNode::class)
+            ->and($supports->body[0]->selector)->toBe('.parent .child')
+            ->and($supports->body[1])->toBeInstanceOf(RuleNode::class)
+            ->and($supports->body[1]->selector)->toBe('.parent')
+            ->and($media)->toBeInstanceOf(DirectiveNode::class)
+            ->and($media->body[0])->toBeInstanceOf(RuleNode::class)
+            ->and($media->body[0]->selector)->toBe('.parent:hover')
+            ->and($media->body[1])->toBeInstanceOf(RuleNode::class)
+            ->and($media->body[1]->selector)->toBe('.parent');
+    });
+
+    it('does not attach the parent selector for non-bubbling directive bodies', function () {
+        $directive = $this->selector->normalizeBubblingNodeForSelector(
+            new DirectiveNode('font-face', '', [
+                new RuleNode('.child', []),
+                new DeclarationNode('color', new StringNode('red')),
+            ], true),
+            '.parent',
+        );
+
+        expect($directive)->toBeInstanceOf(DirectiveNode::class)
+            ->and($directive->body[0])->toBeInstanceOf(RuleNode::class)
+            ->and($directive->body[0]->selector)->toBe('.child')
+            ->and($directive->body[1])->toBeInstanceOf(RuleNode::class)
+            ->and($directive->body[1]->selector)->toBe('.parent');
+    });
+
+    it('leaves non-directive non-supports bubbling nodes unchanged', function () {
+        $node = new AtRootNode([]);
+
+        expect($this->selector->normalizeBubblingNodeForSelector($node, '.parent'))->toBe($node);
     });
 });

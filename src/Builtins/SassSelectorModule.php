@@ -454,9 +454,10 @@ final class SassSelectorModule extends AbstractModule
     private function deprecatedSelectorSuggestion(string $name, array $positional): string
     {
         $arguments = $positional;
+        $rawArguments = $this->activeBuiltinContext?->rawArguments;
 
-        if ($this->hasRawArguments()) {
-            $arguments = $this->rawPositionalArguments();
+        if ($rawArguments !== null) {
+            $arguments = $this->rawPositionalArguments($rawArguments);
         }
 
         return 'selector.' . $name . '(' . implode(', ', $this->describeBuiltinArguments($arguments)) . ')';
@@ -467,20 +468,12 @@ final class SassSelectorModule extends AbstractModule
      */
     private function unifySelectorParts(string $first, string $second): array
     {
-        if ($first === '' || $second === '') {
-            return [];
-        }
-
         if ($this->hasUnsupportedTopLevelCombinator($first) || $this->hasUnsupportedTopLevelCombinator($second)) {
             return [];
         }
 
         $firstCompounds  = $this->splitSelectorCompounds($first);
         $secondCompounds = $this->splitSelectorCompounds($second);
-
-        if ($firstCompounds === [] || $secondCompounds === []) {
-            return [];
-        }
 
         $firstSubject   = $firstCompounds[count($firstCompounds) - 1];
         $secondSubject  = $secondCompounds[count($secondCompounds) - 1];

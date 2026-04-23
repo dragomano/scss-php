@@ -12,18 +12,12 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\States\OutputState;
 use Bugo\SCSS\Utils\DeferredChunk;
 use Bugo\SCSS\Utils\OutputChunk;
-use Bugo\SCSS\Utils\SourceMapMapping;
 use Bugo\SCSS\Utils\SourceMapOptions;
 use Bugo\SCSS\Utils\SourceMapPosition;
 
-use function abs;
 use function count;
 use function explode;
 use function implode;
-use function is_numeric;
-use function max;
-use function min;
-use function property_exists;
 use function rtrim;
 use function str_ends_with;
 use function str_repeat;
@@ -37,6 +31,7 @@ final readonly class Render
         private CompilerContext $ctx,
         private CompilerOptions $options,
         private AstValueFormatterInterface $valueFormatter,
+        private RenderSourceMapHelper $sourceMapHelper = new RenderSourceMapHelper(),
     ) {}
 
     public function indentPrefix(int $indent): string
@@ -53,8 +48,20 @@ final readonly class Render
     {
         $optimized = $this->ctx->optimizer->optimize($compiled, $this->options);
 
-        if ($optimized !== $compiled && $this->shouldRemapMappingsAfterOptimization($compiled, $optimized)) {
-            $this->remapMappingsAfterOptimization($compiled, $optimized);
+        if (
+            $optimized !== $compiled
+            && $this->sourceMapHelper->shouldRemapMappingsAfterOptimization(
+                $this->options->sourceMapFile,
+                count($this->ctx->sourceMapState->mappings),
+                $compiled,
+                $optimized,
+            )
+        ) {
+            $this->ctx->sourceMapState->mappings = $this->sourceMapHelper->remapMappingsAfterOptimization(
+                $this->ctx->sourceMapState->mappings,
+                $compiled,
+                $optimized,
+            );
         }
 
         return $optimized;
@@ -85,7 +92,12 @@ final readonly class Render
 
             $sourceMapState->generatedColumn = $baseColumn + $indent;
 
-            $this->appendMapping($origin);
+            $this->sourceMapHelper->appendMapping(
+                $sourceMapState->mappings,
+                $sourceMapState->generatedLine,
+                $sourceMapState->generatedColumn,
+                $origin,
+            );
 
             if ($sourceMapState->pendingValueMappings !== []) {
                 $remaining = [];
@@ -94,7 +106,13 @@ final readonly class Render
                     if ($pending['owner'] === $origin) {
                         $sourceMapState->generatedColumn = $baseColumn + $pending['offset'];
 
-                        $this->appendRawMapping($pending['line'], $pending['column']);
+                        $this->sourceMapHelper->appendRawMapping(
+                            $sourceMapState->mappings,
+                            $sourceMapState->generatedLine,
+                            $sourceMapState->generatedColumn,
+                            $pending['line'],
+                            $pending['column'],
+                        );
                     } else {
                         $remaining[] = $pending;
                     }
@@ -152,6 +170,7 @@ final readonly class Render
         $state->generatedLine -= $removed;
 
         $lastNl = strrpos($trimmed, "\n");
+
         $state->generatedColumn = $lastNl === false
             ? strlen($trimmed)
             : strlen($trimmed) - $lastNl - 1;
@@ -277,8 +296,7 @@ final readonly class Render
 
     public function buildSourceMap(string $compiled, string $source): string
     {
-        $mappings = $this->ctx->sourceMapState->mappings;
-
+        $mappings    = $this->ctx->sourceMapState->mappings;
         $outputLines = substr_count($compiled, "\n") + 1;
 
         if ($compiled !== '' && str_ends_with($compiled, "\n")) {
@@ -297,216 +315,5 @@ final readonly class Render
             $this->options->outputFile,
             $options,
         );
-    }
-
-    private function shouldRemapMappingsAfterOptimization(string $before, string $after): bool
-    {
-        if ($this->options->sourceMapFile === null) {
-            return false;
-        }
-
-        $mappingCount = count($this->ctx->sourceMapState->mappings);
-
-        if ($mappingCount <= 20000) {
-            return true;
-        }
-
-        $maxLength = max(strlen($before), strlen($after));
-
-        if ($maxLength <= 150000) {
-            return true;
-        }
-
-        $lengthDelta = abs(strlen($after) - strlen($before));
-
-        if ($lengthDelta > 5000 || $mappingCount > 75000) {
-            return false;
-        }
-
-        return true;
-    }
-
-    private function appendRawMapping(int $sourceLine, int $sourceColumn): void
-    {
-        $this->ctx->sourceMapState->mappings[] = new SourceMapMapping(
-            new SourceMapPosition(
-                $this->ctx->sourceMapState->generatedLine,
-                $this->ctx->sourceMapState->generatedColumn,
-            ),
-            new SourceMapPosition(
-                max(1, $sourceLine),
-                max(0, $sourceColumn - 1),
-            ),
-            0,
-        );
-    }
-
-    private function appendMapping(Visitable $origin): void
-    {
-        if (! property_exists($origin, 'line') || ! property_exists($origin, 'column')) {
-            return;
-        }
-
-        $originData   = (array) $origin;
-        $originLine   = $originData['line'] ?? null;
-        $originColumn = $originData['column'] ?? null;
-
-        if (! is_numeric($originLine) || ! is_numeric($originColumn)) {
-            return;
-        }
-
-        $this->ctx->sourceMapState->mappings[] = new SourceMapMapping(
-            new SourceMapPosition(
-                $this->ctx->sourceMapState->generatedLine,
-                $this->ctx->sourceMapState->generatedColumn,
-            ),
-            new SourceMapPosition(
-                max(1, (int) $originLine),
-                max(0, (int) $originColumn - 1),
-            ),
-            0,
-        );
-    }
-
-    private function remapMappingsAfterOptimization(string $before, string $after): void
-    {
-        if ($this->ctx->sourceMapState->mappings === []) {
-            return;
-        }
-
-        $oldToNewOffsets  = $this->buildOldToNewOffsetMap($before, $after);
-        $beforeLineStarts = $this->buildLineStartOffsets($before);
-        $afterLineStarts  = $this->buildLineStartOffsets($after);
-        $beforeLength     = strlen($before);
-
-        foreach ($this->ctx->sourceMapState->mappings as $index => $mapping) {
-            $line   = $mapping->generated->line;
-            $column = $mapping->generated->column;
-
-            $oldOffset = $this->lineColumnToOffsetUsingLineStarts($beforeLineStarts, $beforeLength, $line, $column);
-            $newOffset = $oldToNewOffsets[$oldOffset] ?? 0;
-
-            [$newLine, $newColumn] = $this->offsetToLineColumnUsingLineStarts($afterLineStarts, $newOffset);
-
-            $this->ctx->sourceMapState->mappings[$index] = $mapping->withGeneratedPosition(
-                new SourceMapPosition($newLine, $newColumn),
-            );
-        }
-    }
-
-    /**
-     * @return array<int, int>
-     */
-    private function buildOldToNewOffsetMap(string $before, string $after): array
-    {
-        $oldLength = strlen($before);
-        $newLength = strlen($after);
-
-        $map = [];
-        $i   = 0;
-        $j   = 0;
-
-        while ($i < $oldLength || $j < $newLength) {
-            if ($i < $oldLength && $j < $newLength && $before[$i] === $after[$j]) {
-                $map[$i] = $j;
-                $i++;
-                $j++;
-
-                continue;
-            }
-
-            if ($i < $oldLength && ($j >= $newLength || ($i + 1 < $oldLength && $before[$i + 1] === $after[$j]))) {
-                $map[$i] = $j;
-                $i++;
-
-                continue;
-            }
-
-            if ($j < $newLength && ($i >= $oldLength || ($j + 1 < $newLength && $before[$i] === $after[$j + 1]))) {
-                $j++;
-
-                continue;
-            }
-
-            if ($i < $oldLength) {
-                $map[$i] = $j;
-                $i++;
-
-                if ($j < $newLength) {
-                    $j++;
-                }
-            }
-        }
-
-        $map[$oldLength] = $newLength;
-
-        return $map;
-    }
-
-    /**
-     * @return array<int, int>
-     */
-    private function buildLineStartOffsets(string $text): array
-    {
-        $length = strlen($text);
-        $starts = [0];
-
-        for ($i = 0; $i < $length; $i++) {
-            if ($text[$i] === "\n") {
-                $starts[] = $i + 1;
-            }
-        }
-
-        return $starts;
-    }
-
-    /**
-     * @param array<int, int> $lineStarts
-     */
-    private function lineColumnToOffsetUsingLineStarts(array $lineStarts, int $textLength, int $line, int $column): int
-    {
-        if ($line <= 1) {
-            return max(0, min($column, $textLength));
-        }
-
-        $lineIndex = min(max(1, $line), count($lineStarts)) - 1;
-        $lineStart = $lineStarts[$lineIndex] ?? 0;
-
-        return max(0, min($lineStart + $column, $textLength));
-    }
-
-    /**
-     * @param array<int, int> $lineStarts
-     * @return array{0: int, 1: int}
-     */
-    private function offsetToLineColumnUsingLineStarts(array $lineStarts, int $offset): array
-    {
-        if ($lineStarts === []) {
-            return [1, max(0, $offset)];
-        }
-
-        $offset    = max(0, $offset);
-        $left      = 0;
-        $right     = count($lineStarts) - 1;
-        $lineIndex = 0;
-
-        while ($left <= $right) {
-            $mid       = intdiv($left + $right, 2);
-            $lineStart = $lineStarts[$mid];
-
-            if ($lineStart <= $offset) {
-                $lineIndex = $mid;
-                $left      = $mid + 1;
-
-                continue;
-            }
-
-            $right = $mid - 1;
-        }
-
-        $line   = $lineIndex + 1;
-        $column = $offset - $lineStarts[$lineIndex];
-
-        return [$line, $column];
     }
 }

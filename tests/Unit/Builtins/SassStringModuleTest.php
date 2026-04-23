@@ -8,6 +8,7 @@ use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
@@ -39,17 +40,19 @@ describe('SassStringModule', function () {
 
     it('evaluates index', function () {
         $result = $this->module->call('index', [new StringNode('hello'), new StringNode('ll')], []);
+
         expect($result->value)->toBe(3);
     });
 
     it('evaluates insert', function () {
         $result = $this->module->call('insert', [new StringNode('abcd'), new StringNode('X'), new NumberNode(3)], []);
+
         expect($result->value)->toBe('abXcd');
     });
 
     it('clamps insert offsets to the string boundaries', function () {
         $beforeStart = $this->module->call('insert', [new StringNode('abcd'), new StringNode('X'), new NumberNode(-10)], []);
-        $afterEnd = $this->module->call('insert', [new StringNode('abcd'), new StringNode('X'), new NumberNode(99)], []);
+        $afterEnd    = $this->module->call('insert', [new StringNode('abcd'), new StringNode('X'), new NumberNode(99)], []);
 
         expect($beforeStart->value)->toBe('Xabcd')
             ->and($afterEnd->value)->toBe('abcdX');
@@ -57,24 +60,27 @@ describe('SassStringModule', function () {
 
     it('evaluates length', function () {
         $result = $this->module->call('length', [new StringNode('hello')], []);
+
         expect($result->value)->toBe(5);
     });
 
     it('evaluates quote', function () {
         $result = $this->module->call('quote', [new StringNode('x')], []);
+
         expect($result->value)->toBe('x')
             ->and($result->quoted)->toBeTrue();
     });
 
     it('evaluates slice', function () {
         $result = $this->module->call('slice', [new StringNode('abcdef'), new NumberNode(2), new NumberNode(4)], []);
+
         expect($result->value)->toBe('bcd');
     });
 
     it('clamps slice bounds and returns empty strings for inverted ranges', function () {
         $startBeforeBeginning = $this->module->call('slice', [new StringNode('abcdef'), new NumberNode(-99), new NumberNode(2)], []);
-        $endBeforeBeginning = $this->module->call('slice', [new StringNode('abcdef'), new NumberNode(2), new NumberNode(-99)], []);
-        $inverted = $this->module->call('slice', [new StringNode('abcdef', true), new NumberNode(4), new NumberNode(2)], []);
+        $endBeforeBeginning   = $this->module->call('slice', [new StringNode('abcdef'), new NumberNode(2), new NumberNode(-99)], []);
+        $inverted             = $this->module->call('slice', [new StringNode('abcdef', true), new NumberNode(4), new NumberNode(2)], []);
 
         expect($startBeforeBeginning->value)->toBe('ab')
             ->and($endBeforeBeginning->value)->toBe('')
@@ -114,11 +120,13 @@ describe('SassStringModule', function () {
 
     it('evaluates to-lower-case', function () {
         $result = $this->module->call('to-lower-case', [new StringNode('AB')], []);
+
         expect($result->value)->toBe('ab');
     });
 
     it('evaluates to-upper-case', function () {
         $result = $this->module->call('to-upper-case', [new StringNode('ab')], []);
+
         expect($result->value)->toBe('AB');
     });
 
@@ -133,6 +141,7 @@ describe('SassStringModule', function () {
 
     it('evaluates unquote', function () {
         $result = $this->module->call('unquote', [new StringNode('"x"')], []);
+
         expect($result->value)->toBe('x');
     });
 
@@ -160,7 +169,7 @@ describe('SassStringModule', function () {
 
     it('describes list color and unsupported raw arguments in deprecated global suggestions', function () {
         $warnings = [];
-        $context = new BuiltinCallContext(
+        $context  = new BuiltinCallContext(
             logWarning: static function (string $message) use (&$warnings): void {
                 $warnings[] = $message;
             },
@@ -180,7 +189,7 @@ describe('SassStringModule', function () {
 
     it('describes bracketed list raw arguments in deprecated global suggestions', function () {
         $warnings = [];
-        $context = new BuiltinCallContext(
+        $context  = new BuiltinCallContext(
             logWarning: static function (string $message) use (&$warnings): void {
                 $warnings[] = $message;
             },
@@ -194,5 +203,25 @@ describe('SassStringModule', function () {
 
         expect($warnings)->toHaveCount(1)
             ->and($warnings[0])->toContain('string.length([a, b])');
+    });
+
+    it('ignores named raw arguments in deprecated global suggestions', function () {
+        $warnings = [];
+        $context  = new BuiltinCallContext(
+            logWarning: static function (string $message) use (&$warnings): void {
+                $warnings[] = $message;
+            },
+            builtinDisplayName: 'str-length',
+            rawArguments: [
+                new StringNode('raw'),
+                new NamedArgumentNode('extra', new StringNode('ignored')),
+            ],
+        );
+
+        $this->module->call('length', [new StringNode('hello')], [], $context);
+
+        expect($warnings)->toHaveCount(1)
+            ->and($warnings[0])->toContain('string.length(raw)')
+            ->and($warnings[0])->not->toContain('ignored');
     });
 });

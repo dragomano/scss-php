@@ -2,26 +2,26 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Builtins\Color\Operations\ColorFunctionEvaluator;
-use Bugo\SCSS\Builtins\SassColorModule;
+use Bugo\SCSS\Builtins\Color\ColorModuleFactory;
+use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Tests\ReflectionAccessor;
+use Bugo\SCSS\Runtime\BuiltinCallContext;
 
 describe('ColorFunctionEvaluator', function () {
     beforeEach(function () {
-        $module = new SassColorModule();
+        $context = new ColorModuleContext(
+            errorCtx: static fn(string $function): string => $function,
+            isGlobalBuiltinCall: static fn(): bool => false,
+            warn: static function (?BuiltinCallContext $callContext, string $message): void {
+                $callContext?->warn($message);
+            },
+        );
 
-        $this->accessor  = new ReflectionAccessor($module);
-        $this->evaluator = $this->accessor->getProperty('functions');
-
-        /** @var ColorFunctionEvaluator $evaluator */
-        $evaluator = $this->evaluator;
-
-        $this->evaluatorAccessor = new ReflectionAccessor($evaluator);
+        $this->evaluator = (new ColorModuleFactory())->create($context)->functions;
     });
 
     it('falls back to adjust-color for non-legacy hue and alpha adjustments', function () {
@@ -89,49 +89,48 @@ describe('ColorFunctionEvaluator', function () {
             ->and($result->name)->toBe('hsl');
     });
 
-    it('returns null from hsl-space mixing when either color cannot provide hsl channels', function () {
-        $result = $this->evaluatorAccessor->callMethod('mixInHslSpace', [
-            new FunctionNode('device-cmyk', [new NumberNode(0.1)]),
+    it('falls back from hsl-space mixing when colors cannot expose hsl channels with missing values', function () {
+        $result = $this->evaluator->mix([
+            new FunctionNode('color', [new ListNode([
+                new StringNode('display-p3'),
+                new NumberNode(0.4),
+                new NumberNode(0.2),
+                new NumberNode(0.6),
+            ], 'space')]),
             new ColorNode('#000'),
-            0.5,
-            null,
+        ], [
+            'method' => new StringNode('hsl'),
         ]);
 
-        expect($result)->toBeNull();
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('rgb');
     });
 
-    it('changes native lab colors and can serialize them as float rgb for legacy callers', function () {
+    it('changes native lab colors through the public changeColor api', function () {
         $lab = new FunctionNode('lab', [new NumberNode(40, '%'), new NumberNode(30), new NumberNode(40)]);
 
-        $changed          = $this->evaluator->changeColor([$lab], ['lightness' => new NumberNode(10, '%')]);
-        $legacySerialized = $this->evaluatorAccessor->callMethod('applyInLabSpace', [
-            $lab,
-            ['lightness' => new NumberNode(10, '%')],
-            static fn(float $current, float $value): float => $value,
-            true,
-        ]);
+        $changed = $this->evaluator->changeColor([$lab], ['lightness' => new NumberNode(10, '%')]);
 
         expect($changed)->toBeInstanceOf(FunctionNode::class)
-            ->and($changed->name)->toBe('lab')
-            ->and($legacySerialized)->toBeInstanceOf(FunctionNode::class)
-            ->and($legacySerialized->name)->toBe('rgb');
+            ->and($changed->name)->toBe('lab');
     });
 
-    it('applies lab modifications to non-native colors for both legacy and non-legacy outputs', function () {
-        $named = ['lightness' => new NumberNode(10, '%')];
-
-        $floatRgb = $this->evaluatorAccessor->callMethod('applyInLabSpace', [
-            new ColorNode('#336699'),
-            $named,
-            static fn(float $current, float $value): float => $value,
-            false,
+    it('applies lab modifications to legacy and non-legacy colors through public changeColor calls', function () {
+        $legacyRgb = $this->evaluator->changeColor([new ColorNode('#336699')], [
+            'space' => new StringNode('lab'),
+            'lightness' => new NumberNode(10, '%'),
         ]);
 
-        $legacyRgb = $this->evaluatorAccessor->callMethod('applyInLabSpace', [
-            new ColorNode('#336699'),
-            $named,
-            static fn(float $current, float $value): float => $value,
-            true,
+        $floatRgb = $this->evaluator->changeColor([
+            new FunctionNode('color', [new ListNode([
+                new StringNode('display-p3'),
+                new NumberNode(0.4),
+                new NumberNode(0.2),
+                new NumberNode(0.6),
+            ], 'space')]),
+        ], [
+            'space' => new StringNode('lab'),
+            'lightness' => new NumberNode(10, '%'),
         ]);
 
         expect($floatRgb)->toBeInstanceOf(FunctionNode::class)
@@ -139,61 +138,135 @@ describe('ColorFunctionEvaluator', function () {
             ->and($legacyRgb)->toBeInstanceOf(ColorNode::class);
     });
 
-    it('adjusts lab modifications for non-native colors when the modifier is not a direct change', function () {
-        $result = $this->evaluatorAccessor->callMethod('applyInLabSpace', [
+    it('adjusts lab modifications for legacy colors through public adjustColor calls', function () {
+        $result = $this->evaluator->adjustColor([
             new ColorNode('#336699'),
-            ['lightness' => new NumberNode(10, '%')],
-            static fn(float $current, float $value): float => $current + $value,
-            false,
+        ], [
+            'space' => new StringNode('lab'),
+            'lightness' => new NumberNode(10, '%'),
         ]);
+
+        expect($result)->toBeInstanceOf(ColorNode::class);
+    });
+
+    it('emits zero scale suggestions when no alpha range remains', function () {
+        $warnings = [];
+        $context  = new BuiltinCallContext(
+            logWarning: static function (string $message) use (&$warnings): void {
+                $warnings[] = $message;
+            },
+        );
+
+        $this->evaluator->adjustAlphaChannel(
+            [new ColorNode('#112233'), new NumberNode(0.2)],
+            1,
+            'fade-in',
+            $context,
+        );
+
+        expect($warnings)->toHaveCount(1)
+            ->and($warnings[0])->toContain('color.scale(')
+            ->and($warnings[0])->toContain('$alpha: 0%');
+    });
+
+    it('falls back to rgb mixing for blank mix methods', function () {
+        $result = $this->evaluator->mix([
+            new ColorNode('#000'),
+            new ColorNode('#fff'),
+            new NumberNode(50, '%'),
+            new StringNode('   '),
+        ], []);
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb');
     });
 
-    it('returns zero scale suggestions when no channel range remains', function () {
-        $hint = $this->evaluatorAccessor->callMethod('buildScaleSuggestion', [
-            new ColorNode('#112233'),
-            'alpha',
-            1,
-            0.2,
-        ]);
-
-        expect($hint)->toContain('color.scale(')
-            ->and($hint)->toContain('$alpha: 0%');
-    });
-
-    it('falls back to rgb method resolution for blank mix methods', function () {
-        $resolved = $this->evaluatorAccessor->callMethod('resolveMixMethod', [
-            [],
-            [
-                new ColorNode('#000'),
-                new ColorNode('#fff'),
+    it('handles missing oklch channels and hues through public mix calls', function () {
+        $result = $this->evaluator->mix([
+            new FunctionNode('oklch', [new ListNode([
+                new StringNode('none'),
+                new StringNode('none'),
+                new StringNode('none'),
+            ], 'space')]),
+            new FunctionNode('oklch', [new ListNode([
                 new NumberNode(50, '%'),
-                new StringNode('   '),
-            ],
+                new NumberNode(0.2),
+                new StringNode('none'),
+            ], 'space')]),
+        ], [
+            'method' => new StringNode('oklch'),
         ]);
 
-        expect($resolved)->toBe([
-            'space' => 'rgb',
-            'hue' => null,
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('oklch');
+    });
+
+    it('preserves missing oklch channels and reuses present channels during mixing', function () {
+        $bothMissing = $this->evaluator->mix([
+            new FunctionNode('oklch', [new ListNode([
+                new StringNode('none'),
+                new StringNode('none'),
+                new StringNode('none'),
+            ], 'space')]),
+            new FunctionNode('oklch', [new ListNode([
+                new StringNode('none'),
+                new StringNode('none'),
+                new StringNode('none'),
+            ], 'space')]),
+        ], [
+            'method' => new StringNode('oklch'),
         ]);
+
+        $rightMissingChannel = $this->evaluator->mix([
+            new FunctionNode('oklch', [new ListNode([
+                new NumberNode(50, '%'),
+                new NumberNode(0.2),
+                new NumberNode(80, 'deg'),
+            ], 'space')]),
+            new FunctionNode('oklch', [new ListNode([
+                new NumberNode(20, '%'),
+                new StringNode('none'),
+                new NumberNode(10, 'deg'),
+            ], 'space')]),
+        ], [
+            'method' => new StringNode('oklch'),
+        ]);
+
+        $rightMissingHue = $this->evaluator->mix([
+            new FunctionNode('oklch', [new ListNode([
+                new NumberNode(50, '%'),
+                new NumberNode(0.2),
+                new NumberNode(80, 'deg'),
+            ], 'space')]),
+            new FunctionNode('oklch', [new ListNode([
+                new NumberNode(20, '%'),
+                new NumberNode(0.1),
+                new StringNode('none'),
+            ], 'space')]),
+        ], [
+            'method' => new StringNode('oklch'),
+        ]);
+
+        expect($bothMissing)->toBeInstanceOf(FunctionNode::class)
+            ->and($bothMissing->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($bothMissing->arguments[0]->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($bothMissing->arguments[0]->items[0]->value)->toBe('none')
+            ->and($bothMissing->arguments[0]->items[1])->toBeInstanceOf(StringNode::class)
+            ->and($bothMissing->arguments[0]->items[1]->value)->toBe('none')
+            ->and($bothMissing->arguments[0]->items[2])->toBeInstanceOf(StringNode::class)
+            ->and($bothMissing->arguments[0]->items[2]->value)->toBe('none')
+            ->and($rightMissingChannel)->toBeInstanceOf(FunctionNode::class)
+            ->and($rightMissingChannel->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($rightMissingChannel->arguments[0]->items[1])->toBeInstanceOf(NumberNode::class)
+            ->and($rightMissingChannel->arguments[0]->items[1]->value)->toBe(0.2)
+            ->and($rightMissingHue)->toBeInstanceOf(FunctionNode::class)
+            ->and($rightMissingHue->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($rightMissingHue->arguments[0]->items[2])->toBeInstanceOf(NumberNode::class)
+            ->and($rightMissingHue->arguments[0]->items[2]->value)->toBe(80.0);
     });
 
-    it('handles missing oklch channels and hues in mix helpers', function () {
-        $bothMissingChannel  = $this->evaluatorAccessor->callMethod('mixPossiblyMissingChannel', [1.0, 2.0, true, true, 0.5]);
-        $rightMissingChannel = $this->evaluatorAccessor->callMethod('mixPossiblyMissingChannel', [1.0, 2.0, false, true, 0.5]);
-        $bothMissingHue      = $this->evaluatorAccessor->callMethod('mixPossiblyMissingHue', [10.0, 20.0, true, true, 0.5, null]);
-        $rightMissingHue     = $this->evaluatorAccessor->callMethod('mixPossiblyMissingHue', [10.0, 20.0, false, true, 0.5, null]);
-
-        expect($bothMissingChannel)->toBe(['value' => 0.0, 'missing' => true])
-            ->and($rightMissingChannel)->toBe(['value' => 1.0, 'missing' => false])
-            ->and($bothMissingHue)->toBe(['value' => 0.0, 'missing' => true])
-            ->and($rightMissingHue)->toBe(['value' => 10.0, 'missing' => false]);
-    });
-
-    it('mixes rec2020 channels with missing values and falls back to rgb conversions', function () {
-        $mixed = $this->evaluatorAccessor->callMethod('mixColorSpaceChannels', [
+    it('mixes rec2020 channels with missing values through the public mix api', function () {
+        $mixed = $this->evaluator->mix([
             new FunctionNode('color', [new ListNode([
                 new StringNode('rec2020'),
                 new StringNode('none'),
@@ -206,15 +279,49 @@ describe('ColorFunctionEvaluator', function () {
                 new NumberNode(0.2),
                 new StringNode('none'),
             ], 'space')]),
-            0.5,
+        ], [
+            'method' => new StringNode('rec2020'),
         ]);
-
-        $fallbackChannels = $this->evaluatorAccessor->callMethod('extractColorSpaceChannels', [new ColorNode('#036')]);
-        $percentChannel   = $this->evaluatorAccessor->callMethod('extractOptionalNumericChannel', [new NumberNode(25, '%')]);
 
         expect($mixed)->toBeInstanceOf(FunctionNode::class)
             ->and($mixed->name)->toBe('color')
-            ->and($fallbackChannels)->toHaveCount(3)
-            ->and($percentChannel)->toBe(0.25);
+            ->and($mixed->arguments)->toHaveCount(1);
+    });
+
+    it('mixes rec2020 channels from rgb fallbacks and percent channel inputs', function () {
+        $fallback = $this->evaluator->mix([
+            new ColorNode('#036'),
+            new ColorNode('#369'),
+        ], [
+            'method' => new StringNode('rec2020'),
+        ]);
+
+        $percentChannel = $this->evaluator->mix([
+            new FunctionNode('color', [new ListNode([
+                new StringNode('rec2020'),
+                new NumberNode(25, '%'),
+                new StringNode('none'),
+                new StringNode('none'),
+            ], 'space')]),
+            new FunctionNode('color', [new ListNode([
+                new StringNode('rec2020'),
+                new StringNode('none'),
+                new StringNode('none'),
+                new StringNode('none'),
+            ], 'space')]),
+        ], [
+            'method' => new StringNode('rec2020'),
+        ]);
+
+        expect($fallback)->toBeInstanceOf(FunctionNode::class)
+            ->and($fallback->name)->toBe('color')
+            ->and($fallback->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($fallback->arguments[0]->items[1])->toBeInstanceOf(NumberNode::class)
+            ->and($fallback->arguments[0]->items[2])->toBeInstanceOf(NumberNode::class)
+            ->and($fallback->arguments[0]->items[3])->toBeInstanceOf(NumberNode::class)
+            ->and($percentChannel)->toBeInstanceOf(FunctionNode::class)
+            ->and($percentChannel->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($percentChannel->arguments[0]->items[1])->toBeInstanceOf(NumberNode::class)
+            ->and($percentChannel->arguments[0]->items[1]->value)->toBe(0.25);
     });
 });

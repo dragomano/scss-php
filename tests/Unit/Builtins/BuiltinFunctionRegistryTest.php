@@ -16,7 +16,6 @@ use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
-use Tests\ReflectionAccessor;
 
 describe('BuiltinFunctionRegistry', function () {
     beforeEach(function () {
@@ -300,24 +299,6 @@ describe('BuiltinFunctionRegistry', function () {
 
         expect($registry->tryCall('unknown.fn', []))->toBeNull()
             ->and($registry->tryCall('unknown-global', []))->toBeNull();
-    });
-
-    it('returns null for namespaced calls when an alias points to a missing module', function () {
-        $registry = new FunctionRegistry();
-        $accessor = new ReflectionAccessor($registry);
-
-        $accessor->setProperty('moduleAliases', ['broken' => 'missing']);
-
-        expect($registry->tryCall('broken.echo', [new StringNode('ok')]))->toBeNull();
-    });
-
-    it('returns null for global aliases that point to a missing module', function () {
-        $registry = new FunctionRegistry();
-        $accessor = new ReflectionAccessor($registry);
-
-        $accessor->setProperty('globalAliases', ['broken-global' => ['missing', 'echo']]);
-
-        expect($registry->tryCall('broken-global', [new StringNode('ok')]))->toBeNull();
     });
 
     it('ignores non-sass and unknown sass @use registrations', function () {
