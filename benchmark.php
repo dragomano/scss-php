@@ -5,6 +5,9 @@ declare(strict_types=1);
 require_once 'vendor/autoload.php';
 
 use Bugo\BenchmarkUtils\BenchmarkRunner;
+use Bugo\BenchmarkUtils\CompilationResult;
+use Bugo\BenchmarkUtils\CompilerAdapterInterface;
+use Bugo\BenchmarkUtils\ReportGenerator;
 use Bugo\BenchmarkUtils\ScssGenerator;
 use Bugo\Sass\Compiler as EmbeddedCompiler;
 use Bugo\Sass\Options;
@@ -14,26 +17,34 @@ use Bugo\SCSS\Compiler as SassCompiler;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Loader;
 use Bugo\SCSS\Style;
-use ScssPhp\ScssPhp\CompilationResult;
 use ScssPhp\ScssPhp\Compiler as ScssCompiler;
 use ScssPhp\ScssPhp\OutputStyle;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Psr16Cache;
 
-final readonly class CachedBenchmarkCompiler
+final readonly class CachedBenchmarkCompiler implements CompilerAdapterInterface
 {
     public function __construct(
         private CachingCompiler $compiler,
         private string $entryPath,
     ) {}
 
-    public function compileString(string $scss): string
+    public function warmup(?string $code, ?string $sourceFile): void {}
+
+    /**
+     * @throws \Psr\SimpleCache\InvalidArgumentException
+     */
+    public function compile(?string $code, ?string $sourceFile, bool $includeSourceMap = true): CompilationResult
     {
-        if (! file_exists($this->entryPath) || file_get_contents($this->entryPath) !== $scss) {
-            file_put_contents($this->entryPath, $scss, LOCK_EX);
+        if ($code !== null) {
+            if (! file_exists($this->entryPath) || file_get_contents($this->entryPath) !== $code) {
+                file_put_contents($this->entryPath, $code, LOCK_EX);
+            }
         }
 
-        return $this->compiler->compileFile($this->entryPath);
+        $css = $this->compiler->compileFile($this->entryPath);
+
+        return new CompilationResult($css);
     }
 }
 
@@ -98,7 +109,7 @@ $compilerList = [
 
 for ($i = 0; $i < $benchmarkRuns; $i++) {
     $results = (new BenchmarkRunner())
-        ->setCode($scss)
+        ->setSourceFile($scssFile)
         ->setRuns($singleRuns)
         ->setWarmupRuns($warmupRuns)
         ->setOutputDir($outputDir)
@@ -142,7 +153,6 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
                 removeEmptyLines: true,
                 sourceMapPath: $sourceMap ? 'result-sass-embedded-php.css.map' : null,
                 sourceFile: 'generated.scss',
-                streamResult: true,
             ));
 
             return $compiler;
@@ -158,19 +168,7 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
                 'outputSourceFiles' => false,
             ] : []);
 
-            // BenchmarkRunner calls compileString(), but scssphp only tracks the source URL
-            // when compiling from a file — so we delegate to compileFile() instead.
-            return new class ($compiler, $scssFile) {
-                public function __construct(
-                    private readonly ScssCompiler $inner,
-                    private readonly string $scssFile,
-                ) {}
-
-                public function compileString(string $source): CompilationResult
-                {
-                    return $this->inner->compileFile($this->scssFile);
-                }
-            };
+            return $compiler;
         })
         ->run();
 
@@ -193,7 +191,7 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
     }
 
     echo PHP_EOL . '## Run ' . ($i + 1) . '/' . $benchmarkRuns . PHP_EOL;
-    echo BenchmarkRunner::formatTable($results);
+    echo ReportGenerator::formatTable($results);
 }
 
 $median = static function (array $values): float {
@@ -223,7 +221,7 @@ foreach ($aggregate as $compilerName => $stats) {
 }
 
 echo PHP_EOL . '## Aggregated (median)' . PHP_EOL;
-echo BenchmarkRunner::formatTable($results);
+echo ReportGenerator::formatTable($results);
 
 echo PHP_EOL . '## Time Stats (sec)' . PHP_EOL;
 echo '| Compiler | Min | Median | Max | Avg |' . PHP_EOL;
@@ -249,4 +247,4 @@ foreach ($aggregate as $compilerName => $stats) {
 echo PHP_EOL . 'Iterations: ' . $benchmarkRuns . ', runs per iteration: ' . $singleRuns . ', warmup: ' . $warmupRuns . PHP_EOL;
 echo 'Options: sourceMap=' . ($sourceMap ? '1' : '0') . ', minimize=' . ($minimize ? '1' : '0') . PHP_EOL;
 
-BenchmarkRunner::updateMarkdownFile('benchmark.md', $results);
+ReportGenerator::updateMarkdownFile('benchmark.md', $results);

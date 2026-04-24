@@ -38,8 +38,8 @@
   },
   "require-dev": {
     "axy/sourcemap": "^1.1",
-    "bugo/sass-embedded-php": "dev-main",
-    "bugo/scss-benchmark-utils": "dev-main",
+    "bugo/sass-embedded-php": "^0.9",
+    "bugo/scss-benchmark-utils": "^0.4",
     "dg/bypass-finals": "^1.9",
     "friendsofphp/php-cs-fixer": "^3.94",
     "mockery/mockery": "dev-bugfix/spy-generics",
