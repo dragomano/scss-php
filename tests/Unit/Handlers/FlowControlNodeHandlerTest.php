@@ -19,12 +19,14 @@ use Tests\RuntimeFactory;
 
 it('handles if branches', function () {
     $runtime = RuntimeFactory::createRuntime();
-    $ctx     = RuntimeFactory::context(indent: 1);
     $node    = new IfNode(
         '1 > 2',
         [new DeclarationNode('color', new StringNode('red'))],
         [new ElseIfNode('2 > 1', [new DeclarationNode('color', new StringNode('blue'))])],
     );
+
+    $ctx = RuntimeFactory::context(indent: 1);
+    $ctx->env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.rule'));
 
     expect($runtime->flow()->handleIf($node, $ctx))->toBe('  color: blue;');
 });
@@ -34,6 +36,7 @@ it('handles each for and while loops', function () {
 
     $ctx = RuntimeFactory::context(indent: 1);
     $ctx->env->getCurrentScope()->setVariable('i', new NumberNode(0));
+    $ctx->env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.rule'));
 
     $each = $runtime->flow()->handleEach(
         new EachNode(['item'], new ListNode([new StringNode('a'), new StringNode('b')], 'space'), [
@@ -91,7 +94,9 @@ it('throws for non-numeric loop boundaries', function () {
 
 it('accepts numeric string loop boundaries', function () {
     $runtime = RuntimeFactory::createRuntime();
-    $ctx     = RuntimeFactory::context(indent: 1);
+
+    $ctx = RuntimeFactory::context(indent: 1);
+    $ctx->env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.rule'));
 
     $result = $runtime->flow()->handleFor(
         new ForNode('i', new StringNode('1'), new StringNode('2'), true, [

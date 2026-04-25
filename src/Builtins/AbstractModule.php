@@ -164,17 +164,14 @@ abstract class AbstractModule implements ModuleInterface
     }
 
     /**
+     * @param array<int, AstNode|NamedArgumentNode> $rawArguments
      * @return array<int, AstNode>
      */
-    protected function rawPositionalArguments(): array
+    protected function rawPositionalArguments(array $rawArguments): array
     {
-        if ($this->activeBuiltinContext === null || $this->activeBuiltinContext->rawArguments === null) {
-            return [];
-        }
-
         $positional = [];
 
-        foreach ($this->activeBuiltinContext->rawArguments as $argument) {
+        foreach ($rawArguments as $argument) {
             if ($argument instanceof NamedArgumentNode) {
                 continue;
             }
@@ -183,12 +180,6 @@ abstract class AbstractModule implements ModuleInterface
         }
 
         return $positional;
-    }
-
-    protected function hasRawArguments(): bool
-    {
-        return $this->activeBuiltinContext !== null
-            && $this->activeBuiltinContext->rawArguments !== null;
     }
 
     protected function warnAboutDeprecatedBuiltinFunction(

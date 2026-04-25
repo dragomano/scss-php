@@ -147,10 +147,18 @@ describe('SelectorTokenizer', function () {
         expect($this->tokenizer->orderTokens(['div', '::before']))->toBe(['::before', 'div']);
     });
 
+    it('orderTokens() ignores empty tokens while preserving selector ordering', function () {
+        expect($this->tokenizer->orderTokens(['', '.bar', '#foo', ':hover']))->toBe(['#foo', '.bar', ':hover']);
+    });
+
     it('extractTypeToken() returns element name', function () {
         $tokens = $this->tokenizer->tokenizeCompound('div.foo');
 
         expect($this->tokenizer->extractTypeToken($tokens))->toBe('div');
+    });
+
+    it('extractTypeToken() skips attributes and returns the universal selector when no type token exists', function () {
+        expect($this->tokenizer->extractTypeToken(['[type="text"]', '*']))->toBe('*');
     });
 
     it('extractIdToken() returns id token', function () {

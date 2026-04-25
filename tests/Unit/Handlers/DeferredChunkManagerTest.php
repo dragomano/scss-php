@@ -13,7 +13,6 @@ use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Utils\DeferredChunk;
 use Bugo\SCSS\Utils\RawChunk;
-use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
 describe('DeferredChunkManager', function () {
@@ -135,10 +134,10 @@ describe('DeferredChunkManager', function () {
     });
 
     it('collects non-media bubbling chunks into trailing root chunks after children were rendered', function () {
-        $scope = $this->ctx->env->getCurrentScope();
-        $leading = [];
+        $scope    = $this->ctx->env->getCurrentScope();
+        $leading  = [];
         $trailing = [];
-        $child = new SupportsNode('(display: grid)', [
+        $child    = new SupportsNode('(display: grid)', [
             new RuleNode('.item', [
                 new DeclarationNode('color', new StringNode('red')),
             ]),
@@ -213,9 +212,11 @@ describe('DeferredChunkManager', function () {
 
     it('moves deferred include root chunks into trailing root chunks when new chunks exist', function () {
         $deferredChunk = new DeferredChunk('.outside { color: red; }', 1, 0, []);
-        $outputState = $this->runtime->render()->outputState();
-        $keep = new RawChunk('keep');
+        $outputState   = $this->runtime->render()->outputState();
+        $keep          = new RawChunk('keep');
+
         $outputState->deferral->atRootStack[] = [$keep, $deferredChunk];
+
         $trailing = [];
 
         $this->manager->collectDeferredIncludeRootChunks($trailing, 1);
@@ -345,6 +346,7 @@ describe('DeferredChunkManager', function () {
         $state  = new class {
             public bool $first = true;
         };
+
         $this->manager->appendOutputChunk($output, $state->first, new RawChunk('first'));
         $this->manager->appendOutputChunk($output, $state->first, new RawChunk('second'));
 
@@ -361,6 +363,7 @@ describe('DeferredChunkManager', function () {
         $scope->setVariableLocal('__at_rule_stack', [
             AtRuleContextEntry::directive('media', 'screen'),
         ]);
+
         $child = new DirectiveNode('media', 'print', [
             new RuleNode('.item', [
                 new DeclarationNode('color', new StringNode('red')),
@@ -440,6 +443,32 @@ describe('DeferredChunkManager', function () {
             ]);
     });
 
+    it('finds the last media prelude even when newer non-media entries are above it on the stack', function () {
+        $scope = $this->ctx->env->getCurrentScope();
+        $scope->setVariableLocal('__at_rule_stack', [
+            AtRuleContextEntry::directive('media', 'screen'),
+            AtRuleContextEntry::supports('(display: grid)'),
+        ]);
+
+        $chunk = $this->manager->compileInterleavedBubblingChunk(
+            '.host',
+            $scope,
+            new DirectiveNode('media', 'print', [
+                new RuleNode('.item', [
+                    new DeclarationNode('color', new StringNode('red')),
+                ]),
+            ], true),
+            $this->ctx,
+        );
+
+        expect($chunk)->not->toBeNull()
+            ->and($chunk->content())->toContain('@media screen and print')
+            ->and($scope->getVariable('__at_rule_stack'))->toEqual([
+                AtRuleContextEntry::directive('media', 'screen'),
+                AtRuleContextEntry::supports('(display: grid)'),
+            ]);
+    });
+
     it('flushes trailing root chunks before appending standalone nested rule chunks', function () {
         $output             = ".host {\n  color: red;\n}";
         $trailingRootChunks = [new RawChunk(".outside {\n  color: blue;\n}")];
@@ -488,12 +517,5 @@ describe('DeferredChunkManager', function () {
         expect($output)->toContain('.outside')
             ->and($output)->toContain('color: red')
             ->and($state->first)->toBeFalse();
-    });
-
-    it('returns the original at-rule stack when there is no media entry to remove', function () {
-        $accessor = new ReflectionAccessor($this->manager);
-        $stack    = [AtRuleContextEntry::supports('(display: grid)')];
-
-        expect($accessor->callMethod('removeLastMediaEntryFromAtRuleStack', [$stack]))->toBe($stack);
     });
 });

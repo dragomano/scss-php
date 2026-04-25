@@ -24,15 +24,14 @@ use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\VariableDefinition;
-use Bugo\SCSS\Services\ClosureAstValueEvaluator;
-use Bugo\SCSS\Services\ClosureAstValueFormatter;
-use Bugo\SCSS\Services\ClosureEachLoopBinder;
-use Bugo\SCSS\Services\ClosureFunctionConditionEvaluator;
-use Bugo\SCSS\Services\ClosureVariableDeclarationApplier;
+use Bugo\SCSS\Services\AstValueEvaluatorInterface;
+use Bugo\SCSS\Services\AstValueFormatterInterface;
+use Bugo\SCSS\Services\EachLoopBinderInterface;
 use Bugo\SCSS\Services\ExtendsResolver;
+use Bugo\SCSS\Services\FunctionConditionEvaluatorInterface;
 use Bugo\SCSS\Services\Text;
+use Bugo\SCSS\Services\VariableDeclarationApplierInterface;
 use Bugo\SCSS\Utils\SelectorTokenizer;
-use Tests\ReflectionAccessor;
 
 describe('ExtendsResolver', function () {
     beforeEach(function () {
@@ -64,43 +63,85 @@ describe('ExtendsResolver', function () {
             return '';
         };
 
-        $text = new Text(
-            $parser,
-            new ClosureAstValueEvaluator($evaluateValue),
-            new ClosureAstValueFormatter($format),
-        );
+        $this->createResolver = function (SelectorTokenizer $tokenizer) use ($parser, $evaluateValue, $format): ExtendsResolver {
+            $text = new Text(
+                $parser,
+                new class ($evaluateValue) implements AstValueEvaluatorInterface {
+                    public function __construct(private readonly Closure $evaluateValue) {}
 
-        $this->resolver = new ExtendsResolver(
-            $this->ctx,
-            $text,
-            new SelectorTokenizer(),
-            new ClosureAstValueEvaluator($evaluateValue),
-            new ClosureFunctionConditionEvaluator(
-                fn(string $condition, Environment $env): bool => $this->conditionResults[$condition] ?? false,
-            ),
-            new ClosureVariableDeclarationApplier(
-                function (AstNode $node, Environment $env): bool {
-                    if (! $node instanceof StringNode || $node->value !== 'tick') {
-                        return false;
+                    public function evaluate(AstNode $node, Environment $env): AstNode
+                    {
+                        return ($this->evaluateValue)($node, $env);
                     }
-
-                    $value = $env->getCurrentScope()->getAstVariable('i');
-
-                    if ($value instanceof NumberNode) {
-                        $this->iterationValues[] = $value->value;
-                    }
-
-                    return true;
                 },
-            ),
-            new ClosureEachLoopBinder(
-                static fn(AstNode $node): array => [],
-                static function (array $variables, AstNode $item, Environment $env): void {},
-            ),
-            new ClosureAstValueFormatter($format),
-        );
+                new class ($format) implements AstValueFormatterInterface {
+                    public function __construct(private readonly Closure $format) {}
 
-        $this->accessor = new ReflectionAccessor($this->resolver);
+                    public function format(AstNode $node, Environment $env): string
+                    {
+                        return ($this->format)($node, $env);
+                    }
+                },
+            );
+
+            return new ExtendsResolver(
+                $this->ctx,
+                $text,
+                $tokenizer,
+                new class ($evaluateValue) implements AstValueEvaluatorInterface {
+                    public function __construct(private readonly Closure $evaluateValue) {}
+
+                    public function evaluate(AstNode $node, Environment $env): AstNode
+                    {
+                        return ($this->evaluateValue)($node, $env);
+                    }
+                },
+                new class ($this) implements FunctionConditionEvaluatorInterface {
+                    public function __construct(private readonly object $testCase) {}
+
+                    public function evaluate(string $condition, Environment $env): bool
+                    {
+                        return $this->testCase->conditionResults[$condition] ?? false;
+                    }
+                },
+                new class ($this) implements VariableDeclarationApplierInterface {
+                    public function __construct(private readonly object $testCase) {}
+
+                    public function apply(AstNode $node, Environment $env): bool
+                    {
+                        if (! $node instanceof StringNode || $node->value !== 'tick') {
+                            return false;
+                        }
+
+                        $value = $env->getCurrentScope()->getAstVariable('i');
+
+                        if ($value instanceof NumberNode) {
+                            $this->testCase->iterationValues[] = $value->value;
+                        }
+
+                        return true;
+                    }
+                },
+                new class implements EachLoopBinderInterface {
+                    public function items(AstNode $iterableValue): array
+                    {
+                        return [];
+                    }
+
+                    public function assign(array $variables, AstNode $item, Environment $env): void {}
+                },
+                new class ($format) implements AstValueFormatterInterface {
+                    public function __construct(private readonly Closure $format) {}
+
+                    public function format(AstNode $node, Environment $env): string
+                    {
+                        return ($this->format)($node, $env);
+                    }
+                },
+            );
+        };
+
+        $this->resolver = ($this->createResolver)(new SelectorTokenizer());
     });
 
     it('adjusts exclusive for loop bounds before collecting children', function () {
@@ -230,7 +271,8 @@ describe('ExtendsResolver', function () {
     });
 
     it('iterates through each nodes and collects children for every assigned item', function () {
-        $assigned = [];
+        $state = new stdClass();
+        $state->assigned = [];
 
         $resolver = new ExtendsResolver(
             $this->ctx,
@@ -243,31 +285,60 @@ describe('ExtendsResolver', function () {
                         return new RootNode();
                     }
                 },
-                new ClosureAstValueEvaluator(static fn(AstNode $node, Environment $env): AstNode => $node),
-                new ClosureAstValueFormatter(
-                    static fn(AstNode $node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
-                ),
-            ),
-            new SelectorTokenizer(),
-            new ClosureAstValueEvaluator(static fn(AstNode $node, Environment $env): AstNode => $node),
-            new ClosureFunctionConditionEvaluator(
-                static fn(string $condition, Environment $env): bool => false,
-            ),
-            new ClosureVariableDeclarationApplier(
-                static fn(AstNode $node, Environment $env): bool => false,
-            ),
-            new ClosureEachLoopBinder(
-                static fn(AstNode $node): array => [new StringNode('first'), new StringNode('second')],
-                function (array $variables, AstNode $item, Environment $env) use (&$assigned): void {
-                    if ($item instanceof StringNode) {
-                        $assigned[] = $item->value;
-                        $env->getCurrentScope()->setVariableLocal($variables[0] ?? 'item', $item);
+                new class implements AstValueEvaluatorInterface {
+                    public function evaluate(AstNode $node, Environment $env): AstNode
+                    {
+                        return $node;
+                    }
+                },
+                new class implements AstValueFormatterInterface {
+                    public function format(AstNode $node, Environment $env): string
+                    {
+                        return $node instanceof StringNode ? $node->value : '';
                     }
                 },
             ),
-            new ClosureAstValueFormatter(
-                static fn(AstNode $node, Environment $env): string => $node instanceof StringNode ? $node->value : '',
-            ),
+            new SelectorTokenizer(),
+            new class implements AstValueEvaluatorInterface {
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return $node;
+                }
+            },
+            new class implements FunctionConditionEvaluatorInterface {
+                public function evaluate(string $condition, Environment $env): bool
+                {
+                    return false;
+                }
+            },
+            new class implements VariableDeclarationApplierInterface {
+                public function apply(AstNode $node, Environment $env): bool
+                {
+                    return false;
+                }
+            },
+            new class ($state) implements EachLoopBinderInterface {
+                public function __construct(private readonly object $state) {}
+
+                public function items(AstNode $iterableValue): array
+                {
+                    return [new StringNode('first'), new StringNode('second')];
+                }
+
+                public function assign(array $variables, AstNode $item, Environment $env): void
+                {
+                    if ($item instanceof StringNode) {
+                        $this->state->assigned[] = $item->value;
+                        $env->getCurrentScope()->setVariableLocal($variables[0] ?? 'item', $item);
+                    }
+                }
+            },
+            new class implements AstValueFormatterInterface {
+                public function format(AstNode $node, Environment $env): string
+                {
+                    return $node instanceof StringNode ? $node->value : '';
+                }
+            },
         );
 
         $resolver->collectExtends(
@@ -277,7 +348,7 @@ describe('ExtendsResolver', function () {
             new Environment(),
         );
 
-        expect($assigned)->toBe(['first', 'second'])
+        expect($state->assigned)->toBe(['first', 'second'])
             ->and($this->ctx->outputState->extends->pendingExtends)->toBe([
                 [
                     'target'  => '%item-target',
@@ -312,12 +383,19 @@ describe('ExtendsResolver', function () {
         ]);
     });
 
-    it('formats non-number loop boundaries and rejects invalid formatted values', function () {
+    it('formats string loop boundaries and rejects invalid values', function () {
         $env = new Environment();
 
-        expect($this->accessor->callMethod('toLoopNumber', [new StringNode('12.5'), $env]))
-            ->toBe(12.5)
-            ->and(fn() => $this->accessor->callMethod('toLoopNumber', [new StringNode('oops'), $env]))
+        $this->resolver->collectExtends(
+            new ForNode('i', new StringNode('12.5'), new StringNode('12.5'), true, [new StringNode('tick')]),
+            $env,
+        );
+
+        expect($this->iterationValues)->toBe([12])
+            ->and(fn() => $this->resolver->collectExtends(
+                new ForNode('i', new StringNode('oops'), new NumberNode(1), true),
+                $env,
+            ))
             ->toThrow(InvalidLoopBoundaryException::class);
     });
 
@@ -329,24 +407,52 @@ describe('ExtendsResolver', function () {
             ->and($this->resolver->extractSimpleExtendTargetSelectors('   '))->toBe([]);
     });
 
-    it('allows empty simple targets and rejects complex extend selectors', function () {
-        expect($this->accessor->callMethod('assertSimpleExtendTargetSelector', ['   ']))->toBeNull()
-            ->and(fn() => $this->resolver->extractSimpleExtendTargetSelectors('.foo > .bar'))
+    it('rejects complex extend selectors', function () {
+        expect(fn() => $this->resolver->extractSimpleExtendTargetSelectors('.foo > .bar'))
             ->toThrow(SassErrorException::class, 'Complex selectors may not be extended. Use a simple selector target in @extend.');
     });
 
-    it('returns null for empty structured replacement targets and short fallback matches', function () {
-        expect($this->accessor->callMethod('replaceExtendTargetInStructuredSelectorPart', ['.foo', '', '.bar']))
-            ->toBeNull()
-            ->and($this->accessor->callMethod('replaceExtendTargetInSelectorPartFallback', ['.a', '.ab', '.x']))
-            ->toBeNull();
+    it('skips empty selectors in extend target lists with a trailing comma', function () {
+        $this->resolver->collectExtends(
+            new RuleNode('.source', [new ExtendNode('%target,')]),
+            new Environment(),
+        );
+
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([
+            [
+                'target'  => '%target',
+                'source'  => '.source',
+                'context' => '',
+            ],
+        ]);
     });
 
-    it('returns null when fallback replacement never finds a valid boundary or weaving cannot apply', function () {
-        expect($this->accessor->callMethod('replaceExtendTargetInSelectorPartFallback', ['.foobar', 'bar', '.baz']))
-            ->toBeNull()
-            ->and($this->accessor->callMethod('weaveFallbackExtendedSelector', ['.parent', '.child', '.scope .item']))
-            ->toBeNull();
+    it('does not replace partial selector token matches when applying extends', function () {
+        $this->resolver->registerExtend('bar', '.baz');
+        $this->ctx->outputState->extends->selectorContexts['bar'] = ['' => true];
+
+        expect($this->resolver->applyExtendsToSelector('.foobar'))->toBe('.foobar');
+    });
+
+    it('falls back to substring replacement when structured selector extension cannot be used', function () {
+        $this->resolver->registerExtend('bar', '> baz');
+        $this->ctx->outputState->extends->selectorContexts['bar'] = ['' => true];
+
+        expect($this->resolver->applyExtendsToSelector('foobar bar'))->toBe('foobar bar, foobar > baz');
+    });
+
+    it('falls back to direct replacement when weaving cannot apply without a preceding combinator', function () {
+        $this->resolver->registerExtend('.bar', '.baz');
+        $this->ctx->outputState->extends->selectorContexts['.bar'] = ['' => true];
+
+        expect($this->resolver->applyExtendsToSelector('foo .bar > baz'))->toBe('foo .bar > baz, foo .baz > baz');
+    });
+
+    it('replaces the target directly when fallback weaving has no combinator before the match', function () {
+        $this->resolver->registerExtend('.bar', '.baz');
+        $this->ctx->outputState->extends->selectorContexts['.bar'] = ['' => true];
+
+        expect($this->resolver->applyExtendsToSelector('foo > .bar'))->toBe('foo > .bar, foo > .baz');
     });
 
     it('skips empty selector parts when collecting extends from rule with trailing comma', function () {
@@ -379,7 +485,7 @@ describe('ExtendsResolver', function () {
     });
 
     it('deduplicates extenders when the same extender appears via multiple paths', function () {
-        // .a extended by .b and .c; .c also extended by .b
+        // .a selector extended by .b and .c; .c also extended by .b
         // When resolving transitive extenders of .a: pending=[.c,.b], then .c adds .b again
         $this->resolver->registerExtend('.a', '.b');
         $this->resolver->registerExtend('.a', '.c');
@@ -411,26 +517,43 @@ describe('ExtendsResolver', function () {
             ->and(substr_count($result, '.d'))->toBe(1);
     });
 
-    it('returns the matching if body or else body from resolveIfBranch', function () {
+    it('collects extends from the matching if body or else body', function () {
         $env = new Environment();
 
         $this->conditionResults['if-true'] = true;
         $this->conditionResults['if-false'] = false;
 
-        $ifBodyNode   = new RuleNode('.if-body', []);
-        $elseBodyNode = new RuleNode('.else-body', []);
-
-        $matching = $this->accessor->callMethod('resolveIfBranch', [
-            new IfNode('if-true', [$ifBodyNode], [new ElseIfNode('elseif', [new RuleNode('.elseif', [])])], [$elseBodyNode]),
+        $this->resolver->collectExtends(
+            new IfNode(
+                'if-true',
+                [new RuleNode('.if-body', [new ExtendNode('%if-target')])],
+                [new ElseIfNode('elseif', [new RuleNode('.elseif', [new ExtendNode('%elseif-target')])])],
+                [new RuleNode('.else-body', [new ExtendNode('%else-target')])],
+            ),
             $env,
-        ]);
+        );
 
-        $fallback = $this->accessor->callMethod('resolveIfBranch', [
-            new IfNode('if-false', [$ifBodyNode], [new ElseIfNode('elseif-false', [new RuleNode('.elseif', [])])], [$elseBodyNode]),
+        $this->resolver->collectExtends(
+            new IfNode(
+                'if-false',
+                [new RuleNode('.if-body', [new ExtendNode('%if-target')])],
+                [new ElseIfNode('elseif-false', [new RuleNode('.elseif', [new ExtendNode('%elseif-target')])])],
+                [new RuleNode('.else-body', [new ExtendNode('%else-target')])],
+            ),
             $env,
-        ]);
+        );
 
-        expect($matching)->toBe([$ifBodyNode])
-            ->and($fallback)->toBe([$elseBodyNode]);
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([
+            [
+                'target'  => '%if-target',
+                'source'  => '.if-body',
+                'context' => '',
+            ],
+            [
+                'target'  => '%else-target',
+                'source'  => '.else-body',
+                'context' => '',
+            ],
+        ]);
     });
 });

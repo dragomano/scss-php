@@ -5,19 +5,16 @@ declare(strict_types=1);
 use Bugo\SCSS\Builtins\SassColorModule;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
-use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Tests\ReflectionAccessor;
 
 describe('SassColorModule', function () {
     beforeEach(function () {
-        $this->module   = new SassColorModule();
-        $this->accessor = new ReflectionAccessor($this->module);
+        $this->module = new SassColorModule();
     });
 
     it('exposes metadata', function () {
@@ -65,74 +62,89 @@ describe('SassColorModule', function () {
 
     it('evaluates adjust-hue', function () {
         $result = $this->module->call('adjust-hue', [new ColorNode('#ff0000'), new NumberNode(120, 'deg')], []);
+
         expect($result->value)->toBe('#00ff00');
     });
 
     it('evaluates adjust-color', function () {
         $result = $this->module->call('adjust-color', [new ColorNode('#112233')], ['blue' => new NumberNode(10)]);
+
         expect($result->value)->toBe('#11223d');
     });
 
     it('evaluates adjust', function () {
         $result = $this->module->call('adjust', [new ColorNode('#112233')], ['blue' => new NumberNode(10)]);
+
         expect($result->value)->toBe('#11223d');
     });
 
     it('evaluates alpha', function () {
         $result = $this->module->call('alpha', [new ColorNode('#33669980')], []);
+
         expect($result->value)->toBeCloseTo(0.501961, 0.00001);
     });
 
     it('evaluates opacity', function () {
         $result = $this->module->call('opacity', [new ColorNode('#33669980')], []);
+
         expect($result->value)->toBeCloseTo(0.501961, 0.00001);
     });
 
     it('evaluates blackness', function () {
         $result = $this->module->call('blackness', [new ColorNode('#336699')], []);
+
         expect($result->value)->toBeCloseTo(40.0, 0.001)->and($result->unit)->toBe('%');
     });
 
     it('evaluates blue', function () {
         $result = $this->module->call('blue', [new ColorNode('#336699')], []);
+
         expect($result->value)->toBe(153.0);
     });
 
     it('evaluates change-color', function () {
         $result = $this->module->call('change-color', [new ColorNode('#112233')], ['red' => new NumberNode(255)]);
+
         expect($result->value)->toBe('#ff2233');
     });
 
     it('evaluates change', function () {
         $result = $this->module->call('change', [new ColorNode('#112233')], ['red' => new NumberNode(255)]);
+
         expect($result->value)->toBe('#ff2233');
     });
 
     it('evaluates channel', function () {
         $result = $this->module->call('channel', [new ColorNode('#336699'), new StringNode('red')], []);
+
         expect($result)->toBeInstanceOf(NumberNode::class)->and($result->value)->toBe(51.0);
     });
 
     it('evaluates channel with srgb space', function () {
         $result = $this->module->call('channel', [new ColorNode('#ff0000'), new StringNode('red')], ['space' => new StringNode('srgb')]);
+
         expect($result)->toBeInstanceOf(NumberNode::class)->and($result->value)->toBe(1.0);
 
         $result = $this->module->call('channel', [new ColorNode('#ff0000'), new StringNode('red')], ['space' => new StringNode('rgb')]);
+
         expect($result)->toBeInstanceOf(NumberNode::class)->and($result->value)->toBe(255.0);
     });
 
     it('evaluates complement', function () {
         $result = $this->module->call('complement', [new ColorNode('#ff0000')], []);
+
         expect($result->value)->toBe('#00ffff');
     });
 
     it('evaluates darken', function () {
         $result = $this->module->call('darken', [new ColorNode('#ffffff'), new NumberNode(20, '%')], []);
+
         expect($result->value)->toBe('#cccccc');
     });
 
     it('evaluates desaturate', function () {
         $result = $this->module->call('desaturate', [new ColorNode('#ff0000'), new NumberNode(100, '%')], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
             ->and($result->arguments[0]->value)->toBe(127.5)
@@ -142,6 +154,7 @@ describe('SassColorModule', function () {
 
     it('evaluates grayscale', function () {
         $result = $this->module->call('grayscale', [new ColorNode('#ff0000')], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
             ->and($result->arguments[0]->value)->toBe(127.5)
@@ -151,11 +164,13 @@ describe('SassColorModule', function () {
 
     it('evaluates green', function () {
         $result = $this->module->call('green', [new ColorNode('#336699')], []);
+
         expect($result->value)->toBe(102.0);
     });
 
     it('evaluates hsl', function () {
         $result = $this->module->call('hsl', [new NumberNode(120), new NumberNode(100, '%'), new NumberNode(50, '%')], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)->and($result->name)->toBe('hsl');
     });
 
@@ -188,36 +203,43 @@ describe('SassColorModule', function () {
 
     it('evaluates hsla', function () {
         $result = $this->module->call('hsla', [new NumberNode(240), new NumberNode(100, '%'), new NumberNode(50, '%'), new NumberNode(0.5)], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)->and($result->name)->toBe('hsla');
     });
 
     it('evaluates hue', function () {
         $result = $this->module->call('hue', [new ColorNode('#ff0000')], []);
+
         expect($result->value)->toBe(0.0)->and($result->unit)->toBe('deg');
     });
 
     it('evaluates ie-hex-str', function () {
         $result = $this->module->call('ie-hex-str', [new ColorNode('#33669980')], []);
+
         expect($result)->toBeInstanceOf(StringNode::class)->and($result->value)->toBe('#80336699');
     });
 
     it('evaluates ie-hex-str with fully opaque color', function () {
         $result = $this->module->call('ie-hex-str', [new ColorNode('#ff0000')], []);
+
         expect($result)->toBeInstanceOf(StringNode::class)->and($result->value)->toBe('#FFFF0000');
     });
 
     it('evaluates ie-hex-str with fully transparent color', function () {
         $result = $this->module->call('ie-hex-str', [new ColorNode('#ff000000')], []);
+
         expect($result)->toBeInstanceOf(StringNode::class)->and($result->value)->toBe('#00FF0000');
     });
 
     it('evaluates invert', function () {
         $result = $this->module->call('invert', [new ColorNode('#123456')], []);
+
         expect($result->value)->toBe('#edcba9');
     });
 
     it('evaluates invert in display-p3 space', function () {
         $result = $this->module->call('invert', [new ColorNode('#550e0c'), new NumberNode(20, '%')], ['space' => new StringNode('display-p3')]);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
             ->and($result->arguments[0]->value)->toBeCloseTo(103.4937692017, 0.000000001)
@@ -227,6 +249,7 @@ describe('SassColorModule', function () {
 
     it('evaluates is-in-gamut', function () {
         $result = $this->module->call('is-in-gamut', [new ColorNode('#b37399')], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)->and($result->value)->toBeTrue();
 
         $outOfGamut = new FunctionNode('color', [
@@ -235,48 +258,58 @@ describe('SassColorModule', function () {
             new NumberNode(0),
             new NumberNode(0),
         ]);
+
         $result2 = $this->module->call('is-in-gamut', [$outOfGamut], []);
+
         expect($result2)->toBeInstanceOf(BooleanNode::class)->and($result2->value)->toBeFalse();
     });
 
     it('evaluates is-legacy', function () {
         $result = $this->module->call('is-legacy', [new ColorNode('#336699')], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)->and($result->value)->toBeTrue();
     });
 
     it('evaluates is-missing', function () {
         $result = $this->module->call('is-missing', [new ColorNode('#336699'), new StringNode('red')], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)->and($result->value)->toBeFalse();
     });
 
     it('evaluates is-missing for hue after to-space lch string conversion', function () {
-        $lch = $this->module->call('to-space', [new ColorNode('grey'), new StringNode('lch')], []);
+        $lch    = $this->module->call('to-space', [new ColorNode('grey'), new StringNode('lch')], []);
         $result = $this->module->call('is-missing', [$lch, new StringNode('hue')], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)->and($result->value)->toBeTrue();
     });
 
     it('evaluates is-powerless', function () {
         $result = $this->module->call('is-powerless', [new ColorNode('#808080'), new StringNode('hue')], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)->and($result->value)->toBeTrue();
     });
 
     it('evaluates lighten', function () {
         $result = $this->module->call('lighten', [new ColorNode('#000000'), new NumberNode(20, '%')], []);
+
         expect($result->value)->toBe('#333333');
     });
 
     it('evaluates lightness', function () {
         $result = $this->module->call('lightness', [new ColorNode('#000000')], []);
+
         expect($result->value)->toBe(0.0)->and($result->unit)->toBe('%');
     });
 
     it('evaluates mix', function () {
         $result = $this->module->call('mix', [new ColorNode('#000000'), new ColorNode('#ffffff'), new NumberNode(50, '%')], []);
+
         expect($result)->toBeInstanceOf(ColorNode::class)->and($result->value)->toBe('#808080');
     });
 
     it('evaluates mix in rgb with float channel result', function () {
         $result = $this->module->call('mix', [new ColorNode('#036'), new ColorNode('#d2e1dd')], ['method' => new StringNode('rgb')]);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
             ->and($result->arguments[0]->value)->toBe(105.0)
@@ -302,6 +335,7 @@ describe('SassColorModule', function () {
             'weight' => new NumberNode(75, '%'),
             'method' => new StringNode('rec2020'),
         ]);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('color');
     });
@@ -321,6 +355,7 @@ describe('SassColorModule', function () {
         ], [
             'method' => new StringNode('oklch longer hue'),
         ]);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('oklch');
     });
@@ -399,6 +434,7 @@ describe('SassColorModule', function () {
 
     it('evaluates opacify', function () {
         $result = $this->module->call('opacify', [new ColorNode('#11223380'), new NumberNode(0.2)], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgba')
             ->and($result->arguments[0]->value)->toBe(17.0)
@@ -409,6 +445,7 @@ describe('SassColorModule', function () {
 
     it('evaluates fade-in alias', function () {
         $result = $this->module->call('fade-in', [new ColorNode('#11223380'), new NumberNode(0.2)], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgba')
             ->and($result->arguments[0]->value)->toBe(17.0)
@@ -417,18 +454,15 @@ describe('SassColorModule', function () {
             ->and($result->arguments[3]->value)->toBeCloseTo(0.7019607843, 0.0000000001);
     });
 
-    it('throws for unknown legacy alpha adjustments', function () {
-        expect(fn() => $this->accessor->callMethod('legacyAlphaAdjustment', ['unknown', [], null]))
-            ->toThrow(UnknownSassFunctionException::class);
-    });
-
     it('evaluates red', function () {
         $result = $this->module->call('red', [new ColorNode('#336699')], []);
+
         expect($result)->toBeInstanceOf(NumberNode::class)->and($result->value)->toBe(51.0);
     });
 
     it('evaluates rgb', function () {
         $result = $this->module->call('rgb', [new NumberNode(255), new NumberNode(0), new NumberNode(0)], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)->and($result->name)->toBe('rgb');
     });
 
@@ -446,6 +480,7 @@ describe('SassColorModule', function () {
 
     it('evaluates rgba', function () {
         $result = $this->module->call('rgba', [new ColorNode('#ff0000'), new NumberNode(0.5)], []);
+
         expect($result)->toBeInstanceOf(ColorNode::class)->and($result->value)->toBe('#ff000080');
     });
 
@@ -497,22 +532,26 @@ describe('SassColorModule', function () {
 
     it('evaluates same', function () {
         $result = $this->module->call('same', [new ColorNode('#ff0000'), new ColorNode('#ff0000')], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)->and($result->value)->toBeTrue();
     });
 
     it('evaluates same with color.to-space() oklch result', function () {
-        $oklch = $this->module->call('to-space', [new ColorNode('#036'), new StringNode('oklch')], []);
+        $oklch  = $this->module->call('to-space', [new ColorNode('#036'), new StringNode('oklch')], []);
         $result = $this->module->call('same', [new ColorNode('#036'), $oklch], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)->and($result->value)->toBeTrue();
     });
 
     it('evaluates saturation', function () {
         $result = $this->module->call('saturation', [new ColorNode('#ff0000')], []);
+
         expect($result->value)->toBe(100.0)->and($result->unit)->toBe('%');
     });
 
     it('evaluates scale-color', function () {
         $result = $this->module->call('scale-color', [new ColorNode('#000000')], ['red' => new NumberNode(50, '%')]);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
             ->and($result->arguments[0]->value)->toBe(127.5)
@@ -522,6 +561,7 @@ describe('SassColorModule', function () {
 
     it('evaluates scale', function () {
         $result = $this->module->call('scale', [new ColorNode('#000000')], ['red' => new NumberNode(50, '%')]);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
             ->and($result->arguments[0]->value)->toBe(127.5)
@@ -531,6 +571,7 @@ describe('SassColorModule', function () {
 
     it('evaluates scale with float rgb channels', function () {
         $result = $this->module->call('scale', [new ColorNode('#6b717f')], ['red' => new NumberNode(15, '%')]);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
             ->and($result->arguments[0]->value)->toBe(129.2)
@@ -549,6 +590,7 @@ describe('SassColorModule', function () {
             'chroma' => new NumberNode(50, '%'),
             'alpha' => new NumberNode(-40, '%'),
         ]);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('oklch')
             ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
@@ -587,12 +629,14 @@ describe('SassColorModule', function () {
             new StringNode('rgb'),
             new StringNode('local-minde'),
         ], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('oklch');
     });
 
     it('returns unchanged color when already in rgb gamut', function () {
         $result = $this->module->call('to-gamut', [new ColorNode('#036')], ['method' => new StringNode('local-minde')]);
+
         expect($result)->toBeInstanceOf(ColorNode::class)
             ->and($result->value)->toBe('#036');
     });
@@ -607,12 +651,14 @@ describe('SassColorModule', function () {
             new StringNode('rgb'),
             new StringNode('clip'),
         ], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('oklch');
     });
 
     it('evaluates to-space', function () {
         $result = $this->module->call('to-space', [new ColorNode('#336699'), new StringNode('hsl')], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('hsl')
             ->and($result->arguments[0]->value)->toBe(210.0)
@@ -624,12 +670,14 @@ describe('SassColorModule', function () {
 
     it('evaluates to-space for display-p3', function () {
         $result = $this->module->call('to-space', [new ColorNode('#036'), new StringNode('display-p3')], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('color');
     });
 
     it('evaluates to-space for srgb-linear', function () {
         $result = $this->module->call('to-space', [new ColorNode('#336699'), new StringNode('srgb-linear')], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('color')
             ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
@@ -638,6 +686,7 @@ describe('SassColorModule', function () {
 
     it('evaluates to-space for srgb', function () {
         $result = $this->module->call('to-space', [new ColorNode('#336699'), new StringNode('srgb')], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('color')
             ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
@@ -653,6 +702,7 @@ describe('SassColorModule', function () {
             ]),
             new StringNode('rgb'),
         ], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
             ->and($result->arguments[0]->value)->toBeCloseTo(103.1328905413, 0.000000001)
@@ -662,6 +712,7 @@ describe('SassColorModule', function () {
 
     it('evaluates to-space to oklab with percentage lightness', function () {
         $result = $this->module->call('to-space', [new ColorNode('#336699'), new StringNode('oklab')], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('oklab')
             ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
@@ -678,6 +729,7 @@ describe('SassColorModule', function () {
             ], 'space')]),
             new StringNode('oklch'),
         ], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('oklch');
     });
@@ -691,6 +743,7 @@ describe('SassColorModule', function () {
             ], 'space')]),
             new StringNode('lch'),
         ], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)->and($result->name)->toBe('lch');
     });
 
@@ -727,11 +780,13 @@ describe('SassColorModule', function () {
             ], 'space')]),
             new StringNode('rec2020'),
         ], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)->and($result->name)->toBe('color');
     });
 
     it('evaluates transparentize', function () {
         $result = $this->module->call('transparentize', [new ColorNode('#112233cc'), new NumberNode(0.2)], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgba')
             ->and($result->arguments[0]->value)->toBe(17.0)
@@ -742,6 +797,7 @@ describe('SassColorModule', function () {
 
     it('evaluates fade-out alias', function () {
         $result = $this->module->call('fade-out', [new ColorNode('#112233cc'), new NumberNode(0.2)], []);
+
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgba')
             ->and($result->arguments[0]->value)->toBe(17.0)
@@ -752,16 +808,18 @@ describe('SassColorModule', function () {
 
     it('evaluates whiteness', function () {
         $result = $this->module->call('whiteness', [new ColorNode('#336699')], []);
+
         expect($result->value)->toBeCloseTo(20.0, 0.001)->and($result->unit)->toBe('%');
     });
 
     describe('non-legacy color space support', function () {
         it('adjusts lab() channels natively', function () {
-            $lab = new FunctionNode('lab', [new NumberNode(40, '%'), new NumberNode(30), new NumberNode(40)]);
+            $lab    = new FunctionNode('lab', [new NumberNode(40, '%'), new NumberNode(30), new NumberNode(40)]);
             $result = $this->module->call('adjust', [$lab], [
                 'lightness' => new NumberNode(10, '%'),
                 'a'         => new NumberNode(-20),
             ]);
+
             expect($result)->toBeInstanceOf(FunctionNode::class)
                 ->and($result->name)->toBe('lab')
                 ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
@@ -778,10 +836,12 @@ describe('SassColorModule', function () {
                 new NumberNode(0.2),
                 new NumberNode(0.4),
             ]);
+
             $result = $this->module->call('change', [$srgb], [
                 'red'  => new NumberNode(0.8),
                 'blue' => new NumberNode(0.1),
             ]);
+
             expect($result)->toBeInstanceOf(FunctionNode::class)
                 ->and($result->name)->toBe('color')
                 ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
@@ -797,7 +857,9 @@ describe('SassColorModule', function () {
                 new NumberNode(0.12),
                 new NumberNode(70, 'deg'),
             ]);
+
             $result = $this->module->call('complement', [$oklch, new StringNode('oklch')], []);
+
             expect($result)->toBeInstanceOf(FunctionNode::class)
                 ->and($result->name)->toBe('oklch')
                 ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
@@ -814,7 +876,9 @@ describe('SassColorModule', function () {
                 new NumberNode(80, '%'),
                 new NumberNode(270, 'deg'),
             ]);
+
             $result = $this->module->call('grayscale', [$oklch], []);
+
             expect($result)->toBeInstanceOf(FunctionNode::class)
                 ->and($result->name)->toBe('oklch')
                 ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)

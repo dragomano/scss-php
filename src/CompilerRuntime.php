@@ -14,24 +14,28 @@ use Bugo\SCSS\Handlers\FlowControlNodeHandler;
 use Bugo\SCSS\Handlers\ModuleNodeHandler;
 use Bugo\SCSS\Handlers\RootNodeHandler;
 use Bugo\SCSS\Nodes\AstNode;
-use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Runtime\Environment;
-use Bugo\SCSS\Runtime\TraversalContext;
-use Bugo\SCSS\Services\ClosureAstValueEvaluator;
-use Bugo\SCSS\Services\ClosureAstValueFormatter;
-use Bugo\SCSS\Services\ClosureDiagnosticDirectiveHandler;
-use Bugo\SCSS\Services\ClosureEachLoopBinder;
-use Bugo\SCSS\Services\ClosureFunctionConditionEvaluator;
-use Bugo\SCSS\Services\ClosureModuleVariableAssigner;
-use Bugo\SCSS\Services\ClosureVariableDeclarationApplier;
+use Bugo\SCSS\Services\AstValueEvaluatorInterface;
+use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\Condition;
 use Bugo\SCSS\Services\Context;
+use Bugo\SCSS\Services\CssArgumentEvaluator;
+use Bugo\SCSS\Services\DiagnosticDirectiveHandler;
+use Bugo\SCSS\Services\DiagnosticDirectiveHandlerInterface;
+use Bugo\SCSS\Services\EachLoopBinder;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\ExtendsResolver;
+use Bugo\SCSS\Services\FunctionConditionEvaluator;
 use Bugo\SCSS\Services\Module;
+use Bugo\SCSS\Services\ModuleVariableAssigner;
+use Bugo\SCSS\Services\ModuleVariableAssignerInterface;
 use Bugo\SCSS\Services\Render;
+use Bugo\SCSS\Services\RuntimeAstValueEvaluator;
+use Bugo\SCSS\Services\RuntimeAstValueFormatter;
+use Bugo\SCSS\Services\RuntimeCalculationArgumentNormalizer;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Services\Text;
+use Bugo\SCSS\Services\VariableDeclarationApplier;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 use Psr\Log\LoggerInterface;
 
@@ -42,6 +46,8 @@ final class CompilerRuntime
     private ?Context $context = null;
 
     private ?Condition $condition = null;
+
+    private ?CssArgumentEvaluator $cssArgumentEvaluator = null;
 
     private ?Evaluator $evaluation = null;
 
@@ -104,6 +110,11 @@ final class CompilerRuntime
     public function condition(): Condition
     {
         return $this->condition ??= $this->createCondition();
+    }
+
+    public function cssArgumentEvaluator(): CssArgumentEvaluator
+    {
+        return $this->cssArgumentEvaluator ??= $this->createCssArgumentEvaluator();
     }
 
     public function extends(): ExtendsResolver
@@ -225,16 +236,19 @@ final class CompilerRuntime
             $this->text(),
             $this->selectorTokenizer(),
             $this->createAstValueEvaluator(),
-            new ClosureFunctionConditionEvaluator(
-                fn(string $condition, Environment $env): bool => $this->evaluation()->evaluateFunctionCondition($condition, $env),
+            new FunctionConditionEvaluator($this->condition()),
+            new VariableDeclarationApplier(
+                $this->createModuleVariableAssigner(),
+                new class ($this) implements AstValueEvaluatorInterface {
+                    public function __construct(private readonly CompilerRuntime $runtime) {}
+
+                    public function evaluate(AstNode $node, Environment $env): AstNode
+                    {
+                        return $this->runtime->evaluation()->evaluateValueWithSlashDivision($node, $env);
+                    }
+                },
             ),
-            new ClosureVariableDeclarationApplier(
-                fn(AstNode $node, Environment $env): bool => $this->evaluation()->applyVariableDeclaration($node, $env),
-            ),
-            new ClosureEachLoopBinder(
-                fn(AstNode $value): array => $this->evaluation()->eachIterableItems($value),
-                fn(array $variables, AstNode $item, Environment $env) => $this->evaluation()->assignEachVariables($variables, $item, $env),
-            ),
+            new EachLoopBinder($this->ctx->valueFactory),
             $this->createAstValueFormatter(),
         );
     }
@@ -243,17 +257,24 @@ final class CompilerRuntime
     {
         return new Selector(
             $this->ctx,
+            $this->options,
             $this->render(),
             $this->text(),
             $this->selectorTokenizer(),
             $this->dispatcher,
             $this->extends(),
-            $this->createAstValueEvaluator(),
             $this->createModuleVariableAssigner(),
-            fn(AstNode $value): bool => $this->evaluation()->isSassNullValue($value),
-            fn(string $property): bool => $this->evaluation()->shouldCompressNamedColorForProperty($property),
-            fn(AstNode $value): AstNode => $this->evaluation()->compressNamedColorsForOutput($value),
+            $this->cssArgumentEvaluator(),
+            $this->createAstValueEvaluator(),
             $this->createAstValueFormatter(),
+        );
+    }
+
+    private function createCssArgumentEvaluator(): CssArgumentEvaluator
+    {
+        return new CssArgumentEvaluator(
+            $this->createAstValueEvaluator(),
+            new RuntimeCalculationArgumentNormalizer($this),
         );
     }
 
@@ -358,41 +379,23 @@ final class CompilerRuntime
         return new RootNodeHandler($this->dispatcher, $this->render());
     }
 
-    private function createModuleVariableAssigner(): ClosureModuleVariableAssigner
+    private function createModuleVariableAssigner(): ModuleVariableAssignerInterface
     {
-        return new ClosureModuleVariableAssigner(
-            fn(ModuleVarDeclarationNode $node, Environment $env) => $this->module()->assignModuleVariable($node, $env),
-        );
+        return new ModuleVariableAssigner($this);
     }
 
-    private function createDiagnosticDirectiveHandler(): ClosureDiagnosticDirectiveHandler
+    private function createDiagnosticDirectiveHandler(): DiagnosticDirectiveHandlerInterface
     {
-        return new ClosureDiagnosticDirectiveHandler(
-            fn(
-                string $directive,
-                AstNode $messageNode,
-                Environment $env,
-                ?AstNode $origin = null,
-            ) => $this->diagnostic()->handleDirective(
-                $directive,
-                $messageNode,
-                new TraversalContext($env, 0),
-                $origin,
-            ),
-        );
+        return new DiagnosticDirectiveHandler($this);
     }
 
-    private function createAstValueEvaluator(): ClosureAstValueEvaluator
+    private function createAstValueEvaluator(): AstValueEvaluatorInterface
     {
-        return new ClosureAstValueEvaluator(
-            fn(AstNode $node, Environment $env): AstNode => $this->evaluation()->evaluateValue($node, $env),
-        );
+        return new RuntimeAstValueEvaluator($this);
     }
 
-    private function createAstValueFormatter(): ClosureAstValueFormatter
+    private function createAstValueFormatter(): AstValueFormatterInterface
     {
-        return new ClosureAstValueFormatter(
-            fn(AstNode $node, Environment $env): string => $this->evaluation()->format($node, $env),
-        );
+        return new RuntimeAstValueFormatter($this);
     }
 }

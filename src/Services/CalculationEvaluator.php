@@ -17,7 +17,6 @@ use Bugo\SCSS\Utils\UnitConverter;
 use Bugo\SCSS\Values\SassCalculation;
 use Bugo\SCSS\Values\SassList;
 use Bugo\SCSS\Values\SassValue;
-use Closure;
 
 use function ceil;
 use function count;
@@ -33,15 +32,10 @@ use const M_PI;
 
 final readonly class CalculationEvaluator
 {
-    /**
-     * @param Closure(AstNode, Environment): string $format
-     * @param Closure(ListNode, bool, Environment): ?AstNode $evaluateArithmetic
-     * @param Closure(AstNode, callable(AstNode): string): SassValue $fromAst
-     */
     public function __construct(
-        private Closure $format,
-        private Closure $evaluateArithmetic,
-        private Closure $fromAst,
+        private AstValueFormatterInterface $valueFormatter,
+        private ArithmeticListEvaluatorInterface $arithmeticListEvaluator,
+        private AstToSassValueConverterInterface $sassValueConverter,
     ) {}
 
     /**
@@ -70,7 +64,11 @@ final readonly class CalculationEvaluator
                 continue;
             }
 
-            return ($this->format)($left, $env) . ' ' . $operator->value . ' ' . ($this->format)($right, $env);
+            return $this->valueFormatter->format($left, $env)
+                . ' '
+                . $operator->value
+                . ' '
+                . $this->valueFormatter->format($right, $env);
         }
 
         return null;
@@ -108,10 +106,7 @@ final readonly class CalculationEvaluator
             || ! ($node->arguments[0] instanceof ListNode)
             || ! $this->containsGroupingMarker($node->arguments[0])
         ) {
-            return ($this->fromAst)(
-                $node,
-                fn(AstNode $inner): string => ($this->format)($inner, $env)
-            )->toCss();
+            return $this->sassValueConverter->convert($node, $env)->toCss();
         }
 
         return (string) new SassCalculation($node->name, [
@@ -121,10 +116,7 @@ final readonly class CalculationEvaluator
 
     public function toSassValue(AstNode $node, Environment $env): SassValue
     {
-        return ($this->fromAst)(
-            $node,
-            fn(AstNode $inner): string => ($this->format)($inner, $env)
-        );
+        return $this->sassValueConverter->convert($node, $env);
     }
 
     /**
@@ -160,7 +152,7 @@ final readonly class CalculationEvaluator
                     return $division;
                 }
 
-                $collapsed = ($this->evaluateArithmetic)($resolved, true, $env);
+                $collapsed = $this->arithmeticListEvaluator->evaluate($resolved, true, $env);
 
                 if ($collapsed instanceof NumberNode) {
                     return $collapsed;
@@ -352,7 +344,7 @@ final readonly class CalculationEvaluator
             return '(' . $this->formatListValue($item->items, $item->separator, false, $env) . ')';
         }
 
-        return ($this->format)($item, $env);
+        return $this->valueFormatter->format($item, $env);
     }
 
     /**
@@ -471,7 +463,11 @@ final readonly class CalculationEvaluator
             return null;
         }
 
-        $simplified = ($this->evaluateArithmetic)(new ListNode($argument->items, 'space', true), true, new Environment());
+        $simplified = $this->arithmeticListEvaluator->evaluate(
+            new ListNode($argument->items, 'space', true),
+            true,
+            new Environment(),
+        );
 
         return $simplified instanceof NumberNode ? $simplified : null;
     }

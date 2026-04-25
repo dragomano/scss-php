@@ -503,14 +503,10 @@ final readonly class Text
         $childNodes = [];
 
         if (isset($node['children']) && is_array($node['children'])) {
-            $childNodes = $node['children'];
+            $childNodes = $this->extractStringKeyedArrayItems($node['children']);
         }
 
         foreach ($childNodes as $child) {
-            if (! is_array($child)) {
-                continue;
-            }
-
             /** @var array<string, mixed> $child */
             $childText = $this->renderSupportsExpression($child);
             $childType = 'atom';
@@ -574,10 +570,13 @@ final readonly class Text
 
         $ast = $this->parser->parse(".__tmp__ { __tmp__: $expr; }");
 
-        $firstChild     = $ast->children[0] ?? null;
-        $firstRuleChild = $firstChild instanceof RuleNode
-            ? $firstChild->children[0] ?? null
-            : null;
+        $firstChild = $ast->children[0] ?? null;
+
+        if (! $firstChild instanceof RuleNode) {
+            return $expr;
+        }
+
+        $firstRuleChild = $firstChild->children[0] ?? null;
 
         if ($firstRuleChild instanceof DeclarationNode) {
             $valueNode = $this->valueEvaluator->evaluate($firstRuleChild->value, $env);

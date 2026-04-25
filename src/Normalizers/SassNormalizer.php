@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Normalizers;
 
+use Bugo\SCSS\Exceptions\InvalidSyntaxException;
 use Bugo\SCSS\Syntax;
 
 use function array_pop;
@@ -78,6 +79,8 @@ final readonly class SassNormalizer implements SourceNormalizer
 
     public function normalize(string $source): string
     {
+        $this->validateSyntax($source);
+
         $eol        = $this->detectLineEnding($source);
         $lines      = $this->splitByLineBreaks($source);
         $indentSize = $this->detectIndentSize($lines);
@@ -212,6 +215,151 @@ final readonly class SassNormalizer implements SourceNormalizer
         $pendingEmptyLines = [];
     }
 
+    private function validateSyntax(string $source): void
+    {
+        $this->validateDirectiveHeaderContinuations($source);
+
+        $line                = 1;
+        $length              = strlen($source);
+        $parenStack          = [];
+        $inSingleLineComment = false;
+        $inMultilineComment  = false;
+        $commentStartLine    = 0;
+        $stringQuote         = null;
+        $stringStartLine     = 0;
+        $escaped             = false;
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $source[$i];
+            $next = $i + 1 < $length ? $source[$i + 1] : null;
+
+            if ($char === "\n") {
+                $line++;
+                $inSingleLineComment = false;
+            }
+
+            if ($inSingleLineComment) {
+                continue;
+            }
+
+            if ($inMultilineComment) {
+                if ($char === '*' && $next === '/') {
+                    $inMultilineComment = false;
+                    $i++;
+                }
+
+                continue;
+            }
+
+            if ($stringQuote !== null) {
+                if ($escaped) {
+                    $escaped = false;
+
+                    continue;
+                }
+
+                if ($char === '\\') {
+                    $escaped = true;
+
+                    continue;
+                }
+
+                if ($char === $stringQuote) {
+                    $stringQuote = null;
+                }
+
+                continue;
+            }
+
+            if ($char === '/' && $next === '/') {
+                $inSingleLineComment = true;
+                $i++;
+
+                continue;
+            }
+
+            if ($char === '/' && $next === '*') {
+                $inMultilineComment = true;
+                $commentStartLine   = $line;
+                $i++;
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $stringQuote     = $char;
+                $stringStartLine = $line;
+
+                continue;
+            }
+
+            if ($char === '(') {
+                $parenStack[] = $line;
+
+                continue;
+            }
+
+            if ($char === ')') {
+                if ($parenStack === []) {
+                    throw InvalidSyntaxException::unexpectedClosingParenthesis($line);
+                }
+
+                array_pop($parenStack);
+            }
+        }
+
+        if ($stringQuote !== null) {
+            throw InvalidSyntaxException::unterminatedString($stringStartLine);
+        }
+
+        if ($inMultilineComment) {
+            throw InvalidSyntaxException::unterminatedComment($commentStartLine);
+        }
+
+        if ($parenStack !== []) {
+            throw InvalidSyntaxException::expectedClosingParenthesis(end($parenStack));
+        }
+    }
+
+    private function validateDirectiveHeaderContinuations(string $source): void
+    {
+        $lines = $this->splitByLineBreaks($source);
+        $count = count($lines);
+
+        for ($index = 0; $index < $count; $index++) {
+            $line    = rtrim($lines[$index], "\r\n");
+            $trimmed = ltrim($line);
+
+            if (! in_array(rtrim($trimmed), self::DIRECTIVE_HEADER_KEYWORDS, true)) {
+                continue;
+            }
+
+            $lineLevel = $this->leadingSpaceCount($line);
+
+            if ($index + 1 >= $count || trim($lines[$index + 1]) !== '') {
+                continue;
+            }
+
+            for ($nextIndex = $index + 2; $nextIndex < $count; $nextIndex++) {
+                $nextLine    = rtrim($lines[$nextIndex], "\r\n");
+                $nextTrimmed = ltrim($nextLine);
+
+                if ($nextTrimmed === '') {
+                    continue;
+                }
+
+                if (
+                    $this->leadingSpaceCount($nextLine) > $lineLevel
+                    && $this->looksLikeDirectiveHeaderContinuation($nextTrimmed)
+                ) {
+                    throw InvalidSyntaxException::separatedDirectiveHeaderContinuation($index + 1, rtrim($trimmed));
+                }
+
+                break;
+            }
+        }
+    }
+
     private function indent(int $level, int $indentSize): string
     {
         return str_repeat(' ', $level * $indentSize);
@@ -261,7 +409,7 @@ final readonly class SassNormalizer implements SourceNormalizer
             $nextTrimmed = ltrim($nextLine);
 
             if ($nextTrimmed === '') {
-                break;
+                throw InvalidSyntaxException::incompleteDirectiveHeader($index + 1, $header);
             }
 
             $leadingSpaces = strlen($nextLine) - strlen($nextTrimmed);
@@ -310,6 +458,7 @@ final readonly class SassNormalizer implements SourceNormalizer
         int $indentSize,
     ): array {
         $depth = $this->parenthesisBalance($merged);
+        $line  = $index + 1;
 
         $max = count($lines);
 
@@ -318,18 +467,18 @@ final readonly class SassNormalizer implements SourceNormalizer
             $nextTrimmed = ltrim($nextLine);
 
             if ($nextTrimmed === '') {
-                break;
+                throw InvalidSyntaxException::expectedClosingParenthesis($line);
             }
 
             $leadingSpaces = strlen($nextLine) - strlen($nextTrimmed);
             $nextLevel     = intdiv($leadingSpaces, $indentSize);
 
             if ($nextLevel < $level) {
-                break;
+                throw InvalidSyntaxException::expectedClosingParenthesis($line);
             }
 
             if ($nextLevel === $level && ! str_starts_with($nextTrimmed, ')')) {
-                break;
+                throw InvalidSyntaxException::expectedClosingParenthesis($line);
             }
 
             $merged .= ' ' . $nextTrimmed;
@@ -344,10 +493,6 @@ final readonly class SassNormalizer implements SourceNormalizer
 
     private function looksLikeDirectiveHeaderContinuation(string $line): bool
     {
-        if ($line === '') {
-            return false;
-        }
-
         if (str_starts_with($line, '$') || ctype_digit($line[0])) {
             return true;
         }

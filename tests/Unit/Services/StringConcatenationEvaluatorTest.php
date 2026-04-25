@@ -7,22 +7,23 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
-use Bugo\SCSS\Services\ClosureAstValueFormatter;
+use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\StringConcatenationEvaluator;
-use Tests\ReflectionAccessor;
 
 describe('StringConcatenationEvaluator', function () {
     beforeEach(function () {
         $this->evaluator = new StringConcatenationEvaluator(
-            new ClosureAstValueFormatter(
-                fn(AstNode $node, Environment $env): string => match (true) {
-                    $node instanceof NumberNode => "$node->value" . ($node->unit ?? ''),
-                    $node instanceof StringNode => $node->value,
-                    default                     => '',
-                },
-            ),
+            new class implements AstValueFormatterInterface {
+                public function format(AstNode $node, Environment $env): string
+                {
+                    return match (true) {
+                        $node instanceof NumberNode => "$node->value" . ($node->unit ?? ''),
+                        $node instanceof StringNode => $node->value,
+                        default                     => '',
+                    };
+                }
+            },
         );
-        $this->accessor = new ReflectionAccessor($this->evaluator);
     });
 
     describe('evaluate()', function () {
@@ -132,14 +133,41 @@ describe('StringConcatenationEvaluator', function () {
             expect($this->evaluator->evaluate($list))->toBeNull();
         });
 
-        it('covers string concatenation numeric and unit helper edge cases', function () {
-            expect($this->accessor->callMethod('isUnitSuffix', ['%']))->toBeTrue()
-                ->and($this->accessor->callMethod('isUnitSuffix', ['']))->toBeFalse()
-                ->and($this->accessor->callMethod('isUnitSuffix', ['p2']))->toBeFalse()
-                ->and($this->accessor->callMethod('isNumericLikeString', ['']))->toBeFalse()
-                ->and($this->accessor->callMethod('isNumericLikeString', ['12px']))->toBeTrue()
-                ->and($this->accessor->callMethod('isNumericLikeString', ['.5rem']))->toBeTrue()
-                ->and($this->accessor->callMethod('isNumericLikeString', ['-.5rem']))->toBeTrue();
+        it('collapses number plus percent suffix into a dimension', function () {
+            $list = new ListNode([new NumberNode(42), new StringNode('+'), new StringNode('%')], 'space');
+
+            $result = $this->evaluator->evaluate($list);
+
+            expect($result)->toBeInstanceOf(NumberNode::class)
+                ->and($result->value)->toBe(42)
+                ->and($result->unit)->toBe('%');
+        });
+
+        it('does not collapse numbers with invalid or empty unit suffixes', function () {
+            $invalidUnit = new ListNode([new NumberNode(42), new StringNode('+'), new StringNode('p2')], 'space');
+            $emptyUnit   = new ListNode([new NumberNode(42), new StringNode('+'), new StringNode('')], 'space');
+
+            expect($this->evaluator->evaluate($invalidUnit))->toBeNull()
+                ->and($this->evaluator->evaluate($emptyUnit))->toBeNull();
+        });
+
+        it('treats numeric-like unquoted string operands as non-concatenable', function () {
+            $leadingDigits = new ListNode([new StringNode('12px'), new StringNode('+'), new StringNode('solid')], 'space');
+            $leadingDot    = new ListNode([new StringNode('.5rem'), new StringNode('+'), new StringNode('solid')], 'space');
+            $signedDot     = new ListNode([new StringNode('-.5rem'), new StringNode('+'), new StringNode('solid')], 'space');
+
+            expect($this->evaluator->evaluate($leadingDigits))->toBeNull()
+                ->and($this->evaluator->evaluate($leadingDot))->toBeNull()
+                ->and($this->evaluator->evaluate($signedDot))->toBeNull();
+        });
+
+        it('does not treat empty unquoted strings as numeric-like operands', function () {
+            $list = new ListNode([new StringNode(''), new StringNode('+'), new StringNode('solid')], 'space');
+
+            $result = $this->evaluator->evaluate($list);
+
+            expect($result)->toBeInstanceOf(StringNode::class)
+                ->and($result->value)->toBe('solid');
         });
     });
 });

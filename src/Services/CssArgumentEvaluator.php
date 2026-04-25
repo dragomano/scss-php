@@ -18,7 +18,6 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\CssNamedColors;
 use Bugo\SCSS\Values\AstValueTransformer;
-use Closure;
 
 use function in_array;
 use function str_contains;
@@ -29,12 +28,9 @@ final readonly class CssArgumentEvaluator
 {
     private const OPERATORS = ['==', '!=', '>=', '<=', '>', '<', 'and', 'or', 'not'];
 
-    /**
-     * @param Closure(string, array<int, AstNode>): array<int, AstNode> $normalizeCalculationArguments
-     */
     public function __construct(
         private AstValueEvaluatorInterface $valueEvaluator,
-        private Closure $normalizeCalculationArguments,
+        private CalculationArgumentNormalizerInterface $calculationArgumentNormalizer,
     ) {}
 
     /**
@@ -210,7 +206,7 @@ final readonly class CssArgumentEvaluator
         /** @var FunctionNode $node */
         $arguments = $this->expandCssCallArguments($node->arguments, $env);
 
-        return new FunctionNode($node->name, ($this->normalizeCalculationArguments)($node->name, $arguments));
+        return new FunctionNode($node->name, $this->calculationArgumentNormalizer->normalize($node->name, $arguments));
     }
 
     /**

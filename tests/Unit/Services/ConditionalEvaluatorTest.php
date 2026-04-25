@@ -10,18 +10,19 @@ use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
-use Bugo\SCSS\Services\ClosureAstValueEvaluator;
-use Bugo\SCSS\Services\ClosureAstValueFormatter;
+use Bugo\SCSS\Services\AstValueEvaluatorInterface;
+use Bugo\SCSS\Services\AstValueFormatterInterface;
+use Bugo\SCSS\Services\ComparisonListEvaluatorInterface;
 use Bugo\SCSS\Services\ConditionalEvaluator;
 use Bugo\SCSS\Values\ValueFactory;
-use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
 describe('ConditionalEvaluator', function () {
     beforeEach(function () {
         $runtime = RuntimeFactory::createRuntime();
 
-        $this->env                   = new Environment();
+        $this->env = new Environment();
+
         $this->formattedValues       = [];
         $this->evaluatedValues       = [];
         $this->comparisonListResults = [];
@@ -57,16 +58,37 @@ describe('ConditionalEvaluator', function () {
         $this->evaluator = new ConditionalEvaluator(
             $runtime->condition(),
             $runtime->text(),
-            new ClosureAstValueEvaluator(
-                fn(AstNode $node, Environment $env): AstNode => $this->evaluatedValues[spl_object_id($node)] ?? $node,
-            ),
-            new ClosureAstValueFormatter($format),
-            fn(ListNode $node, Environment $env): ?AstNode => $this->comparisonListResults[
-                $format($node, $env)
-            ] ?? null,
+            new class ($this) implements AstValueEvaluatorInterface {
+                public function __construct(private readonly object $testCase) {}
+
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return $this->testCase->evaluatedValues[spl_object_id($node)] ?? $node;
+                }
+            },
+            new class ($format) implements AstValueFormatterInterface {
+                public function __construct(private readonly Closure $format) {}
+
+                public function format(AstNode $node, Environment $env): string
+                {
+                    return ($this->format)($node, $env);
+                }
+            },
+            new class ($this, $format) implements ComparisonListEvaluatorInterface {
+                public function __construct(
+                    private readonly object  $testCase,
+                    private readonly Closure $format,
+                ) {}
+
+                public function evaluate(ListNode $list, Environment $env): ?AstNode
+                {
+                    return $this->testCase->comparisonListResults[
+                        ($this->format)($list, $env)
+                    ] ?? null;
+                }
+            },
             new ValueFactory(),
         );
-        $this->accessor = new ReflectionAccessor($this->evaluator);
     });
 
     it('evaluates special url() arguments using formatted concatenated values', function () {
@@ -91,15 +113,21 @@ describe('ConditionalEvaluator', function () {
 
     it('detects inline if list conditions when a space list is evaluated', function () {
         $condition = new StringNode('condition');
+
         $this->evaluatedValues[spl_object_id($condition)] = new ListNode([
             new BooleanNode(false),
             new StringNode('or'),
             new BooleanNode(true),
         ], 'space');
 
-        $result = $this->accessor->callMethod('evaluateInlineIfCondition', [$condition, $this->env]);
+        $result = $this->evaluator->evaluateInlineIfFunction('if', [
+            $condition,
+            new StringNode('yes'),
+            new StringNode('no'),
+        ], $this->env);
 
-        expect($result)->toBe(['kind' => 'bool', 'value' => true]);
+        expect($result)->toBeInstanceOf(StringNode::class)
+            ->and($result->value)->toBe('yes');
     });
 
     it('returns css expressions for unquoted inline if strings and functions', function () {
@@ -112,168 +140,312 @@ describe('ConditionalEvaluator', function () {
         $this->evaluatedValues[spl_object_id($booleanCondition)] = new StringNode('1 >= 0');
         $this->evaluatedValues[spl_object_id($functionCondition)] = $formattedFunction;
 
-        $plainResult = $this->accessor->callMethod('evaluateInlineIfCondition', [$plainCondition, $this->env]);
-        $booleanResult = $this->accessor->callMethod('evaluateInlineIfCondition', [$booleanCondition, $this->env]);
-        $functionResult = $this->accessor->callMethod('evaluateInlineIfCondition', [$functionCondition, $this->env]);
+        $plainResult = $this->evaluator->evaluateInlineIfFunction('if', [
+            $plainCondition,
+            new StringNode('yes'),
+            new StringNode('no'),
+        ], $this->env);
 
-        expect($plainResult)->toBe(['kind' => 'css', 'expression' => 'screen and (color)'])
-            ->and($booleanResult)->toBe(['kind' => 'bool', 'value' => true])
-            ->and($functionResult)->toBe(['kind' => 'css', 'expression' => 'calc(1px)']);
+        $booleanResult = $this->evaluator->evaluateInlineIfFunction('if', [
+            $booleanCondition,
+            new StringNode('yes'),
+            new StringNode('no'),
+        ], $this->env);
+
+        $functionResult = $this->evaluator->evaluateInlineIfFunction('if', [
+            $functionCondition,
+            new StringNode('yes'),
+            new StringNode('no'),
+        ], $this->env);
+
+        expect($plainResult)->toBeInstanceOf(StringNode::class)
+            ->and($plainResult->value)->toBe('if(screen and (color): yes; else: no)')
+            ->and($booleanResult)->toBeInstanceOf(StringNode::class)
+            ->and($booleanResult->value)->toBe('yes')
+            ->and($functionResult)->toBeInstanceOf(StringNode::class)
+            ->and($functionResult->value)->toBe('if(calc(1px): yes; else: no)');
     });
 
     it('falls back to truthiness for non-string inline if conditions', function () {
         $condition = new StringNode('condition');
+
         $this->evaluatedValues[spl_object_id($condition)] = new NumberNode(1);
 
-        $result = $this->accessor->callMethod('evaluateInlineIfCondition', [$condition, $this->env]);
+        $result = $this->evaluator->evaluateInlineIfFunction('if', [
+            $condition,
+            new StringNode('yes'),
+            new StringNode('no'),
+        ], $this->env);
 
-        expect($result)->toBe(['kind' => 'bool', 'value' => true]);
+        expect($result)->toBeInstanceOf(StringNode::class)
+            ->and($result->value)->toBe('yes');
     });
 
     it('recognizes likely sass boolean condition strings', function () {
-        expect($this->accessor->callMethod('isLikelySassBooleanCondition', ['']))->toBeFalse()
-            ->and($this->accessor->callMethod('isLikelySassBooleanCondition', ['$flag']))->toBeTrue()
-            ->and($this->accessor->callMethod('isLikelySassBooleanCondition', ['not $flag']))->toBeTrue()
-            ->and($this->accessor->callMethod('isLikelySassBooleanCondition', ['1 >= 0']))->toBeTrue()
-            ->and($this->accessor->callMethod('isLikelySassBooleanCondition', ['screen']))->toBeFalse();
+        $this->env->getCurrentScope()->setVariableLocal('flag', new BooleanNode(false));
+
+        $empty = $this->evaluator->evaluateInlineIfFunction(
+            'if',
+            [
+                new StringNode(''),
+                new StringNode('yes'),
+                new StringNode('no'),
+            ],
+            $this->env,
+        );
+
+        $variable = $this->evaluator->evaluateInlineIfFunction(
+            'if',
+            [
+                new StringNode('$flag'),
+                new StringNode('yes'),
+                new StringNode('no'),
+            ],
+            $this->env,
+        );
+
+        $negated = $this->evaluator->evaluateInlineIfFunction(
+            'if',
+            [
+                new StringNode('not $flag'),
+                new StringNode('yes'),
+                new StringNode('no'),
+            ],
+            $this->env,
+        );
+
+        $comparison = $this->evaluator->evaluateInlineIfFunction(
+            'if',
+            [
+                new StringNode('1 >= 0'),
+                new StringNode('yes'),
+                new StringNode('no'),
+            ],
+            $this->env,
+        );
+
+        $css = $this->evaluator->evaluateInlineIfFunction(
+            'if',
+            [
+                new StringNode('screen'), new StringNode('yes'), new StringNode('no'),
+            ],
+            $this->env,
+        );
+
+        expect($empty)->toBeInstanceOf(StringNode::class)
+            ->and($empty->value)->toBe('if(: yes; else: no)')
+            ->and($variable)->toBeInstanceOf(StringNode::class)
+            ->and($variable->value)->toBe('no')
+            ->and($negated)->toBeInstanceOf(StringNode::class)
+            ->and($negated->value)->toBe('yes')
+            ->and($comparison)->toBeInstanceOf(StringNode::class)
+            ->and($comparison->value)->toBe('yes')
+            ->and($css)->toBeInstanceOf(StringNode::class)
+            ->and($css->value)->toBe('if(screen: yes; else: no)');
     });
 
     it('collapses url string concatenation with quotes escapes and empty segments', function () {
-        expect($this->accessor->callMethod('collapseUrlStringConcatenation', ['"foo" + "bar"']))->toBe('"foobar"')
-            ->and($this->accessor->callMethod('collapseUrlStringConcatenation', ['"a\\"b" + "c"']))->toBe('"a\\"bc"')
-            ->and($this->accessor->callMethod('collapseUrlStringConcatenation', ['"a\\\\b" + "c"']))->toBe('"a\\\\bc"')
-            ->and($this->accessor->callMethod('collapseUrlStringConcatenation', [' plain-value ']))->toBe('plain-value')
-            ->and($this->accessor->callMethod('collapseUrlStringConcatenation', [' + ']))->toBe('+');
+        $concatArg         = new NumberNode(10);
+        $escapedQuoteArg   = new NumberNode(11);
+        $escapedSlashArg   = new NumberNode(12);
+        $plainFormattedArg = new NumberNode(13);
+        $emptyCombinedArg  = new NumberNode(14);
+
+        $this->formattedValues[spl_object_id($concatArg)] = '"foo" + "bar"';
+        $this->formattedValues[spl_object_id($escapedQuoteArg)] = '"a\\"b" + "c"';
+        $this->formattedValues[spl_object_id($escapedSlashArg)] = '"a\\\\b" + "c"';
+        $this->formattedValues[spl_object_id($plainFormattedArg)] = ' plain-value ';
+        $this->formattedValues[spl_object_id($emptyCombinedArg)] = ' + ';
+
+        $concat         = $this->evaluator->evaluateSpecialUrlFunction('url', [$concatArg], $this->env);
+        $escapedQuote   = $this->evaluator->evaluateSpecialUrlFunction('url', [$escapedQuoteArg], $this->env);
+        $escapedSlash   = $this->evaluator->evaluateSpecialUrlFunction('url', [$escapedSlashArg], $this->env);
+        $plainFormatted = $this->evaluator->evaluateSpecialUrlFunction('url', [$plainFormattedArg], $this->env);
+        $emptyCombined  = $this->evaluator->evaluateSpecialUrlFunction('url', [$emptyCombinedArg], $this->env);
+        $plain          = $this->evaluator->evaluateSpecialUrlFunction('url', [new StringNode(' plain-value ')], $this->env);
+        $onlyOperator   = $this->evaluator->evaluateSpecialUrlFunction('url', [new StringNode(' + ')], $this->env);
+
+        expect($concat)->toBeInstanceOf(FunctionNode::class)
+            ->and($concat->arguments[0])->toBeInstanceOf(StringNode::class)
+            ->and($concat->arguments[0]->value)->toBe('foobar')
+            ->and($concat->arguments[0]->quoted)->toBeTrue()
+            ->and($escapedQuote->arguments[0]->value)->toBe('a\\"bc')
+            ->and($escapedQuote->arguments[0]->quoted)->toBeTrue()
+            ->and($escapedSlash->arguments[0]->value)->toBe('a\\\\bc')
+            ->and($escapedSlash->arguments[0]->quoted)->toBeTrue()
+            ->and($plainFormatted->arguments[0]->value)->toBe('plain-value')
+            ->and($plainFormatted->arguments[0]->quoted)->toBeFalse()
+            ->and($emptyCombined->arguments[0]->value)->toBe('+')
+            ->and($emptyCombined->arguments[0]->quoted)->toBeFalse()
+            ->and($plain->arguments[0]->value)->toBe(' plain-value ')
+            ->and($plain->arguments[0]->quoted)->toBeFalse()
+            ->and($onlyOperator->arguments[0]->value)->toBe(' + ')
+            ->and($onlyOperator->arguments[0]->quoted)->toBeFalse();
     });
 
     it('combines inline if list conditions for or and and css expressions', function () {
-        $orResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $orResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new StringNode('screen'),
             new StringNode('or'),
             new StringNode('print'),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        $andResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $andResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new StringNode('screen'),
             new StringNode('and'),
             new StringNode('print'),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        expect($orResult)->toBe(['kind' => 'css', 'expression' => 'screen or print'])
-            ->and($andResult)->toBe(['kind' => 'css', 'expression' => 'screen and print']);
+        expect($orResult)->toBeInstanceOf(StringNode::class)
+            ->and($orResult->value)->toBe('if(screen or print: yes; else: no)')
+            ->and($andResult)->toBeInstanceOf(StringNode::class)
+            ->and($andResult->value)->toBe('if(screen and print: yes; else: no)');
     });
 
     it('collapses inline if logical lists to boolean results when css parts are absent', function () {
-        $orResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $orResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new BooleanNode(false),
             new StringNode('or'),
             new BooleanNode(false),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        $andFalseResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $andFalseResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new BooleanNode(true),
             new StringNode('and'),
             new BooleanNode(false),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        $andTrueResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $andTrueResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new BooleanNode(true),
             new StringNode('and'),
             new BooleanNode(true),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        expect($orResult)->toBe(['kind' => 'bool', 'value' => false])
-            ->and($andFalseResult)->toBe(['kind' => 'bool', 'value' => false])
-            ->and($andTrueResult)->toBe(['kind' => 'bool', 'value' => true]);
+        expect($orResult)->toBeInstanceOf(StringNode::class)
+            ->and($orResult->value)->toBe('no')
+            ->and($andFalseResult->value)->toBe('no')
+            ->and($andTrueResult->value)->toBe('yes');
     });
 
     it('handles not inline if list conditions for empty boolean and css expressions', function () {
-        $emptyResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $emptyResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new StringNode('not'),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        $boolResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $boolResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new StringNode('not'),
             new BooleanNode(true),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        $cssResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $cssResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new StringNode('not'),
             new StringNode('screen and print'),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        $recursiveResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $recursiveResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new StringNode('not'),
             new BooleanNode(false),
             new StringNode('or'),
             new BooleanNode(false),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        $multiItemResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $multiItemResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new StringNode('not'),
             new StringNode('screen'),
             new StringNode('print'),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        expect($emptyResult)->toBe(['kind' => 'bool', 'value' => false])
-            ->and($boolResult)->toBe(['kind' => 'bool', 'value' => false])
-            ->and($cssResult)->toBe(['kind' => 'css', 'expression' => 'not (screen and print)'])
-            ->and($recursiveResult)->toBe(['kind' => 'bool', 'value' => true])
-            ->and($multiItemResult)->toBe(['kind' => 'css', 'expression' => 'not screen print']);
+        expect($emptyResult)->toBeInstanceOf(StringNode::class)
+            ->and($emptyResult->value)->toBe('no')
+            ->and($boolResult->value)->toBe('no')
+            ->and($cssResult->value)->toBe('if(not (screen and print): yes; else: no)')
+            ->and($recursiveResult->value)->toBe('yes')
+            ->and($multiItemResult->value)->toBe('if(not screen print: yes; else: no)');
     });
 
     it('evaluates inline if list comparisons and fallbacks', function () {
-        $comparisonResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $comparisonResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new NumberNode(2),
             new StringNode('>'),
             new NumberNode(1),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        $singleResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $singleResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new BooleanNode(true),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        $fallbackResult = $this->accessor->callMethod('evaluateInlineIfListCondition', [[
+        $fallbackResult = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
             new StringNode('screen'),
             new StringNode('print'),
-        ], $this->env]);
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
 
-        expect($comparisonResult)->toBe(['kind' => 'bool', 'value' => true])
-            ->and($singleResult)->toBe(['kind' => 'bool', 'value' => true])
-            ->and($fallbackResult)->toBe(['kind' => 'css', 'expression' => 'screen print']);
+        expect($comparisonResult)->toBeInstanceOf(StringNode::class)
+            ->and($comparisonResult->value)->toBe('yes')
+            ->and($singleResult->value)->toBe('yes')
+            ->and($fallbackResult->value)->toBe('if(screen print: yes; else: no)');
     });
 
     it('evaluates inline if list comparisons only for supported operators', function () {
-        expect($this->accessor->callMethod('evaluateInlineIfListComparison', [[new NumberNode(1)], $this->env]))
-            ->toBeNull()
-            ->and($this->accessor->callMethod('evaluateInlineIfListComparison', [[
-                new NumberNode(1),
-                new StringNode('~='),
-                new NumberNode(1),
-            ], $this->env]))->toBeNull()
-            ->and($this->accessor->callMethod('evaluateInlineIfListComparison', [[
-                new NumberNode(2),
-                new StringNode('>='),
-                new NumberNode(1),
-            ], $this->env]))->toBeTrue();
+        $single = $this->evaluator->evaluateInlineIfFunction(
+            'if',
+            [
+                new ListNode([new NumberNode(1)], 'space'),
+                new StringNode('yes'),
+                new StringNode('no'),
+            ],
+            $this->env,
+        );
+
+        $unsupported = $this->evaluator->evaluateInlineIfFunction(
+            'if',
+            [
+                new ListNode([
+                    new NumberNode(1),
+                    new StringNode('~='),
+                    new NumberNode(1),
+                ], 'space'),
+                new StringNode('yes'),
+                new StringNode('no'),
+            ],
+            $this->env,
+        );
+
+        $supported = $this->evaluator->evaluateInlineIfFunction(
+            'if',
+            [
+                new ListNode([
+                    new NumberNode(2),
+                    new StringNode('>='),
+                    new NumberNode(1),
+                ], 'space'),
+                new StringNode('yes'),
+                new StringNode('no'),
+            ],
+            $this->env,
+        );
+
+        expect($single)->toBeInstanceOf(StringNode::class)
+            ->and($single->value)->toBe('yes')
+            ->and($unsupported->value)->toBe('if(1 ~= 1: yes; else: no)')
+            ->and($supported->value)->toBe('yes');
     });
 
     it('returns null from logical item evaluation when comparison resolution fails', function () {
         $this->comparisonListResults['alpha beta'] = null;
 
-        $orResult = $this->accessor->callMethod('evaluateLogicalItems', [[
+        $orResult = $this->evaluator->evaluateLogicalList(new ListNode([
             new StringNode('alpha'),
             new StringNode('beta'),
             new StringNode('or'),
             new BooleanNode(true),
-        ], $this->env]);
+        ], 'space'), $this->env);
 
-        $andResult = $this->accessor->callMethod('evaluateLogicalItems', [[
+        $andResult = $this->evaluator->evaluateLogicalList(new ListNode([
             new BooleanNode(true),
             new StringNode('and'),
             new StringNode('alpha'),
             new StringNode('beta'),
-        ], $this->env]);
+        ], 'space'), $this->env);
 
         expect($orResult)->toBeNull()
             ->and($andResult)->toBeNull();
@@ -282,15 +454,15 @@ describe('ConditionalEvaluator', function () {
     it('handles logical not evaluation for empty and unresolved operands', function () {
         $this->comparisonListResults['alpha beta'] = null;
 
-        $emptyResult = $this->accessor->callMethod('evaluateLogicalItems', [[
+        $emptyResult = $this->evaluator->evaluateLogicalList(new ListNode([
             new StringNode('not'),
-        ], $this->env]);
+        ], 'space'), $this->env);
 
-        $nullResult = $this->accessor->callMethod('evaluateLogicalItems', [[
+        $nullResult = $this->evaluator->evaluateLogicalList(new ListNode([
             new StringNode('not'),
             new StringNode('alpha'),
             new StringNode('beta'),
-        ], $this->env]);
+        ], 'space'), $this->env);
 
         expect($emptyResult)->toBeInstanceOf(BooleanNode::class)
             ->and($emptyResult->value)->toBeFalse()

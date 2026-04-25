@@ -15,7 +15,6 @@ use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\States\LoadedModule;
-use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
 describe('Module service', function () {
@@ -51,7 +50,7 @@ describe('Module service', function () {
         );
 
         $this->module = $this->runtime->module();
-        $this->ctx    = (new ReflectionAccessor($this->runtime))->getProperty('ctx');
+        $this->state  = $this->module->state();
     });
 
     it('assignModuleVariable() throws when module cannot be resolved', function () {
@@ -74,7 +73,7 @@ describe('Module service', function () {
     });
 
     it('incrementCallDepth() throws when include recursion limit is reached', function () {
-        $this->ctx->moduleState->callDepth = 100;
+        $this->state->callDepth = 100;
 
         expect(fn() => $this->module->incrementCallDepth())
             ->toThrow(MaxIterationsExceededException::class);
@@ -115,12 +114,11 @@ describe('Module service', function () {
         $scope  = new Scope();
         $module = new LoadedModule('/tmp/_theme.scss', $scope, '');
 
-        $this->ctx->moduleState->addByNamespace('/tmp/_theme.scss', $module);
+        $this->state->addByNamespace('/tmp/_theme.scss', $module);
         $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
-
         $this->module->handleUse(new UseNode('theme', 'theme'), $env);
 
-        expect($this->ctx->moduleState->getByNamespace('theme'))->toBeInstanceOf(LoadedModule::class)
+        expect($this->state->getByNamespace('theme'))->toBeInstanceOf(LoadedModule::class)
             ->and($env->getCurrentScope()->getModule('theme'))->toBe($scope)
             ->and($env->getGlobalScope()->getModule('theme'))->toBe($scope);
     });
@@ -129,7 +127,7 @@ describe('Module service', function () {
         $env = new Environment();
 
         $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
-        $this->ctx->moduleState->loadingFiles['/tmp/_theme.scss'] = true;
+        $this->state->loadingFiles['/tmp/_theme.scss'] = true;
 
         expect(fn() => $this->module->handleUse(new UseNode('theme', 'theme'), $env))
             ->toThrow(ModuleResolutionException::class);
@@ -141,6 +139,10 @@ describe('Module service', function () {
 
     it('resolveImport() keeps unterminated quoted imports as raw css', function () {
         expect($this->module->resolveImport('"theme'))->toBe(['type' => 'css', 'raw' => '"theme']);
+    });
+
+    it('resolveImport() treats empty quoted import paths as sass imports with an empty path', function () {
+        expect($this->module->resolveImport('""'))->toBe(['type' => 'sass', 'path' => '']);
     });
 
     it('resolveImport() keeps unquoted imports with media queries as css', function () {
@@ -170,14 +172,14 @@ describe('Module service', function () {
 
     it('loadAndEvaluateModule() throws for circular dependencies during import evaluation', function () {
         $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
-        $this->ctx->moduleState->loadingFiles['/tmp/_theme.scss'] = true;
+        $this->state->loadingFiles['/tmp/_theme.scss'] = true;
 
         expect(fn() => $this->module->loadAndEvaluateModule('theme', fromImport: true))
             ->toThrow(ModuleResolutionException::class);
     });
 
     it('resolveImportForwardConfiguration() returns configuration unchanged when prefix is empty', function () {
-        $env = new Environment();
+        $env    = new Environment();
         $config = ['color' => new StringNode('red')];
 
         $resolved = $this->module->resolveImportForwardConfiguration(
@@ -209,9 +211,27 @@ describe('Module service', function () {
             ->and($resolved)->not->toHaveKey('value');
     });
 
-    it('isCssImportPath() returns false for empty trimmed paths', function () {
-        $accessor = new ReflectionAccessor($this->module);
+    it('mergeScopeExports() skips functions that are not included by show visibility', function () {
+        $from = new Scope();
+        $to   = new Scope();
 
-        expect($accessor->callMethod('isCssImportPath', ['   ']))->toBeFalse();
+        $from->defineFunction('keep-me', [], []);
+        $from->defineFunction('skip-me', [], []);
+
+        $this->module->mergeScopeExports($from, $to, visibility: 'show', members: ['keep-me']);
+
+        expect($to->hasFunction('keep-me'))->toBeTrue()
+            ->and($to->hasFunction('skip-me'))->toBeFalse();
+    });
+
+    it('mergeScopeExports() ignores empty forward members while exporting listed names', function () {
+        $from = new Scope();
+        $to   = new Scope();
+
+        $from->defineFunction('keep-me', [], []);
+
+        $this->module->mergeScopeExports($from, $to, visibility: 'show', members: ['', 'keep-me']);
+
+        expect($to->hasFunction('keep-me'))->toBeTrue();
     });
 });

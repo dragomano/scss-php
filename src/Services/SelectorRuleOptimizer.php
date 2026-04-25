@@ -189,9 +189,12 @@ final class SelectorRuleOptimizer
             }
 
             $result[] = $line;
-
             foreach ($body as $bodyLine) {
                 $result[] = $bodyLine;
+            }
+
+            if ($index >= $count) {
+                break;
             }
 
             $result[] = $lines[$index];
@@ -296,12 +299,6 @@ final class SelectorRuleOptimizer
 
     private function declarationHasVendorValue(string $line): bool
     {
-        $property = $this->extractDeclarationProperty($line);
-
-        if ($property === null) {
-            return false;
-        }
-
         $trimmedLine    = ltrim($line);
         $separatorIndex = (int) strpos($trimmedLine, ':');
 

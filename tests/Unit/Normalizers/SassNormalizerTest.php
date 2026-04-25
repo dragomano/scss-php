@@ -2,13 +2,12 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Exceptions\InvalidSyntaxException;
 use Bugo\SCSS\Normalizers\SassNormalizer;
-use Tests\ReflectionAccessor;
 
 describe('SassNormalizer', function () {
     beforeEach(function () {
         $this->normalizer = new SassNormalizer();
-        $this->accessor   = new ReflectionAccessor($this->normalizer);
     });
 
     it('converts variables and simple rules', function () {
@@ -405,6 +404,120 @@ describe('SassNormalizer', function () {
         expect($this->normalizer->normalize($sass))->toBe($expected);
     });
 
+    it('throws when a split directive header is separated by an empty line', function () {
+        $sass = <<<'SASS'
+        @for
+
+          $i from 1 through 3
+            color: red
+        SASS;
+
+        expect(fn() => $this->normalizer->normalize($sass))
+            ->toThrow(
+                InvalidSyntaxException::class,
+                "Directive header continuation for '@for' cannot be separated by an empty line after line 1.",
+            );
+    });
+
+    it('throws when a split directive header is separated by multiple empty lines', function () {
+        $sass = <<<'SASS'
+        @for
+
+
+          $i from 1 through 3
+            color: red
+        SASS;
+
+        expect(fn() => $this->normalizer->normalize($sass))
+            ->toThrow(
+                InvalidSyntaxException::class,
+                "Directive header continuation for '@for' cannot be separated by an empty line after line 1.",
+            );
+    });
+
+    it('throws when a directive header stays incomplete after an empty line', function () {
+        $sass = <<<'SASS'
+        @for
+
+        text
+          color: red
+        SASS;
+
+        expect(fn() => $this->normalizer->normalize($sass))
+            ->toThrow(InvalidSyntaxException::class, "Incomplete directive header for '@for' at line 1.");
+    });
+
+    it('throws when a parenthesized declaration is interrupted by an empty line', function () {
+        $sass = <<<'SASS'
+        .grid
+          grid-template: (
+
+          color: red
+        SASS;
+
+        expect(fn() => $this->normalizer->normalize($sass))
+            ->toThrow(InvalidSyntaxException::class, "Expected closing ')' for '(' opened at line 2.");
+    });
+
+    it('throws when a balanced parenthesized declaration is interrupted by an empty line', function () {
+        $sass = <<<'SASS'
+        .grid
+          grid-template: (
+
+          )
+        SASS;
+
+        expect(fn() => $this->normalizer->normalize($sass))
+            ->toThrow(InvalidSyntaxException::class, "Expected closing ')' for '(' opened at line 2.");
+    });
+
+    it('throws when a parenthesized declaration dedents before closing', function () {
+        $sass = <<<'SASS'
+        .grid
+          grid-template: (
+        other
+          color: red
+        SASS;
+
+        expect(fn() => $this->normalizer->normalize($sass))
+            ->toThrow(InvalidSyntaxException::class, "Expected closing ')' for '(' opened at line 2.");
+    });
+
+    it('throws when a balanced parenthesized declaration dedents before closing', function () {
+        $sass = <<<'SASS'
+        .grid
+          grid-template: (
+        )
+        SASS;
+
+        expect(fn() => $this->normalizer->normalize($sass))
+            ->toThrow(InvalidSyntaxException::class, "Expected closing ')' for '(' opened at line 2.");
+    });
+
+    it('throws when a same-level parenthesized continuation does not close the declaration', function () {
+        $sass = <<<'SASS'
+        .grid
+          grid-template: (
+          "header"
+          color: red
+        SASS;
+
+        expect(fn() => $this->normalizer->normalize($sass))
+            ->toThrow(InvalidSyntaxException::class, "Expected closing ')' for '(' opened at line 2.");
+    });
+
+    it('throws when a balanced same-level continuation does not close the parenthesized declaration', function () {
+        $sass = <<<'SASS'
+        .grid
+          grid-template: (
+          foo
+          )
+        SASS;
+
+        expect(fn() => $this->normalizer->normalize($sass))
+            ->toThrow(InvalidSyntaxException::class, "Expected closing ')' for '(' opened at line 2.");
+    });
+
     it('handles @each loops', function () {
         $sass = <<<'SASS'
         @each $color in red, green, blue
@@ -417,6 +530,26 @@ describe('SassNormalizer', function () {
           .#{$color} {
             background: $color;
           }
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
+    it('handles split @each headers with an in continuation line', function () {
+        $sass = <<<'SASS'
+        @each
+          $color
+          in red, green, blue
+            .#{$color}
+              background: $color
+        SASS;
+
+        $expected = <<<'SCSS'
+        @each $color in red, green, blue {
+            .#{$color} {
+              background: $color;
+            }
         }
         SCSS;
 
@@ -594,16 +727,6 @@ describe('SassNormalizer', function () {
         expect($this->normalizer->normalize($sass))->toBe($expected);
     });
 
-    it('treats empty directive header continuation line as invalid', function () {
-        expect($this->accessor->callMethod('looksLikeDirectiveHeaderContinuation', ['']))
-            ->toBeFalse();
-    });
-
-    it('treats directive continuation keywords as valid header continuations', function () {
-        expect($this->accessor->callMethod('looksLikeDirectiveHeaderContinuation', ['through 3']))
-            ->toBeTrue();
-    });
-
     it('continues scanning pseudo-classes after selector-like false positives', function () {
         $sass = <<<'SASS'
         .item:hoverable:hover
@@ -742,17 +865,6 @@ describe('SassNormalizer', function () {
     });
 
     describe('Error Handling and Malformed Input', function () {
-        it('handles malformed Sass syntax gracefully', function () {
-            $malformed = ".container\n  color: red\n    .nested\n  margin: 10px\n}";
-
-            $result = $this->normalizer->normalize($malformed);
-
-            expect($result)->toContain('.container {')
-                ->and($result)->toContain('color: red;')
-                ->and($result)->toContain('.nested {')
-                ->and($result)->toContain('margin: 10px;');
-        });
-
         it('processes invalid directives without breaking', function () {
             $invalidSass = ".container\n  @invalid-directive\n  color: red\n";
 
@@ -773,6 +885,34 @@ describe('SassNormalizer', function () {
             $result = $this->normalizer->normalize("   \n\t  \n  ");
 
             expect($result)->toBe('');
+        });
+
+        it('throws for unclosed parentheses in indented sass', function () {
+            $malformed = ".grid\n  color: rgb(255, 0, 0\n";
+
+            expect(fn() => $this->normalizer->normalize($malformed))
+                ->toThrow(InvalidSyntaxException::class, "Expected closing ')' for '(' opened at line 2.");
+        });
+
+        it('throws for unexpected closing parentheses in indented sass', function () {
+            $malformed = ".grid\n  color: red)\n";
+
+            expect(fn() => $this->normalizer->normalize($malformed))
+                ->toThrow(InvalidSyntaxException::class, "Unexpected ')' at line 2.");
+        });
+
+        it('throws for unterminated strings in indented sass', function () {
+            $malformed = ".grid\n  content: \"red\n";
+
+            expect(fn() => $this->normalizer->normalize($malformed))
+                ->toThrow(InvalidSyntaxException::class, 'Unterminated string starting at line 2.');
+        });
+
+        it('throws for unterminated multiline comments in indented sass', function () {
+            $malformed = ".grid\n  /* comment\n";
+
+            expect(fn() => $this->normalizer->normalize($malformed))
+                ->toThrow(InvalidSyntaxException::class, 'Unterminated comment starting at line 2.');
         });
     });
 
@@ -915,4 +1055,4 @@ describe('SassNormalizer', function () {
             expect($this->normalizer->normalize($sass))->toBe($expected);
         });
     });
-})->covers(SassNormalizer::class);
+});

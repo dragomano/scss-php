@@ -9,11 +9,13 @@ use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\MixinNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Parser\CallableDirectiveParser;
+use Bugo\SCSS\Parser\CallableDirectiveParsingContextInterface;
+use Bugo\SCSS\Parser\CallableDirectiveValueContextInterface;
 use Bugo\SCSS\Parser\StreamUtils;
-use Tests\ReflectionAccessor;
 
 function callableDirectiveToken(
     TokenType $type,
@@ -30,8 +32,7 @@ function callableDirectiveToken(
  */
 function createCallableDirectiveParser(array $tokens, array $overrides = []): CallableDirectiveParser
 {
-    $stream = new TokenStream($tokens);
-
+    $stream     = new TokenStream($tokens);
     $parseBlock = $overrides['parseBlock'] ?? static fn(): array => [];
 
     $parseStatementsInsideBlock = $overrides['parseStatementsInsideBlock'] ?? function () use ($stream): array {
@@ -71,17 +72,85 @@ function createCallableDirectiveParser(array $tokens, array $overrides = []): Ca
     $incrementBlockDepth = $overrides['incrementBlockDepth'] ?? static function (): void {};
     $decrementBlockDepth = $overrides['decrementBlockDepth'] ?? static function (): void {};
 
-    return new CallableDirectiveParser(
-        $stream,
+    $parsingContext = new class (
         $parseBlock,
         $parseStatementsInsideBlock,
-        $parseValue,
-        $parseValueUntil,
-        $parseArgumentList,
         $consumeIdentifier,
         $parseRuleFromSelector,
         $incrementBlockDepth,
         $decrementBlockDepth,
+    ) implements CallableDirectiveParsingContextInterface {
+        public function __construct(
+            private readonly Closure $parseBlock,
+            private readonly Closure $parseStatementsInsideBlock,
+            private readonly Closure $consumeIdentifier,
+            private readonly Closure $parseRuleFromSelector,
+            private readonly Closure $incrementBlockDepth,
+            private readonly Closure $decrementBlockDepth,
+        ) {}
+
+        public function parseBlock(): array
+        {
+            return ($this->parseBlock)();
+        }
+
+        public function parseStatementsInsideBlock(): array
+        {
+            return ($this->parseStatementsInsideBlock)();
+        }
+
+        public function consumeIdentifier(): string
+        {
+            return ($this->consumeIdentifier)();
+        }
+
+        public function parseRuleFromSelector(string $selector, int $line = 1, int $column = 1): RuleNode
+        {
+            return ($this->parseRuleFromSelector)($selector, $line, $column);
+        }
+
+        public function incrementBlockDepth(): void
+        {
+            ($this->incrementBlockDepth)();
+        }
+
+        public function decrementBlockDepth(): void
+        {
+            ($this->decrementBlockDepth)();
+        }
+    };
+
+    $valueContext = new class (
+        $parseValue,
+        $parseValueUntil,
+        $parseArgumentList,
+    ) implements CallableDirectiveValueContextInterface {
+        public function __construct(
+            private readonly Closure $parseValue,
+            private readonly Closure $parseValueUntil,
+            private readonly Closure $parseArgumentList,
+        ) {}
+
+        public function parseValue(): AstNode
+        {
+            return ($this->parseValue)();
+        }
+
+        public function parseValueUntil(array $stopTokens): ?AstNode
+        {
+            return ($this->parseValueUntil)($stopTokens);
+        }
+
+        public function parseArgumentList(): array
+        {
+            return ($this->parseArgumentList)();
+        }
+    };
+
+    return new CallableDirectiveParser(
+        $stream,
+        $parsingContext,
+        $valueContext,
     );
 }
 
@@ -146,30 +215,88 @@ describe('CallableDirectiveParser', function () {
 
     it('falls back to raw strings for empty list default parameter values', function () {
         $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::IDENTIFIER, 'sample'),
+            callableDirectiveToken(TokenType::LPAREN, '('),
+            callableDirectiveToken(TokenType::DOLLAR, '$'),
+            callableDirectiveToken(TokenType::IDENTIFIER, 'flag'),
+            callableDirectiveToken(TokenType::COLON, ':'),
             callableDirectiveToken(TokenType::EXCLAMATION, '!'),
             callableDirectiveToken(TokenType::IDENTIFIER, 'optional'),
             callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
             callableDirectiveToken(TokenType::EOF),
         ], [
             'parseValueUntil' => static fn(array $stopTypes): AstNode => new ListNode([], 'comma'),
         ]);
 
-        $value = (new ReflectionAccessor($parser))->callMethod('parseParameterDefaultValue');
+        /** @var MixinNode $node */
+        $node = $parser->parseMixinDirective();
 
-        expect($value)->toBeInstanceOf(StringNode::class)
-            ->and($value->value)->toBe('!optional');
+        expect($node)->toBeInstanceOf(MixinNode::class)
+            ->and($node->arguments)->toHaveCount(1)
+            ->and($node->arguments[0]->defaultValue)->toBeInstanceOf(StringNode::class)
+            ->and($node->arguments[0]->defaultValue->value)->toBe('!optional');
     });
 
     it('returns null for empty fallback default parameter values', function () {
         $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::IDENTIFIER, 'sample'),
+            callableDirectiveToken(TokenType::LPAREN, '('),
+            callableDirectiveToken(TokenType::DOLLAR, '$'),
+            callableDirectiveToken(TokenType::IDENTIFIER, 'flag'),
+            callableDirectiveToken(TokenType::COLON, ':'),
             callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
             callableDirectiveToken(TokenType::EOF),
         ], [
             'parseValueUntil' => static fn(array $stopTypes): AstNode => new ListNode([], 'comma'),
         ]);
 
-        $value = (new ReflectionAccessor($parser))->callMethod('parseParameterDefaultValue');
+        /** @var MixinNode $node */
+        $node = $parser->parseMixinDirective();
 
-        expect($value)->toBeNull();
+        expect($node)->toBeInstanceOf(MixinNode::class)
+            ->and($node->arguments)->toHaveCount(1)
+            ->and($node->arguments[0]->defaultValue)->toBeNull();
+    });
+
+    it('stops parsing parameter lists when only whitespace remains before the closing parenthesis', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::IDENTIFIER, 'sample'),
+            callableDirectiveToken(TokenType::LPAREN, '('),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /* @var $node MixinNode */
+        $node = $parser->parseMixinDirective();
+
+        expect($node)->toBeInstanceOf(MixinNode::class)
+            ->and($node->name)->toBe('sample')
+            ->and($node->arguments)->toBe([]);
+    });
+
+    it('stops parsing parameter lists when a bare identifier cannot be read', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::IDENTIFIER, 'sample'),
+            callableDirectiveToken(TokenType::LPAREN, '('),
+            callableDirectiveToken(TokenType::COMMA, ','),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /* @var $node MixinNode */
+        $node = $parser->parseMixinDirective();
+
+        expect($node)->toBeInstanceOf(MixinNode::class)
+            ->and($node->name)->toBe('sample')
+            ->and($node->arguments)->toBe([]);
     });
 });

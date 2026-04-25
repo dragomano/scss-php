@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Handlers\DeclarationNodeHandler;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Text;
@@ -91,4 +93,72 @@ it('interpolates formatted declaration values that still contain interpolation m
         ->toBe('color: blue;');
 
     Mockery::close();
+});
+
+it('does not reject bare declarations when the flow-control guard is not strictly true', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+    $ctx->env->getCurrentScope()->setVariableLocal('__flow_control_declaration_guard', 1);
+
+    expect($runtime->declaration()->handle(new DeclarationNode('color', new StringNode('red')), $ctx))
+        ->toBe('color: red;');
+});
+
+it('rejects bare declarations when the at-rule stack variable is not an array', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+    $scope   = $ctx->env->getCurrentScope();
+
+    $scope->setVariableLocal('__flow_control_declaration_guard', true);
+    $scope->setVariableLocal('__at_rule_stack', 'invalid');
+
+    expect(fn() => $runtime->declaration()->handle(new DeclarationNode('color', new StringNode('red')), $ctx))
+        ->toThrow(SassErrorException::class, 'Expected identifier.');
+});
+
+it('rejects bare declarations when the at-rule stack is empty', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+    $scope   = $ctx->env->getCurrentScope();
+
+    $scope->setVariableLocal('__flow_control_declaration_guard', true);
+    $scope->setVariableLocal('__at_rule_stack', []);
+
+    expect(fn() => $runtime->declaration()->handle(new DeclarationNode('color', new StringNode('red')), $ctx))
+        ->toThrow(SassErrorException::class, 'Expected identifier.');
+});
+
+it('rejects bare declarations when the last at-rule stack entry is not a directive entry', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+    $scope   = $ctx->env->getCurrentScope();
+
+    $scope->setVariableLocal('__flow_control_declaration_guard', true);
+    $scope->setVariableLocal('__at_rule_stack', [
+        AtRuleContextEntry::supports('(display: grid)'),
+    ]);
+
+    expect(fn() => $runtime->declaration()->handle(new DeclarationNode('color', new StringNode('red')), $ctx))
+        ->toThrow(SassErrorException::class, 'Expected identifier.');
+});
+
+it('allows bare declarations for descriptor-compatible directive contexts and rejects other directives', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+    $scope   = $ctx->env->getCurrentScope();
+
+    $scope->setVariableLocal('__flow_control_declaration_guard', true);
+    $scope->setVariableLocal('__at_rule_stack', [
+        AtRuleContextEntry::directive('font-face'),
+    ]);
+
+    expect($runtime->declaration()->handle(new DeclarationNode('color', new StringNode('red')), $ctx))
+        ->toBe('color: red;');
+
+    $scope->setVariableLocal('__at_rule_stack', [
+        AtRuleContextEntry::directive('media'),
+    ]);
+
+    expect(fn() => $runtime->declaration()->handle(new DeclarationNode('color', new StringNode('red')), $ctx))
+        ->toThrow(SassErrorException::class, 'Expected identifier.');
 });

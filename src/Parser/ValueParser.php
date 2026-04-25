@@ -17,7 +17,6 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
-use Closure;
 
 use function count;
 use function ctype_digit;
@@ -28,22 +27,22 @@ use function strtolower;
 use function substr;
 use function trim;
 
-final readonly class ValueParser
+final readonly class ValueParser implements
+    CallableDirectiveValueContextInterface,
+    FunctionCallParsingContextInterface,
+    ModuleDirectiveContextInterface,
+    RuleParserValueContextInterface
 {
     private FunctionCallParser $functions;
 
-    /**
-     * @param Closure(string): AstNode $parseInlineValue
-     */
-    public function __construct(private TokenStream $stream, Closure $parseInlineValue)
-    {
+    public function __construct(
+        private TokenStream $stream,
+        InlineValueParserInterface $inlineValueParser,
+    ) {
         $this->functions = new FunctionCallParser(
             $this->stream,
-            $parseInlineValue,
-            fn(): ?AstNode => $this->parseSingleValue(),
-            fn(array $stopTokens): ?AstNode => $this->parseValueUntil($stopTokens),
-            fn(): VariableReferenceNode => $this->parseVariableReference(),
-            fn(): ?AstNode => $this->parseCommaSeparatedValue(),
+            $inlineValueParser,
+            $this,
         );
     }
 
@@ -592,6 +591,11 @@ final readonly class ValueParser
         return $token->value;
     }
 
+    public function parseCommaSeparatedValue(): ?AstNode
+    {
+        return $this->parseValueUntil([TokenType::COMMA, TokenType::RPAREN]);
+    }
+
     /**
      * @param array<int, TokenType> $stopTokens
      */
@@ -613,11 +617,6 @@ final readonly class ValueParser
     private function parseCommaSeparatedValueOrEmptyList(): AstNode
     {
         return $this->parseValueOrEmptyList([TokenType::COMMA, TokenType::RPAREN]);
-    }
-
-    private function parseCommaSeparatedValue(): ?AstNode
-    {
-        return $this->parseValueUntil([TokenType::COMMA, TokenType::RPAREN]);
     }
 
     private function consumeArgumentSeparator(): void

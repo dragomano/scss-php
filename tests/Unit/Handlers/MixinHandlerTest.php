@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 use Bugo\SCSS\Nodes\BooleanNode;
@@ -10,23 +11,23 @@ use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
+use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Tests\ReflectionAccessor;
+use Bugo\SCSS\Runtime\Scope;
 use Tests\RuntimeFactory;
 
 beforeEach(function () {
-    $this->runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);
-    $this->ctx     = RuntimeFactory::context();
+    $this->compilerContext = new CompilerContext();
+    $this->compilerContext->functionRegistry->registerUse('sass:meta', 'meta');
 
-    $runtimeContext = new ReflectionAccessor($this->runtime);
-    $ctxObject      = $runtimeContext->getProperty('ctx');
-    $ctxObject->functionRegistry->registerUse('sass:meta', 'meta');
+    $this->runtime = RuntimeFactory::createRuntime(
+        [__DIR__ . '/../../fixtures'],
+        context: $this->compilerContext,
+    );
 
-    $blockAccessor   = new ReflectionAccessor($this->runtime->block());
-    $this->mixin     = $blockAccessor->getProperty('mixin');
-    $this->mixinTest = new ReflectionAccessor($this->mixin);
+    $this->ctx = RuntimeFactory::context();
 });
 
 it('throws for unresolved local mixin includes', function () {
@@ -46,6 +47,15 @@ it('returns an empty string for meta.apply when the first argument is not a mixi
 it('returns an empty string for meta.apply when the referenced mixin cannot be resolved', function () {
     $result = $this->runtime->block()->handleInclude(
         new IncludeNode('meta', 'apply', [new StringNode('theme.missing')]),
+        $this->ctx,
+    );
+
+    expect($result)->toBe('');
+});
+
+it('returns an empty string for meta.apply when an unqualified referenced mixin cannot be resolved', function () {
+    $result = $this->runtime->block()->handleInclude(
+        new IncludeNode('meta', 'apply', [new StringNode('missing')]),
         $this->ctx,
     );
 
@@ -151,16 +161,17 @@ it('appends non-declaration mixin output directly when source mappings are disab
 });
 
 it('defers non-declaration mixin output through deferred chunks when source mappings are enabled', function () {
+    $compilerContext = new CompilerContext();
+    $compilerContext->functionRegistry->registerUse('sass:meta', 'meta');
+    $compilerContext->sourceMapState->collectMappings = true;
+
     $runtime = RuntimeFactory::createRuntime(
         [__DIR__ . '/../../fixtures'],
         new CompilerOptions(sourceMapFile: 'output.css.map'),
+        $compilerContext,
     );
-    $ctx = RuntimeFactory::context();
 
-    $runtimeContext = new ReflectionAccessor($runtime);
-    $ctxObject      = $runtimeContext->getProperty('ctx');
-    $ctxObject->functionRegistry->registerUse('sass:meta', 'meta');
-    $ctxObject->sourceMapState->collectMappings = true;
+    $ctx = RuntimeFactory::context();
 
     $ctx->env->getCurrentScope()->defineMixin('mixed', [], [
         new DeclarationNode('color', new StringNode('red')),
@@ -170,41 +181,75 @@ it('defers non-declaration mixin output through deferred chunks when source mapp
     $result = $runtime->block()->handleInclude(new IncludeNode(null, 'mixed'), $ctx);
 
     expect($result)->toBe("color: red;\n/*! note */")
-        ->and($ctxObject->sourceMapState->mappings)->toHaveCount(2);
+        ->and($compilerContext->sourceMapState->mappings)->toHaveCount(2);
 });
 
-it('returns null namespace for unqualified mixin references', function () {
-    expect($this->mixinTest->callMethod('parseMixinReference', ['plain']))->toBe([null, 'plain']);
-});
-
-it('splits qualified mixin references into namespace and member', function () {
-    expect($this->mixinTest->callMethod('parseMixinReference', ['theme.box']))->toBe(['theme', 'box']);
-});
-
-it('returns unresolved results for local and namespaced missing mixins', function () {
-    $scope = $this->ctx->env->getCurrentScope();
-
-    expect($this->mixinTest->callMethod('resolveMixin', [null, 'missing', $scope]))->toBe([null, null])
-        ->and($this->mixinTest->callMethod('resolveMixin', ['theme', 'missing', $scope]))->toBe([null, null]);
-});
-
-it('returns an empty configuration for meta.load-css when the with argument is not a map', function () {
-    expect($this->mixinTest->callMethod('metaLoadCssConfiguration', [new StringNode('bad')]))->toBe([]);
-});
-
-it('extracts string keyed configuration entries for meta.load-css maps', function () {
-    $configuration = $this->mixinTest->callMethod('metaLoadCssConfiguration', [
-        new MapNode([
-            new MapPair(new StringNode('primary'), new StringNode('red')),
-            new MapPair(new NumberNode(1), new StringNode('ignored')),
-        ]),
+it('resolves unqualified meta.apply mixin references from the current scope', function () {
+    $this->ctx->env->getCurrentScope()->defineMixin('plain', [], [
+        new DeclarationNode('color', new StringNode('red')),
     ]);
 
-    expect($configuration)->toHaveKey('primary')
-        ->and($configuration['primary'])->toBeInstanceOf(StringNode::class);
+    $result = $this->runtime->block()->handleInclude(
+        new IncludeNode('meta', 'apply', [new StringNode('plain')]),
+        $this->ctx,
+    );
 
-    /** @var StringNode $primary */
-    $primary = $configuration['primary'];
+    expect($result)->toBe('color: red;');
+});
 
-    expect($primary->value)->toBe('red');
+it('resolves qualified meta.apply mixin references from module scopes', function () {
+    $moduleScope = new Scope();
+    $moduleScope->defineMixin('box', [], [
+        new DeclarationNode('border', new StringNode('1px solid red')),
+    ]);
+
+    $this->ctx->env->getCurrentScope()->addModule('theme', $moduleScope);
+
+    $result = $this->runtime->block()->handleInclude(
+        new IncludeNode('meta', 'apply', [new StringNode('theme.box')]),
+        $this->ctx,
+    );
+
+    expect($result)->toBe('border: 1px solid red;');
+});
+
+it('ignores non-map with arguments for meta.load-css configuration', function () {
+    $result = $this->runtime->block()->handleInclude(
+        new IncludeNode('meta', 'load-css', [
+            new StringNode('configurable_with_css'),
+            new NamedArgumentNode('with', new StringNode('bad')),
+        ]),
+        $this->ctx,
+    );
+
+    $expected = /** @lang text */ <<<'CSS'
+    .configurable-sample {
+      color: red;
+      margin: 8px;
+    }
+    CSS;
+
+    expect($result)->toEqualCss($expected);
+});
+
+it('uses only string keyed with entries for meta.load-css configuration maps', function () {
+    $result = $this->runtime->block()->handleInclude(
+        new IncludeNode('meta', 'load-css', [
+            new StringNode('configurable_with_css'),
+            new NamedArgumentNode('with', new MapNode([
+                new MapPair(new StringNode('primary'), new StringNode('blue')),
+                new MapPair(new NumberNode(1), new StringNode('ignored')),
+            ])),
+        ]),
+        $this->ctx,
+    );
+
+    $expected = /** @lang text */ <<<'CSS'
+    .configurable-sample {
+      color: blue;
+      margin: 8px;
+    }
+    CSS;
+
+    expect($result)->toEqualCss($expected);
 });

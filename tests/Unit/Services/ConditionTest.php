@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
@@ -13,12 +14,12 @@ use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
-use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
 describe('Condition', function () {
     beforeEach(function () {
-        $this->runtime   = RuntimeFactory::createRuntime();
+        $this->ctx       = new CompilerContext();
+        $this->runtime   = RuntimeFactory::createRuntime(context: $this->ctx);
         $this->condition = $this->runtime->condition();
         $this->env       = new Environment();
     });
@@ -38,33 +39,29 @@ describe('Condition', function () {
     });
 
     it('reuses normalized cached conditions and handles empty or wrapped inputs', function () {
-        $ctx = (new ReflectionAccessor($this->runtime))->getProperty('ctx');
-        $ctx->conditionCacheState->parsed['1 < 2'] = [
+        $this->ctx->conditionCacheState->parsed['1 < 2'] = [
             'type'     => 'comparison',
             'left'     => '1',
             'operator' => '<',
             'right'    => '2',
         ];
 
-        $parsed = (new ReflectionAccessor($this->condition))->callMethod('parse', [' 1 < 2 ']);
-
-        expect($parsed['type'])->toBe('comparison')
-            ->and($parsed['left'])->toBe('1')
-            ->and($ctx->conditionCacheState->parsed[' 1 < 2 '])->toBe($ctx->conditionCacheState->parsed['1 < 2'])
+        expect($this->condition->evaluate(' 1 < 2 ', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->parsed[' 1 < 2 ']['type'])->toBe('comparison')
+            ->and($this->ctx->conditionCacheState->parsed[' 1 < 2 ']['left'])->toBe('1')
+            ->and($this->ctx->conditionCacheState->parsed[' 1 < 2 '])->toBe($this->ctx->conditionCacheState->parsed['1 < 2'])
             ->and($this->condition->evaluate('   ', $this->env))->toBeFalse()
-            ->and($ctx->conditionCacheState->parsed[''])->toBe(['type' => 'empty'])
+            ->and($this->ctx->conditionCacheState->parsed[''])->toBe(['type' => 'empty'])
             ->and($this->condition->evaluate('(1 < 2)', $this->env))->toBeTrue()
-            ->and($ctx->conditionCacheState->parsed['(1 < 2)']['type'])->toBe('comparison');
+            ->and($this->ctx->conditionCacheState->parsed['(1 < 2)']['type'])->toBe('comparison');
     });
 
     it('parses top-level or conditions and falls back to leaf values when operators stay nested', function () {
-        $accessor = new ReflectionAccessor($this->condition);
-        $orNode   = $accessor->callMethod('parse', ['1 < 0 or 2 < 3']);
-        $leafNode = $accessor->callMethod('parse', ['fn(1 or 2)']);
-
-        expect($orNode['type'])->toBe('or')
-            ->and($orNode['items'])->toHaveCount(2)
-            ->and($leafNode)->toBe([
+        expect($this->condition->evaluate('1 < 0 or 2 < 3', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->parsed['1 < 0 or 2 < 3']['type'])->toBe('or')
+            ->and($this->ctx->conditionCacheState->parsed['1 < 0 or 2 < 3']['items'])->toHaveCount(2)
+            ->and($this->condition->evaluate('fn(1 or 2)', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->parsed['fn(1 or 2)'])->toBe([
                 'type' => 'value',
                 'raw'  => 'fn(1 or 2)',
             ]);
@@ -129,6 +126,8 @@ describe('Condition', function () {
     it('compares scalar values and normalizes numeric precision', function () {
         expect($this->condition->compare(new StringNode('b'), '>', new StringNode('a'), $this->env))->toBeTrue()
             ->and($this->condition->compare(new StringNode('a'), '<', new StringNode('b'), $this->env))->toBeTrue()
+            ->and($this->condition->compare(new StringNode('same'), '==', new StringNode('same'), $this->env))->toBeTrue()
+            ->and($this->condition->compare(new StringNode('same'), '!=', new StringNode('same'), $this->env))->toBeFalse()
             // Numbers within 1e-11 fuzzy-equal range (differ by 4e-12 < 5e-12): equal
             ->and($this->condition->compare(new NumberNode(1.000000000004), '==', new NumberNode(1.0), $this->env))->toBeTrue()
             // Numbers outside 1e-11 range (differ by 4e-11): not equal per spec
@@ -177,76 +176,49 @@ describe('Condition', function () {
             ->and($this->condition->compare(new NumberNode(2), '!=', new NumberNode(2), $this->env))->toBeFalse();
     });
 
-    it('evaluates compareNumbers branches for incompatible and equal numeric values directly', function () {
-        $accessor = new ReflectionAccessor($this->condition);
-
-        expect($accessor->callMethod('compareNumbers', [
-            new NumberNode(1, 'px'),
-            '!=',
-            new NumberNode(1, 'deg'),
-        ]))->toBeTrue()
-            ->and($accessor->callMethod('compareNumbers', [
-                new NumberNode(1, 'px'),
-                '==',
-                new NumberNode(1, 'deg'),
-            ]))->toBeFalse()
-            ->and($accessor->callMethod('compareNumbers', [
-                new NumberNode(2),
-                '==',
-                new NumberNode(2),
-            ]))->toBeTrue()
-            ->and($accessor->callMethod('compareNumbers', [
-                new NumberNode(2),
-                '!=',
-                new NumberNode(2),
-            ]))->toBeFalse();
-    });
-
-    it('evaluates direct scalar compareValues equality branches', function () {
-        $accessor = new ReflectionAccessor($this->condition);
-
-        expect($accessor->callMethod('compareValues', ['same', '==', 'same']))->toBeTrue()
-            ->and($accessor->callMethod('compareValues', ['same', '!=', 'same']))->toBeFalse();
-    });
-
     it('resolves literal values and caches split comparisons', function () {
-        $accessor = new ReflectionAccessor($this->condition);
-        $ctx      = (new ReflectionAccessor($this->runtime))->getProperty('ctx');
+        $this->ctx->conditionCacheState->comparison['foo >= bar'] = ['foo', '>=', 'bar'];
 
-        $empty            = $accessor->callMethod('resolveLiteralValue', ['']);
-        $hex              = $accessor->callMethod('resolveLiteralValue', ['#AbCd']);
-        $comparison       = $accessor->callMethod('splitComparison', ['foo >= bar']);
-        $cachedComparison = $accessor->callMethod('splitComparison', ['foo >= bar']);
+        expect($this->condition->evaluate('#AbCd', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->literalValue['#AbCd'])->toBeInstanceOf(ColorNode::class)
+            ->and($this->ctx->conditionCacheState->literalValue['#AbCd']->value)->toBe('#AbCd')
+            ->and($this->condition->evaluate('foo >= bar', $this->env))->toBeTrue()
+            ->and($this->condition->evaluate('foo >= bar', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->comparison['foo >= bar'])->toBe(['foo', '>=', 'bar']);
+    });
 
-        expect($empty)->toBeInstanceOf(StringNode::class)
-            ->and($empty->value)->toBe('')
-            ->and($hex)->toBeInstanceOf(ColorNode::class)
-            ->and($hex->value)->toBe('#AbCd')
-            ->and($comparison)->toBe(['foo', '>=', 'bar'])
-            ->and($cachedComparison)->toBe($comparison)
-            ->and($ctx->conditionCacheState->comparison['foo >= bar'])->toBe($comparison);
+    it('ignores incomplete comparison operands and caches the miss', function () {
+        expect($this->condition->evaluate('>= 10', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->comparison['>= 10'])->toBeNull();
     });
 
     it('handles number and color literal edge cases', function () {
-        $accessor = new ReflectionAccessor($this->condition);
+        $this->ctx->conditionCacheState->parsed['cached-empty'] = [
+            'type' => 'value',
+            'raw'  => '',
+        ];
 
-        expect($accessor->callMethod('parseNumberLiteral', ['']))->toBeNull()
-            ->and($accessor->callMethod('parseNumberLiteral', ['+']))->toBeNull()
-            ->and($accessor->callMethod('parseNumberLiteral', ['1.25em']))->toBe(['1.25', 'em'])
-            ->and($accessor->callMethod('parseNumberLiteral', ['1px2']))->toBeNull()
-            ->and($accessor->callMethod('isHexColorLiteral', ['#abcd']))->toBeTrue()
-            ->and($accessor->callMethod('isHexColorLiteral', ['#12']))->toBeFalse()
-            ->and($accessor->callMethod('isHexColorLiteral', ['#xyz']))->toBeFalse();
+        expect($this->condition->evaluate('+', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->literalValue['+'])->toBeInstanceOf(StringNode::class)
+            ->and($this->condition->evaluate('1.25em', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->literalValue['1.25em'])->toBeInstanceOf(NumberNode::class)
+            ->and($this->ctx->conditionCacheState->literalValue['1.25em']->value)->toBe(1.25)
+            ->and($this->ctx->conditionCacheState->literalValue['1.25em']->unit)->toBe('em')
+            ->and($this->condition->evaluate('cached-empty', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->literalValue[''])->toBeInstanceOf(StringNode::class)
+            ->and($this->ctx->conditionCacheState->literalValue['']->value)->toBe('')
+            ->and($this->condition->evaluate('1px2', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->literalValue['1px2'])->toBeInstanceOf(StringNode::class)
+            ->and($this->condition->evaluate('#abcd', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->literalValue['#abcd'])->toBeInstanceOf(ColorNode::class)
+            ->and($this->condition->evaluate('#12', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->literalValue['#12'])->toBeInstanceOf(StringNode::class)
+            ->and($this->condition->evaluate('#xyz', $this->env))->toBeTrue()
+            ->and($this->ctx->conditionCacheState->literalValue['#xyz'])->toBeInstanceOf(StringNode::class);
     });
 
     it('resolves parsed function-like values and falls back when reparsing does not yield a declaration', function () {
-        $accessor = new ReflectionAccessor($this->condition);
-
-        $resolvedFunction = $accessor->callMethod('resolveValue', ['calc(1px + 2px)', $this->env]);
-
-        expect($resolvedFunction)->toBeInstanceOf(NumberNode::class)
-            ->and($resolvedFunction->value)->toBe(3.0)
-            ->and($resolvedFunction->unit)->toBe('px');
+        expect($this->condition->evaluate('calc(1px + 2px) == 3px', $this->env))->toBeTrue();
 
         $parser = new class implements ParserInterface {
             public function setTrackSourceLocations(bool $track): void {}
@@ -257,12 +229,13 @@ describe('Condition', function () {
             }
         };
 
-        $runtime   = RuntimeFactory::createRuntime(parser: $parser);
+        $ctx       = new CompilerContext();
+        $runtime   = RuntimeFactory::createRuntime(context: $ctx, parser: $parser);
         $condition = $runtime->condition();
-        $accessor  = new ReflectionAccessor($condition);
-        $fallback  = $accessor->callMethod('resolveValue', ['func(test)', new Environment()]);
+        $env       = new Environment();
 
-        expect($fallback)->toBeInstanceOf(StringNode::class)
-            ->and($fallback->value)->toBe('func(test)');
+        expect($condition->evaluate('func(test)', $env))->toBeTrue()
+            ->and($ctx->conditionCacheState->literalValue['func(test)'])->toBeInstanceOf(StringNode::class)
+            ->and($ctx->conditionCacheState->literalValue['func(test)']->value)->toBe('func(test)');
     });
 });

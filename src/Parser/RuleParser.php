@@ -12,7 +12,6 @@ use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
-use Closure;
 
 use function in_array;
 use function max;
@@ -25,20 +24,10 @@ use function trim;
 
 final class RuleParser
 {
-    /**
-     * @param Closure(): AstNode $parseValue
-     * @param Closure(): array{global: bool, default: bool, important: bool} $parseValueModifiers
-     * @param Closure(): string $parseCustomPropertyValue
-     * @param Closure(): bool $isInsideBraces
-     * @param Closure(string, int, int): RuleNode $parseRuleFromSelector
-     */
     public function __construct(
         private readonly TokenStream $stream,
-        private readonly Closure $parseValue,
-        private readonly Closure $parseValueModifiers,
-        private readonly Closure $parseCustomPropertyValue,
-        private readonly Closure $isInsideBraces,
-        private readonly Closure $parseRuleFromSelector,
+        private readonly RuleParserValueContextInterface $valueContext,
+        private readonly RuleParserContextInterface $context,
         private bool $trackSourceLocations = true,
     ) {}
 
@@ -66,8 +55,8 @@ final class RuleParser
 
         $this->stream->skipWhitespace();
 
-        $value     = ($this->parseValue)();
-        $modifiers = ($this->parseValueModifiers)();
+        $value     = $this->valueContext->parseValue();
+        $modifiers = $this->valueContext->parseValueModifiers();
 
         $this->consumeSemicolon();
 
@@ -107,8 +96,8 @@ final class RuleParser
 
         $this->stream->skipWhitespace();
 
-        $value     = ($this->parseValue)();
-        $modifiers = ($this->parseValueModifiers)();
+        $value     = $this->valueContext->parseValue();
+        $modifiers = $this->valueContext->parseValueModifiers();
 
         $this->consumeSemicolon();
 
@@ -121,7 +110,7 @@ final class RuleParser
             return $this->parseRule();
         }
 
-        if (($this->isInsideBraces)() && $this->stream->is(TokenType::CSS_VARIABLE)) {
+        if ($this->context->isInsideBraces() && $this->stream->is(TokenType::CSS_VARIABLE)) {
             $token = $this->stream->current();
 
             if (str_starts_with($token->value, '--')) {
@@ -139,11 +128,11 @@ final class RuleParser
         $this->stream->skipWhitespace();
 
         if ($this->stream->is(TokenType::LBRACE)) {
-            return ($this->parseRuleFromSelector)($selectorOrProperty, $startLine, $startColumn);
+            return $this->context->parseRuleFromSelector($selectorOrProperty, $startLine, $startColumn);
         }
 
         if ($this->stream->is(TokenType::COLON)) {
-            if (($this->isInsideBraces)()) {
+            if ($this->context->isInsideBraces()) {
                 if (str_starts_with(trim($selectorOrProperty), '--')) {
                     return $this->parseDeclarationFromProperty($selectorOrProperty, $startLine, $startColumn);
                 }
@@ -225,7 +214,7 @@ final class RuleParser
 
         $selector = trim($selector);
 
-        return ($this->parseRuleFromSelector)($selector, $startLine, $startColumn);
+        return $this->context->parseRuleFromSelector($selector, $startLine, $startColumn);
     }
 
     public function parseDeclarationFromProperty(string $property, int $line = 1, int $column = 1): DeclarationNode
@@ -234,12 +223,12 @@ final class RuleParser
         $this->stream->skipWhitespace();
 
         if (str_starts_with(trim($property), '--')) {
-            $value = new StringNode(($this->parseCustomPropertyValue)());
+            $value = new StringNode($this->valueContext->parseCustomPropertyValue());
         } else {
-            $value = ($this->parseValue)();
+            $value = $this->valueContext->parseValue();
         }
 
-        $modifiers = ($this->parseValueModifiers)();
+        $modifiers = $this->valueContext->parseValueModifiers();
 
         $this->consumeSemicolon();
 
@@ -295,7 +284,7 @@ final class RuleParser
                     continue;
                 }
 
-                if (($this->isInsideBraces)()) {
+                if ($this->context->isInsideBraces()) {
                     break;
                 }
 
@@ -438,11 +427,11 @@ final class RuleParser
         $this->stream->advance();
         $this->stream->skipWhitespace();
 
-        $tailValue = ($this->parseCustomPropertyValue)();
+        $tailValue = $this->valueContext->parseCustomPropertyValue();
         $separator = $inlineValue !== '' && $tailValue !== '' ? ' ' : '';
         $value     = $inlineValue . $separator . $tailValue;
 
-        $modifiers = ($this->parseValueModifiers)();
+        $modifiers = $this->valueContext->parseValueModifiers();
 
         $this->consumeSemicolon();
 

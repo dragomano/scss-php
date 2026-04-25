@@ -388,6 +388,15 @@ describe('DirectiveParser', function () {
             expect($node)->toBeInstanceOf(SupportsNode::class)
                 ->and($node->condition)->toContain('not');
         });
+
+        it('stops reading supports conditions after the loop guard threshold', function () {
+            $ast = $this->parser->parse('@supports ' . str_repeat('(', 1002) . 'display:grid');
+            $node = $ast->children[0];
+
+            expect($node)->toBeInstanceOf(SupportsNode::class)
+                ->and(strlen($node->condition))->toBe(1000)
+                ->and($node->condition)->toBe(str_repeat('(', 1000));
+        });
     });
 
     describe('generic / unknown directives', function () {

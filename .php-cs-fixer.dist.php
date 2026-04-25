@@ -8,7 +8,7 @@ use PhpCsFixer\Runner\Parallel\ParallelConfigFactory;
 
 $finder = Finder::create()
     ->in([__DIR__ . '/src', __DIR__ . '/tests'])
-    ->append([__DIR__ . '/benchmark.php', __DIR__ . '/spaces.php'])
+    ->append([__DIR__ . '/benchmark.php'])
     ->name('*.php')
     ->ignoreDotFiles(true)
     ->ignoreVCS(true);

@@ -722,7 +722,10 @@ final class SassMathModule extends AbstractModule
      */
     private function deprecatedMathSuggestion(string $name, array $positional): string
     {
-        $arguments = $this->hasRawArguments() ? $this->rawPositionalArguments() : $positional;
+        $rawArguments = $this->activeBuiltinContext?->rawArguments;
+        $arguments = $rawArguments !== null
+            ? $this->rawPositionalArguments($rawArguments)
+            : $positional;
 
         return 'math.' . $name . '(' . implode(', ', $this->describeArguments($arguments)) . ')';
     }

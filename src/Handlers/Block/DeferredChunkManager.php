@@ -538,11 +538,11 @@ final readonly class DeferredChunkManager
             if ($entry->type === 'directive' && $entry->name === 'media') {
                 unset($stack[$index]);
 
-                return array_values($stack);
+                break;
             }
         }
 
-        return $stack;
+        return array_values($stack);
     }
 
     private function shouldDeferBubblingChunkToTrailingRoot(AstNode $node): bool

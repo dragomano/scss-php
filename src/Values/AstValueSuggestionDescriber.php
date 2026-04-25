@@ -28,12 +28,8 @@ final class AstValueSuggestionDescriber
         return $described;
     }
 
-    public static function describe(?AstNode $value): string
+    public static function describe(AstNode $value): string
     {
-        if ($value === null) {
-            return '';
-        }
-
         if ($value instanceof ListNode || $value instanceof ArgumentListNode) {
             $items = self::describeArguments($value->items);
             $glue  = match ($value->separator) {

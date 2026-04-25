@@ -52,4 +52,10 @@ describe(SassList::class, function () {
 
         expect($list->toCss())->toBe('4px, 4px');
     });
-})->covers(SassList::class);
+
+    it('filters null items before rendering the list', function () {
+        $list = new SassList(['null', '10px', 'null', '20px'], 'space');
+
+        expect($list->toCss())->toBe('10px 20px');
+    });
+});

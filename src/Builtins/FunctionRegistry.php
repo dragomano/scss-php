@@ -112,11 +112,7 @@ final class FunctionRegistry
                 return null;
             }
 
-            $module = $this->getModule($moduleName);
-
-            if ($module === null) {
-                return null;
-            }
+            $module = $this->loadModule($moduleName);
 
             if (! in_array($function, $module->getFunctions(), true)) {
                 return null;
@@ -133,11 +129,7 @@ final class FunctionRegistry
 
         [$moduleName, $function] = $target;
 
-        $module = $this->getModule($moduleName);
-
-        if ($module === null) {
-            return null;
-        }
+        $module = $this->loadModule($moduleName);
 
         try {
             return $module->call($function, $positional, $named, $callContext);
@@ -232,15 +224,20 @@ final class FunctionRegistry
 
     private function getModule(string $moduleName): ?ModuleInterface
     {
+        if (! $this->hasModule($moduleName)) {
+            return null;
+        }
+
+        return $this->loadModule($moduleName);
+    }
+
+    private function loadModule(string $moduleName): ModuleInterface
+    {
         if (isset($this->modules[$moduleName])) {
             return $this->modules[$moduleName];
         }
 
-        $factory = $this->moduleFactories[$moduleName] ?? null;
-
-        if ($factory === null) {
-            return null;
-        }
+        $factory = $this->moduleFactories[$moduleName];
 
         $module = is_string($factory) ? new $factory() : $factory();
 

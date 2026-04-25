@@ -12,8 +12,9 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Parser\FunctionCallParser;
+use Bugo\SCSS\Parser\FunctionCallParsingContextInterface;
+use Bugo\SCSS\Parser\InlineValueParserInterface;
 use Bugo\SCSS\Parser\StreamUtils;
-use Tests\ReflectionAccessor;
 
 function functionCallToken(
     TokenType $type,
@@ -129,17 +130,50 @@ function createFunctionCallParser(array $tokens, array $overrides = []): array
         return new StringNode($buffer);
     };
 
-    return [
-        new FunctionCallParser(
-            $stream,
-            $parseInlineValue,
-            $parseSingleValue,
-            $parseValueUntil,
-            $parseVariableReference,
-            $parseCommaSeparatedValue,
-        ),
-        $stream,
-    ];
+    $inlineValueParser = new class ($parseInlineValue) implements InlineValueParserInterface {
+        public function __construct(private readonly Closure $parseInlineValue) {}
+
+        public function parseInlineValue(string $expression): AstNode
+        {
+            return ($this->parseInlineValue)($expression);
+        }
+    };
+
+    $parsingContext = new class (
+        $parseSingleValue,
+        $parseValueUntil,
+        $parseVariableReference,
+        $parseCommaSeparatedValue,
+    ) implements FunctionCallParsingContextInterface {
+        public function __construct(
+            private readonly Closure $parseSingleValue,
+            private readonly Closure $parseValueUntil,
+            private readonly Closure $parseVariableReference,
+            private readonly Closure $parseCommaSeparatedValue,
+        ) {}
+
+        public function parseSingleValue(): ?AstNode
+        {
+            return ($this->parseSingleValue)();
+        }
+
+        public function parseValueUntil(array $stopTokens): ?AstNode
+        {
+            return ($this->parseValueUntil)($stopTokens);
+        }
+
+        public function parseVariableReference(): VariableReferenceNode
+        {
+            return ($this->parseVariableReference)();
+        }
+
+        public function parseCommaSeparatedValue(): ?AstNode
+        {
+            return ($this->parseCommaSeparatedValue)();
+        }
+    };
+
+    return [new FunctionCallParser($stream, $inlineValueParser, $parsingContext), $stream];
 }
 
 describe('FunctionCallParser', function () {
@@ -196,12 +230,18 @@ describe('FunctionCallParser', function () {
 
     it('escapes backslashes when quoting strings for reparsing', function () {
         [$parser] = createFunctionCallParser([
+            functionCallToken(TokenType::LPAREN, '('),
+            functionCallToken(TokenType::STRING, 'a\\b'),
+            functionCallToken(TokenType::RPAREN, ')'),
             functionCallToken(TokenType::EOF),
         ]);
 
-        $result = (new ReflectionAccessor($parser))->callMethod('quoteStringForReparse', ['a\\b']);
+        $node = $parser->parseUrlFunctionFromName();
 
-        expect($result)->toBe('"a\\\\b"');
+        expect($node)->toBeInstanceOf(FunctionNode::class)
+            ->and($node->arguments)->toHaveCount(1)
+            ->and($node->arguments[0])->toBeInstanceOf(StringNode::class)
+            ->and($node->arguments[0]->value)->toBe('"a\\\\b"');
     });
 
     it('restores stream position when inline if condition is missing', function () {
@@ -213,47 +253,139 @@ describe('FunctionCallParser', function () {
             'parseValueUntil' => static fn(array $stopTypes): ?AstNode => null,
         ]);
 
-        $result = (new ReflectionAccessor($parser))->callMethod('tryParseInlineIfExpressionArguments');
+        $result = $parser->parseFunctionFromName('if');
 
-        expect($result)->toBeNull()
-            ->and($stream->getPosition())->toBe(0);
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->arguments)->toBe([])
+            ->and($stream->current()->type)->toBe(TokenType::EOF);
     });
 
     it('rejects empty and interpolation-only unquoted urls', function () {
         [$parser] = createFunctionCallParser([
+            functionCallToken(TokenType::LPAREN, '('),
+            functionCallToken(TokenType::RPAREN, ')'),
             functionCallToken(TokenType::EOF),
         ]);
 
-        $accessor = new ReflectionAccessor($parser);
+        $emptyUrl = $parser->parseUrlFunctionFromName();
 
-        expect($accessor->callMethod('isValidUnquotedUrl', ['']))->toBeFalse()
-            ->and($accessor->callMethod('isValidUnquotedUrl', ['#{asset}']))->toBeFalse();
+        [$parserWithInterpolation] = createFunctionCallParser([
+            functionCallToken(TokenType::LPAREN, '('),
+            functionCallToken(TokenType::HASH),
+            functionCallToken(TokenType::LBRACE, '{'),
+            functionCallToken(TokenType::IDENTIFIER, 'asset'),
+            functionCallToken(TokenType::RBRACE, '}'),
+            functionCallToken(TokenType::RPAREN, ')'),
+            functionCallToken(TokenType::EOF),
+        ]);
+
+        $interpolatedUrl = $parserWithInterpolation->parseUrlFunctionFromName();
+
+        expect($emptyUrl)->toBeInstanceOf(FunctionNode::class)
+            ->and($emptyUrl->arguments)->toBe([])
+            ->and($interpolatedUrl)->toBeInstanceOf(FunctionNode::class)
+            ->and($interpolatedUrl->arguments)->toHaveCount(1)
+            ->and($interpolatedUrl->arguments[0])->toBeInstanceOf(StringNode::class)
+            ->and($interpolatedUrl->arguments[0]->value)->toBe('#{asset}');
     });
 
     it('converts variable references and lists back to strings', function () {
-        [$parser] = createFunctionCallParser([
+        $stream = null;
+        $call   = 0;
+
+        [$parser, $stream] = createFunctionCallParser([
+            functionCallToken(TokenType::LPAREN, '('),
+            functionCallToken(TokenType::IDENTIFIER, 'left'),
+            functionCallToken(TokenType::ASSIGN, '='),
+            functionCallToken(TokenType::IDENTIFIER, 'right'),
+            functionCallToken(TokenType::RPAREN, ')'),
             functionCallToken(TokenType::EOF),
+        ], [
+            'parseSingleValue' => function () use (&$stream, &$call): ?AstNode {
+                $call++;
+                $stream?->advance();
+
+                return match ($call) {
+                    1 => new ListNode([
+                        new VariableReferenceNode('theme.color'),
+                        new StringNode('solid'),
+                    ]),
+                    2 => new VariableReferenceNode('fallback'),
+                    default => null,
+                };
+            },
         ]);
 
-        $accessor = new ReflectionAccessor($parser);
-        $list = new ListNode([
-            new VariableReferenceNode('theme.color'),
-            new StringNode('solid'),
-        ]);
+        $node = $parser->parseFunctionFromName('legacy');
 
-        expect($accessor->callMethod('nodeToString', [new VariableReferenceNode('theme.color')]))
-            ->toBe('$theme.color')
-            ->and($accessor->callMethod('nodeToString', [$list]))->toBe('$theme.color solid');
+        expect($node)->toBeInstanceOf(FunctionNode::class)
+            ->and($node->arguments)->toHaveCount(1)
+            ->and($node->arguments[0])->toBeInstanceOf(StringNode::class)
+            ->and($node->arguments[0]->value)->toBe('$theme.color solid=$fallback');
     });
 
     it('returns an empty string for unsupported node types', function () {
-        [$parser] = createFunctionCallParser([
+        $stream = null;
+        $call   = 0;
+
+        [$parser, $stream] = createFunctionCallParser([
+            functionCallToken(TokenType::LPAREN, '('),
+            functionCallToken(TokenType::IDENTIFIER, 'left'),
+            functionCallToken(TokenType::ASSIGN, '='),
+            functionCallToken(TokenType::IDENTIFIER, 'right'),
+            functionCallToken(TokenType::RPAREN, ')'),
             functionCallToken(TokenType::EOF),
+        ], [
+            'parseSingleValue' => function () use (&$stream, &$call): ?AstNode {
+                $call++;
+                $stream?->advance();
+
+                return match ($call) {
+                    1 => new class extends AstNode {},
+                    2 => new StringNode('fallback'),
+                    default => null,
+                };
+            },
         ]);
 
-        $accessor = new ReflectionAccessor($parser);
-        $node = new class extends AstNode {};
+        $node = $parser->parseFunctionFromName('legacy');
 
-        expect($accessor->callMethod('nodeToString', [$node]))->toBe('');
+        expect($node)->toBeInstanceOf(FunctionNode::class)
+            ->and($node->arguments)->toHaveCount(1)
+            ->and($node->arguments[0])->toBeInstanceOf(StringNode::class)
+            ->and($node->arguments[0]->value)->toBe('=fallback');
+    });
+
+    it('breaks out of the function argument loop after the iteration guard is hit', function () {
+        [$parser, $stream] = createFunctionCallParser([
+            functionCallToken(TokenType::LPAREN, '('),
+            functionCallToken(TokenType::IDENTIFIER, 'stuck'),
+            functionCallToken(TokenType::EOF),
+        ], [
+            'parseSingleValue' => static fn(): ?AstNode => new StringNode('stuck'),
+            'parseCommaSeparatedValue' => static fn(): ?AstNode => null,
+        ]);
+
+        $node = $parser->parseFunctionFromName('loop');
+
+        expect($node)->toBeInstanceOf(FunctionNode::class)
+            ->and($node->arguments)->toBe([])
+            ->and($stream->current()->type)->toBe(TokenType::IDENTIFIER);
+    });
+
+    it('stops parsing function arguments when no parser can consume the current token', function () {
+        [$parser, $stream] = createFunctionCallParser([
+            functionCallToken(TokenType::LPAREN, '('),
+            functionCallToken(TokenType::AT, '@'),
+            functionCallToken(TokenType::EOF),
+        ], [
+            'parseCommaSeparatedValue' => static fn(): ?AstNode => null,
+        ]);
+
+        $node = $parser->parseFunctionFromName('broken');
+
+        expect($node)->toBeInstanceOf(FunctionNode::class)
+            ->and($node->arguments)->toBe([])
+            ->and($stream->current()->type)->toBe(TokenType::AT);
     });
 });

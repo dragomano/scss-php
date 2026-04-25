@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Builtins\Color\Operations;
 
 use Bugo\Iris\Spaces\HslColor;
-use Bugo\Iris\Spaces\LabColor;
 use Bugo\Iris\Spaces\OklchColor;
 use Bugo\Iris\Spaces\RgbColor;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
@@ -88,14 +87,18 @@ final readonly class ColorFunctionEvaluator
 
         $rgb = $this->converter->toRgb($color);
 
-        $scaledRgb = $this->manipulators->legacy->scale($rgb, $this->runtime->modelConverter->rgbToHslColor($rgb), [
-            'red'        => $this->parseScalePercentage($named, 'red'),
-            'green'      => $this->parseScalePercentage($named, 'green'),
-            'blue'       => $this->parseScalePercentage($named, 'blue'),
-            'alpha'      => $this->parseScalePercentage($named, 'alpha'),
-            'saturation' => $this->parseScalePercentage($named, 'saturation'),
-            'lightness'  => $this->parseScalePercentage($named, 'lightness'),
-        ]);
+        $scaledRgb = $this->manipulators->legacy->scale(
+            $rgb,
+            $this->runtime->modelConverter->rgbToHslColor($rgb),
+            [
+                'red'        => $this->parseScalePercentage($named, 'red'),
+                'green'      => $this->parseScalePercentage($named, 'green'),
+                'blue'       => $this->parseScalePercentage($named, 'blue'),
+                'alpha'      => $this->parseScalePercentage($named, 'alpha'),
+                'saturation' => $this->parseScalePercentage($named, 'saturation'),
+                'lightness'  => $this->parseScalePercentage($named, 'lightness'),
+            ],
+        );
 
         return $this->converter->serializeRgbResult($scaledRgb);
     }
@@ -286,7 +289,11 @@ final readonly class ColorFunctionEvaluator
         $grayRgb   = $this->runtime->spaceConverter->oklchToSrgb($grayOklch);
 
         if ($nativeSpace === 'srgb') {
-            return $this->converter->serializeAsSrgbString($grayRgb->rValue(), $grayRgb->gValue(), $grayRgb->bValue());
+            return $this->converter->serializeAsSrgbString(
+                $grayRgb->rValue(),
+                $grayRgb->gValue(),
+                $grayRgb->bValue(),
+            );
         }
 
         return $this->converter->serializeAsFloatRgb($grayRgb);
@@ -497,11 +504,7 @@ final readonly class ColorFunctionEvaluator
                 ? $this->manipulators->perceptual->changeLab($lab, $values)
                 : $this->manipulators->perceptual->adjustLab($lab, $values);
 
-            if (! $isLegacy) {
-                return $this->converter->buildLabColorNode($newLabInner);
-            }
-
-            return $this->serializeLabAsFloatRgb($newLabInner);
+            return $this->converter->buildLabColorNode($newLabInner);
         }
 
         $lab = $this->runtime->spaceConverter->xyzD50ToLabColor(
@@ -606,11 +609,6 @@ final readonly class ColorFunctionEvaluator
     private function createOklchFromRgb(RgbColor $rgb): OklchColor
     {
         return $this->converter->createOklchFromRgb($rgb);
-    }
-
-    private function serializeLabAsFloatRgb(LabColor $lab): AstNode
-    {
-        return $this->serializeFloatRgbFromByteRgb($this->converter->convertLabToRgb($lab));
     }
 
     private function serializeFloatRgbFromByteRgb(RgbColor $rgb): AstNode

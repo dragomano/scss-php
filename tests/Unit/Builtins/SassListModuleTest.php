@@ -9,7 +9,6 @@ use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnknownListSeparatorException;
 use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\ArgumentListNode;
-use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
@@ -17,13 +16,12 @@ use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Tests\ReflectionAccessor;
+use Bugo\SCSS\Runtime\BuiltinCallContext;
 
 describe('SassListModule', function () {
     beforeEach(function () {
-        $this->module   = new SassListModule();
-        $this->list     = new ListNode([new StringNode('a'), new StringNode('b'), new StringNode('c')]);
-        $this->accessor = new ReflectionAccessor($this->module);
+        $this->module = new SassListModule();
+        $this->list   = new ListNode([new StringNode('a'), new StringNode('b'), new StringNode('c')]);
     });
 
     it('exposes metadata', function () {
@@ -48,6 +46,7 @@ describe('SassListModule', function () {
 
     it('evaluates append', function () {
         $result = $this->module->call('append', [$this->list, new StringNode('d'), new StringNode('comma')], []);
+
         expect($result)->toBeInstanceOf(ListNode::class)
             ->and($result->separator)->toBe('comma')
             ->and(count($result->items))->toBe(4);
@@ -68,11 +67,13 @@ describe('SassListModule', function () {
 
     it('evaluates index', function () {
         $result = $this->module->call('index', [$this->list, new StringNode('b')], []);
+
         expect($result->value)->toBe(2);
     });
 
     it('evaluates is-bracketed', function () {
         $result = $this->module->call('is-bracketed', [new ListNode([new NumberNode(1)], 'space', true)], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)
             ->and($result->value)->toBeTrue();
     });
@@ -82,6 +83,7 @@ describe('SassListModule', function () {
         $second = new ListNode([new NumberNode(3)], 'comma');
 
         $result = $this->module->call('join', [$first, $second, new StringNode('slash'), new StringNode('auto')], []);
+
         expect($result)->toBeInstanceOf(ListNode::class)
             ->and($result->separator)->toBe('slash')
             ->and($result->bracketed)->toBeTrue();
@@ -89,6 +91,7 @@ describe('SassListModule', function () {
 
     it('evaluates length', function () {
         $result = $this->module->call('length', [$this->list], []);
+
         expect($result->value)->toBe(3);
     });
 
@@ -105,32 +108,38 @@ describe('SassListModule', function () {
 
     it('evaluates nth', function () {
         $result = $this->module->call('nth', [$this->list, new NumberNode(2)], []);
+
         expect($result->value)->toBe('b');
     });
 
     it('accepts near-integer index for nth', function () {
         $result = $this->module->call('nth', [$this->list, new NumberNode(2.000000000004)], []);
+
         expect($result->value)->toBe('b');
     });
 
     it('evaluates separator', function () {
         $result = $this->module->call('separator', [new ListNode([new NumberNode(1), new NumberNode(2)], 'slash')], []);
+
         expect($result->value)->toBe('slash');
     });
 
     it('returns space for separator of empty list', function () {
         $result = $this->module->call('separator', [new ListNode([], 'comma')], []);
+
         expect($result->value)->toBe('space');
     });
 
     it('evaluates set-nth', function () {
         $result = $this->module->call('set-nth', [$this->list, new NumberNode(2), new StringNode('x')], []);
+
         expect($result)->toBeInstanceOf(ListNode::class)
             ->and($result->items[1]->value)->toBe('x');
     });
 
     it('evaluates slash', function () {
         $result = $this->module->call('slash', [new NumberNode(10, 'px'), new NumberNode(12, 'px')], []);
+
         expect($result)->toBeInstanceOf(ListNode::class)
             ->and($result->separator)->toBe('slash')
             ->and(count($result->items))->toBe(2);
@@ -205,95 +214,32 @@ describe('SassListModule', function () {
             ->toThrow(UnknownListSeparatorException::class);
     });
 
-    it('covers private suggestion and formatting helpers', function () {
-        $appendSuggestion = $this->accessor->callMethod('appendSuggestionArguments', [
-            [$this->list, new StringNode('d')],
-            ['separator' => new StringNode('comma')],
+    it('treats non-boolean non-auto bracketed values as true when joining lists', function () {
+        $result = $this->module->call('join', [$this->list, new ListNode([new StringNode('d')])], [
+            'bracketed' => new NumberNode(1),
         ]);
-        $joinSuggestion = $this->accessor->callMethod('joinSuggestionArguments', [
-            [$this->list, new ListNode([new StringNode('x')])],
-            ['bracketed' => new BooleanNode(true)],
-        ]);
-        $separatorSuggestion = $this->accessor->callMethod('deprecatedListSuggestion', [
-            'separator',
-            [$this->list],
-            [],
-        ]);
-        $describeArgs = $this->accessor->callMethod('describeArguments', [[new NumberNode(1), new StringNode('x')]]);
 
-        expect($appendSuggestion)->toContain('$separator: comma')
-            ->and($joinSuggestion)->toContain('$bracketed: ')
-            ->and($separatorSuggestion)->toContain('list.separator(')
-            ->and($describeArgs)->toBe(['1', 'x']);
+        expect($result)->toBeInstanceOf(ListNode::class)
+            ->and($result->bracketed)->toBeTrue();
     });
 
-    it('covers private describeValue branches', function () {
-        $empty     = $this->accessor->callMethod('describeValue', [null]);
-        $quoted    = $this->accessor->callMethod('describeValue', [new StringNode('quoted', true)]);
-        $bracketed = $this->accessor->callMethod('describeValue', [new ListNode(
-            [new NumberNode(1)],
-            'space',
-            true,
-        )]);
-        $emptyList = $this->accessor->callMethod('describeValue', [new ListNode([], 'space')]);
-        $commaList = $this->accessor->callMethod('describeValue', [new ListNode(
-            [new NumberNode(1), new NumberNode(2)],
-            'comma',
-        )]);
-        $spaceList = $this->accessor->callMethod('describeValue', [new ListNode(
-            [new StringNode('a'), new StringNode('b')],
-            'space',
-        )]);
+    it('includes named bracketed arguments in deprecated global join suggestions', function () {
+        $warnings = [];
+        $context  = new BuiltinCallContext(
+            logWarning: static function (string $message) use (&$warnings): void {
+                $warnings[] = $message;
+            },
+            builtinDisplayName: 'join',
+            rawArguments: [$this->list, new ListNode([new StringNode('x')])],
+        );
 
-        $map = $this->accessor->callMethod('describeValue', [new MapNode([
-            new MapPair(new StringNode('k'), new NumberNode(1)),
-        ])]);
+        $this->module->call('join', [$this->list, new ListNode([new StringNode('x')])], [
+            'bracketed' => new BooleanNode(true),
+        ], $context);
 
-        $fallback = $this->accessor->callMethod('describeValue', [new class extends AstNode {}]);
-
-        expect($empty)->toBe('')
-            ->and($quoted)->toBe('"quoted"')
-            ->and($bracketed)->toBe('[1]')
-            ->and($emptyList)->toBe('()')
-            ->and($commaList)->toBe('(1, 2)')
-            ->and($spaceList)->toBe('a b')
-            ->and($map)->toBe('(k: 1)')
-            ->and($fallback)->toBe('');
-    });
-
-    it('covers private integer and index helpers', function () {
-        $rounded  = $this->accessor->callMethod('requireInteger', [new NumberNode(2.000000000004), 'list.nth() index']);
-        $autoJoin = $this->accessor->callMethod('autoJoinSeparator', ['space', 'comma']);
-
-        expect($rounded)->toBe(2)
-            ->and($autoJoin)->toBe('comma')
-            ->and(fn() => $this->accessor->callMethod('requireInteger', [new StringNode('oops'), 'list.nth() index']))
-            ->toThrow(InvalidArgumentTypeException::class)
-            ->and(fn() => $this->accessor->callMethod('requireInteger', [new NumberNode(2.5), 'list.nth() index']))
-            ->toThrow(InvalidArgumentTypeException::class)
-            ->and(fn() => $this->accessor->callMethod('resolveIndex', [1, 0, 'list.nth()']))
-            ->toThrow(BuiltinArgumentException::class)
-            ->and(fn() => $this->accessor->callMethod('resolveIndex', [0, 3, 'list.nth()']))
-            ->toThrow(BuiltinArgumentException::class)
-            ->and(fn() => $this->accessor->callMethod('resolveIndex', [4, 3, 'list.nth()']))
-            ->toThrow(BuiltinArgumentException::class);
-    });
-
-    it('covers private separator and bracket helpers', function () {
-        $auto              = $this->accessor->callMethod('resolveSeparator', [new StringNode('auto'), 'slash']);
-        $slash             = $this->accessor->callMethod('resolveSeparator', [new StringNode('slash'), 'space']);
-        $autoBracketed     = $this->accessor->callMethod('resolveBracketed', [new StringNode('auto'), false]);
-        $boolBracketed     = $this->accessor->callMethod('resolveBracketed', [new BooleanNode(false), true]);
-        $fallbackBracketed = $this->accessor->callMethod('resolveBracketed', [new NumberNode(1), false]);
-
-        expect($auto)->toBe('slash')
-            ->and($slash)->toBe('slash')
-            ->and($autoBracketed)->toBeFalse()
-            ->and($boolBracketed)->toBeFalse()
-            ->and($fallbackBracketed)->toBeTrue()
-            ->and(fn() => $this->accessor->callMethod('resolveSeparator', [new NumberNode(1), 'space']))
-            ->toThrow(InvalidArgumentTypeException::class)
-            ->and(fn() => $this->accessor->callMethod('resolveSeparator', [new StringNode('weird'), 'space']))
-            ->toThrow(UnknownListSeparatorException::class);
+        expect($warnings)->toHaveCount(1)
+            ->and($warnings[0])->toContain('join() is deprecated')
+            ->and($warnings[0])->toContain('$bracketed: ')
+            ->and($warnings[0])->toContain('list.join(a b c, x, $bracketed: )');
     });
 });

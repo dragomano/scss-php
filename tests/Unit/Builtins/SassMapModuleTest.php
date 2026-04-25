@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Bugo\SCSS\Builtins\SassMapModule;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
-use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
@@ -14,13 +13,11 @@ use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
-use Tests\ReflectionAccessor;
 
 describe('SassMapModule', function () {
     beforeEach(function () {
-        $this->module   = new SassMapModule();
-        $this->accessor = new ReflectionAccessor($this->module);
-        $this->map      = new MapNode([
+        $this->module = new SassMapModule();
+        $this->map    = new MapNode([
             new MapPair(new StringNode('a'), new NumberNode(1)),
             new MapPair(new StringNode('nested'), new MapNode([
                 new MapPair(new StringNode('b'), new NumberNode(2)),
@@ -75,28 +72,33 @@ describe('SassMapModule', function () {
 
     it('evaluates get', function () {
         $result = $this->module->call('get', [$this->map, new StringNode('nested'), new StringNode('b')], []);
+
         expect($result->value)->toBe(2);
     });
 
     it('returns null for missing key in get', function () {
         $result = $this->module->call('get', [$this->map, new StringNode('missing')], []);
+
         expect($result)->toBeInstanceOf(NullNode::class);
     });
 
     it('evaluates has-key', function () {
         $result = $this->module->call('has-key', [$this->map, new StringNode('nested'), new StringNode('b')], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)
             ->and($result->value)->toBeTrue();
     });
 
     it('returns false for missing key in has-key', function () {
         $result = $this->module->call('has-key', [$this->map, new StringNode('missing')], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)
             ->and($result->value)->toBeFalse();
     });
 
     it('evaluates keys', function () {
         $result = $this->module->call('keys', [$this->map], []);
+
         expect($result)->toBeInstanceOf(ListNode::class)
             ->and(count($result->items))->toBe(2);
     });
@@ -124,24 +126,28 @@ describe('SassMapModule', function () {
 
     it('evaluates remove', function () {
         $result = $this->module->call('remove', [$this->map, new StringNode('a')], []);
+
         expect($result)->toBeInstanceOf(MapNode::class)
             ->and(count($result->pairs))->toBe(1);
     });
 
     it('evaluates remove without keys', function () {
         $result = $this->module->call('remove', [$this->map], []);
+
         expect($result)->toBeInstanceOf(MapNode::class)
             ->and(count($result->pairs))->toBe(2);
     });
 
     it('evaluates set', function () {
         $result = $this->module->call('set', [$this->map, new StringNode('nested'), new StringNode('x'), new NumberNode(5)], []);
+
         expect($result)->toBeInstanceOf(MapNode::class)
             ->and($result->pairs[1]->value)->toBeInstanceOf(MapNode::class);
     });
 
     it('evaluates values', function () {
         $result = $this->module->call('values', [$this->map], []);
+
         expect($result)->toBeInstanceOf(ListNode::class)
             ->and(count($result->items))->toBe(2);
     });
@@ -208,69 +214,14 @@ describe('SassMapModule', function () {
             ->and($result->pairs[0]->value->pairs[0]->value->value)->toBe(9);
     });
 
-    it('covers merge() guard for non-integer last variadic index', function () {
-        $patch = new MapNode([
-            new MapPair(new StringNode('x'), new NumberNode(9)),
-        ]);
-
-        expect(fn() => $this->accessor->callMethod('merge', [[
-            0 => $this->map,
-            'path' => new StringNode('nested'),
-            'patch' => $patch,
-        ], null]))->toThrow(MissingFunctionArgumentsException::class);
-    });
-
-    it('returns the original map when deep-remove receives an empty path', function () {
-        $result = $this->accessor->callMethod('removeNested', [$this->map, []]);
-
-        expect($result)->toBeInstanceOf(MapNode::class)
-            ->and($result)->toEqual($this->map);
-    });
-
     it('returns the original map when deep-remove cannot descend into a scalar or missing path', function () {
-        $scalarPathResult = $this->module->call('deep-remove', [$this->map, new StringNode('a'), new StringNode('x')], []);
+        $scalarPathResult  = $this->module->call('deep-remove', [$this->map, new StringNode('a'), new StringNode('x')], []);
         $missingPathResult = $this->module->call('deep-remove', [$this->map, new StringNode('missing')], []);
 
         expect($scalarPathResult)->toBeInstanceOf(MapNode::class)
             ->and($scalarPathResult)->toEqual($this->map)
             ->and($missingPathResult)->toBeInstanceOf(MapNode::class)
             ->and($missingPathResult)->toEqual($this->map);
-    });
-
-    it('returns the original map when modifyNested is called with an empty path and non-map result', function () {
-        $result = $this->accessor->callMethod('modifyNested', [
-            $this->map,
-            [],
-            static fn(MapNode $map): NumberNode => new NumberNode(99),
-            true,
-        ]);
-
-        expect($result)->toBeInstanceOf(MapNode::class)
-            ->and($result)->toEqual($this->map);
-    });
-
-    it('preserves the map when modifyNested misses a path and nesting is disabled', function () {
-        $result = $this->accessor->callMethod('modifyNested', [
-            $this->map,
-            [new StringNode('missing'), new StringNode('leaf')],
-            static fn(AstNode $existing): NumberNode => new NumberNode(10),
-            false,
-        ]);
-
-        expect($result)->toBeInstanceOf(MapNode::class)
-            ->and($result)->toEqual($this->map);
-    });
-
-    it('preserves the map when modifyNested hits a scalar before the tail and nesting is disabled', function () {
-        $result = $this->accessor->callMethod('modifyNested', [
-            $this->map,
-            [new StringNode('a'), new StringNode('leaf')],
-            static fn(AstNode $existing): NumberNode => new NumberNode(10),
-            false,
-        ]);
-
-        expect($result)->toBeInstanceOf(MapNode::class)
-            ->and($result)->toEqual($this->map);
     });
 
     it('creates nested maps when set() descends through a scalar or missing key', function () {
@@ -301,7 +252,7 @@ describe('SassMapModule', function () {
 
     it('uses raw arguments in global alias deprecation suggestions', function () {
         $warnings = [];
-        $context = new BuiltinCallContext(
+        $context  = new BuiltinCallContext(
             logWarning: static function (string $message) use (&$warnings): void {
                 $warnings[] = $message;
             },

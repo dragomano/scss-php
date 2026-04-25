@@ -56,6 +56,12 @@ describe('CompressedCssFormatter', function () {
             expect($this->formatter->format('.a{content:"#ffffff"}'))->toBe('.a{content:"#ffffff"}');
         });
 
+        it('does not shorten hash fragments when more hex digits follow a color-length prefix', function () {
+            $css = '.a{filter:url(#fffffffff)}';
+
+            expect($this->formatter->format($css))->toBe('.a{filter:url(#fffffffff)}');
+        });
+
         it('replaces hue-rotate(0deg) with hue-rotate(0)', function () {
             expect($this->formatter->format('.a{filter:hue-rotate(0deg)}'))->toBe('.a{filter:hue-rotate(0)}');
         });

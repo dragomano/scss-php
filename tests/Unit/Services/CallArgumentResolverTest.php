@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
@@ -11,21 +12,18 @@ use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\CallArgumentResolver;
-use Bugo\SCSS\Services\ClosureAstValueEvaluator;
-use Tests\ReflectionAccessor;
 use Tests\RuntimeFactory;
 
 describe('CallArgumentResolver', function () {
     beforeEach(function () {
-        $runtime         = RuntimeFactory::createRuntime();
-        $evaluation      = $runtime->evaluation();
-        $accessor        = new ReflectionAccessor($evaluation);
-        $this->env       = new Environment();
-        $this->resolver  = $accessor->getProperty('callArguments');
-        $this->cssArg    = $accessor->getProperty('cssArgument');
-        $this->userFn    = $accessor->getProperty('userFunction');
-        $this->evaluate  = fn($node, $env) => $node;
+        $runtime = RuntimeFactory::createRuntime();
+
+        $this->env      = new Environment();
+        $this->resolver = $runtime->evaluation();
+        $this->cssArg   = $runtime->cssArgumentEvaluator();
+        $this->evaluate = fn($node, $env) => $node;
     });
 
     it('returns an empty list when content call parsing does not start with a rule node', function () {
@@ -39,7 +37,14 @@ describe('CallArgumentResolver', function () {
                 }
             },
             $this->cssArg,
-            new ClosureAstValueEvaluator($this->evaluate),
+            new class ($this->evaluate) implements AstValueEvaluatorInterface {
+                public function __construct(private readonly Closure $evaluate) {}
+
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return ($this->evaluate)($node, $env);
+                }
+            },
         );
 
         expect($resolver->parseContentCallArguments('(1, 2)'))->toBe([]);
@@ -58,7 +63,14 @@ describe('CallArgumentResolver', function () {
                 }
             },
             $this->cssArg,
-            new ClosureAstValueEvaluator($this->evaluate),
+            new class ($this->evaluate) implements AstValueEvaluatorInterface {
+                public function __construct(private readonly Closure $evaluate) {}
+
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return ($this->evaluate)($node, $env);
+                }
+            },
         );
 
         expect($resolver->parseContentCallArguments('(1, 2)'))->toBe([]);

@@ -7,17 +7,12 @@ use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ListNode;
-use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
-use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Bugo\SCSS\Runtime\BuiltinCallContext;
-use Tests\ReflectionAccessor;
 
 describe('SassSelectorModule', function () {
     beforeEach(function () {
-        $this->module   = new SassSelectorModule();
-        $this->accessor = new ReflectionAccessor($this->module);
+        $this->module = new SassSelectorModule();
     });
 
     it('exposes metadata', function () {
@@ -46,6 +41,7 @@ describe('SassSelectorModule', function () {
 
     it('evaluates append', function () {
         $result = $this->module->call('append', [new StringNode('.btn'), new StringNode('.primary')], []);
+
         expect($result->value)->toBe('.btn.primary');
     });
 
@@ -59,6 +55,7 @@ describe('SassSelectorModule', function () {
 
     it('evaluates extend', function () {
         $result = $this->module->call('extend', [new StringNode('.button .icon'), new StringNode('.icon'), new StringNode('.glyph')], []);
+
         expect($result->value)->toBe('.button .icon, .button .glyph');
     });
 
@@ -87,6 +84,7 @@ describe('SassSelectorModule', function () {
 
     it('evaluates is-superselector', function () {
         $result = $this->module->call('is-superselector', [new StringNode('.btn'), new StringNode('.btn.primary')], []);
+
         expect($result)->toBeInstanceOf(BooleanNode::class)
             ->and($result->value)->toBeTrue();
     });
@@ -101,6 +99,7 @@ describe('SassSelectorModule', function () {
 
     it('evaluates nest', function () {
         $result = $this->module->call('nest', [new StringNode('.card'), new StringNode('&:hover')], []);
+
         expect($result->value)->toBe('.card:hover');
     });
 
@@ -111,11 +110,13 @@ describe('SassSelectorModule', function () {
 
     it('evaluates parse', function () {
         $result = $this->module->call('parse', [new StringNode('  .card   >  .title ')], []);
+
         expect($result->value)->toBe('.card > .title');
     });
 
     it('evaluates replace', function () {
         $result = $this->module->call('replace', [new StringNode('.button .icon'), new StringNode('.icon'), new StringNode('.badge')], []);
+
         expect($result->value)->toBe('.button .badge');
     });
 
@@ -173,6 +174,7 @@ describe('SassSelectorModule', function () {
 
     it('evaluates unify', function () {
         $result = $this->module->call('unify', [new StringNode('.button'), new StringNode('.primary')], []);
+
         expect($result->value)->toBe('.button.primary');
     });
 
@@ -188,44 +190,41 @@ describe('SassSelectorModule', function () {
 
     it('unifies complex selectors as intersection', function () {
         $result = $this->module->call('unify', [new StringNode('.warning a'), new StringNode('main a')], []);
+
         expect($result->value)->toBe('.warning main a, main .warning a');
     });
 
-    it('returns null for incompatible unifications and covers selector helpers', function () {
-        $result = $this->module->call('unify', [new StringNode('div'), new StringNode('span')], []);
-        $emptyTarget = $this->accessor->callMethod('replaceExtendTargetInStructuredSelectorPart', ['.a', '', '.b']);
-        $rawPositional = $this->accessor->callMethod('rawPositionalArguments');
-        $emptyFirst = $this->accessor->callMethod('unifySelectorParts', ['', '.a']);
-        $unsupported = $this->accessor->callMethod('unifySelectorParts', ['> .a', '.b']);
-        $emptyCompounds = $this->accessor->callMethod('unifySelectorParts', [' ', '*']);
-        $nullSubject = $this->accessor->callMethod('unifySelectorParts', ['div', 'span']);
-        $pruned = $this->accessor->callMethod('pruneCoveredCompounds', [['.a'], ['.a.b']]);
-        $selectorParts = $this->accessor->callMethod('selectorParts', [':']);
-        $untokenizedCompound = $this->accessor->callMethod('selectorParts', ['#']);
+    it('returns null when unify cannot produce any compatible selector', function () {
+        $incompatible = $this->module->call('unify', [new StringNode('a'), new StringNode('b')], []);
+        $unsupported  = $this->module->call('unify', [new StringNode('> a'), new StringNode('.button')], []);
+        $empty        = $this->module->call('unify', [new StringNode(''), new StringNode('.button')], []);
 
-        expect($result)->toBeInstanceOf(NullNode::class)
-            ->and($emptyTarget)->toBeNull()
-            ->and($rawPositional)->toBe([])
-            ->and($emptyFirst)->toBe([])
-            ->and($unsupported)->toBe([])
-            ->and($emptyCompounds)->toBe([])
-            ->and($nullSubject)->toBe([])
-            ->and($pruned)->toBe([])
-            ->and($selectorParts)->toBe([':'])
-            ->and($untokenizedCompound)->toBe(['#']);
+        expect($incompatible)->toBeInstanceOf(NullNode::class)
+            ->and($unsupported)->toBeInstanceOf(NullNode::class)
+            ->and($empty)->toBeInstanceOf(NullNode::class);
     });
 
-    it('skips named raw arguments when building deprecated suggestions', function () {
-        $this->accessor->setProperty('activeBuiltinContext', new BuiltinCallContext(rawArguments: [
-            new StringNode('.button'),
-            new NamedArgumentNode('suffix', new StringNode('.primary')),
-            new NumberNode(2),
-        ]));
+    it('falls back when structured replacement target has no selector tokens', function () {
+        $result = $this->module->call(
+            'replace',
+            [new StringNode('.button'), new StringNode('#'), new StringNode('.badge')],
+            [],
+        );
 
-        $rawPositional = $this->accessor->callMethod('rawPositionalArguments');
+        expect($result->value)->toBe('.button');
+    });
 
-        expect($rawPositional)->toHaveCount(2)
-            ->and($rawPositional[0])->toBeInstanceOf(StringNode::class)
-            ->and($rawPositional[1])->toBeInstanceOf(NumberNode::class);
+    it('prunes covered ancestor compounds while unifying selectors', function () {
+        $result = $this->module->call('unify', [new StringNode('.foo .bar'), new StringNode('.foo .baz')], []);
+
+        expect($result->value)->toBe('.foo .bar.baz');
+    });
+
+    it('keeps unsupported compounds intact in simple-selectors', function () {
+        $result = $this->module->call('simple-selectors', [new StringNode('.')], []);
+
+        expect($result)->toBeInstanceOf(ListNode::class)
+            ->and($result->items)->toHaveCount(1)
+            ->and($result->items[0]->value)->toBe('.');
     });
 });

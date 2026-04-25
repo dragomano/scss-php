@@ -16,14 +16,12 @@ use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Utils\AstValueComparator;
 
 use function array_filter;
-use function array_key_last;
 use function array_map;
 use function array_slice;
 use function array_values;
 use function count;
 use function get_debug_type;
 use function implode;
-use function is_int;
 
 final class SassMapModule extends AbstractModule
 {
@@ -207,7 +205,9 @@ final class SassMapModule extends AbstractModule
      */
     private function merge(array $positional, ?BuiltinCallContext $context): AstNode
     {
-        if (count($positional) < 2) {
+        $argumentCount = count($positional);
+
+        if ($argumentCount < 2) {
             throw MissingFunctionArgumentsException::count(
                 $this->builtinErrorContext('map.merge'),
                 2,
@@ -219,23 +219,12 @@ final class SassMapModule extends AbstractModule
 
         $map1 = $this->asMap($positional[0], 'map.merge');
 
-        if (count($positional) === 2) {
+        if ($argumentCount === 2) {
             return $this->mergeTwo($map1, $this->asMap($positional[1], 'map.merge'));
         }
 
-        $args = array_slice($positional, 1);
-
-        $lastIndex = array_key_last($args);
-
-        if (! is_int($lastIndex)) {
-            throw new MissingFunctionArgumentsException(
-                $this->builtinErrorContext('map.merge'),
-                'path keys and a map in variadic form',
-            );
-        }
-
-        $map2 = $this->asMap($args[$lastIndex], 'map.merge');
-        $path = array_slice($args, 0, -1);
+        $map2 = $this->asMap($positional[$argumentCount - 1], 'map.merge');
+        $path = array_slice($positional, 1, -1);
 
         return $this->modifyNested($map1, $path, function (AstNode $existing) use ($map2): MapNode {
             if ($existing instanceof MapNode) {
@@ -243,7 +232,7 @@ final class SassMapModule extends AbstractModule
             }
 
             return $map2;
-        }, true);
+        });
     }
 
     /**
@@ -302,7 +291,7 @@ final class SassMapModule extends AbstractModule
         $value = $positional[count($positional) - 1];
         $path  = array_slice($positional, 1, -1);
 
-        return $this->modifyNested($map, $path, fn(AstNode $existing) => $value, true);
+        return $this->modifyNested($map, $path, fn(AstNode $existing) => $value);
     }
 
     /**
@@ -352,9 +341,10 @@ final class SassMapModule extends AbstractModule
     private function deprecatedMapSuggestion(string $name, array $positional): string
     {
         $arguments = $positional;
+        $rawArguments = $this->activeBuiltinContext?->rawArguments;
 
-        if ($this->hasRawArguments()) {
-            $arguments = $this->rawPositionalArguments();
+        if ($rawArguments !== null) {
+            $arguments = $this->rawPositionalArguments($rawArguments);
         }
 
         return 'map.' . $name . '(' . implode(', ', $this->describeBuiltinArguments($arguments)) . ')';
@@ -429,10 +419,6 @@ final class SassMapModule extends AbstractModule
      */
     private function removeNested(MapNode $map, array $path): MapNode
     {
-        if ($path === []) {
-            return $map;
-        }
-
         $key   = $path[0];
         $tail  = array_slice($path, 1);
         $pairs = $map->pairs;
@@ -464,14 +450,8 @@ final class SassMapModule extends AbstractModule
      * @param array<int, AstNode> $path
      * @param callable(AstNode): AstNode $modify
      */
-    private function modifyNested(MapNode $map, array $path, callable $modify, bool $addNesting): MapNode
+    private function modifyNested(MapNode $map, array $path, callable $modify): MapNode
     {
-        if ($path === []) {
-            $modified = $modify($map);
-
-            return $modified instanceof MapNode ? $modified : $map;
-        }
-
         $key   = $path[0];
         $tail  = array_slice($path, 1);
         $pairs = $map->pairs;
@@ -485,23 +465,15 @@ final class SassMapModule extends AbstractModule
                 }
 
                 if ($pair->value instanceof MapNode) {
-                    $pairs[$idx] = new MapPair($pair->key, $this->modifyNested($pair->value, $tail, $modify, $addNesting));
+                    $pairs[$idx] = new MapPair($pair->key, $this->modifyNested($pair->value, $tail, $modify));
 
                     return new MapNode($pairs);
                 }
 
-                if (! $addNesting) {
-                    return $map;
-                }
-
-                $pairs[$idx] = new MapPair($pair->key, $this->modifyNested(new MapNode([]), $tail, $modify, true));
+                $pairs[$idx] = new MapPair($pair->key, $this->modifyNested(new MapNode([]), $tail, $modify));
 
                 return new MapNode($pairs);
             }
-        }
-
-        if (! $addNesting) {
-            return $map;
         }
 
         if ($tail === []) {
@@ -510,7 +482,7 @@ final class SassMapModule extends AbstractModule
             return new MapNode($pairs);
         }
 
-        $pairs[] = new MapPair($key, $this->modifyNested(new MapNode([]), $tail, $modify, true));
+        $pairs[] = new MapPair($key, $this->modifyNested(new MapNode([]), $tail, $modify));
 
         return new MapNode($pairs);
     }

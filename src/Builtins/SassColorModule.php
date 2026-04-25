@@ -232,13 +232,7 @@ final class SassColorModule extends AbstractModule
      */
     private function legacyAlphaAdjustment(string $name, array $positional, ?BuiltinCallContext $context): AstNode
     {
-        $direction = match ($name) {
-            'opacify',
-            'fade-in'  => 1,
-            'transparentize',
-            'fade-out' => -1,
-            default    => throw new UnknownSassFunctionException('color', $name),
-        };
+        $direction = $name === 'opacify' || $name === 'fade-in' ? 1 : -1;
 
         return $this->functions->adjustAlphaChannel($positional, $direction, $name, $context);
     }

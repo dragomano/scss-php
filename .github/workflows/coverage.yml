@@ -30,7 +30,11 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
+          extensions: zip
           coverage: ${{ matrix.os == 'ubuntu-latest' && matrix.php == '8.5' && 'xdebug' || 'none' }}
+
+      - name: Configure GitHub token
+        run: composer config github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Install dependencies
         run: composer install

@@ -15,6 +15,8 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Parser;
 use Bugo\SCSS\Parser\RuleParser;
+use Bugo\SCSS\Parser\RuleParserContextInterface;
+use Bugo\SCSS\Parser\RuleParserValueContextInterface;
 
 function ruleParserTestToken(
     TokenType $type,
@@ -50,17 +52,54 @@ function createRuleParserForTest(array $tokens, array $overrides = []): array
             $column,
         );
 
-    return [
-        new RuleParser(
-            $stream,
-            $parseValue,
-            $parseValueModifiers,
-            $parseCustomPropertyValue,
-            $isInsideBraces,
-            $parseRuleFromSelector,
-        ),
-        $stream,
-    ];
+    $valueContext = new class (
+        $parseValue,
+        $parseValueModifiers,
+        $parseCustomPropertyValue,
+    ) implements RuleParserValueContextInterface {
+        public function __construct(
+            private readonly Closure $parseValue,
+            private readonly Closure $parseValueModifiers,
+            private readonly Closure $parseCustomPropertyValue,
+        ) {}
+
+        public function parseValue(): AstNode
+        {
+            return ($this->parseValue)();
+        }
+
+        public function parseValueModifiers(): array
+        {
+            return ($this->parseValueModifiers)();
+        }
+
+        public function parseCustomPropertyValue(): string
+        {
+            return ($this->parseCustomPropertyValue)();
+        }
+    };
+
+    $context = new class (
+        $isInsideBraces,
+        $parseRuleFromSelector,
+    ) implements RuleParserContextInterface {
+        public function __construct(
+            private readonly Closure $isInsideBraces,
+            private readonly Closure $parseRuleFromSelector,
+        ) {}
+
+        public function isInsideBraces(): bool
+        {
+            return ($this->isInsideBraces)();
+        }
+
+        public function parseRuleFromSelector(string $selector, int $line = 1, int $column = 1): RuleNode
+        {
+            return ($this->parseRuleFromSelector)($selector, $line, $column);
+        }
+    };
+
+    return [new RuleParser($stream, $valueContext, $context), $stream];
 }
 
 describe('RuleParser', function () {
