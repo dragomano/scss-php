@@ -33,9 +33,10 @@ jobs:
           extensions: zip
           coverage: ${{ matrix.os == 'ubuntu-latest' && matrix.php == '8.5' && 'xdebug' || 'none' }}
 
+      - name: Configure GitHub token
+        run: composer config github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
+
       - name: Install dependencies
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: composer install
 
       - name: Run PHP-CS-Fixer
