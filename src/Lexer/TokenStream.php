@@ -12,14 +12,14 @@ use function min;
 
 final class TokenStream
 {
-    protected int $position = 0;
+    private int $position = 0;
 
-    protected int $length;
+    private readonly int $length;
 
     /**
      * @param array<int, Token> $tokens
      */
-    public function __construct(protected array $tokens)
+    public function __construct(private array $tokens)
     {
         $this->length = count($this->tokens);
 

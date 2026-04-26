@@ -15,17 +15,17 @@ use function basename;
 use function file_put_contents;
 use function str_contains;
 
-final class Compiler implements CompilerInterface
+final readonly class Compiler implements CompilerInterface
 {
-    private readonly CompilerContext $ctx;
+    private CompilerContext $ctx;
 
-    private readonly CompilerRuntime $runtime;
+    private CompilerRuntime $runtime;
 
     public function __construct(
-        protected CompilerOptions $options = new CompilerOptions(),
-        protected LoaderInterface $loader = new Loader(),
-        protected ParserInterface $parser = new Parser(),
-        protected LoggerInterface $logger = new NullLogger(),
+        private CompilerOptions $options = new CompilerOptions(),
+        private LoaderInterface $loader = new Loader(),
+        private ParserInterface $parser = new Parser(),
+        private LoggerInterface $logger = new NullLogger(),
     ) {
         $this->ctx = $this->createContext();
 

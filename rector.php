@@ -5,6 +5,9 @@ use Rector\CodingStyle\Rector\If_\NullableCompareToNullRector;
 use Rector\Config\RectorConfig;
 use Rector\Exception\Configuration\InvalidConfigurationException;
 use Rector\Php81\Rector\FuncCall\NullToStrictStringFuncCallArgRector;
+use Rector\Privatization\Rector\ClassConst\PrivatizeFinalClassConstantRector;
+use Rector\Privatization\Rector\ClassMethod\PrivatizeFinalClassMethodRector;
+use Rector\Privatization\Rector\Property\PrivatizeFinalClassPropertyRector;
 
 try {
     return RectorConfig::configure()
@@ -17,6 +20,11 @@ try {
             RepeatedOrEqualToInArrayRector::class,
         ])
         ->withPhpSets()
+        ->withRules([
+            PrivatizeFinalClassPropertyRector::class,
+            PrivatizeFinalClassConstantRector::class,
+            PrivatizeFinalClassMethodRector::class,
+        ])
         ->withTypeCoverageLevel(10)
         ->withDeadCodeLevel(10)
         ->withCodeQualityLevel(10)

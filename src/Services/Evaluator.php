@@ -529,7 +529,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return $this->selector->normalizeBubblingNodeForSelector($node, $selector);
     }
 
-    protected function getCurrentParentSelector(Environment $env): ?StringNode
+    private function getCurrentParentSelector(Environment $env): ?StringNode
     {
         return $env->getCurrentScope()->getStringVariable('__parent_selector');
     }
@@ -537,7 +537,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
     /**
      * @param array<int, AstNode> $items
      */
-    protected function evaluateSpaceSeparatedItems(array $items, Environment $env): AstNode
+    private function evaluateSpaceSeparatedItems(array $items, Environment $env): AstNode
     {
         if (count($items) === 1) {
             return $this->evaluateValue($items[0], $env);
@@ -546,7 +546,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return $this->evaluateValue(new ListNode($items, 'space'), $env);
     }
 
-    protected function resolveVariable(string $name, Environment $env): AstNode
+    private function resolveVariable(string $name, Environment $env): AstNode
     {
         $currentScope = $env->getCurrentScope();
 

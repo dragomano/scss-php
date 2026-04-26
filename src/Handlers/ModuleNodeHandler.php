@@ -31,7 +31,7 @@ final readonly class ModuleNodeHandler
     public function handleForward(ForwardNode $node, TraversalContext $ctx): string
     {
         $forwardKey  = $this->module->handleForward($node, $ctx->env);
-        $moduleState = $this->module->moduleState();
+        $moduleState = $this->module->state();
 
         if (isset($moduleState->emittedForwardCss[$forwardKey])) {
             return '';
@@ -142,7 +142,7 @@ final readonly class ModuleNodeHandler
             return '';
         }
 
-        $moduleState = $this->module->moduleState();
+        $moduleState = $this->module->state();
 
         $loaded = $moduleState->getByNamespace($namespace);
 

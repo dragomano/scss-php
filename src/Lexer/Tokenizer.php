@@ -26,17 +26,17 @@ use function substr_count;
 
 final class Tokenizer
 {
-    protected string $source = '';
+    private string $source = '';
 
-    protected int $length = 0;
+    private int $length = 0;
 
-    protected int $position = 0;
+    private int $position = 0;
 
-    protected int $line = 1;
+    private int $line = 1;
 
-    protected int $column = 1;
+    private int $column = 1;
 
-    protected bool $trackPositions = true;
+    private bool $trackPositions = true;
 
     public function setTrackPositions(bool $trackPositions): void
     {

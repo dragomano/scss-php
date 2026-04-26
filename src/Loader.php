@@ -26,7 +26,7 @@ use const DIRECTORY_SEPARATOR;
 final class Loader implements LoaderInterface
 {
     /** @var array<int, string> */
-    protected array $includePaths = [];
+    private array $includePaths = [];
 
     /** @var Closure(): (string|false) */
     private readonly Closure $workDir;

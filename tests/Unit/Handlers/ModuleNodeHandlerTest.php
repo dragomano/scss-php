@@ -108,7 +108,7 @@ it('returns empty string when namespace is absent from loaded modules state', fu
 
     $module = mock(Module::class);
     $module->shouldReceive('handleUse')->once();
-    $module->shouldReceive('moduleState')->andReturn($moduleState);
+    $module->shouldReceive('state')->andReturn($moduleState);
 
     $handler = new ModuleNodeHandler(
         $runtime->evaluation(),

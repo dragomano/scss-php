@@ -87,11 +87,6 @@ final readonly class Module
         return $this->ctx->moduleState;
     }
 
-    public function moduleState(): ModuleState
-    {
-        return $this->state();
-    }
-
     public function incrementCallDepth(): void
     {
         $state = $this->state();

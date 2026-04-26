@@ -35,11 +35,11 @@ final class Parser implements
     ParserInterface,
     RuleParserContextInterface
 {
-    protected TokenStream $stream;
+    private TokenStream $stream;
 
-    protected int $blockDepth = 0;
+    private int $blockDepth = 0;
 
-    protected bool $trackSourceLocations = true;
+    private bool $trackSourceLocations = true;
 
     private DirectiveParser $directives;
 
@@ -47,7 +47,7 @@ final class Parser implements
 
     private ValueParser $values;
 
-    public function __construct(protected Tokenizer $tokenizer = new Tokenizer())
+    public function __construct(private readonly Tokenizer $tokenizer = new Tokenizer())
     {
         $this->stream = new TokenStream([new Token(TokenType::EOF, '', 1, 1)]);
 
