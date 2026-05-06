@@ -40,15 +40,19 @@ jobs:
         run: composer install
 
       - name: Run PHP-CS-Fixer
+        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.5'
         run: composer run fix
 
       - name: Run Rector
+        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.5'
         run: composer run rector
 
       - name: Run PHPStan
+        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.5'
         run: composer run phpstan
 
       - name: Run Psalm
+        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.5'
         run: composer run psalm
 
       - name: Run tests
