@@ -3,7 +3,7 @@
 This file contains a performance comparison of SCSS compilation runs across three PHP libraries:
 
 - `bugo/scss-php` (current project) - Pure PHP compiler for SCSS/Sass, compatible with modern Dart Sass specification
-- [bugo/sass-embedded-php](https://github.com/dragomano/sass-embedded-php) - PHP wrapper for the `sass-embedded` (npm package) using a bridge between PHP and Node.js
+- [bugo/sass-embedded-php](https://github.com/dragomano/sass-embedded-php) - A lightweight PHP bridge for native Dart Sass
 - [scssphp/scssphp](https://github.com/scssphp/scssphp) - A well-known PHP library for SCSS/Sass compilation
 
 ## Test Environment
