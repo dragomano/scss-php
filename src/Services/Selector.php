@@ -472,6 +472,11 @@ final readonly class Selector
         return $this->tokenizer->hasBogusTopLevelCombinatorSequence($selector);
     }
 
+    public function hasAdjacentCompoundSelectors(string $selector): bool
+    {
+        return $this->tokenizer->hasAdjacentCompoundSelectors($selector);
+    }
+
     private function isValidNestedPropertyName(string $name): bool
     {
         if ($name === '') {

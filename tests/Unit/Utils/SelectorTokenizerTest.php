@@ -126,6 +126,131 @@ describe('SelectorTokenizer', function () {
         expect($this->tokenizer->hasBogusTopLevelCombinatorSequence('[data-test="a>b"] > + span'))->toBeTrue();
     });
 
+    describe('hasAdjacentCompoundSelectors()', function () {
+        it('detects attribute selector immediately followed by type selector', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('[class]a'))->toBeTrue();
+        });
+
+        it('detects attribute selector immediately followed by type selector with value', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('[href="x"]div'))->toBeTrue();
+        });
+
+        it('detects attribute selector immediately followed by type selector (span)', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('[attr]span'))->toBeTrue();
+        });
+
+        it('detects universal selector immediately followed by type selector', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('*div'))->toBeTrue();
+        });
+
+        it('detects adjacent compounds in a selector list', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('.ok, [class]a'))->toBeTrue();
+        });
+        it('returns false for type selector followed by attribute selector', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('a[href]'))->toBeFalse();
+        });
+
+        it('returns false for type selector followed by class selector', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('div.foo'))->toBeFalse();
+        });
+
+        it('returns false for type selector followed by id selector', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('div#main'))->toBeFalse();
+        });
+
+        it('returns false for type selector followed by pseudo-class', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('a:hover'))->toBeFalse();
+        });
+
+        it('returns false for multiple class selectors in one compound', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('.foo.bar.baz'))->toBeFalse();
+        });
+
+        it('returns false for class and id in one compound', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('.foo#bar'))->toBeFalse();
+        });
+
+        it('returns false for attribute followed by class selector', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('[class].foo'))->toBeFalse();
+        });
+
+        it('returns false for attribute followed by pseudo-class', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('[disabled]:hover'))->toBeFalse();
+        });
+
+        it('returns false for whitespace-separated selectors', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('div span'))->toBeFalse();
+        });
+
+        it('returns false for child combinator separated selectors', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('div > span'))->toBeFalse();
+        });
+
+        it('returns false for adjacent sibling combinator separated selectors', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('div + span'))->toBeFalse();
+        });
+
+        it('returns false for general sibling combinator separated selectors', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('div ~ span'))->toBeFalse();
+        });
+
+        it('returns false for complex valid selector with multiple compounds', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('div.foo > a[href]:hover'))->toBeFalse();
+        });
+
+        it('returns false for universal selector alone', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('*'))->toBeFalse();
+        });
+
+        it('returns false for pseudo-element selector', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('p::before'))->toBeFalse();
+        });
+
+        it('returns false for quoted attribute value containing a letter', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('[data-type="adiv"]'))->toBeFalse();
+        });
+
+        it('returns false for attribute with single-quoted value containing a letter', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors("[data-type='adiv']"))->toBeFalse();
+        });
+
+        it('returns false for attribute with quoted value where closing quote matches opening', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('[href="http://example.com"]'))->toBeFalse();
+        });
+
+        it('returns false for pseudo-element with double colon', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('[disabled]::after'))->toBeFalse();
+        });
+
+        it('returns false for pseudo-class with function argument', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('li:nth-child(2n+1)'))->toBeFalse();
+        });
+
+        it('detects adjacent compound after pseudo-class function', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors(':not(.x)div'))->toBeTrue();
+        });
+
+        it('returns false for id selector in compound', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('div#main'))->toBeFalse();
+        });
+
+        it('returns false for interpolation followed by class', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('#{$x}.foo'))->toBeFalse();
+        });
+
+        it('detects adjacent compound after interpolation', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('#{$x}div'))->toBeTrue();
+        });
+
+        it('returns false for pseudo-class with nested parentheses', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors(':is(:not(.a))'))->toBeFalse();
+        });
+
+        it('detects adjacent compound after pseudo with nested parens', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors(':is(:not(.a))div'))->toBeTrue();
+        });
+    });
+
     it('interleaveSequences() returns both orderings', function () {
         $result = $this->tokenizer->interleaveSequences(['a', 'b'], ['c']);
         expect(count($result))->toBe(2);

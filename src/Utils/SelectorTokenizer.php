@@ -11,6 +11,7 @@ use function array_unique;
 use function array_values;
 use function count;
 use function ctype_alnum;
+use function ctype_alpha;
 use function implode;
 use function in_array;
 use function str_starts_with;
@@ -322,6 +323,164 @@ final readonly class SelectorTokenizer
                 return false;
             },
         );
+    }
+
+    public function hasAdjacentCompoundSelectors(string $selector): bool
+    {
+        $length = strlen($selector);
+        $i      = 0;
+
+        $seenNonTypeInCompound = false;
+
+        while ($i < $length) {
+            $char = $selector[$i];
+
+            if ($char === ' ' || $char === '>' || $char === '+' || $char === '~') {
+                $seenNonTypeInCompound = false;
+                $i++;
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $depth = 0;
+                $quote = '';
+
+                while ($i < $length) {
+                    $c = $selector[$i];
+
+                    if ($quote !== '') {
+                        if ($c === $quote) {
+                            $quote = '';
+                        }
+
+                        $i++;
+
+                        continue;
+                    }
+
+                    if ($c === '"' || $c === "'") {
+                        $quote = $c;
+                        $i++;
+
+                        continue;
+                    }
+
+                    if ($c === '[') {
+                        $depth++;
+                    } elseif ($c === ']') {
+                        $depth--;
+
+                        if ($depth === 0) {
+                            $i++;
+
+                            break;
+                        }
+                    }
+
+                    $i++;
+                }
+
+                $seenNonTypeInCompound = true;
+
+                continue;
+            }
+
+            if ($char === '.') {
+                $i++;
+
+                while ($i < $length && $this->isIdentifierChar($selector[$i])) {
+                    $i++;
+                }
+
+                $seenNonTypeInCompound = true;
+
+                continue;
+            }
+
+            if ($char === '#') {
+                if (isset($selector[$i + 1]) && $selector[$i + 1] === '{') {
+                    $i += 2;
+
+                    while ($i < $length && $selector[$i] !== '}') {
+                        $i++;
+                    }
+
+                    $i++;
+                } else {
+                    $i++;
+
+                    while ($i < $length && $this->isIdentifierChar($selector[$i])) {
+                        $i++;
+                    }
+                }
+
+                $seenNonTypeInCompound = true;
+
+                continue;
+            }
+
+            if ($char === ':') {
+                $i++;
+
+                if ($i < $length && $selector[$i] === ':') {
+                    $i++;
+                }
+
+                while ($i < $length && $this->isIdentifierChar($selector[$i])) {
+                    $i++;
+                }
+
+                if ($i < $length && $selector[$i] === '(') {
+                    $depth = 0;
+
+                    while ($i < $length) {
+                        $c = $selector[$i];
+
+                        if ($c === '(') {
+                            $depth++;
+                        } elseif ($c === ')') {
+                            $depth--;
+
+                            if ($depth === 0) {
+                                $i++;
+
+                                break;
+                            }
+                        }
+
+                        $i++;
+                    }
+                }
+
+                $seenNonTypeInCompound = true;
+
+                continue;
+            }
+
+            if ($char === '*') {
+                $seenNonTypeInCompound = true;
+                $i++;
+
+                continue;
+            }
+
+            if (ctype_alpha($char) || $char === '_') {
+                if ($seenNonTypeInCompound) {
+                    return true;
+                }
+
+                while ($i < $length && $this->isIdentifierChar($selector[$i])) {
+                    $i++;
+                }
+
+                continue;
+            }
+
+            $i++;
+        }
+
+        return false;
     }
 
     /**

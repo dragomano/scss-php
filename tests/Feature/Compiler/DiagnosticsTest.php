@@ -710,5 +710,84 @@ describe('Compiler', function () {
                 ->and($this->logger->records[0]['context']['line'])->toBe(1)
                 ->and($this->logger->records[0]['context']['file'])->toBe('input.scss');
         });
+
+        it('emits deprecation warning for adjacent compound selectors', function () {
+            $compiler = new Compiler(
+                options: new CompilerOptions(verboseLogging: true),
+                logger: $this->logger,
+            );
+
+            $source = <<<'SCSS'
+            [class]a { color: red; }
+            .ok { color: blue; }
+            SCSS;
+
+            $css = $compiler->compileString($source);
+
+            $expected = /** @lang text */ <<<'CSS'
+            [class]a {
+              color: red;
+            }
+            .ok {
+              color: blue;
+            }
+            CSS;
+
+            expect($css)->toEqualCss($expected)
+                ->and($this->logger->records)->toHaveCount(1)
+                ->and($this->logger->records[0]['level'])->toBe('warning')
+                ->and($this->logger->records[0]['message'])->toContain('adjacent compound selectors')
+                ->and($this->logger->records[0]['message'])->toContain('[class]a')
+                ->and($this->logger->records[0]['context']['line'])->toBe(1)
+                ->and($this->logger->records[0]['context']['file'])->toBe('input.scss');
+        });
+
+        it('emits deprecation warning for adjacent compound selectors produced by interpolation', function () {
+            $compiler = new Compiler(
+                options: new CompilerOptions(verboseLogging: true),
+                logger: $this->logger,
+            );
+
+            $source = <<<'SCSS'
+            $tag: "a";
+            [class]#{$tag} { color: green; }
+            SCSS;
+
+            $css = $compiler->compileString($source);
+
+            $expected = /** @lang text */ <<<'CSS'
+            [class]a {
+              color: green;
+            }
+            CSS;
+
+            expect($css)->toEqualCss($expected)
+                ->and($this->logger->records)->toHaveCount(1)
+                ->and($this->logger->records[0]['level'])->toBe('warning')
+                ->and($this->logger->records[0]['message'])->toContain('adjacent compound selectors')
+                ->and($this->logger->records[0]['message'])->toContain('[class]a')
+                ->and($this->logger->records[0]['context']['line'])->toBe(2)
+                ->and($this->logger->records[0]['context']['file'])->toBe('input.scss');
+        });
+
+        it('does not emit deprecation warning for valid compound selectors', function () {
+            $compiler = new Compiler(
+                options: new CompilerOptions(verboseLogging: true),
+                logger: $this->logger,
+            );
+
+            $source = <<<'SCSS'
+            a[href] { color: red; }
+            .foo.bar { color: blue; }
+            div[class] { color: green; }
+            [class].foo { color: orange; }
+            a:hover { color: pink; }
+            div span.foo { color: purple; }
+            SCSS;
+
+            $css = $compiler->compileString($source);
+
+            expect($this->logger->records)->toHaveCount(0);
+        });
     });
 });
