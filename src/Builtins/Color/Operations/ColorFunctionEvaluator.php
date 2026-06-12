@@ -140,10 +140,12 @@ final readonly class ColorFunctionEvaluator
         $color   = $this->runtime->argumentParser->requireColor($positional, 0, 'adjust-hue');
         $degrees = $this->runtime->argumentParser->asNumber($positional[1] ?? null, 'adjust-hue');
 
-        $this->runtime->context->warn(
-            $context,
-            $this->formatColorAdjustHint($color, 'hue', $this->runtime->formatter->formatDegrees($degrees)),
-        );
+        if ($context !== null) {
+            $this->runtime->context->warn(
+                $context,
+                $this->formatColorAdjustHint($color, 'hue', $this->runtime->formatter->formatDegrees($degrees)),
+            );
+        }
 
         if ($this->converter->isLegacyColor($color)) {
             $adjustedRgb = $this->manipulators->legacy->spin($this->converter->toRgb($color), $degrees);
@@ -164,12 +166,14 @@ final readonly class ColorFunctionEvaluator
         $color  = $this->runtime->argumentParser->requireColor($positional, 0, $context);
         $amount = $this->runtime->argumentParser->asNumber($positional[1] ?? null, $context) * (float) $direction;
 
-        $this->runtime->context->warn(
-            $callContext,
-            $this->buildScaleSuggestion($color, 'alpha', $direction, $amount) . ', or '
-            . $this->formatColorAdjustHint($color, 'alpha', $this->runtime->formatter->formatSignedNumber($amount)),
-            true,
-        );
+        if ($callContext !== null) {
+            $this->runtime->context->warn(
+                $callContext,
+                $this->buildScaleSuggestion($color, 'alpha', $direction, $amount) . ', or '
+                . $this->formatColorAdjustHint($color, 'alpha', $this->runtime->formatter->formatSignedNumber($amount)),
+                true,
+            );
+        }
 
         if ($this->converter->isLegacyColor($color)) {
             $rgb = $this->converter->toRgb($color);
@@ -199,12 +203,14 @@ final readonly class ColorFunctionEvaluator
 
         $amount = $this->runtime->argumentParser->asPercentage($positional[1] ?? null, $context) * (float) $direction;
 
-        $this->runtime->context->warn(
-            $callContext,
-            $this->buildScaleSuggestion($color, $channel, $direction, $amount) . ', or '
-            . $this->formatColorAdjustHint($color, $channel, $this->runtime->formatter->formatSignedPercentage($amount)),
-            true,
-        );
+        if ($callContext !== null) {
+            $this->runtime->context->warn(
+                $callContext,
+                $this->buildScaleSuggestion($color, $channel, $direction, $amount) . ', or '
+                . $this->formatColorAdjustHint($color, $channel, $this->runtime->formatter->formatSignedPercentage($amount)),
+                true,
+            );
+        }
 
         if ($this->converter->isLegacyColor($color)) {
             $rgb = $this->converter->toRgb($color);
