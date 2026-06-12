@@ -696,7 +696,10 @@ final readonly class ExtendsResolver
      */
     private function tokenizeSelectorCompound(string $compound): array
     {
-        return $this->tokenizer->tokenizeCompound($compound);
+        /** @var array<string, array<int, string>> $cache */
+        static $cache = [];
+
+        return $cache[$compound] ??= $this->tokenizer->tokenizeCompound($compound);
     }
 
     /**
