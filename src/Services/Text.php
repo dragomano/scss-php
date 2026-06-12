@@ -6,9 +6,7 @@ namespace Bugo\SCSS\Services;
 
 use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
-use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\ListNode;
-use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\ParserInterface;
@@ -568,23 +566,15 @@ final readonly class Text
             return substr($expr, 1, -1);
         }
 
-        $ast = $this->parser->parse(".__tmp__ { __tmp__: $expr; }");
+        $valueNode = $this->parser->parseInlineExpression($expr);
 
-        $firstChild = $ast->children[0] ?? null;
-
-        if (! $firstChild instanceof RuleNode) {
+        if ($valueNode instanceof StringNode && $valueNode->value === $expr) {
             return $expr;
         }
 
-        $firstRuleChild = $firstChild->children[0] ?? null;
+        $evaluated = $this->valueEvaluator->evaluate($valueNode, $env);
 
-        if ($firstRuleChild instanceof DeclarationNode) {
-            $valueNode = $this->valueEvaluator->evaluate($firstRuleChild->value, $env);
-
-            return $this->formatInterpolationValue($valueNode, $env);
-        }
-
-        return $expr;
+        return $this->formatInterpolationValue($evaluated, $env);
     }
 
     private function formatInterpolationValue(AstNode $value, Environment $env): string

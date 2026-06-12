@@ -35,6 +35,11 @@ describe('CallArgumentResolver', function () {
                 {
                     return new RootNode([new StringNode('not-a-rule')]);
                 }
+
+                public function parseInlineExpression(string $expr): AstNode
+                {
+                    return new StringNode($expr);
+                }
             },
             $this->cssArg,
             new class ($this->evaluate) implements AstValueEvaluatorInterface {
@@ -60,6 +65,11 @@ describe('CallArgumentResolver', function () {
                     return new RootNode([
                         new RuleNode('.__content__', [new StringNode('unexpected')]),
                     ]);
+                }
+
+                public function parseInlineExpression(string $expr): AstNode
+                {
+                    return new StringNode($expr);
                 }
             },
             $this->cssArg,

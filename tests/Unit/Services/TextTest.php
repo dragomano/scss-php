@@ -218,6 +218,11 @@ describe('Text service', function () {
                     {
                         return new RootNode([new StringNode('not-a-rule')]);
                     }
+
+                    public function parseInlineExpression(string $expr): AstNode
+                    {
+                        return new StringNode($expr);
+                    }
                 },
                 new class implements AstValueEvaluatorInterface {
                     public function evaluate(AstNode $node, Environment $env): AstNode

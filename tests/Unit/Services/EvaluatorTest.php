@@ -555,6 +555,11 @@ it('returns null when reparsing formatted declaration expressions fails or does 
         {
             throw new SassErrorException('bad parse');
         }
+
+        public function parseInlineExpression(string $expr): AstNode
+        {
+            throw new SassErrorException('bad parse');
+        }
     };
 
     $runtimeWithBadParser = RuntimeFactory::createRuntime(parser: $badParser);
@@ -573,6 +578,11 @@ it('returns null when reparsing formatted declaration expressions fails or does 
             return new RootNode([
                 new RuleNode('.__tmp__', [new StringNode('not-a-declaration')]),
             ]);
+        }
+
+        public function parseInlineExpression(string $expr): AstNode
+        {
+            return new StringNode($expr);
         }
     };
 
@@ -595,6 +605,11 @@ it('returns null when reparsed formatted declarations do not start with a rule n
         public function parse(string $source): RootNode
         {
             return new RootNode([new StringNode('not-a-rule')]);
+        }
+
+        public function parseInlineExpression(string $expr): AstNode
+        {
+            return new StringNode($expr);
         }
     };
 
@@ -750,6 +765,11 @@ it('returns null when reparsed formatted declarations do not yield a declaration
             return new RootNode([
                 new RuleNode('.__tmp__', [new StringNode('not-a-declaration')]),
             ]);
+        }
+
+        public function parseInlineExpression(string $expr): AstNode
+        {
+            return new StringNode($expr);
         }
     };
 

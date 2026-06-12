@@ -16,7 +16,6 @@ use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
-use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
@@ -24,7 +23,6 @@ use Bugo\SCSS\Nodes\MixinRefNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
-use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StatementNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
@@ -297,18 +295,13 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         }
 
         try {
-            $ast = $this->parser->parse(".__tmp__ { __tmp__: $formattedValue; }");
+            $valueNode = $this->parser->parseInlineExpression($formattedValue);
 
-            $firstChild       = $ast->children[0] ?? null;
-            $firstDeclaration = $firstChild instanceof RuleNode
-                ? $firstChild->children[0] ?? null
-                : null;
-
-            if (! $firstDeclaration instanceof DeclarationNode) {
+            if ($valueNode instanceof StringNode && $valueNode->value === $formattedValue) {
                 return null;
             }
 
-            $evaluatedValue = $this->evaluateValue($firstDeclaration->value, $env);
+            $evaluatedValue = $this->evaluateValue($valueNode, $env);
 
             return $evaluatedValue !== $value ? $evaluatedValue : null;
         } catch (SassException|SassArgumentException) {

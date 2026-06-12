@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Nodes\ArgumentNode;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
@@ -932,5 +933,19 @@ describe('Parser', function () {
         expect($argument)->toBeInstanceOf(StringNode::class)
             ->and($argument->value)->toBe('color=#0000ff')
             ->and($argument->quoted)->toBeFalse();
+    });
+
+    it('clearInlineExpressionCache() clears cached inline expression results', function () {
+        $first  = $this->parser->parseInlineExpression('1 + 2');
+        $second = $this->parser->parseInlineExpression('1 + 2');
+
+        expect($first)->toBe($second);
+
+        Parser::clearInlineExpressionCache();
+
+        $third = $this->parser->parseInlineExpression('1 + 2');
+
+        expect($third)->not->toBe($first)
+            ->and($third)->toBeInstanceOf(AstNode::class);
     });
 });
