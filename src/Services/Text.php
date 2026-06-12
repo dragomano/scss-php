@@ -188,6 +188,15 @@ final readonly class Text
      */
     public function splitTopLevelByOperator(string $condition, string $operator): array
     {
+        $cacheKey = $condition . '|' . $operator;
+
+        /** @var array<string, array<int, string>> $cache */
+        static $cache = [];
+
+        if (isset($cache[$cacheKey])) {
+            return $cache[$cacheKey];
+        }
+
         $parts  = [];
         $start  = 0;
         $depth  = 0;
@@ -226,12 +235,16 @@ final readonly class Text
         }
 
         if ($start === 0) {
-            return [trim($condition)];
+            $result = [trim($condition)];
+        } else {
+            $parts[] = trim(substr($condition, $start));
+
+            $result = $parts;
         }
 
-        $parts[] = trim(substr($condition, $start));
+        $cache[$cacheKey] = $result;
 
-        return $parts;
+        return $result;
     }
 
     /**
