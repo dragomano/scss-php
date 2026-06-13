@@ -17,9 +17,9 @@ final class Scope
 {
     private readonly VariableRegistry $variables;
 
-    private readonly CallableDefinitionMap $mixins;
+    private ?CallableDefinitionMap $mixins = null;
 
-    private readonly CallableDefinitionMap $functions;
+    private ?CallableDefinitionMap $functions = null;
 
     /** @var array<string, Scope> */
     private array $modules = [];
@@ -29,8 +29,6 @@ final class Scope
     public function __construct(private readonly ?Scope $parent = null)
     {
         $this->variables = new VariableRegistry();
-        $this->mixins    = new CallableDefinitionMap();
-        $this->functions = new CallableDefinitionMap();
     }
 
     public function getParent(): ?Scope
@@ -167,9 +165,9 @@ final class Scope
         $name = $this->normalizeName($name);
 
         if ($global) {
-            $this->getGlobalScope()->mixins->set($name, $definition);
+            $this->getGlobalScope()->getMixins()->set($name, $definition);
         } else {
-            $this->mixins->set($name, $definition);
+            $this->getMixins()->set($name, $definition);
         }
     }
 
@@ -209,7 +207,7 @@ final class Scope
 
     public function getMixins(): CallableDefinitionMap
     {
-        return $this->mixins;
+        return $this->mixins ??= new CallableDefinitionMap();
     }
 
     public function setFunction(string $name, CallableDefinition $definition, bool $global = false): void
@@ -217,9 +215,9 @@ final class Scope
         $name = $this->normalizeName($name);
 
         if ($global) {
-            $this->getGlobalScope()->functions->set($name, $definition);
+            $this->getGlobalScope()->getFunctions()->set($name, $definition);
         } else {
-            $this->functions->set($name, $definition);
+            $this->getFunctions()->set($name, $definition);
         }
     }
 
@@ -259,7 +257,7 @@ final class Scope
 
     public function getFunctions(): CallableDefinitionMap
     {
-        return $this->functions;
+        return $this->functions ??= new CallableDefinitionMap();
     }
 
     public function addModule(string $namespace, Scope $moduleScope): void
@@ -319,7 +317,7 @@ final class Scope
 
     private function getMixinNormalized(string $name): CallableDefinition
     {
-        $definition = $this->mixins->get($name);
+        $definition = $this->mixins?->get($name);
 
         if ($definition !== null) {
             return $definition;
@@ -334,7 +332,7 @@ final class Scope
 
     private function hasMixinNormalized(string $name): bool
     {
-        if ($this->mixins->has($name)) {
+        if ($this->mixins?->has($name) ?? false) {
             return true;
         }
 
@@ -343,7 +341,7 @@ final class Scope
 
     private function findMixinNormalized(string $name): ?ScopedCallableDefinition
     {
-        $definition = $this->mixins->get($name);
+        $definition = $this->mixins?->get($name);
 
         if ($definition !== null) {
             return new ScopedCallableDefinition($definition, $this);
@@ -354,7 +352,7 @@ final class Scope
 
     private function getFunctionNormalized(string $name): CallableDefinition
     {
-        $definition = $this->functions->get($name);
+        $definition = $this->functions?->get($name);
 
         if ($definition !== null) {
             return $definition;
@@ -369,7 +367,7 @@ final class Scope
 
     private function hasFunctionNormalized(string $name): bool
     {
-        if ($this->functions->has($name)) {
+        if ($this->functions?->has($name) ?? false) {
             return true;
         }
 
@@ -378,7 +376,7 @@ final class Scope
 
     private function findFunctionNormalized(string $name): ?ScopedCallableDefinition
     {
-        $definition = $this->functions->get($name);
+        $definition = $this->functions?->get($name);
 
         if ($definition !== null) {
             return new ScopedCallableDefinition($definition, $this);

@@ -35,6 +35,9 @@ final class Parser implements
     ParserInterface,
     RuleParserContextInterface
 {
+    /** @var array<string, AstNode> */
+    private static array $inlineExpressionCache = [];
+
     private TokenStream $stream;
 
     private int $blockDepth = 0;
@@ -52,6 +55,11 @@ final class Parser implements
         $this->stream = new TokenStream([new Token(TokenType::EOF, '', 1, 1)]);
 
         $this->initSubParsers();
+    }
+
+    public static function clearInlineExpressionCache(): void
+    {
+        self::$inlineExpressionCache = [];
     }
 
     public function setTrackSourceLocations(bool $track): void
@@ -113,12 +121,27 @@ final class Parser implements
             return new StringNode('');
         }
 
+        return $this->parseInlineExpression($expr);
+    }
+
+    public function parseInlineExpression(string $expr): AstNode
+    {
+        $cacheKey = $this->trackSourceLocations ? "\x01$expr" : $expr;
+
+        if (isset(self::$inlineExpressionCache[$cacheKey])) {
+            return self::$inlineExpressionCache[$cacheKey];
+        }
+
         $inlineParser = new self();
         $inlineParser->setTrackSourceLocations($this->trackSourceLocations);
 
         $ast = $inlineParser->parse(".__tmp__ { __tmp__: $expr; }");
 
-        return $this->extractInlineValueFromAst($ast, $expr);
+        $result = $this->extractInlineValueFromAst($ast, $expr);
+
+        self::$inlineExpressionCache[$cacheKey] = $result;
+
+        return $result;
     }
 
     public function isInsideBraces(): bool

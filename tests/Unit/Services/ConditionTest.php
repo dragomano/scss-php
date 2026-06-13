@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
@@ -226,6 +227,11 @@ describe('Condition', function () {
             public function parse(string $source): RootNode
             {
                 return new RootNode([new StringNode('not-a-rule')]);
+            }
+
+            public function parseInlineExpression(string $expr): AstNode
+            {
+                return new StringNode($expr);
             }
         };
 

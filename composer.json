@@ -52,12 +52,6 @@
     "symfony/var-dumper": "^7.4|^8.0",
     "vimeo/psalm": "^6.15"
   },
-  "repositories": [
-    {
-      "type": "vcs",
-      "url": "https://github.com/AlwinGarside/couleur"
-    }
-  ],
   "scripts": {
     "fix": "vendor/bin/php-cs-fixer fix",
     "rector": "vendor/bin/rector process --clear-cache",

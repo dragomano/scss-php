@@ -47,6 +47,11 @@ describe('ExtendsResolver', function () {
             {
                 return new RootNode();
             }
+
+            public function parseInlineExpression(string $expr): AstNode
+            {
+                return new StringNode($expr);
+            }
         };
 
         $evaluateValue = static fn(AstNode $node, Environment $env): AstNode => $node;
@@ -283,6 +288,11 @@ describe('ExtendsResolver', function () {
                     public function parse(string $source): RootNode
                     {
                         return new RootNode();
+                    }
+
+                    public function parseInlineExpression(string $expr): AstNode
+                    {
+                        return new StringNode($expr);
                     }
                 },
                 new class implements AstValueEvaluatorInterface {

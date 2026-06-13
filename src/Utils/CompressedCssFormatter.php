@@ -6,9 +6,11 @@ namespace Bugo\SCSS\Utils;
 
 use function ctype_space;
 use function ctype_xdigit;
+use function implode;
 use function in_array;
 use function ltrim;
 use function max;
+use function str_contains;
 use function str_replace;
 use function str_starts_with;
 use function strlen;
@@ -32,15 +34,26 @@ final readonly class CompressedCssFormatter
 
     private function removeRegularComments(string $css): string
     {
-        $result = '';
-        $length = strlen($css);
-        $index  = 0;
+        if (! str_contains($css, '/*')) {
+            return $css;
+        }
+
+        $parts   = [];
+        $length  = strlen($css);
+        $index   = 0;
+        $lastCut = 0;
 
         while ($index < $length) {
             if ($css[$index] === '/' && $index + 1 < $length && $css[$index + 1] === '*') {
+                if ($index > $lastCut) {
+                    $parts[] = substr($css, $lastCut, $index - $lastCut);
+                }
+
                 $end = strpos($css, '*/', $index + 2);
 
                 if ($end === false) {
+                    $lastCut = $index;
+
                     break;
                 }
 
@@ -49,24 +62,23 @@ final readonly class CompressedCssFormatter
                 $comment = substr($css, $index, $end - $index);
 
                 if ($this->shouldPreserveComment($comment)) {
-                    $result .= $comment;
+                    $parts[] = $comment;
                 }
 
-                $index = $end;
+                $lastCut = $end;
+                $index   = $end;
 
                 continue;
             }
 
-            $result .= $css[$index];
-
             $index++;
         }
 
-        if ($index < $length) {
-            $result .= substr($css, $index);
+        if ($lastCut < $length) {
+            $parts[] = substr($css, $lastCut);
         }
 
-        return $result;
+        return $parts !== [] ? implode('', $parts) : $css;
     }
 
     private function shouldPreserveComment(string $comment): bool
@@ -82,7 +94,7 @@ final readonly class CompressedCssFormatter
 
     private function compactCss(string $css): string
     {
-        $result         = '';
+        $parts          = [];
         $length         = strlen($css);
         $inString       = false;
         $quote          = '';
@@ -95,7 +107,7 @@ final readonly class CompressedCssFormatter
             $char = $css[$i];
 
             if ($inString) {
-                $result .= $char;
+                $parts[] = $char;
 
                 $lastOutputChar = $char;
 
@@ -126,7 +138,7 @@ final readonly class CompressedCssFormatter
                     continue;
                 }
 
-                $result .= ';';
+                $parts[] = ';';
 
                 $lastOutputChar = ';';
                 $pendingSpace   = false;
@@ -143,11 +155,11 @@ final readonly class CompressedCssFormatter
                     && ! $this->isTightPunctuation($char)
                     && ! $this->shouldSkipSpace($lastOutputChar, $next, $parenDepth)
                 ) {
-                    $result .= ' ';
+                    $parts[] = ' ';
                 }
             }
 
-            $result .= $char;
+            $parts[] = $char;
 
             $lastOutputChar = $char;
             $pendingSpace   = false;
@@ -164,7 +176,7 @@ final readonly class CompressedCssFormatter
             }
         }
 
-        return $result;
+        return $parts !== [] ? implode('', $parts) : '';
     }
 
     private function isTightPunctuation(string $char): bool
@@ -242,7 +254,7 @@ final readonly class CompressedCssFormatter
 
     private function shortenHexColors(string $css): string
     {
-        $result   = '';
+        $parts    = [];
         $length   = strlen($css);
         $inString = false;
         $quote    = '';
@@ -254,7 +266,7 @@ final readonly class CompressedCssFormatter
             if (! $inString && ($char === '"' || $char === "'")) {
                 $inString = true;
                 $quote    = $char;
-                $result  .= $char;
+                $parts[]  = $char;
 
                 $i++;
 
@@ -266,7 +278,7 @@ final readonly class CompressedCssFormatter
                     $inString = false;
                 }
 
-                $result .= $char;
+                $parts[] = $char;
 
                 $i++;
 
@@ -289,7 +301,7 @@ final readonly class CompressedCssFormatter
                         continue;
                     }
 
-                    $result .= $this->shortenHex($candidate);
+                    $parts[] = $this->shortenHex($candidate);
 
                     $i += 1 + $hexLen;
 
@@ -297,11 +309,11 @@ final readonly class CompressedCssFormatter
                 }
             }
 
-            $result .= $char;
+            $parts[] = $char;
 
             $i++;
         }
 
-        return $result;
+        return $parts !== [] ? implode('', $parts) : '';
     }
 }

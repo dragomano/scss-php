@@ -6,6 +6,7 @@ use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 use Bugo\SCSS\LoaderInterface;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\RootNode;
@@ -41,6 +42,11 @@ describe('Module service', function () {
             public function parse(string $source): RootNode
             {
                 return new RootNode([]);
+            }
+
+            public function parseInlineExpression(string $expr): AstNode
+            {
+                return new StringNode($expr);
             }
         };
 
