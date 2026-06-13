@@ -224,9 +224,10 @@ final readonly class Selector
         $rootCtx         = new TraversalContext($env, 0);
         $parentSelector  = $this->getCurrentParentSelector($env);
         $currentStack    = $this->getCurrentAtRuleStack($env);
-        $stack           = $this->filterAtRootStackByQuery($currentStack, $node->queryMode, $node->queryRules);
+        $normalizedRules = $this->normalizeAtRootQueryRules($node->queryRules);
+        $stack           = $this->filterAtRootStackByQuery($currentStack, $node->queryMode, $normalizedRules);
         $escapeLevels    = count($currentStack);
-        $keepRuleContext = $this->shouldKeepAtRootRuleContext($node->queryMode, $node->queryRules);
+        $keepRuleContext = $this->shouldKeepAtRootRuleContext($node->queryMode, $normalizedRules);
 
         foreach ($node->body as $child) {
             $compiled = $this->compileAtRootChild(
@@ -534,18 +535,12 @@ final readonly class Selector
 
     /**
      * @param list<AtRuleContextEntry> $stack
-     * @param array<int, string> $queryRules
+     * @param array<int, string> $normalizedRules
      * @return list<AtRuleContextEntry>
      */
-    private function filterAtRootStackByQuery(array $stack, ?string $queryMode, array $queryRules): array
+    private function filterAtRootStackByQuery(array $stack, ?string $queryMode, array $normalizedRules): array
     {
-        if ($queryMode === null || $queryRules === []) {
-            return $stack;
-        }
-
-        $normalizedRules = $this->normalizeAtRootQueryRules($queryRules);
-
-        if ($normalizedRules === []) {
+        if ($queryMode === null || $normalizedRules === []) {
             return $stack;
         }
 
@@ -625,19 +620,15 @@ final readonly class Selector
     }
 
     /**
-     * @param array<int, string> $queryRules
+     * @param array<int, string> $normalizedRules
      */
-    private function shouldKeepAtRootRuleContext(?string $queryMode, array $queryRules): bool
+    private function shouldKeepAtRootRuleContext(?string $queryMode, array $normalizedRules): bool
     {
-        if ($queryMode === null || $queryRules === []) {
+        if ($queryMode === null || $normalizedRules === []) {
             return false;
         }
 
-        $rulesSet = array_fill_keys($this->normalizeAtRootQueryRules($queryRules), true);
-
-        if ($rulesSet === []) {
-            return false;
-        }
+        $rulesSet = array_fill_keys($normalizedRules, true);
 
         if ($queryMode === 'with') {
             return isset($rulesSet['rule']) || isset($rulesSet['all']);
