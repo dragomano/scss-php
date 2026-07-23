@@ -244,8 +244,8 @@ describe('Compiler', function () {
 
         $expected = /** @lang text */ <<<'CSS'
         .test {
-          a: rgb(117.3, 163.2, 209.1);
-          b: rgb(117.3, 163.2, 209.1);
+          a: rgb(46%, 64%, 82%);
+          b: rgb(46%, 64%, 82%);
           c: "AB";
           d: "AB";
         }

@@ -147,9 +147,12 @@ describe('SassColorModule', function () {
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
-            ->and($result->arguments[0]->value)->toBe(127.5)
-            ->and($result->arguments[1]->value)->toBe(127.5)
-            ->and($result->arguments[2]->value)->toBe(127.5);
+            ->and($result->arguments[0]->value)->toBeCloseTo(50.0, 0.001)
+            ->and($result->arguments[0]->unit)->toBe('%')
+            ->and($result->arguments[1]->value)->toBeCloseTo(50.0, 0.001)
+            ->and($result->arguments[1]->unit)->toBe('%')
+            ->and($result->arguments[2]->value)->toBeCloseTo(50.0, 0.001)
+            ->and($result->arguments[2]->unit)->toBe('%');
     });
 
     it('evaluates grayscale', function () {
@@ -157,9 +160,12 @@ describe('SassColorModule', function () {
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
-            ->and($result->arguments[0]->value)->toBe(127.5)
-            ->and($result->arguments[1]->value)->toBe(127.5)
-            ->and($result->arguments[2]->value)->toBe(127.5);
+            ->and($result->arguments[0]->value)->toBeCloseTo(50.0, 0.001)
+            ->and($result->arguments[0]->unit)->toBe('%')
+            ->and($result->arguments[1]->value)->toBeCloseTo(50.0, 0.001)
+            ->and($result->arguments[1]->unit)->toBe('%')
+            ->and($result->arguments[2]->value)->toBeCloseTo(50.0, 0.001)
+            ->and($result->arguments[2]->unit)->toBe('%');
     });
 
     it('evaluates green', function () {
@@ -242,9 +248,12 @@ describe('SassColorModule', function () {
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
-            ->and($result->arguments[0]->value)->toBeCloseTo(103.4937692017, 0.000000001)
-            ->and($result->arguments[1]->value)->toBeCloseTo(61.3720912206, 0.000000001)
-            ->and($result->arguments[2]->value)->toBeCloseTo(59.4306413380, 0.000000001);
+            ->and($result->arguments[0]->value)->toBeCloseTo(40.5857918438, 0.001)
+            ->and($result->arguments[0]->unit)->toBe('%')
+            ->and($result->arguments[1]->value)->toBeCloseTo(24.0674867532, 0.001)
+            ->and($result->arguments[1]->unit)->toBe('%')
+            ->and($result->arguments[2]->value)->toBeCloseTo(23.306133858, 0.001)
+            ->and($result->arguments[2]->unit)->toBe('%');
     });
 
     it('evaluates is-in-gamut', function () {
@@ -312,9 +321,12 @@ describe('SassColorModule', function () {
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
-            ->and($result->arguments[0]->value)->toBe(105.0)
-            ->and($result->arguments[1]->value)->toBe(138.0)
-            ->and($result->arguments[2]->value)->toBe(161.5);
+            ->and($result->arguments[0]->value)->toBeCloseTo(41.1764705882, 0.001)
+            ->and($result->arguments[0]->unit)->toBe('%')
+            ->and($result->arguments[1]->value)->toBeCloseTo(54.1176470588, 0.001)
+            ->and($result->arguments[1]->unit)->toBe('%')
+            ->and($result->arguments[2]->value)->toBeCloseTo(63.3333333333, 0.001)
+            ->and($result->arguments[2]->unit)->toBe('%');
     });
 
     it('evaluates mix in rec2020 with missing channels preserved', function () {
@@ -554,9 +566,12 @@ describe('SassColorModule', function () {
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
-            ->and($result->arguments[0]->value)->toBe(127.5)
+            ->and($result->arguments[0]->value)->toBeCloseTo(50.0, 0.001)
+            ->and($result->arguments[0]->unit)->toBe('%')
             ->and($result->arguments[1]->value)->toBe(0.0)
-            ->and($result->arguments[2]->value)->toBe(0.0);
+            ->and($result->arguments[1]->unit)->toBe('%')
+            ->and($result->arguments[2]->value)->toBe(0.0)
+            ->and($result->arguments[2]->unit)->toBe('%');
     });
 
     it('evaluates scale', function () {
@@ -564,9 +579,12 @@ describe('SassColorModule', function () {
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
-            ->and($result->arguments[0]->value)->toBe(127.5)
+            ->and($result->arguments[0]->value)->toBeCloseTo(50.0, 0.001)
+            ->and($result->arguments[0]->unit)->toBe('%')
             ->and($result->arguments[1]->value)->toBe(0.0)
-            ->and($result->arguments[2]->value)->toBe(0.0);
+            ->and($result->arguments[1]->unit)->toBe('%')
+            ->and($result->arguments[2]->value)->toBe(0.0)
+            ->and($result->arguments[2]->unit)->toBe('%');
     });
 
     it('evaluates scale with float rgb channels', function () {
@@ -574,9 +592,12 @@ describe('SassColorModule', function () {
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
-            ->and($result->arguments[0]->value)->toBe(129.2)
-            ->and($result->arguments[1]->value)->toBe(113.0)
-            ->and($result->arguments[2]->value)->toBe(127.0);
+            ->and($result->arguments[0]->value)->toBeCloseTo(50.6666666667, 0.001)
+            ->and($result->arguments[0]->unit)->toBe('%')
+            ->and($result->arguments[1]->value)->toBeCloseTo(44.3137254902, 0.001)
+            ->and($result->arguments[1]->unit)->toBe('%')
+            ->and($result->arguments[2]->value)->toBeCloseTo(49.8039215686, 0.001)
+            ->and($result->arguments[2]->unit)->toBe('%');
     });
 
     it('evaluates scale in oklch space and returns oklch for native color', function () {
@@ -705,9 +726,12 @@ describe('SassColorModule', function () {
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('rgb')
-            ->and($result->arguments[0]->value)->toBeCloseTo(103.1328905413, 0.000000001)
-            ->and($result->arguments[1]->value)->toBeCloseTo(50.9728129811, 0.000000001)
-            ->and($result->arguments[2]->value)->toBeCloseTo(150.8382222315, 0.000000001);
+            ->and($result->arguments[0]->value)->toBeCloseTo(40.4442708005, 0.001)
+            ->and($result->arguments[0]->unit)->toBe('%')
+            ->and($result->arguments[1]->value)->toBeCloseTo(19.9893384239, 0.001)
+            ->and($result->arguments[1]->unit)->toBe('%')
+            ->and($result->arguments[2]->value)->toBeCloseTo(59.1522440124, 0.001)
+            ->and($result->arguments[2]->unit)->toBe('%');
     });
 
     it('evaluates to-space to oklab with percentage lightness', function () {

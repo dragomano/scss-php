@@ -69,7 +69,7 @@ describe('Output Formatting', function () {
 
         $css = $compiler->compileString($scss);
 
-        expect($css)->toBe('.color-oklch{scale:rgb(170.1523705044,144.612080332,170.1172611061);mix:rgb(95.936325,74.568714,133.208259)}');
+        expect($css)->toBe('.color-oklch{scale:rgb(66.7264198057%,56.710619738%,66.7126514142%);mix:rgb(37.6220882353%,29.2426329412%,52.2385329412%)}');
     });
 
     it('preserves fractional rgb functions in compressed style', function () {
@@ -86,7 +86,7 @@ describe('Output Formatting', function () {
 
         $css = $compiler->compileString($scss);
 
-        expect($css)->toBe('.a{mix:rgb(105,138,161.5);scale:rgb(127.5,0,0);invert:rgb(103.4937692017,61.3720912206,59.430641338)}');
+        expect($css)->toBe('.a{mix:rgb(41.1764705882%,54.1176470588%,63.3333333333%);scale:rgb(50%,0%,0%);invert:rgb(40.5857918438%,24.0674867532%,23.306133858%)}');
     });
 
     it('passes through css relative color functions', function () {

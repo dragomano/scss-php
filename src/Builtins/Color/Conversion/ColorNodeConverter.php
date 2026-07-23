@@ -457,26 +457,39 @@ final readonly class ColorNodeConverter
             return $this->fromRgb($rgb);
         }
 
-        $r = new NumberNode(
-            (float) $this->runtime->spaceConverter->trimFloat(
-                $this->runtime->spaceConverter->clamp($rgb->r, 255.0),
-                10,
-            ),
-        );
-
-        $g = new NumberNode(
-            (float) $this->runtime->spaceConverter->trimFloat(
-                $this->runtime->spaceConverter->clamp($rgb->g, 255.0),
-                10,
-            ),
-        );
-
-        $b = new NumberNode(
-            (float) $this->runtime->spaceConverter->trimFloat(
-                $this->runtime->spaceConverter->clamp($rgb->b, 255.0),
-                10,
-            ),
-        );
+        if ($hasFractionalChannels) {
+            $r = new NumberNode(
+                (float) $this->runtime->spaceConverter->trimFloat($rgb->rValue() * 100.0 / 255.0, 10),
+                '%',
+            );
+            $g = new NumberNode(
+                (float) $this->runtime->spaceConverter->trimFloat($rgb->gValue() * 100.0 / 255.0, 10),
+                '%',
+            );
+            $b = new NumberNode(
+                (float) $this->runtime->spaceConverter->trimFloat($rgb->bValue() * 100.0 / 255.0, 10),
+                '%',
+            );
+        } else {
+            $r = new NumberNode(
+                (float) $this->runtime->spaceConverter->trimFloat(
+                    $this->runtime->spaceConverter->clamp($rgb->r, 255.0),
+                    10,
+                ),
+            );
+            $g = new NumberNode(
+                (float) $this->runtime->spaceConverter->trimFloat(
+                    $this->runtime->spaceConverter->clamp($rgb->g, 255.0),
+                    10,
+                ),
+            );
+            $b = new NumberNode(
+                (float) $this->runtime->spaceConverter->trimFloat(
+                    $this->runtime->spaceConverter->clamp($rgb->b, 255.0),
+                    10,
+                ),
+            );
+        }
 
         if (abs($rgb->a - 1.0) < 0.0000001) {
             return new FunctionNode('rgb', [$r, $g, $b]);
@@ -618,16 +631,34 @@ final readonly class ColorNodeConverter
 
     public function buildRgbFunctionNode(float $red, float $green, float $blue, float $alpha): FunctionNode
     {
-        $arguments = [new NumberNode($red), new NumberNode($green), new NumberNode($blue)];
+        $hasNonInteger = abs($red - round($red)) > 0.0000001
+            || abs($green - round($green)) > 0.0000001
+            || abs($blue - round($blue)) > 0.0000001;
 
-        if (abs($alpha - 1.0) >= 0.000001) {
-            return new FunctionNode(
-                'rgba',
-                [$arguments[0], $arguments[1], $arguments[2], new NumberNode($alpha)],
+        if ($hasNonInteger) {
+            $r = new NumberNode(
+                (float) $this->runtime->spaceConverter->trimFloat($red * 100.0 / 255.0, 10),
+                '%',
             );
+            $g = new NumberNode(
+                (float) $this->runtime->spaceConverter->trimFloat($green * 100.0 / 255.0, 10),
+                '%',
+            );
+            $b = new NumberNode(
+                (float) $this->runtime->spaceConverter->trimFloat($blue * 100.0 / 255.0, 10),
+                '%',
+            );
+        } else {
+            $r = new NumberNode($red);
+            $g = new NumberNode($green);
+            $b = new NumberNode($blue);
         }
 
-        return new FunctionNode('rgb', $arguments);
+        if (abs($alpha - 1.0) >= 0.000001) {
+            return new FunctionNode('rgba', [$r, $g, $b, new NumberNode($alpha)]);
+        }
+
+        return new FunctionNode('rgb', [$r, $g, $b]);
     }
 
     /** @param list<AstNode> $channels */

@@ -60,7 +60,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-mix {
-              value: rgb(105, 138, 161.5);
+              value: rgb(41.1764705882%, 54.1176470588%, 63.3333333333%);
             }
             CSS;
 
@@ -171,7 +171,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-grayscale {
-              value: rgb(127.5, 127.5, 127.5);
+              value: rgb(50%, 50%, 50%);
             }
             CSS;
 
@@ -359,7 +359,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-scale {
-              value: rgb(127.5, 0, 0);
+              value: rgb(50%, 0%, 0%);
             }
             CSS;
 
@@ -376,7 +376,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-scale {
-              value: rgb(129.2, 113, 127);
+              value: rgb(50.6666666667%, 44.3137254902%, 49.8039215686%);
             }
             CSS;
 
@@ -412,7 +412,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-invert {
-              value: rgb(103.4937692017, 61.3720912206, 59.430641338);
+              value: rgb(40.5857918438%, 24.0674867532%, 23.306133858%);
             }
             CSS;
 
@@ -777,7 +777,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-to-space {
-              value: rgb(103.1328905413, 50.9728129811, 150.8382222315);
+              value: rgb(40.4442708005%, 19.9893384239%, 59.1522440124%);
             }
             CSS;
 
@@ -1087,7 +1087,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .color-saturate-calc {
-                  value: rgb(46.92, 102, 157.08);
+                  value: rgb(18.4%, 40%, 61.6%);
                 }
                 CSS;
 
@@ -1591,7 +1591,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: rgba(242.25, 235.875, 228.225, .2);
+                  color: rgba(95%, 92.5%, 89.5%, .2);
                 }
                 CSS;
 
@@ -1695,7 +1695,7 @@ describe('Sass Color Module Feature', function () {
 
         expect($this->logger->records)->toHaveCount(71)
             ->and($messages)->toContain('adjust-hue() is deprecated. Suggestion: color.adjust(#036, $hue: 45deg)')
-            ->and($messages)->toContain('rgb(25.5, 0, 102)')
+            ->and($messages)->toContain('rgb(10%, 0%, 40%)')
             ->and($messages)->toContain('alpha(opacity=20)')
             ->and($messages)->toContain('alpha() is deprecated. Suggestion: color.channel(#e1d7d2, "alpha")')
             ->and($messages)->toContain('color.blackness() is deprecated. Suggestion: color.channel(#e1d7d2, "blackness", $space: hwb)')
@@ -1703,7 +1703,7 @@ describe('Sass Color Module Feature', function () {
             ->and($messages)->toContain('color.blue() is deprecated. Suggestion: color.channel(#e1d7d2, "blue", $space: rgb)')
             ->and($messages)->toContain('blue() is deprecated. Suggestion: color.channel(black, "blue", $space: rgb)')
             ->and($messages)->toContain('desaturate() is deprecated. Suggestions: color.scale(#d2e1dd, $saturation: -100%), or color.adjust(#d2e1dd, $saturation: -30%)')
-            ->and($messages)->toContain('rgb(217.5000009, 217.5000009, 217.5000009)')
+            ->and($messages)->toContain('rgb(85.294118%, 85.294118%, 85.294118%)')
             ->and($messages)->toContain('color.green() is deprecated. Suggestion: color.channel(#e1d7d2, "green", $space: rgb)')
             ->and($messages)->toContain('green() is deprecated. Suggestion: color.channel(black, "green", $space: rgb)')
             ->and($messages)->toContain('color.hue() is deprecated. Suggestion: color.channel(#e1d7d2, "hue", $space: hsl)')
@@ -1724,7 +1724,7 @@ describe('Sass Color Module Feature', function () {
             ->and($messages)->toContain('red() is deprecated. Suggestion: color.channel(black, "red", $space: rgb)')
             ->and($messages)->toContain('saturate() is deprecated. Suggestions: color.scale(#0e4982, $saturation: 100%), or color.adjust(#0e4982, $saturation: 30%)')
             ->and($messages)->toContain('saturate() is deprecated. Suggestions: color.scale(#c69, $saturation: 40%), or color.adjust(#c69, $saturation: 20%)')
-            ->and($messages)->toContain('rgb(224.4, 81.6, 153)')
+            ->and($messages)->toContain('rgb(88%, 32%, 60%)')
             ->and($messages)->toContain('color.saturation() is deprecated. Suggestion: color.channel(#e1d7d2, "saturation", $space: hsl)')
             ->and($messages)->toContain('saturation() is deprecated. Suggestion: color.channel(#dadbdf, "saturation", $space: hsl)')
             ->and($messages)->toContain('transparentize() is deprecated. Suggestions: color.scale(rgba(0, 51, 102, 0.3), $alpha: -100%), or color.adjust(rgba(0, 51, 102, 0.3), $alpha: -0.3)')
