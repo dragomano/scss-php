@@ -18,10 +18,6 @@ final class AstValueComparator
 {
     public static function equals(AstNode $left, AstNode $right): bool
     {
-        if ($left::class !== $right::class) {
-            return false;
-        }
-
         if ($left instanceof BooleanNode && $right instanceof BooleanNode) {
             return $left->value === $right->value;
         }

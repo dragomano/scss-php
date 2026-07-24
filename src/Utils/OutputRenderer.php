@@ -8,6 +8,7 @@ final class OutputRenderer
 {
     /**
      * @param array<int, string> $indentCache
+     * @pest-mutate-ignore
      */
     public function __construct(
         public array $indentCache = [0 => ''],

@@ -51,5 +51,28 @@ describe('SelectorHelper', function () {
             expect(SelectorHelper::resolveNested('&:hover, .icon', '.button, .link'))
                 ->toBe('.button:hover, .icon, .link:hover');
         });
+
+        it('returns selector unchanged when no ampersand and no commas', function () {
+            expect(SelectorHelper::resolveNested('.child', '.parent'))->toBe('.child');
+        });
+
+        it('replaces ampersand with parent selector when no commas', function () {
+            expect(SelectorHelper::resolveNested('&.active', '.btn'))->toBe('.btn.active');
+        });
+
+        it('returns empty selector when selector is empty and no commas', function () {
+            expect(SelectorHelper::resolveNested('', '.parent'))->toBe('');
+        });
+
+        it('returns empty selector when parent is empty and no commas', function () {
+            expect(SelectorHelper::resolveNested('.child', ''))->toBe('.child');
+        });
+
+        it('reindexes resolved parts after deduplication', function () {
+            $result = SelectorHelper::resolveNested('&, &', '.btn');
+
+            expect($result)->toBe('.btn')
+                ->and(array_values(explode(', ', $result)))->toBe(['.btn']);
+        });
     });
 });

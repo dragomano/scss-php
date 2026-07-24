@@ -337,4 +337,235 @@ describe('SelectorTokenizer', function () {
         $result = $this->tokenizer->splitAtTopLevel('a["x,y"], b', [','], true);
         expect($result)->toBe(['a["x,y"]', 'b']);
     });
+
+    describe('tokenizeCompound() additional coverage', function () {
+        it('skips unknown characters like combinators', function () {
+            $tokens = $this->tokenizer->tokenizeCompound('a > b');
+            expect($tokens)->toContain('a')
+                ->and($tokens)->toContain('b')
+                ->and($tokens)->not->toContain('>');
+        });
+
+        it('continues parsing after bracket group', function () {
+            $tokens = $this->tokenizer->tokenizeCompound('[type="text"]div');
+            expect($tokens)->toContain('[type="text"]')
+                ->and($tokens)->toContain('div');
+        });
+    });
+
+    describe('doesCompoundSatisfy() additional coverage', function () {
+        it('returns false when required type does not match candidate type', function () {
+            expect($this->tokenizer->doesCompoundSatisfy('.foo', 'div'))->toBeFalse();
+        });
+
+        it('returns false when candidate has universal type but required has specific type', function () {
+            expect($this->tokenizer->doesCompoundSatisfy('*', 'div'))->toBeFalse();
+        });
+
+        it('skips wildcards and empty tokens when checking required tokens', function () {
+            expect($this->tokenizer->doesCompoundSatisfy('div.foo', '*'))->toBeTrue();
+        });
+
+        it('skips required type token when checking required tokens', function () {
+            expect($this->tokenizer->doesCompoundSatisfy('div.foo', 'div'))->toBeTrue();
+        });
+    });
+
+    describe('unifyCompounds() additional coverage', function () {
+        it('returns null when candidate type is incompatible with required type via left', function () {
+            expect($this->tokenizer->unifyCompounds('span.foo', 'div.bar'))->toBeNull();
+        });
+
+        it('resolves type from right when left type is universal', function () {
+            $result = $this->tokenizer->unifyCompounds('*', 'div');
+            expect($result)->toBe('div');
+        });
+
+        it('resolves type from left when left type is specific', function () {
+            $result = $this->tokenizer->unifyCompounds('div', '*');
+            expect($result)->toBe('div');
+        });
+    });
+
+    describe('replaceTokensInCompound() additional coverage', function () {
+        it('puts replacement tokens before remaining when target type exists', function () {
+            $result = $this->tokenizer->replaceTokensInCompound('div.foo', ['div'], 'span');
+            expect($result)->toBe('span.foo');
+        });
+
+        it('normalizes pseudo order when remaining has both pseudo and class-like tokens', function () {
+            $result = $this->tokenizer->replaceTokensInCompound('.foo:hover', ['.foo'], '.bar');
+            expect($result)->toBe('.bar:hover');
+        });
+
+        it('returns replacement when target tokens fully match compound', function () {
+            $result = $this->tokenizer->replaceTokensInCompound('.foo', ['.foo'], '.bar');
+            expect($result)->toBe('.bar');
+        });
+
+        it('skips duplicate tokens from replacement when target type exists', function () {
+            $result = $this->tokenizer->replaceTokensInCompound('.foo.bar', ['.foo'], '.bar');
+            expect($result)->toBe('.bar');
+        });
+
+        it('puts remaining tokens before replacement when no target type', function () {
+            $result = $this->tokenizer->replaceTokensInCompound('.foo:hover', [':hover'], '.baz');
+            expect($result)->toBe('.foo.baz');
+        });
+    });
+
+    describe('hasBogusTopLevelCombinatorSequence() additional coverage', function () {
+        it('resets combinator state after non-space non-combinator character', function () {
+            expect($this->tokenizer->hasBogusTopLevelCombinatorSequence('div > a + b'))->toBeFalse();
+        });
+    });
+
+    describe('hasUnsupportedTopLevelCombinator() additional coverage', function () {
+        it('detects general sibling combinator', function () {
+            expect($this->tokenizer->hasUnsupportedTopLevelCombinator('div ~ span'))->toBeTrue();
+        });
+
+        it('ignores combinators inside single-quoted attribute values', function () {
+            expect($this->tokenizer->hasUnsupportedTopLevelCombinator("[data-test='a>b'] span"))->toBeFalse();
+        });
+    });
+
+    describe('hasAdjacentCompoundSelectors() additional coverage', function () {
+        it('handles hash interpolation followed by type selector', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('#{$var}span'))->toBeTrue();
+        });
+
+        it('returns false for hash interpolation followed by class', function () {
+            expect($this->tokenizer->hasAdjacentCompoundSelectors('#{$var}.foo'))->toBeFalse();
+        });
+    });
+
+    describe('splitAtTopLevel() additional coverage', function () {
+        it('handles bracket depth tracking', function () {
+            $result = $this->tokenizer->splitAtTopLevel('a[b], c', [',']);
+            expect($result)->toBe(['a[b]', 'c']);
+        });
+
+        it('handles paren depth tracking', function () {
+            $result = $this->tokenizer->splitAtTopLevel('calc(1 + 2), b', [',']);
+            expect($result)->toBe(['calc(1 + 2)', 'b']);
+        });
+
+        it('handles single-quoted attribute values with handleQuotes', function () {
+            $result = $this->tokenizer->splitAtTopLevel("a['x,y'], b", [','], true);
+            expect($result)->toBe(["a['x,y']", 'b']);
+        });
+    });
+
+    describe('inspectTopLevelCombinators() additional coverage', function () {
+        it('handles single-quoted attribute values', function () {
+            expect($this->tokenizer->hasUnsupportedTopLevelCombinator("[href='http://example.com'] span"))->toBeFalse();
+        });
+
+        it('detects combinators after closing paren', function () {
+            expect($this->tokenizer->hasUnsupportedTopLevelCombinator(':is(a) > b'))->toBeTrue();
+        });
+    });
+
+    describe('replaceExtendTargetInStructuredSelector() additional coverage', function () {
+        it('replaces target with single compound replacement without ancestors', function () {
+            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
+                ['.foo'],
+                ['.foo'],
+                ['.bar'],
+            );
+            expect($result)->toContain('.bar');
+        });
+
+        it('replaces target with multi-compound replacement adding ancestors', function () {
+            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
+                ['div', '.foo'],
+                ['.foo'],
+                ['span', '.bar'],
+            );
+            expect($result)->not->toBeEmpty();
+        });
+
+        it('skips compounds where target tokens are not found', function () {
+            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
+                ['div.foo', '.baz'],
+                ['.foo'],
+                ['.bar'],
+            );
+            expect($result)->not->toBeEmpty()
+                ->and(implode(' ', $result))->toContain('.bar');
+        });
+
+        it('deduplicates resolved selectors', function () {
+            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
+                ['.foo', '.foo'],
+                ['.foo'],
+                ['.bar'],
+            );
+            expect(count($result))->toBeLessThanOrEqual(2);
+        });
+
+        it('returns empty when replacementSubject cannot unify with remaining', function () {
+            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
+                ['div.foo'],
+                ['.foo'],
+                ['span', 'div'],
+            );
+            expect($result)->not->toBeEmpty();
+        });
+
+        it('skips compound when unifyCompounds returns null due to type conflict', function () {
+            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
+                ['span.foo'],
+                ['.foo'],
+                ['span', 'div'],
+            );
+            expect($result)->toBeEmpty();
+        });
+
+        it('covers ancestor check where prefix already satisfies ancestor', function () {
+            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
+                ['div', '.foo'],
+                ['.foo'],
+                ['div', '.bar'],
+            );
+            expect(implode(' ', $result))->toContain('.bar');
+        });
+
+        it('covers ancestor check where prefix does not satisfy ancestor', function () {
+            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
+                ['span', '.foo'],
+                ['.foo'],
+                ['div', '.bar'],
+            );
+            expect(implode(' ', $result))->toContain('div');
+        });
+
+        it('continues to next compound after one fails unification', function () {
+            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
+                ['span.foo'],
+                ['.foo'],
+                ['span', 'div'],
+            );
+            expect($result)->toBeEmpty();
+        });
+
+        it('marks ancestor as covered when prefix satisfies it', function () {
+            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
+                ['div', '.foo'],
+                ['.foo'],
+                ['div', '.bar'],
+            );
+            expect(implode(' ', $result))->toContain('.bar');
+        });
+
+        it('uses replaceTokensInCompound when no ancestors', function () {
+            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
+                ['.foo'],
+                ['.foo'],
+                ['.bar'],
+            );
+            expect($result)->toContain('.bar');
+        });
+    });
 });

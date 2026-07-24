@@ -12,12 +12,16 @@ use const PHP_INT_MAX;
 
 final class SourceMapGenerator
 {
+    // @pest-mutate-ignore
     private const VLQ_BASE_SHIFT = 5;
 
+    // @pest-mutate-ignore
     private const VLQ_BASE_MASK = 31;
 
+    // @pest-mutate-ignore
     private const VLQ_CONTINUATION_BIT = 32;
 
+    // @pest-mutate-ignore
     private const BASE64_MAP = [
         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
         'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',

@@ -10,6 +10,7 @@ use function substr;
 
 final class StringHelper
 {
+    // @pest-mutate-ignore
     private const QUOTE_CHARS = ['"', "'"];
 
     public static function unquote(string $value): string

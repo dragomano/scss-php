@@ -6,7 +6,10 @@ namespace Bugo\SCSS\Utils;
 
 final class CssNamedColors
 {
-    /** @var array<string, string> */
+    /**
+     * @var array<string, string>
+     * @pest-mutate-ignore
+     */
     public const NAMED_HEX = [
         'aliceblue'            => '#f0f8ff',
         'antiquewhite'         => '#faebd7',

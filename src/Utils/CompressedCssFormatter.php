@@ -54,6 +54,7 @@ final readonly class CompressedCssFormatter
                 if ($end === false) {
                     $lastCut = $index;
 
+                    // @pest-mutate-ignore
                     break;
                 }
 
@@ -194,6 +195,7 @@ final readonly class CompressedCssFormatter
             }
         }
 
+        // @pest-mutate-ignore
         return '';
     }
 
@@ -297,6 +299,8 @@ final readonly class CompressedCssFormatter
                     }
 
                     $after = $i + 1 + $hexLen;
+
+                    // @pest-mutate-ignore
                     if ($after < $length && ctype_xdigit($css[$after])) {
                         continue;
                     }

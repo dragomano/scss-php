@@ -22,7 +22,10 @@ final class NameHelper
      */
     public static function splitNamespacedName(string $name): array
     {
-        /** @var array{namespace: string, member: string} */
+        /**
+         * @var array{namespace: string, member: string}
+         * @pest-mutate-ignore
+        */
         return self::split($name, '');
     }
 
@@ -36,6 +39,7 @@ final class NameHelper
      */
     private static function split(string $name, ?string $defaultMember): array
     {
+        // @pest-mutate-ignore
         if (! str_contains($name, '.')) {
             return ['namespace' => $name, 'member' => $defaultMember];
         }

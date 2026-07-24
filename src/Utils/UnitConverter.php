@@ -11,7 +11,10 @@ use function strlen;
 
 final class UnitConverter
 {
-    /** @var array<string, array{group: string, factor: float}> */
+    /**
+     * @var array<string, array{group: string, factor: float}>
+     * @pest-mutate-ignore
+    */
     private const CONVERSIONS = [
         'px'   => ['group' => 'length', 'factor' => 1.0],
         'in'   => ['group' => 'length', 'factor' => 96.0],

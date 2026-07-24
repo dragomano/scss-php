@@ -101,5 +101,117 @@ describe('CompressedCssFormatter', function () {
         it('keeps a terminal semicolon when no non-space character follows it', function () {
             expect($this->formatter->format('@charset "UTF-8";'))->toBe('@charset "UTF-8";');
         });
+
+        it('removes trailing semicolon before closing brace even with extra whitespace', function () {
+            expect($this->formatter->format('.a{color:red; }'))->toBe('.a{color:red}');
+        });
+
+        it('skips space after closing paren followed by identifier in non-calc context', function () {
+            $css = '.a{width:calc(100% - 20px)em}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(100% - 20px)em}');
+        });
+
+        it('skips space before multiplication or division operator inside calc', function () {
+            $css = '.a{width:calc(1px *2px)}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(1px*2px)}');
+        });
+
+        it('does not skip space for non-calc context multiplication', function () {
+            $css = '.a{content:"hello" * 2}';
+
+            expect($this->formatter->format($css))->toBe('.a{content:"hello" * 2}');
+        });
+
+        it('treats digits as math operand start in calc expressions', function () {
+            $css = '.a{width:calc(1px/ 2)}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(1px/2)}');
+        });
+
+        it('treats letters as math operand start in calc expressions', function () {
+            $css = '.a{width:calc(1px * a)}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(1px*a)}');
+        });
+
+        it('treats percent as math operand start in calc expressions', function () {
+            $css = '.a{width:calc(100% / 2)}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(100%/2)}');
+        });
+
+        it('treats dollar sign as math operand start in calc expressions', function () {
+            $css = '.a{width:calc(1px * $var)}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(1px*$var)}');
+        });
+
+        it('treats minus as math operand start in calc expressions', function () {
+            $css = '.a{width:calc(1px * -1)}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(1px*-1)}');
+        });
+
+        it('treats hash as math operand start in calc expressions', function () {
+            $css = '.a{width:calc(1px * #foo)}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(1px*#foo)}');
+        });
+
+        it('treats dot as math operand start in calc expressions', function () {
+            $css = '.a{width:calc(1px * .5)}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(1px*.5)}');
+        });
+
+        it('treats open paren as math operand start in calc expressions', function () {
+            $css = '.a{width:calc(1px * (1 + 2))}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(1px*(1 + 2))}');
+        });
+
+        it('treats uppercase letters as identifier start after closing paren', function () {
+            $css = '.a{width:calc(100% - 20px) Em}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(100% - 20px)Em}');
+        });
+
+        it('treats underscore as identifier start after closing paren', function () {
+            $css = '.a{width:calc(100% - 20px) _var}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(100% - 20px)_var}');
+        });
+
+        it('treats hyphen as identifier start after closing paren', function () {
+            $css = '.a{width:calc(100% - 20px) -var}';
+
+            expect($this->formatter->format($css))->toBe('.a{width:calc(100% - 20px)-var}');
+        });
+
+        it('leaves non-shortable 6-digit hex colors intact', function () {
+            expect($this->formatter->format('.a{color:#123456}'))->toBe('.a{color:#123456}');
+        });
+
+        it('leaves non-shortable 8-digit hex colors intact', function () {
+            expect($this->formatter->format('.a{color:#12345678}'))->toBe('.a{color:#12345678}');
+        });
+
+        it('shortens 8-digit hex colors with mixed paired digits', function () {
+            expect($this->formatter->format('.a{color:#aabb1122}'))->toBe('.a{color:#ab12}');
+        });
+
+        it('does not treat single hash as hex color', function () {
+            $css = '.a{content:"#"}';
+
+            expect($this->formatter->format($css))->toBe('.a{content:"#"}');
+        });
+
+        it('handles multiple consecutive hex colors', function () {
+            $css = '.a{color:#ffffff;background:#000000}';
+
+            expect($this->formatter->format($css))->toBe('.a{color:#fff;background:#000}');
+        });
     });
 });
