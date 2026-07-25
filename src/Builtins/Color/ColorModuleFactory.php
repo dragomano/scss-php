@@ -38,7 +38,7 @@ final class ColorModuleFactory
 
         $converter        = new ColorNodeConverter($runtime);
         $spaceConverter   = new ColorSpaceConverter($runtime, $converter);
-        $channelInspector = new ColorChannelInspector($runtime, $converter);
+        $channelInspector = new ColorChannelInspector($runtime, $converter, $spaceConverter);
 
         return new ColorModuleServices(
             spaceConverter: $spaceConverter,

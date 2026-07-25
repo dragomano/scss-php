@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Builtins\Color\Operations;
 
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
+use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\UnknownColorChannelException;
@@ -22,7 +23,11 @@ use function strtolower;
 
 final readonly class ColorChannelInspector
 {
-    public function __construct(private ColorRuntime $runtime, private ColorNodeConverter $converter) {}
+    public function __construct(
+        private ColorRuntime $runtime,
+        private ColorNodeConverter $converter,
+        private ColorSpaceConverter $spaceInterop,
+    ) {}
 
     /**
      * @param array<int, AstNode> $positional
@@ -53,7 +58,7 @@ final readonly class ColorChannelInspector
             'xyz',
             'xyz-d50',
             'xyz-d65' => $this->resolveChannelValue($color, $space, $channelName),
-            default   => throw new UnsupportedColorSpaceException($space, $this->runtime->context->errorCtx('channel')),
+            default   => $this->resolveArbitraryColorChannel($color, $space, $channelName),
         };
     }
 
@@ -367,5 +372,45 @@ final readonly class ColorChannelInspector
             'alpha' => new NumberNode($rgb->a),
             default => throw new UnknownColorChannelException('XYZ-D50', $channelName),
         };
+    }
+
+    private function resolveArbitraryColorChannel(AstNode $color, string $space, string $channelName): NumberNode
+    {
+        $channelIndex = match ($channelName) {
+            'red'   => 1,
+            'green' => 2,
+            'blue'  => 3,
+            default => null,
+        };
+
+        if ($channelIndex === null) {
+            throw new UnsupportedColorSpaceException($space, $this->runtime->context->errorCtx('channel'));
+        }
+
+        if ($color instanceof FunctionNode && strtolower($color->name) === 'color') {
+            $expandedArgs = $this->runtime->arguments->expandArguments($color);
+            $nativeSpace  = strtolower(
+                $expandedArgs[0] instanceof StringNode ? $expandedArgs[0]->value : '',
+            );
+
+            if ($nativeSpace === $space
+                && isset($expandedArgs[$channelIndex])
+                && $expandedArgs[$channelIndex] instanceof NumberNode
+            ) {
+                return $expandedArgs[$channelIndex];
+            }
+        }
+
+        $converted = $this->spaceInterop->toSpace([$color, new StringNode($space)]);
+
+        if ($converted instanceof FunctionNode && strtolower($converted->name) === 'color') {
+            $args = $this->runtime->arguments->expandArguments($converted);
+
+            if (isset($args[$channelIndex]) && $args[$channelIndex] instanceof NumberNode) {
+                return $args[$channelIndex];
+            }
+        }
+
+        throw new UnsupportedColorSpaceException($space, $this->runtime->context->errorCtx('channel'));
     }
 }

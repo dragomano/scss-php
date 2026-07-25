@@ -7,6 +7,7 @@ use Bugo\Iris\Converters\SpaceConverter;
 use Bugo\Iris\LiteralParser;
 use Bugo\Iris\Serializers\LiteralSerializer;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
+use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
 use Bugo\SCSS\Builtins\Color\Operations\ColorChannelInspector;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
@@ -40,10 +41,11 @@ describe('ColorChannelReader', function () {
             literalSerializer: new LiteralSerializer(),
         );
 
-        $converter = new ColorNodeConverter($runtime);
+        $converter      = new ColorNodeConverter($runtime);
+        $spaceConverter = new ColorSpaceConverter($runtime, $converter);
 
         $this->state  = $state;
-        $this->reader = new ColorChannelInspector($runtime, $converter);
+        $this->reader = new ColorChannelInspector($runtime, $converter, $spaceConverter);
     });
 
     it('reads channels using positional spaces and rgb-like alpha branches', function () {
