@@ -6,8 +6,15 @@ namespace Bugo\SCSS\Handlers;
 
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\BooleanNode;
+use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
+use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
+use Bugo\SCSS\Nodes\NamedArgumentNode;
+use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
@@ -17,6 +24,8 @@ use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Text;
 
 use function array_key_last;
+use function array_map;
+use function implode;
 use function in_array;
 use function is_array;
 use function str_contains;
@@ -41,6 +50,31 @@ final readonly class DeclarationNodeHandler
         $property = str_contains($node->property, '#{')
             ? $this->text->interpolateText($node->property, $ctx->env)
             : $node->property;
+
+        if (
+            $ctx->env->getCurrentScope()->isInsideCssFunctionBody()
+            && strtolower($property) === 'result'
+        ) {
+            if (str_contains($node->property, '#{')) {
+                $evaluatedValue = $this->evaluation->evaluateDeclarationValue(
+                    $node->value,
+                    $property,
+                    $ctx->env,
+                );
+
+                $value = $this->evaluation->format($evaluatedValue, $ctx->env);
+
+                return $prefix . $property . ': ' . $value . ';';
+            }
+
+            $value = $this->formatRawCssValue($node->value);
+
+            if (str_contains($value, '#{')) {
+                $value = $this->text->interpolateText($value, $ctx->env);
+            }
+
+            return $prefix . $property . ': ' . $value . ';';
+        }
 
         $evaluatedValue = $this->evaluation->evaluateDeclarationValue($node->value, $property, $ctx->env);
 
@@ -139,5 +173,55 @@ final readonly class DeclarationNodeHandler
         }
 
         return ! in_array(strtolower($entry->name ?? ''), ['font-face', 'page', 'property', 'counter-style'], true);
+    }
+
+    private function formatRawCssValue(AstNode $node): string
+    {
+        return match (true) {
+            $node instanceof StringNode,
+            $node instanceof NumberNode,
+            $node instanceof BooleanNode           => (string) $node,
+            $node instanceof ColorNode             => $node->value,
+            $node instanceof ListNode              => $this->formatRawListNode($node),
+            $node instanceof FunctionNode          => $this->formatRawFunctionNode($node),
+            $node instanceof MapNode               => $this->formatRawMapNode($node),
+            $node instanceof VariableReferenceNode => '$' . $node->name,
+            $node instanceof NamedArgumentNode     => '$' . $node->name . ': ' . $this->formatRawCssValue($node->value),
+            default                                => '',
+        };
+    }
+
+    private function formatRawListNode(ListNode $node): string
+    {
+        $items = array_map(
+            fn(AstNode $item): string => $this->formatRawCssValue($item),
+            $node->items,
+        );
+
+        $separator = $node->separator === 'comma' ? ', ' : ' ';
+        $open      = $node->bracketed ? '[' : '';
+        $close     = $node->bracketed ? ']' : '';
+
+        return $open . implode($separator, $items) . $close;
+    }
+
+    private function formatRawFunctionNode(FunctionNode $node): string
+    {
+        $args = array_map(
+            fn(AstNode $arg): string => $this->formatRawCssValue($arg),
+            $node->arguments,
+        );
+
+        return $node->name . '(' . implode(', ', $args) . ')';
+    }
+
+    private function formatRawMapNode(MapNode $node): string
+    {
+        $pairs = array_map(
+            fn(MapPair $pair): string => $this->formatRawCssValue($pair->key) . ': ' . $this->formatRawCssValue($pair->value),
+            $node->pairs,
+        );
+
+        return '(' . implode(', ', $pairs) . ')';
     }
 }

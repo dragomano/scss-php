@@ -1170,6 +1170,42 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('preserves variable references in css custom function result', function () {
+            $source = <<<'SCSS'
+            @function --double($x) {
+              result: $x * 2;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            @function --double() {
+              result: $x * 2;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('evaluates interpolated property name in css custom function result', function () {
+            $source = <<<'SCSS'
+            @function --a() {
+              #{result}: 1 + 1;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            @function --a() {
+              result: 2;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
         it('preserves multi-word var() fallback', function () {
             $source = <<<'SCSS'
             .a { border: var(--b, 1px solid red); }

@@ -29,6 +29,8 @@ use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Style;
 
 use function implode;
+use function str_starts_with;
+use function strtolower;
 use function trim;
 
 final readonly class BlockNodeHandler
@@ -86,6 +88,10 @@ final readonly class BlockNodeHandler
     public function handleRule(RuleNode $node, TraversalContext $ctx): string
     {
         $ctx->env->enterScope();
+
+        if (str_starts_with(strtolower($node->selector), '@function --')) {
+            $ctx->env->getCurrentScope()->setInsideCssFunctionBody(true);
+        }
 
         $outputState = $this->render->outputState();
 

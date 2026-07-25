@@ -26,6 +26,8 @@ final class Scope
 
     private ?Scope $globalScope = null;
 
+    private bool $insideCssFunctionBody = false;
+
     public function __construct(private readonly ?Scope $parent = null)
     {
         $this->variables = new VariableRegistry();
@@ -34,6 +36,16 @@ final class Scope
     public function getParent(): ?Scope
     {
         return $this->parent;
+    }
+
+    public function setInsideCssFunctionBody(bool $flag): void
+    {
+        $this->insideCssFunctionBody = $flag;
+    }
+
+    public function isInsideCssFunctionBody(): bool
+    {
+        return $this->insideCssFunctionBody;
     }
 
     public function getGlobalScope(): Scope
