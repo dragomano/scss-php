@@ -172,14 +172,6 @@ final class SassSelectorModule extends AbstractModule
                     'Complex selectors may not be extended. Use a simple selector target in @extend.',
                 );
             }
-
-            $tokens = $this->tokenizeSelectorCompound($targetPart);
-
-            if (count($tokens) > 1) {
-                throw new SassErrorException(
-                    'Compound selectors may not be extended. Use separate @extend directives for each simple selector.',
-                );
-            }
         }
 
         $result = [];

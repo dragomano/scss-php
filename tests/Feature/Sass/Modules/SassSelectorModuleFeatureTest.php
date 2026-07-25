@@ -109,16 +109,6 @@ describe('Sass Selector Module Feature', function () {
             expect(fn() => $this->compiler->compileString($scss))
                 ->toThrow(SassErrorException::class, 'Complex selectors may not be extended');
         });
-
-        it('throws for compound selector target', function () {
-            $scss = <<<'SCSS'
-            @use "sass:selector";
-            .x { value: selector.extend(".a", ".a.b", ".c"); }
-            SCSS;
-
-            expect(fn() => $this->compiler->compileString($scss))
-                ->toThrow(SassErrorException::class, 'Compound selectors may not be extended');
-        });
     });
 
     describe('selector.is-superselector()', function () {
