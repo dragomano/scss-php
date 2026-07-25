@@ -41,11 +41,23 @@ final readonly class ColorArgumentParser
 
         $value = $positional[$index];
 
+        if ($value instanceof FunctionNode && ! $this->isColorFunction($value->name)) {
+            throw new MissingFunctionArgumentsException($this->context->errorCtx($context), 'color arguments');
+        }
+
         if (! ($value instanceof ColorNode || $value instanceof StringNode || $value instanceof FunctionNode)) {
             throw new MissingFunctionArgumentsException($this->context->errorCtx($context), 'color arguments');
         }
 
         return $value;
+    }
+
+    private function isColorFunction(string $name): bool
+    {
+        return in_array(strtolower($name), [
+            'rgb', 'rgba', 'hsl', 'hsla', 'hwb',
+            'color', 'lab', 'lch', 'oklab', 'oklch',
+        ], true);
     }
 
     /**
@@ -74,13 +86,7 @@ final readonly class ColorArgumentParser
             return false;
         }
 
-        return in_array($context, [
-            'saturate',
-            'desaturate',
-            'grayscale',
-            'invert',
-            'opacity',
-        ], true);
+        return true;
     }
 
     /**

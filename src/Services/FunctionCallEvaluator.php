@@ -202,9 +202,13 @@ final readonly class FunctionCallEvaluator
 
         $fallbackArguments = $this->callArguments->expandCssCallArguments($node->arguments, $env);
 
+        $cssName = NameHelper::hasNamespace($node->name)
+            ? NameHelper::splitNamespacedName($node->name)['member']
+            : $node->name;
+
         $fallback = new FunctionNode(
-            $node->name,
-            $this->calculation->normalizeArguments($node->name, $fallbackArguments),
+            $cssName,
+            $this->calculation->normalizeArguments($cssName, $fallbackArguments),
         );
 
         if ($this->options->style === Style::COMPRESSED) {

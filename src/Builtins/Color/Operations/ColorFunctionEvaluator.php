@@ -74,7 +74,7 @@ final readonly class ColorFunctionEvaluator
      */
     public function scaleColor(array $positional, array $named): AstNode
     {
-        $color       = $this->runtime->argumentParser->requireColor($positional, 0, 'scale-color');
+        $color       = $this->runtime->argumentParser->requireColorOrDefer($positional, 'scale-color');
         $spaceNode   = $named['space'] ?? null;
         $nativeSpace = $this->converter->detectNativeColorSpace($color);
 
@@ -137,7 +137,7 @@ final readonly class ColorFunctionEvaluator
     /** @param array<int, AstNode> $positional */
     public function adjustHue(array $positional, ?BuiltinCallContext $context): AstNode
     {
-        $color   = $this->runtime->argumentParser->requireColor($positional, 0, 'adjust-hue');
+        $color   = $this->runtime->argumentParser->requireColorOrDefer($positional, 'adjust-hue');
         $degrees = $this->runtime->argumentParser->asNumber($positional[1] ?? null, 'adjust-hue');
 
         if ($context !== null) {
@@ -236,7 +236,7 @@ final readonly class ColorFunctionEvaluator
     /** @param array<int, AstNode> $positional */
     public function complement(array $positional): AstNode
     {
-        $color = $this->runtime->argumentParser->requireColor($positional, 0, 'complement');
+        $color = $this->runtime->argumentParser->requireColorOrDefer($positional, 'complement');
         $space = isset($positional[1])
             ? strtolower($this->runtime->argumentParser->asString($positional[1], 'complement'))
             : null;
@@ -311,7 +311,7 @@ final readonly class ColorFunctionEvaluator
      */
     public function mix(array $positional, array $named): AstNode
     {
-        $color1     = $this->runtime->argumentParser->requireColor($positional, 0, 'mix');
+        $color1     = $this->runtime->argumentParser->requireColorOrDefer($positional, 'mix');
         $color2     = $this->runtime->argumentParser->requireColor($positional, 1, 'mix');
         $methodNode = $named['method'] ?? ($positional[3] ?? null);
         $weight     = $this->runtime->argumentParser->asPercentage(
@@ -430,7 +430,7 @@ final readonly class ColorFunctionEvaluator
             unset($named['space']);
         }
 
-        $color        = $this->runtime->argumentParser->requireColor($positional, 0, $context);
+        $color        = $this->runtime->argumentParser->requireColorOrDefer($positional, $context);
         $isLegacy     = $this->converter->isLegacyColor($color);
         $nativeSpace  = $this->converter->detectNativeColorSpace($color);
         $workingSpace = $requestedSpace ?? $nativeSpace;

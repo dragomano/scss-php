@@ -25,9 +25,9 @@ describe('ColorArgumentParser', function () {
         );
     });
 
-    it('rethrows missing color argument errors when css defer is not allowed', function () {
+    it('defers css functions when color arguments are missing', function () {
         expect(fn() => $this->parser->requireColorOrDefer([new NumberNode(1)], 'adjust-hue'))
-            ->toThrow(MissingFunctionArgumentsException::class, 'adjust-hue() expects color arguments.');
+            ->toThrow(DeferToCssFunctionException::class);
     });
 
     it('does not defer when the exception is not about color arguments', function () {

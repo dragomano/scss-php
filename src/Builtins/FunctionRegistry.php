@@ -118,7 +118,15 @@ final class FunctionRegistry
                 return null;
             }
 
-            return $module->call($function, $positional, $named, $callContext);
+            try {
+                return $module->call($function, $positional, $named, $callContext);
+            } catch (DeferToCssFunctionException $e) {
+                if ($moduleName === 'color') {
+                    return null;
+                }
+
+                throw $e;
+            }
         }
 
         $target = $this->resolveGlobalAlias($name);
