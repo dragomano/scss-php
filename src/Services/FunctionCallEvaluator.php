@@ -62,6 +62,13 @@ final readonly class FunctionCallEvaluator
         $userFunction     = null;
         $userFunctionName = $node->name;
 
+        if ($node->lockedDefinition !== null) {
+            return [
+                'name'       => $node->name,
+                'definition' => $node->lockedDefinition,
+            ];
+        }
+
         if (NameHelper::hasNamespace($node->name)) {
             $parts = NameHelper::splitQualifiedName($node->name);
 

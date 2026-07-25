@@ -101,9 +101,14 @@ final readonly class MixinHandler
 
         $mixinName = $first instanceof MixinRefNode ? $first->name : $first->value;
 
-        [$namespace, $name] = $this->parseMixinReference($mixinName);
+        if ($first instanceof MixinRefNode && $first->lockedDefinition !== null) {
+            $mixin = $first->lockedDefinition;
+            $moduleScopeForInclude = null;
+        } else {
+            [$namespace, $name] = $this->parseMixinReference($mixinName);
 
-        [$mixin, $moduleScopeForInclude] = $this->resolveMixin($namespace, $name, $ctx->env->getCurrentScope());
+            [$mixin, $moduleScopeForInclude] = $this->resolveMixin($namespace, $name, $ctx->env->getCurrentScope());
+        }
 
         if ($mixin === null) {
             return '';

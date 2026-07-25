@@ -202,9 +202,16 @@ final class SassMetaModule extends AbstractModule
         $result   = $registry->tryCall($name, array_slice($positional, 1), $context);
 
         if ($result === null) {
-            $capturedScope = $positional[0] instanceof FunctionNode ? $positional[0]->capturedScope : null;
+            $original         = $positional[0] instanceof FunctionNode ? $positional[0] : null;
+            $capturedScope    = $original?->capturedScope;
+            $lockedDefinition = $original?->lockedDefinition;
 
-            return new FunctionNode($name, array_slice($positional, 1), capturedScope: $capturedScope);
+            return new FunctionNode(
+                $name,
+                array_slice($positional, 1),
+                capturedScope: $capturedScope,
+                lockedDefinition: $lockedDefinition,
+            );
         }
 
         return $result;
@@ -315,7 +322,9 @@ final class SassMetaModule extends AbstractModule
         }
 
         if ($hasUser && ! $hasBuiltin) {
-            return new FunctionNode($name, capturedScope: $scope);
+            $lockedDefinition = $scope->findFunction($name)?->definition;
+
+            return new FunctionNode($name, capturedScope: $scope, lockedDefinition: $lockedDefinition);
         }
 
         $reference = new SassFunctionRef($name);
@@ -344,7 +353,9 @@ final class SassMetaModule extends AbstractModule
                 );
             }
 
-            return new MixinRefNode($module . '.' . $name);
+            $lockedDefinition = $moduleScope->findMixin($name)?->definition;
+
+            return new MixinRefNode($module . '.' . $name, lockedDefinition: $lockedDefinition);
         }
 
         if (! $scope->hasMixin($name)) {
@@ -354,7 +365,9 @@ final class SassMetaModule extends AbstractModule
             );
         }
 
-        return new MixinRefNode($name);
+        $lockedDefinition = $scope->findMixin($name)?->definition;
+
+        return new MixinRefNode($name, lockedDefinition: $lockedDefinition);
     }
 
     /**
