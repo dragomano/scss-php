@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Values;
 
 use function array_flip;
+use function array_slice;
+use function count;
 use function implode;
+use function in_array;
 use function is_string;
 use function strtolower;
 
@@ -34,6 +37,11 @@ final class SassCalculation extends AbstractSassValue
         'sqrt',
         'tan',
         'calc',
+    ];
+
+    /** @var array<int, string> */
+    private const MODERN_COLOR_FUNCTIONS = [
+        'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color',
     ];
 
     /**
@@ -70,7 +78,25 @@ final class SassCalculation extends AbstractSassValue
             $parts[] = $argument->toCss();
         }
 
+        if (in_array(strtolower($this->name), self::MODERN_COLOR_FUNCTIONS, true)) {
+            return $this->name . '(' . $this->formatSpaceSeparated($parts) . ')';
+        }
+
         return $this->name . '(' . implode(', ', $parts) . ')';
+    }
+
+    /**
+     * @param array<int, string> $parts
+     */
+    private function formatSpaceSeparated(array $parts): string
+    {
+        $channels = strtolower($this->name) === 'color' ? 4 : 3;
+
+        if (count($parts) > $channels) {
+            return implode(' ', array_slice($parts, 0, -1)) . ' / ' . $parts[count($parts) - 1];
+        }
+
+        return implode(' ', $parts);
     }
 
     public function isTruthy(): bool
