@@ -317,6 +317,12 @@ final readonly class ValueParser implements
     {
         $this->stream->expect(TokenType::LPAREN);
 
+        $this->stream->skipWhitespace();
+
+        if ($this->stream->consume(TokenType::RPAREN)) {
+            return new MapNode([]);
+        }
+
         $items = [];
         $pairs = [];
 
