@@ -72,6 +72,11 @@ final class SassMetaModule extends AbstractModule
         'variable-exists',
     ];
 
+    private const BUILTIN_META_MIXINS = [
+        'apply',
+        'load-css',
+    ];
+
     public function getName(): string
     {
         return 'meta';
@@ -97,7 +102,7 @@ final class SassMetaModule extends AbstractModule
 
         try {
             return match ($name) {
-                'accepts-content'        => $this->acceptsContent($positional, $context),
+                'accepts-content'        => $this->acceptsContent($positional, $named, $context),
                 'calc-args'              => $this->calcArgs($positional),
                 'calc-name'              => $this->calcName($positional),
                 'call'                   => $this->callFunction($positional, $context),
@@ -125,13 +130,19 @@ final class SassMetaModule extends AbstractModule
     /**
      * @param array<int, AstNode> $positional
      */
-    private function acceptsContent(array $positional, ?BuiltinCallContext $context): AstNode
+    /**
+     * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
+     */
+    private function acceptsContent(array $positional, array $named, ?BuiltinCallContext $context): AstNode
     {
-        if (! isset($positional[0])) {
+        $mixinArg = $positional[0] ?? $named['mixin'] ?? null;
+
+        if (! ($mixinArg instanceof AstNode)) {
             return $this->boolNode(false);
         }
 
-        $reference = $this->mixinReferenceName($positional[0]);
+        $reference = $this->mixinReferenceName($mixinArg);
 
         if ($reference === null) {
             return $this->boolNode(false);
@@ -141,6 +152,14 @@ final class SassMetaModule extends AbstractModule
         $mixinBody = $this->resolveMixinBody($scope, $reference);
 
         if ($mixinBody === null) {
+            if ($reference === 'meta.apply') {
+                return $this->boolNode(true);
+            }
+
+            if ($reference === 'meta.load-css') {
+                return $this->boolNode(false);
+            }
+
             return $this->boolNode(false);
         }
 
@@ -339,23 +358,27 @@ final class SassMetaModule extends AbstractModule
     private function getMixin(array $positional, array $named, ?BuiltinCallContext $context): AstNode
     {
         $name   = $this->requiredString($positional, 'meta.get-mixin');
-        $module = $this->optionalModuleName($named['module'] ?? null);
+        $module = $this->optionalModuleArgument($positional, $named);
         $scope  = $this->scopeFromContext($context);
 
         if ($module !== null) {
             $moduleScope = $scope->getModule($module);
 
-            if ($moduleScope === null || ! $moduleScope->hasMixin($name)) {
-                throw ModuleResolutionException::callableNotFound(
-                    $this->builtinErrorContext('meta.get-mixin'),
-                    $name,
-                    $module,
-                );
+            if ($moduleScope !== null && $moduleScope->hasMixin($name)) {
+                $lockedDefinition = $moduleScope->findMixin($name)?->definition;
+
+                return new MixinRefNode($module . '.' . $name, lockedDefinition: $lockedDefinition);
             }
 
-            $lockedDefinition = $moduleScope->findMixin($name)?->definition;
+            if ($module === 'meta' && in_array($name, self::BUILTIN_META_MIXINS, true)) {
+                return new MixinRefNode($module . '.' . $name);
+            }
 
-            return new MixinRefNode($module . '.' . $name, lockedDefinition: $lockedDefinition);
+            throw ModuleResolutionException::callableNotFound(
+                $this->builtinErrorContext('meta.get-mixin'),
+                $name,
+                $module,
+            );
         }
 
         if (! $scope->hasMixin($name)) {
