@@ -7,7 +7,6 @@ use Bugo\SCSS\Builtins\Color\Support\ColorArgumentParser;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
-use Bugo\SCSS\Exceptions\NonFiniteNumberException;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
@@ -47,8 +46,7 @@ describe('ColorArgumentParser', function () {
             ->toThrow(MissingFunctionArgumentsException::class, 'scale() expects number arguments.')
             ->and(fn() => $this->parser->asHueAngle(new StringNode('10'), 'spin'))
             ->toThrow(MissingFunctionArgumentsException::class, 'spin() expects number arguments.')
-            ->and(fn() => $this->parser->asHueAngle(new NumberNode(INF), 'spin'))
-            ->toThrow(NonFiniteNumberException::class, 'spin received a non-finite number.')
+            ->and($this->parser->asHueAngle(new NumberNode(INF), 'spin'))->toBe(INF)
             ->and($this->parser->asHueAngle(new NumberNode(1, 'rad'), 'spin'))->toBe((float) (180.0 / M_PI))
             ->and($this->parser->asHueAngle(new NumberNode(100, 'grad'), 'spin'))->toBe(90.0);
     });
@@ -56,12 +54,11 @@ describe('ColorArgumentParser', function () {
     it('validates absolute and generic color channels', function () {
         expect(fn() => $this->parser->asAbsoluteChannel(new StringNode('10'), 'lab', 125.0))
             ->toThrow(MissingFunctionArgumentsException::class, 'lab() expects number arguments.')
-            ->and(fn() => $this->parser->asAbsoluteChannel(new NumberNode(INF), 'lab', 125.0))
-            ->toThrow(NonFiniteNumberException::class, 'lab received a non-finite number.')
+            ->and($this->parser->asAbsoluteChannel(new NumberNode(INF), 'lab', 125.0))->toBe(INF)
             ->and(fn() => $this->parser->asColorChannel(new StringNode('10')))
             ->toThrow(MissingFunctionArgumentsException::class, 'color() expects number arguments.')
             ->and(fn() => $this->parser->asColorChannel(new NumberNode(INF)))
-            ->toThrow(NonFiniteNumberException::class, 'color received a non-finite number.');
+            ->toThrow(DeferToCssFunctionException::class);
     });
 
     it('validates string and percentage arguments', function () {

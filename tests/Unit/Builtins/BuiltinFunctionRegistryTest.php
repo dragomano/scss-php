@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Bugo\SCSS\Builtins\FunctionRegistry;
 use Bugo\SCSS\Builtins\ModuleInterface;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
-use Bugo\SCSS\Exceptions\NonFiniteNumberException;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
@@ -270,11 +269,12 @@ describe('BuiltinFunctionRegistry', function () {
         ]))->toThrow(UnsupportedColorSpaceException::class, "Unsupported color space 'foo' in color() (color module).");
     });
 
-    it('uses global display name with color module suffix in non-finite number errors', function () {
+    it('handles non-finite alpha by emitting a css function', function () {
         $registry = new FunctionRegistry();
 
-        expect(fn() => $registry->tryCall('rgba', [new ColorNode('#ff0000'), new NumberNode(NAN)]))
-            ->toThrow(NonFiniteNumberException::class, 'rgba() (color module) received a non-finite number.');
+        $result = $registry->tryCall('rgba', [new ColorNode('#ff0000'), new NumberNode(NAN)]);
+
+        expect($result)->toBeInstanceOf(AstNode::class);
     });
 
     it('does not resolve deprecated namespaced sass:color legacy functions', function () {

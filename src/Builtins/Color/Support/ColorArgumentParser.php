@@ -7,7 +7,6 @@ namespace Bugo\SCSS\Builtins\Color\Support;
 use Bugo\Iris\Converters\SpaceConverter;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
-use Bugo\SCSS\Exceptions\NonFiniteNumberException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
@@ -21,6 +20,7 @@ use function array_slice;
 use function count;
 use function in_array;
 use function is_finite;
+use function is_nan;
 use function str_contains;
 use function strtolower;
 
@@ -175,10 +175,6 @@ final readonly class ColorArgumentParser
             );
         }
 
-        if (! is_finite((float) $value->value)) {
-            throw new NonFiniteNumberException($this->context->errorCtx($context));
-        }
-
         return (float) $value->value;
     }
 
@@ -189,10 +185,6 @@ final readonly class ColorArgumentParser
                 $this->context->errorCtx($context),
                 'number arguments',
             );
-        }
-
-        if (! is_finite((float) $value->value)) {
-            throw new NonFiniteNumberException($this->context->errorCtx($context));
         }
 
         $v = (float) $value->value;
@@ -214,10 +206,6 @@ final readonly class ColorArgumentParser
             );
         }
 
-        if (! is_finite((float) $value->value)) {
-            throw new NonFiniteNumberException($this->context->errorCtx($context));
-        }
-
         $v = (float) $value->value;
 
         return $value->unit === '%' ? ($v / 100.0) * $range : $v;
@@ -233,7 +221,7 @@ final readonly class ColorArgumentParser
         }
 
         if (! is_finite((float) $value->value)) {
-            throw new NonFiniteNumberException($this->context->errorCtx('color'));
+            throw new DeferToCssFunctionException($this->context->errorCtx('color'));
         }
 
         if ($value->unit === '%') {
@@ -314,6 +302,10 @@ final readonly class ColorArgumentParser
 
     public function clamp(float $value, float $maxValue): float
     {
+        if (is_nan($value)) {
+            return 0.0;
+        }
+
         return $this->colorSpaceConverter->clamp($value, $maxValue);
     }
 
