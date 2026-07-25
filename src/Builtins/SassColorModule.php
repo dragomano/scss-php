@@ -141,6 +141,11 @@ final class SassColorModule extends AbstractModule
     {
         $previousDisplayName = $this->beginBuiltinCall($name, $context);
 
+        if (! isset($positional[0]) && isset($named['color'])) {
+            $positional[0] = $named['color'];
+            unset($named['color']);
+        }
+
         try {
             return match ($name) {
                 'adjust-hue'             => $this->functions->adjustHue($positional, $context),
