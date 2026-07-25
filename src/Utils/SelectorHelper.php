@@ -5,13 +5,15 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Utils;
 
 use function array_filter;
-use function array_map;
 use function array_unique;
 use function array_values;
-use function explode;
 use function implode;
+use function max;
 use function str_contains;
 use function str_replace;
+use function str_split;
+use function substr;
+use function trim;
 
 final class SelectorHelper
 {
@@ -20,13 +22,26 @@ final class SelectorHelper
      */
     public static function splitList(string $selector, bool $filterEmpty = true): array
     {
-        $parts = array_map(trim(...), explode(',', $selector));
+        $parts = [];
+        $depth = 0;
+        $start = 0;
 
-        if ($filterEmpty) {
-            return array_values(array_filter($parts, static fn(string $part): bool => $part !== ''));
+        foreach (str_split($selector) as $i => $char) {
+            if ($char === '(') {
+                $depth++;
+            } elseif ($char === ')') {
+                $depth = max(0, $depth - 1);
+            } elseif ($char === ',' && $depth === 0) {
+                $parts[] = trim(substr($selector, $start, $i - $start));
+                $start   = $i + 1;
+            }
         }
 
-        return $parts;
+        $parts[] = trim(substr($selector, $start));
+
+        return $filterEmpty
+            ? array_values(array_filter($parts, static fn(string $part): bool => $part !== ''))
+            : $parts;
     }
 
     public static function resolveNested(string $selector, string $parentSelector): string
