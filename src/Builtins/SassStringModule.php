@@ -117,15 +117,14 @@ final class SassStringModule extends AbstractModule
             || AstValueInspector::isQuotedString($secondString);
 
         if ($index === 0) {
-            throw BuiltinArgumentException::mustNotBeZero(
-                $this->builtinCallReference('string.insert'),
-                'index',
-            );
-        }
-
-        $offset = $index > 0 ? $index - 1 : $length + $index + 1;
-        if ($offset < 0) {
             $offset = 0;
+        } elseif ($index > 0) {
+            $offset = $index - 1;
+        } else {
+            $offset = $length + $index + 1;
+            if ($offset < 0) {
+                $offset = 0;
+            }
         }
 
         if ($offset > $length) {

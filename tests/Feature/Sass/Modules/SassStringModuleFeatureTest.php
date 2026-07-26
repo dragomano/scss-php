@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
-use Bugo\SCSS\Exceptions\BuiltinArgumentException;
 use Tests\ArrayLogger;
 
 describe('Sass String Module Feature', function () {
@@ -66,7 +65,7 @@ describe('Sass String Module Feature', function () {
             expect($css)->toEqualCss($expected);
         });
 
-        it('throws for index 0', function () {
+        it('inserts at beginning when index is 0', function () {
             $scss = <<<'SCSS'
             @use "sass:string";
 
@@ -75,8 +74,15 @@ describe('Sass String Module Feature', function () {
             }
             SCSS;
 
-            expect(fn() => $this->compiler->compileString($scss))
-                ->toThrow(BuiltinArgumentException::class, 'string.insert() index must not be 0.');
+            $css = $this->compiler->compileString($scss);
+
+            $expected = /** @lang text */ <<<'CSS'
+            .test {
+              result: "hello world";
+            }
+            CSS;
+
+            expect($css)->toEqualCss($expected);
         });
     });
 

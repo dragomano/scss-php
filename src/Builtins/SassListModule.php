@@ -371,8 +371,17 @@ final class SassListModule extends AbstractModule
             return $value;
         }
 
-        if ($value instanceof MapNode && $value->pairs === []) {
-            return new ListNode([], 'space');
+        if ($value instanceof MapNode) {
+            if ($value->pairs === []) {
+                return new ListNode([], 'space');
+            }
+
+            $items = array_map(
+                static fn($pair) => new ListNode([$pair->key, $pair->value]),
+                $value->pairs,
+            );
+
+            return new ListNode($items, 'comma');
         }
 
         return new ListNode([$value], 'space');

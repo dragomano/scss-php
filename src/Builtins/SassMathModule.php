@@ -33,7 +33,6 @@ use function fdiv;
 use function floor;
 use function get_debug_type;
 use function implode;
-use function is_int;
 use function log;
 use function max;
 use function mt_getrandmax;
@@ -482,7 +481,9 @@ final class SassMathModule extends AbstractModule
 
         $limit = $this->requireNumber($positional, 0, 'math.random');
 
-        if (! is_int($limit->value) || $limit->value < 1) {
+        $rounded = round($limit->value);
+
+        if (abs((float) $limit->value - $rounded) > 1e-10 || $rounded < 1) {
             throw BuiltinArgumentException::mustBePositiveInteger(
                 $this->builtinCallReference('math.random'),
                 'limit',
@@ -491,7 +492,7 @@ final class SassMathModule extends AbstractModule
 
         $this->warnAboutDeprecatedMathFunction($context, 'random', $positional);
 
-        return new NumberNode(mt_rand(1, $limit->value), $limit->unit);
+        return new NumberNode(mt_rand(1, (int) $rounded), $limit->unit);
     }
 
     /**
