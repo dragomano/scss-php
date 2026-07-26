@@ -85,6 +85,10 @@ final readonly class ColorFunctionEvaluator
             return $this->scaleColorInOklch($color, $named);
         }
 
+        if ($this->isGenericColorFunction($color)) {
+            return $this->scaleInGenericColorSpace($color, $named);
+        }
+
         $rgb = $this->converter->toRgb($color);
 
         $scaledRgb = $this->manipulators->legacy->scale(
@@ -439,7 +443,9 @@ final readonly class ColorFunctionEvaluator
             'oklch' => $this->applyInOklchSpace($color, $named, $modify),
             'lab'   => $this->applyInLabSpace($color, $named, $modify, $isLegacy),
             'srgb'  => $this->applyInSrgbSpace($color, $named, $modify),
-            default => $this->applyInLegacySpace($color, $named, $context),
+            default => $this->isGenericColorFunction($color)
+                ? $this->applyInGenericColorSpace($color, $named, $modify, $workingSpace)
+                : $this->applyInLegacySpace($color, $named, $context),
         };
     }
 
@@ -580,6 +586,105 @@ final readonly class ColorFunctionEvaluator
             : $this->manipulators->srgb->adjust($r, $g, $b, $values);
 
         return $this->converter->serializeAsSrgbString($newR, $newG, $newB);
+    }
+
+    private function isGenericColorFunction(AstNode $color): bool
+    {
+        return $color instanceof FunctionNode
+            && strtolower($color->name) === 'color';
+    }
+
+    /**
+     * @param array<string, AstNode> $named
+     * @param callable(float, float): float $modify
+     */
+    private function applyInGenericColorSpace(AstNode $color, array $named, callable $modify, string $space): AstNode
+    {
+        [$r, $g, $b] = $this->extractSrgbChannels($color);
+
+        $alpha = $this->converter->toAlpha($color);
+
+        $redAmount   = $this->parseColorChannel($named, 'red');
+        $greenAmount = $this->parseColorChannel($named, 'green');
+        $blueAmount  = $this->parseColorChannel($named, 'blue');
+
+        if ($redAmount !== null) {
+            $r = $modify($r, $redAmount);
+        }
+
+        if ($greenAmount !== null) {
+            $g = $modify($g, $greenAmount);
+        }
+
+        if ($blueAmount !== null) {
+            $b = $modify($b, $blueAmount);
+        }
+
+        $alphaValue = $this->parseColorChannel($named, 'alpha');
+
+        if ($alphaValue !== null) {
+            $alpha = $modify($alpha, $alphaValue);
+        }
+
+        return $this->converter->buildGenericColorFunctionNode($space, [$r, $g, $b], $alpha);
+    }
+
+    /** @param array<string, AstNode> $named */
+    private function scaleInGenericColorSpace(AstNode $color, array $named): AstNode
+    {
+        if (! ($color instanceof FunctionNode)) {
+            return $color;
+        }
+
+        $space = $this->converter->detectGenericColorSpace($color);
+
+        [$r, $g, $b] = $this->extractSrgbChannels($color);
+
+        $alpha = $this->converter->toAlpha($color);
+
+        $r     = $this->applyScale($r, $this->parseScalePercentage($named, 'red'));
+        $g     = $this->applyScale($g, $this->parseScalePercentage($named, 'green'));
+        $b     = $this->applyScale($b, $this->parseScalePercentage($named, 'blue'));
+        $alpha = $this->applyScale($alpha, $this->parseScalePercentage($named, 'alpha'));
+
+        return $this->converter->buildGenericColorFunctionNode($space, [$r, $g, $b], $alpha);
+    }
+
+    private function applyScale(float $current, ?float $percentage): float
+    {
+        if ($percentage === null) {
+            return $current;
+        }
+
+        $fraction = $percentage / 100.0;
+
+        if ($fraction >= 0.0) {
+            return $current + (1.0 - $current) * $fraction;
+        }
+
+        return $current + $current * $fraction;
+    }
+
+    /** @param array<string, AstNode> $named */
+    private function parseColorChannel(array $named, string $channel): ?float
+    {
+        if (! array_key_exists($channel, $named)) {
+            return null;
+        }
+
+        $node = $named[$channel];
+
+        if (! ($node instanceof NumberNode)) {
+            return null;
+        }
+
+        $value = (float) $node->value;
+
+        if ($node->unit === '%') {
+            return $value / 100.0;
+        }
+
+        return $value;
     }
 
     /** @param array<string, AstNode> $named */
