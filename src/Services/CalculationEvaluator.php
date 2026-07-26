@@ -24,6 +24,7 @@ use function fdiv;
 use function floor;
 use function in_array;
 use function round;
+use function sqrt;
 use function strtolower;
 use function trim;
 
@@ -166,6 +167,10 @@ final readonly class CalculationEvaluator
             return $this->simplifyRound($arguments);
         }
 
+        if ($lowerName === 'hypot') {
+            return count($arguments) >= 2 ? $this->simplifyHypot($arguments) : null;
+        }
+
         if (! in_array($lowerName, ['max', 'min'], true) || count($arguments) < 2) {
             return null;
         }
@@ -212,7 +217,7 @@ final readonly class CalculationEvaluator
     {
         $lowerName = strtolower($name);
 
-        if (! in_array($lowerName, ['calc', 'min', 'max', 'clamp'], true)) {
+        if (! in_array($lowerName, ['calc', 'min', 'max', 'clamp', 'hypot'], true)) {
             return $arguments;
         }
 
@@ -410,6 +415,57 @@ final readonly class CalculationEvaluator
         };
 
         return new NumberNode($rounded * $stepValue, $number->unit ?? $step->unit);
+    }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     */
+    private function simplifyHypot(array $arguments): ?AstNode
+    {
+        $resolved = [];
+
+        foreach ($arguments as $argument) {
+            if ($argument instanceof NumberNode) {
+                $resolved[] = $argument;
+
+                continue;
+            }
+
+            $constant = $this->resolveConstant($argument);
+
+            if ($constant !== null) {
+                $resolved[] = $constant;
+
+                continue;
+            }
+
+            return null;
+        }
+
+        /** @var NumberNode[] $resolved */
+        $first = $resolved[0];
+        $unit  = $first->unit;
+
+        if ($unit === '%') {
+            return null;
+        }
+
+        foreach ($resolved as $number) {
+            if (! UnitConverter::compatible($unit, $number->unit)) {
+                return null;
+            }
+        }
+
+        $sum = 0.0;
+
+        foreach ($resolved as $number) {
+            $value = UnitConverter::convert((float) $number->value, $number->unit, $unit);
+            $sum  += $value * $value;
+        }
+
+        $result = sqrt($sum);
+
+        return new NumberNode($result, $unit);
     }
 
     private function resolveConstant(AstNode $argument): ?NumberNode

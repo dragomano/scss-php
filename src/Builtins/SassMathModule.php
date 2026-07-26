@@ -87,7 +87,6 @@ final class SassMathModule extends AbstractModule
         'clamp',
         'cos',
         'floor',
-        'hypot',
         'log',
         'max',
         'min',
