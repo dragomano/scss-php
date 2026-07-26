@@ -49,6 +49,11 @@ final class RuleParser
 
         $this->stream->skipWhitespace();
 
+        while ($this->stream->is(TokenType::COMMENT_LOUD) || $this->stream->is(TokenType::COMMENT_PRESERVED)) {
+            $this->stream->advance();
+            $this->stream->skipWhitespace();
+        }
+
         if (! $this->stream->consume(TokenType::COLON)) {
             return null;
         }
@@ -127,6 +132,11 @@ final class RuleParser
 
         $this->stream->skipWhitespace();
 
+        while ($this->stream->is(TokenType::COMMENT_LOUD) || $this->stream->is(TokenType::COMMENT_PRESERVED)) {
+            $this->stream->advance();
+            $this->stream->skipWhitespace();
+        }
+
         if ($this->stream->is(TokenType::LBRACE)) {
             return $this->context->parseRuleFromSelector($selectorOrProperty, $startLine, $startColumn);
         }
@@ -196,6 +206,21 @@ final class RuleParser
                 $interpolationDepth,
                 $token,
             )) {
+                continue;
+            }
+
+            if (in_array($token->type, [
+                TokenType::COMMENT_SILENT,
+                TokenType::COMMENT_LOUD,
+                TokenType::COMMENT_PRESERVED,
+            ], true)) {
+                $this->stream->advance();
+                $this->stream->skipWhitespace();
+
+                if ($selector !== '' && $selector[-1] !== ' ') {
+                    $selector .= ' ';
+                }
+
                 continue;
             }
 
@@ -322,10 +347,20 @@ final class RuleParser
             }
 
             if (in_array($token->type, [
-                TokenType::COMMENT_SILENT,
                 TokenType::COMMENT_LOUD,
                 TokenType::COMMENT_PRESERVED,
             ], true)) {
+                $this->stream->advance();
+                $this->stream->skipWhitespace();
+
+                if ($buffer !== '' && $buffer[-1] !== ' ') {
+                    $buffer .= ' ';
+                }
+
+                continue;
+            }
+
+            if ($token->type === TokenType::COMMENT_SILENT) {
                 break;
             }
 

@@ -16,6 +16,7 @@ use function count;
 use function ctype_alpha;
 use function ctype_digit;
 use function is_array;
+use function ltrim;
 use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
@@ -332,12 +333,12 @@ final readonly class Text
             $openPos = strpos($condition, '(', $offset);
 
             if ($openPos === false) {
-                $result .= substr($condition, $offset);
+                $result .= $this->stripComments(substr($condition, $offset));
 
                 break;
             }
 
-            $result  .= substr($condition, $offset, $openPos - $offset);
+            $result  .= $this->stripComments(substr($condition, $offset, $openPos - $offset));
             $closePos = strpos($condition, ')', $openPos + 1);
 
             if ($closePos === false) {
@@ -351,7 +352,21 @@ final readonly class Text
             $normalized = $this->normalizeSupportsDeclarationInner($inner);
 
             if ($normalized === null) {
-                $result .= substr($condition, $openPos, $closePos - $openPos + 1);
+                // Not a declaration — check if this is a function call
+                $preceding  = ($openPos > 0) ? $condition[$openPos - 1] : '';
+                $isFunction = $preceding !== '' && (
+                    ctype_alpha($preceding)
+                    || $preceding === '_'
+                    || $preceding === '-'
+                );
+
+                if ($isFunction) {
+                    // Function args: use raw text as-is (comments already handled by parseCondition)
+                    $result .= '(' . $inner . ')';
+                } else {
+                    // "Anything" expression: strip leading comment and whitespace
+                    $result .= '(' . $this->stripLeadingCommentAndWhitespace($inner) . ')';
+                }
             } else {
                 $result .= '(' . $normalized . ')';
             }
@@ -362,22 +377,137 @@ final readonly class Text
         return $result;
     }
 
+    private function stripLeadingCommentAndWhitespace(string $text): string
+    {
+        $ltrimmed = ltrim($text);
+
+        // Strip leading /* ... */
+        if (str_starts_with($ltrimmed, '/*')) {
+            $endPos = strpos($ltrimmed, '*/');
+
+            if ($endPos !== false) {
+                $ltrimmed = ltrim(substr($ltrimmed, $endPos + 2));
+            }
+        }
+
+        return $ltrimmed;
+    }
+
     private function normalizeSupportsDeclarationInner(string $inner): ?string
     {
-        $parsed = $this->parseColonSeparatedPair($inner);
+        $trimmed = ltrim($inner);
+
+        $colonPos = strpos($trimmed, ':');
+
+        if ($colonPos === false) {
+            return null;
+        }
+
+        $name = trim($this->stripComments(substr($trimmed, 0, $colonPos)));
+
+        if ($name === '') {
+            return null;
+        }
+
+        // Custom properties (--*): preserve raw value structure
+        if (str_starts_with($name, '--')) {
+            if (! $this->isValidSupportsFeatureName($name)) {
+                return null;
+            }
+
+            // colonPos is relative to $trimmed; the raw value starts right after the colon
+            $rawValue = substr($trimmed, $colonPos + 1);
+            $value    = $this->normalizeCustomPropertyValue($rawValue);
+
+            return $name . ':' . $value;
+        }
+
+        // Normal properties: trim and use parseColonSeparatedPair
+        $parsed = $this->parseColonSeparatedPair(trim($inner));
 
         if ($parsed === null) {
             return null;
         }
 
-        $name  = $parsed['name'];
-        $value = $parsed['value'];
+        $name  = trim($this->stripComments($parsed['name']));
+        $value = trim($this->stripComments($parsed['value']));
 
         if ($name === '' || $value === '' || ! $this->isValidSupportsFeatureName($name)) {
             return null;
         }
 
         return $name . ': ' . $value;
+    }
+
+    private function normalizeCustomPropertyValue(string $value): string
+    {
+        $result = '';
+        $length = strlen($value);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $value[$i];
+
+            if ($char === "\n" || $char === "\r") {
+                // Skip \r\n as a single newline
+                if ($char === "\r" && $i + 1 < $length && $value[$i + 1] === "\n") {
+                    ++$i;
+                }
+
+                // Also strip the whitespace character immediately before the newline
+                if ($result !== '') {
+                    $lastChar = $result[strlen($result) - 1];
+
+                    if ($lastChar === ' ' || $lastChar === "\t") {
+                        $result = substr($result, 0, -1);
+                    }
+                }
+
+                continue;
+            }
+
+            $result .= $char;
+        }
+
+        return $result;
+    }
+
+    private function stripComments(string $text): string
+    {
+        $result = '';
+        $length = strlen($text);
+        $i      = 0;
+
+        while ($i < $length) {
+            if ($text[$i] === '/' && $i + 1 < $length && $text[$i + 1] === '*') {
+                $end = strpos($text, '*/', $i + 2);
+
+                if ($end !== false) {
+                    $i = $end + 2;
+
+                    continue;
+                }
+
+                break;
+            }
+
+            if ($text[$i] === '/' && $i + 1 < $length && $text[$i + 1] === '/') {
+                $newlinePos = strpos($text, "\n", $i);
+
+                if ($newlinePos !== false) {
+                    $i = $newlinePos + 1;
+                } else {
+                    $i += 2;
+                }
+
+                continue;
+            }
+
+            $result .= $text[$i];
+
+            $i++;
+        }
+
+        return $result;
     }
 
     private function isValidSupportsFeatureName(string $name): bool

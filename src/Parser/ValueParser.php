@@ -71,6 +71,11 @@ final readonly class ValueParser implements
 
             $this->stream->skipWhitespace();
 
+            while ($this->stream->is(TokenType::COMMENT_LOUD) || $this->stream->is(TokenType::COMMENT_PRESERVED)) {
+                $this->stream->advance();
+                $this->stream->skipWhitespace();
+            }
+
             foreach ($stopTokens as $tokenType) {
                 if ($this->stream->is($tokenType)) {
                     return $this->wrapDeprecatedExpression(
@@ -574,6 +579,18 @@ final readonly class ValueParser implements
                 ) {
                     break;
                 }
+            }
+
+            if (in_array($token->type, [
+                TokenType::COMMENT_LOUD,
+                TokenType::COMMENT_PRESERVED,
+                TokenType::COMMENT_SILENT,
+            ], true)) {
+                $buffer .= StreamUtils::wrapComment($token);
+
+                $this->stream->advance();
+
+                continue;
             }
 
             StreamUtils::appendTokenToBuffer($buffer, $token, true);

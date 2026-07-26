@@ -366,6 +366,31 @@ final readonly class DirectiveParser
                 break;
             }
 
+            if ($token->type === TokenType::COMMENT_SILENT) {
+                $this->stream->advance();
+
+                // Preserve actual whitespace after silent comments
+                if ($this->stream->is(TokenType::WHITESPACE)) {
+                    $wsToken = $this->stream->current();
+
+                    $condition .= $wsToken->value;
+
+                    $this->stream->advance();
+                }
+
+                continue;
+            }
+
+            $wrapped = StreamUtils::wrapComment($token);
+
+            if ($wrapped !== null) {
+                $condition .= $wrapped;
+
+                $this->stream->advance();
+
+                continue;
+            }
+
             StreamUtils::appendTokenToBuffer($condition, $token, true);
 
             $this->stream->advance();
@@ -402,6 +427,19 @@ final readonly class DirectiveParser
             }
 
             StreamUtils::updateNestingDepth($token, $parenDepth, $bracketDepth);
+
+            if (in_array($token->type, [
+                TokenType::COMMENT_LOUD,
+                TokenType::COMMENT_PRESERVED,
+                TokenType::COMMENT_SILENT,
+            ], true)) {
+                $prelude .= StreamUtils::wrapComment($token);
+
+                $this->stream->advance();
+
+                continue;
+            }
+
             StreamUtils::appendTokenToBuffer($prelude, $token, true);
 
             $this->stream->advance();

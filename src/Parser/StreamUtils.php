@@ -59,6 +59,16 @@ final class StreamUtils
         return $value;
     }
 
+    public static function wrapComment(Token $token): ?string
+    {
+        return match ($token->type) {
+            TokenType::COMMENT_LOUD      => '/*' . $token->value . '*/',
+            TokenType::COMMENT_PRESERVED => '/*!' . $token->value . '*/',
+            TokenType::COMMENT_SILENT    => '//' . $token->value,
+            default                      => null,
+        };
+    }
+
     public static function updateNestingDepth(Token $token, int &$parenDepth, int &$bracketDepth): void
     {
         if ($token->type === TokenType::LPAREN) {

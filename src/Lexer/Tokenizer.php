@@ -200,12 +200,14 @@ final class Tokenizer
     {
         $line   = $this->line;
         $column = $this->column;
+        $start  = $this->position;
 
         // strspn finds the byte length of the whitespace span in one C-level call
         $len = strspn($this->source, " \t\n\r\f\v", $this->position);
+
         $this->advance($len);
 
-        return new Token(TokenType::WHITESPACE, ' ', $line, $column);
+        return new Token(TokenType::WHITESPACE, substr($this->source, $start, $len), $line, $column);
     }
 
     private function tokenizeSingleLineComment(): Token
@@ -241,15 +243,18 @@ final class Tokenizer
 
         if ($this->position < $this->length && $this->source[$this->position] === '!') {
             $isPreserved = true;
+
             $this->advance();
         }
 
         $end = strpos($this->source, '*/', $this->position);
         if ($end === false) {
             $value = substr($this->source, $this->position);
+
             $this->advance($this->length - $this->position);
         } else {
             $value = substr($this->source, $this->position, $end - $this->position);
+
             $this->advance($end - $this->position + 2);
         }
 
@@ -274,6 +279,7 @@ final class Tokenizer
 
         if ($this->position > $start) {
             $count = $this->position - $start;
+
             $this->column += $count;
 
             return new Token(TokenType::HASH, substr($this->source, $start, $count), $line, $column);
@@ -291,6 +297,7 @@ final class Tokenizer
         }
 
         $count = $this->position - $start;
+
         $this->column += $count;
 
         return new Token(TokenType::HASH, substr($this->source, $start, $count), $line, $column);
@@ -310,6 +317,7 @@ final class Tokenizer
 
         while ($this->position < $this->length && $this->isUnicodeRangePartChar($this->source[$this->position])) {
             $value .= $this->source[$this->position];
+
             $this->advance();
         }
 
@@ -444,6 +452,7 @@ final class Tokenizer
         }
 
         $count = $this->position - $start;
+
         // Numbers never contain newlines — safe to increment column directly
         $this->column += $count;
 

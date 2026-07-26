@@ -36,7 +36,8 @@ final readonly class CommentNodeHandler
         }
 
         if ($this->context->options()->style === Style::EXPANDED) {
-            $this->render->appendChunk($output, $prefix . '/* ' . $comment . ' */', $node);
+            $text = $comment === '' ? '/* */' : '/* ' . $comment . ' */';
+            $this->render->appendChunk($output, $prefix . $text, $node);
 
             return $output;
         }
