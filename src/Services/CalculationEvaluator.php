@@ -65,6 +65,10 @@ final readonly class CalculationEvaluator
                 continue;
             }
 
+            if ($operator->value === '/') {
+                continue;
+            }
+
             return $this->valueFormatter->format($left, $env)
                 . ' '
                 . $operator->value
