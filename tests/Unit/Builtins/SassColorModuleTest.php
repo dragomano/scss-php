@@ -63,7 +63,7 @@ describe('SassColorModule', function () {
     it('evaluates adjust-hue', function () {
         $result = $this->module->call('adjust-hue', [new ColorNode('#ff0000'), new NumberNode(120, 'deg')], []);
 
-        expect($result->value)->toBe('#00ff00');
+        expect($result->value)->toBe('lime');
     });
 
     it('evaluates adjust-color', function () {
@@ -133,7 +133,7 @@ describe('SassColorModule', function () {
     it('evaluates complement', function () {
         $result = $this->module->call('complement', [new ColorNode('#ff0000')], []);
 
-        expect($result->value)->toBe('#00ffff');
+        expect($result->value)->toBe('aqua');
     });
 
     it('evaluates darken', function () {
@@ -313,7 +313,7 @@ describe('SassColorModule', function () {
     it('evaluates mix', function () {
         $result = $this->module->call('mix', [new ColorNode('#000000'), new ColorNode('#ffffff'), new NumberNode(50, '%')], []);
 
-        expect($result)->toBeInstanceOf(ColorNode::class)->and($result->value)->toBe('#808080');
+        expect($result)->toBeInstanceOf(ColorNode::class)->and($result->value)->toBe('gray');
     });
 
     it('evaluates mix in rgb with float channel result', function () {

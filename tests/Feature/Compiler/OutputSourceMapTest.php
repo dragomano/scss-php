@@ -321,7 +321,7 @@ describe('Compiler', function () {
 
             $css = $compiler->compileString($source);
 
-            expect($css)->toBe('.test{a:#639;b:#639;c:#639;d:#639;e:#639;f:#20084e;g:#ac7ccd;h:#639;i:#639;j:#639;k:#639;l:#639;m:#653499;n:lab(32.4% 38.4 -47.7);o:lch(32.4% 61.2 308.9deg);p:oklab(44% .088 -.134);q:oklch(44% .16 303.4deg)}');
+            expect($css)->toBe('.test{a:#639;b:#639;c:#639;d:#639;e:#639;f:#20084e;g:#ac7ccd;h:#639;i:#639;j:#4c1387;k:#639;l:#639;m:#653499;n:lab(32.4% 38.4 -47.7);o:lch(32.4% 61.2 308.9deg);p:oklab(44% .088 -.134);q:oklch(44% .16 303.4deg)}');
         });
 
         it('preserves non-lossless sass color function results in compressed style for oklch methods', function () {

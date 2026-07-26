@@ -497,7 +497,17 @@ final readonly class ColorFunctionEvaluator
             return $this->converter->serializeAsOklchString($newOklchInner);
         }
 
-        return $this->converter->serializeAsFloatRgb($this->runtime->spaceConverter->oklchToSrgb($newOklchInner));
+        $unclampedRgb = $this->runtime->spaceConverter->oklchToSrgbUnclamped($newOklchInner);
+
+        $r = $unclampedRgb->r ?? 0.0;
+        $g = $unclampedRgb->g ?? 0.0;
+        $b = $unclampedRgb->b ?? 0.0;
+
+        if ($r >= 0.0 && $r <= 1.0 && $g >= 0.0 && $g <= 1.0 && $b >= 0.0 && $b <= 1.0) {
+            return $this->converter->serializeAsFloatRgb($this->runtime->spaceConverter->oklchToSrgb($newOklchInner));
+        }
+
+        return $this->converter->serializeAsUnclampedHsl($r, $g, $b, $unclampedRgb->a);
     }
 
     /**

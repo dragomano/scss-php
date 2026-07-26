@@ -222,7 +222,7 @@ describe('BuiltinFunctionRegistry', function () {
 
         /** @var ColorNode $result */
         expect($result)->toBeInstanceOf(ColorNode::class)
-            ->and($result->value)->toBe('#808080');
+            ->and($result->value)->toBe('gray');
     });
 
     it('uses namespaced display name in color module argument errors', function () {

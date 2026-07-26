@@ -27,6 +27,7 @@ use Bugo\SCSS\Values\AstValueInspector;
 use function abs;
 use function in_array;
 use function max;
+use function min;
 use function round;
 use function str_contains;
 use function str_starts_with;
@@ -617,6 +618,52 @@ final readonly class ColorNodeConverter
             new NumberNode($this->runtime->spaceConverter->normalizeHue($hue)),
             new NumberNode($this->runtime->spaceConverter->roundFloat($saturation), '%'),
             new NumberNode($this->runtime->spaceConverter->roundFloat($lightness), '%'),
+        ];
+
+        if (abs($alpha - 1.0) >= 0.000001) {
+            return new FunctionNode(
+                'hsla',
+                [$arguments[0], $arguments[1], $arguments[2], $this->buildAlphaNode($alpha)],
+            );
+        }
+
+        return new FunctionNode('hsl', $arguments);
+    }
+
+    public function serializeAsUnclampedHsl(float $r, float $g, float $b, float $alpha): FunctionNode
+    {
+        $max   = max($r, $g, $b);
+        $min   = min($r, $g, $b);
+        $delta = $max - $min;
+
+        $l = ($max + $min) / 2.0;
+
+        if ($delta <= 0.0) {
+            $h = 0.0;
+            $s = 0.0;
+        } else {
+            $s = $delta / (1.0 - abs(2.0 * $l - 1.0));
+
+            if ($max === $r) {
+                $h = 60.0 * (($g - $b) / $delta);
+
+                if ($g < $b) {
+                    $h += 360.0;
+                }
+            } elseif ($max === $g) {
+                $h = 60.0 * ((($b - $r) / $delta) + 2.0);
+            } else {
+                $h = 60.0 * ((($r - $g) / $delta) + 4.0);
+            }
+        }
+
+        $h = $this->runtime->spaceConverter->normalizeHue($h);
+
+        $precision = 10;
+        $arguments = [
+            new NumberNode((float) $this->runtime->spaceConverter->trimFloat($h, $precision)),
+            new NumberNode((float) $this->runtime->spaceConverter->trimFloat($s * 100.0, $precision), '%'),
+            new NumberNode((float) $this->runtime->spaceConverter->trimFloat($l * 100.0, $precision), '%'),
         ];
 
         if (abs($alpha - 1.0) >= 0.000001) {

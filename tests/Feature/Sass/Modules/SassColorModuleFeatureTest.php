@@ -23,7 +23,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-mix {
-              value: #808080;
+              value: gray;
             }
             CSS;
 
@@ -218,7 +218,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-complement {
-              value: #0ff;
+              value: aqua;
             }
             CSS;
 
@@ -963,7 +963,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .color-adjust-hue {
-                  value: #0f0;
+                  value: lime;
                 }
                 CSS;
 
