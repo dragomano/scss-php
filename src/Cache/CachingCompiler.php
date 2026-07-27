@@ -75,7 +75,6 @@ final readonly class CachingCompiler implements CompilerInterface
             $this->options->sourceMapFile ?? '',
             $this->options->includeSources ? '1' : '0',
             $this->options->outputHexColors ? '1' : '0',
-            $this->options->splitRules ? '1' : '0',
         ];
 
         return 'scss_' . hash('xxh32', implode('|', $parts));

@@ -28,6 +28,7 @@ describe('Compiler', function () {
         .content {
           value: local value;
         }
+
         .sidebar {
           value: global value;
         }
@@ -60,6 +61,7 @@ describe('Compiler', function () {
           color: blue;
           width: 2px;
         }
+
         .after {
           width: 2px;
         }

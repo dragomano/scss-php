@@ -13,7 +13,6 @@ final readonly class CompilerOptions
         public ?string $sourceMapFile = null,
         public bool $includeSources = false,
         public bool $outputHexColors = false,
-        public bool $splitRules = false,
         public bool $verboseLogging = false,
     ) {}
 }

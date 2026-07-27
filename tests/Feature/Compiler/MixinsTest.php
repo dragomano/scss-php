@@ -61,15 +61,19 @@ describe('Compiler', function () {
         .default {
           border-radius: 6px;
         }
+
         .single {
           border-radius: 8px;
         }
+
         .pair {
           border-radius: 10px 20px;
         }
+
         .triple {
           border-radius: 1px 2px 3px;
         }
+
         .quad {
           border-radius: 8px 4px 2px 1px;
         }
@@ -107,11 +111,11 @@ describe('Compiler', function () {
           from {
             background-color: yellow;
           }
-
           to {
             background-color: red;
           }
         }
+
         .pulse {
           animation-name: inline-u1;
           animation-duration: 2s;
@@ -177,6 +181,7 @@ describe('Compiler', function () {
             font-size: 40px;
           }
         }
+
         @media print {
           h1 {
             font-size: 40px;
@@ -264,6 +269,7 @@ describe('Compiler', function () {
         .button {
           width: 100%;
         }
+
         @media (min-width: 1024px) {
           .button {
             width: auto;
@@ -293,6 +299,7 @@ describe('Compiler', function () {
         .rule {
           border: 1px solid black;
         }
+
         @media (min-width: 600px) {
           .rule {
             color: red;
@@ -324,6 +331,7 @@ describe('Compiler', function () {
           background-color: red;
           border-radius: 3px;
         }
+
         .test:hover {
           background-color: blue;
         }
@@ -378,6 +386,7 @@ describe('Compiler', function () {
           display: -webkit-flex;
           display: flex;
         }
+
         .item {
           -webkit-box-flex: 1 200px;
           -moz-box-flex: 1 200px;
@@ -417,9 +426,11 @@ describe('Compiler', function () {
         .class-0 .light {
           color: #9cf;
         }
+
         .class-0 .dark {
           color: #06c;
         }
+
         .class-0.nested-1 {
           color: red;
         }

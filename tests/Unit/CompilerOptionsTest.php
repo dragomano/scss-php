@@ -14,7 +14,6 @@ describe('CompilerOptions', function () {
             ->and($options->outputFile)->toBe('output.css')
             ->and($options->sourceMapFile)->toBeNull()
             ->and($options->includeSources)->toBeFalse()
-            ->and($options->splitRules)->toBeFalse()
             ->and($options->verboseLogging)->toBeFalse();
     });
 
@@ -46,11 +45,5 @@ describe('CompilerOptions', function () {
         $options = new CompilerOptions(verboseLogging: true);
 
         expect($options->verboseLogging)->toBeTrue();
-    });
-
-    it('accepts splitRules flag', function () {
-        $options = new CompilerOptions(splitRules: true);
-
-        expect($options->splitRules)->toBeTrue();
     });
 });

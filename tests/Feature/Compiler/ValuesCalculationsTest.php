@@ -185,6 +185,7 @@ describe('Compiler', function () {
               nan: calc(NaN);
               keep: calc(h + 30deg);
             }
+
             .cmp {
               gt: true;
               lt: true;
@@ -461,6 +462,7 @@ describe('Compiler', function () {
               position: relative;
               order: 1;
             }
+
             .article {
               grid-column: span 1 !important;
             }
@@ -498,11 +500,13 @@ describe('Compiler', function () {
               font-family: "Roboto";
               font-weight: 100;
             }
+
             @font-face {
               src: url("../fonts/roboto/Roboto-Light.woff2") format("woff2");
               font-family: "Roboto";
               font-weight: 300;
             }
+
             @font-face {
               src: url(../fonts/roboto/Roboto-Regular.woff2) format("woff2");
               font-family: "Roboto";
@@ -608,6 +612,7 @@ describe('Compiler', function () {
               width: calc(100px + 20px);
               height: 50%;
             }
+
             div {
               width: calc(min(10px, 2vw) * 2);
               height: 20px;
@@ -709,6 +714,7 @@ describe('Compiler', function () {
               padding-left: max(12px, env(safe-area-inset-left));
               padding-right: max(12px, env(safe-area-inset-right));
             }
+
             .sidebar {
               padding-left: 20px;
               padding-right: 20px;
@@ -951,6 +957,7 @@ describe('Compiler', function () {
               transition-duration: 4s;
               transition-delay: 2s;
             }
+
             .enlarge:hover {
               font-size: 36px;
             }
@@ -1092,9 +1099,11 @@ describe('Compiler', function () {
               --bg-image: url("../images/background.jpg");
               --icon-check: url("data:image/svg+xml;utf8,<svg>...</svg>");
             }
+
             .using-css-vars {
               background-image: var(--bg-image);
             }
+
             .checkbox::before {
               content: var(--icon-check);
             }

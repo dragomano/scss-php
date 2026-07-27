@@ -114,6 +114,7 @@ describe('Sass Color Module Feature', function () {
             .increasing {
               value: oklch(65% .06 30deg);
             }
+
             .decreasing {
               value: oklch(65% .06 210deg);
             }
@@ -135,6 +136,7 @@ describe('Sass Color Module Feature', function () {
             .a {
               value: oklch(65% .06 120deg);
             }
+
             .b {
               value: oklch(65% .04 60deg);
             }
@@ -851,9 +853,11 @@ describe('Sass Color Module Feature', function () {
             .a {
               value: rgb;
             }
+
             .b {
               value: hsl;
             }
+
             .c {
               value: xyz;
             }

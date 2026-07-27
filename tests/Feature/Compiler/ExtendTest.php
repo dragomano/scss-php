@@ -85,6 +85,7 @@ describe('Compiler', function () {
             .message, .alert {
               color: red;
             }
+
             .info, .alert {
               background: green;
             }
@@ -159,6 +160,7 @@ describe('Compiler', function () {
             .error:hover, .error--serious:hover {
               background-color: #fee;
             }
+
             .error--serious {
               border-width: 3px;
             }
@@ -193,10 +195,12 @@ describe('Compiler', function () {
             p.info {
               background-color: #dee9fc;
             }
+
             .guide .info, .guide .content nav.sidebar, .content .guide nav.sidebar {
               border: 1px solid rgba(0, 0, 0, .8);
               border-radius: 2px;
             }
+
             main.content .info, main.content nav.sidebar {
               font-size: .8em;
             }
@@ -468,12 +472,15 @@ describe('Compiler', function () {
               padding: 10px;
               color: #333;
             }
+
             .success {
               border-color: green;
             }
+
             .error {
               border-color: red;
             }
+
             .warning {
               border-color: yellow;
             }
@@ -513,12 +520,15 @@ describe('Compiler', function () {
               padding: 16px 0;
               width: 100%;
             }
+
             .reset-buttons:hover, .action-buttons:hover {
               border: 2px rgba(0, 0, 0, .5) solid;
             }
+
             .action-buttons {
               color: #4285f4;
             }
+
             .reset-buttons {
               color: #cddc39;
             }

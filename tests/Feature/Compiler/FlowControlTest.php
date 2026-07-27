@@ -34,15 +34,19 @@ describe('Compiler', function () {
             .item {
               order: 1;
             }
+
             .item {
               order: 2;
             }
+
             .item {
               order: 3;
             }
+
             .counter {
               value: 1;
             }
+
             .counter {
               value: 2;
             }
@@ -148,6 +152,7 @@ describe('Compiler', function () {
             .a {
               has-space: yes;
             }
+
             .b {
               has-space: no;
             }

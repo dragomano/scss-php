@@ -728,6 +728,7 @@ describe('Compiler', function () {
             [class]a {
               color: red;
             }
+
             .ok {
               color: blue;
             }

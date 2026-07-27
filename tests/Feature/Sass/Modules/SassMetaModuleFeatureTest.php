@@ -76,9 +76,11 @@ describe('Sass Meta Module Feature', function () {
             .card-info::before {
               content: "This mixin supports custom content";
             }
+
             .simple-info::before {
               content: "This mixin uses the default styling";
             }
+
             .actual-card {
               border-radius: 8px;
               overflow: hidden;
@@ -89,6 +91,7 @@ describe('Sass Meta Module Feature', function () {
                 color: #333;
               }
             }
+
             .actual-simple {
               border-radius: 8px;
               background: #f5f5f5;
@@ -244,6 +247,7 @@ describe('Sass Meta Module Feature', function () {
               color: #333;
               font-size: 16px;
             }
+
             .placeholder {
               border-radius: 8px;
               padding: 16px;
@@ -360,6 +364,7 @@ describe('Sass Meta Module Feature', function () {
               background-color: #6b717f;
               color: #d2e1dd;
             }
+
             .meta-module-call {
               value: 81;
             }
@@ -390,6 +395,7 @@ describe('Sass Meta Module Feature', function () {
               background-color: #6b717f;
               color: #d2e1dd;
             }
+
             .meta-module-mixin-type {
               value: mixin;
             }
@@ -422,9 +428,11 @@ describe('Sass Meta Module Feature', function () {
             .meta-global-var-before {
               value: false;
             }
+
             .meta-global-var-after {
               value: true;
             }
+
             .meta-global-var-local {
               value: false;
             }
@@ -520,6 +528,7 @@ describe('Sass Meta Module Feature', function () {
             .meta-mixin-before {
               value: false;
             }
+
             .meta-mixin-after {
               value: true;
             }
@@ -661,9 +670,11 @@ describe('Sass Meta Module Feature', function () {
             .meta-var-before {
               value: false;
             }
+
             .meta-var-after {
               value: true;
             }
+
             .meta-var-local {
               value: true;
             }
@@ -941,6 +952,7 @@ describe('Sass Meta Module Feature', function () {
                 .before {
                   value: false;
                 }
+
                 .after {
                   value: true;
                 }
@@ -1000,6 +1012,7 @@ describe('Sass Meta Module Feature', function () {
                 .before {
                   value: false;
                 }
+
                 .after {
                   value: true;
                 }

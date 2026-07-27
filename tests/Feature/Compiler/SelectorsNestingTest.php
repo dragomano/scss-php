@@ -67,6 +67,7 @@ describe('Compiler', function () {
               color: red;
               font-weight: bold;
             }
+
             .card .title:hover {
               color: blue;
             }
@@ -96,6 +97,7 @@ describe('Compiler', function () {
             .card .title {
               color: red;
             }
+
             @media (min-width: 40rem) {
               .card .title {
                 color: blue;
@@ -127,6 +129,7 @@ describe('Compiler', function () {
             .card .title {
               color: red;
             }
+
             .utility {
               display: block;
             }
@@ -147,6 +150,7 @@ describe('Compiler', function () {
             .card:hover {
               color: red;
             }
+
             .card.active, .card.selected {
               border: 1px solid #000;
             }
@@ -228,6 +232,7 @@ describe('Compiler', function () {
                 border: 2px solid black;
               }
             }
+
             @media (hover: hover) and (color) {
               .button:hover {
                 border-color: #036;
@@ -275,6 +280,7 @@ describe('Compiler', function () {
                 position: sticky;
               }
             }
+
             .banner {
               position: fixed;
             }
@@ -302,9 +308,11 @@ describe('Compiler', function () {
             .case {
               color: red;
             }
+
             .case--serious {
               font-weight: bold;
             }
+
             .case {
               font-weight: normal;
             }
@@ -330,9 +338,11 @@ describe('Compiler', function () {
             .case {
               color: red;
             }
+
             .case {
               color: blue;
             }
+
             .case {
               color: green;
             }
@@ -358,11 +368,13 @@ describe('Compiler', function () {
             .case {
               color: red;
             }
+
             @media (max-width: 768px) {
               .case {
                 color: blue;
               }
             }
+
             .case {
               color: green;
             }
@@ -404,6 +416,7 @@ describe('Compiler', function () {
                 a: b;
               }
             }
+
             @supports not (feature23: val4) {
               .test {
                 a: b;
@@ -429,9 +442,11 @@ describe('Compiler', function () {
             ul:nth-child(3n + 1) {
               margin-left: 10;
             }
+
             ul:nth-child(3n + 2) {
               margin-left: 20;
             }
+
             ul:nth-child(3n + 3) {
               margin-left: 30;
             }
@@ -463,11 +478,13 @@ describe('Compiler', function () {
               height: 150px;
               margin-top: 0;
             }
+
             input.address {
               position: absolute;
               height: 150px;
               margin-top: 150px;
             }
+
             input.zip {
               position: absolute;
               height: 150px;
@@ -497,6 +514,7 @@ describe('Compiler', function () {
             .parent {
               color: blue;
             }
+
             .outside {
               color: red;
             }
@@ -522,6 +540,7 @@ describe('Compiler', function () {
             .print-only {
               display: none;
             }
+
             @media print {
               .print-only {
                 display: block;
@@ -584,6 +603,7 @@ describe('Compiler', function () {
             .component--compact .component {
               padding: .8rem;
             }
+
             .component--bordered .component {
               border: 1px solid #ddd;
             }
@@ -617,9 +637,11 @@ describe('Compiler', function () {
                 width: 8in;
               }
             }
+
             .page {
               color: #111;
             }
+
             .page {
               font-size: 1.2em;
             }
@@ -720,6 +742,7 @@ describe('Compiler', function () {
               background-color: #036;
               color: rgba(255, 255, 255, .75);
             }
+
             .sidebar.app-background {
               background-color: #c6538c;
               color: rgba(255, 255, 255, .75);
@@ -755,6 +778,7 @@ describe('Compiler', function () {
             .wrapper input.field {
               /* ... */
             }
+
             .wrapper select.field {
               /* ... */
             }
@@ -858,6 +882,7 @@ describe('Compiler', function () {
             .article:nth-last-child(-n+5) {
               grid-column: span 2;
             }
+
             .article:nth-last-child(2), .article:last-child {
               grid-column: span 3;
             }
@@ -925,6 +950,7 @@ describe('Compiler', function () {
               margin-top: .1em;
               margin-bottom: 0;
             }
+
             section #display_head span {
               margin: 0;
             }
@@ -970,6 +996,7 @@ describe('Compiler', function () {
                 a: b;
               }
             }
+
             @supports (display: grid) {
               bar {
                 a: b;
@@ -1012,12 +1039,15 @@ describe('Compiler', function () {
             .sibling {
               color: red;
             }
+
             .other {
               color: blue;
             }
+
             .another {
               color: green;
             }
+
             .inner {
               color: red;
             }

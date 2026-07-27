@@ -25,7 +25,7 @@ final readonly class OutputOptimizer
             $css = $this->compressedCssFormatter->format($css);
         }
 
-        if ($options->splitRules) {
+        if ($options->style === Style::EXPANDED) {
             $css = $this->normalizeBlockSeparation($css);
         }
 

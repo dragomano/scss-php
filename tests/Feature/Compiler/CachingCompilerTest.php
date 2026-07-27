@@ -308,7 +308,6 @@ function buildCacheKey(string $path, ?CompilerOptions $options = null): string
         $options->sourceMapFile ?? '',
         $options->includeSources ? '1' : '0',
         $options->outputHexColors ? '1' : '0',
-        $options->splitRules ? '1' : '0',
     ];
 
     return 'scss_' . hash('xxh32', implode('|', $parts));

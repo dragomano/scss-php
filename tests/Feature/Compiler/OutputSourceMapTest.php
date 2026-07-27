@@ -49,6 +49,7 @@ describe('Compiler', function () {
             .block1 {
               color: red;
             }
+
             .block2 {
               color: blue;
             }
@@ -115,20 +116,15 @@ describe('Compiler', function () {
             }
             SCSS;
 
-            $compiler  = new Compiler(new CompilerOptions(sourceMapFile: $mapFile));
-            $compiler2 = new Compiler(new CompilerOptions(sourceMapFile: $mapFile, splitRules: true));
+            $compiler = new Compiler(new CompilerOptions(sourceMapFile: $mapFile));
 
             try {
                 $compiler->compileString($source);
+
                 $map = json_decode((string) file_get_contents($mapFile), true);
 
-                $compiler2->compileString($source);
-                $map2 = json_decode((string) file_get_contents($mapFile), true);
-
                 expect($map)->toBeArray()
-                    ->and($map['mappings'] ?? null)->toBe('AAEA;EACE,OAHI;;AAMN;EACE')
-                    ->and($map2)->toBeArray()
-                    ->and($map2['mappings'] ?? null)->toBe('AAEA;EACE,OAHI;;;AAMN;EACE');
+                    ->and($map['mappings'] ?? null)->toBe('AAEA;EACE,OAHI;;;AAMN;EACE');
             } finally {
                 if (file_exists($mapFile)) {
                     unlink($mapFile);
@@ -158,6 +154,7 @@ describe('Compiler', function () {
 
             try {
                 $compiler->compileString($source);
+
                 $map = json_decode((string) file_get_contents($mapFile), true);
 
                 $mappings = $map['mappings'] ?? '';
@@ -167,7 +164,7 @@ describe('Compiler', function () {
 
                 expect($map)->toBeArray()
                     ->and($mappings)->not->toBe('')
-                    ->and($maxRun)->toBeLessThanOrEqual(3);
+                    ->and($maxRun)->toBeLessThanOrEqual(4);
             } finally {
                 if (file_exists($mapFile)) {
                     unlink($mapFile);
@@ -240,10 +237,12 @@ describe('Compiler', function () {
               padding: 8px;
               margin-top-bottom: 1px 2px;
             }
+
             .box-3 {
               margin: 3px 6px;
               padding: 5px;
             }
+
             .box-2 {
               margin: 4px;
               padding: 9px 11px;
@@ -257,6 +256,7 @@ describe('Compiler', function () {
 
         it('optimizes box shorthand for margin and padding in compressed style', function () {
             $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
+
             $source = <<<'SCSS'
             .box { margin: 10px 20px 10px 20px; padding: 8px 8px 8px 8px; margin-top-bottom: 1px 2px 1px; }
             .box-3 { margin: 3px 6px 3px; padding: 5px 5px 5px; }
@@ -269,7 +269,7 @@ describe('Compiler', function () {
         });
 
         it('converts named colors to hex in compressed style for regular declarations', function () {
-            $options = new CompilerOptions(style: Style::COMPRESSED);
+            $options  = new CompilerOptions(style: Style::COMPRESSED);
             $compiler = new Compiler($options);
 
             $source = <<<'SCSS'
@@ -282,7 +282,7 @@ describe('Compiler', function () {
         });
 
         it('does not convert named colors to hex inside custom properties in compressed style', function () {
-            $options = new CompilerOptions(style: Style::COMPRESSED);
+            $options  = new CompilerOptions(style: Style::COMPRESSED);
             $compiler = new Compiler($options);
 
             $source = <<<'SCSS'
@@ -436,6 +436,7 @@ describe('Compiler', function () {
 
         $inputFile = $tmpDir . '/input.scss';
         $mapFile   = $tmpDir . '/output.css.map';
+
         $source = <<<'SCSS'
         .block {
           color: red;
@@ -482,6 +483,7 @@ describe('Compiler', function () {
             }
 
             $firstPos = $ourMap->getPosition(0, 0);
+
             expect($firstPos)->not->toBeNull()
                 ->and($firstPos->source->line)->toBe(0)
                 ->and($firstPos->source->column)->toBe(0);
@@ -535,7 +537,7 @@ describe('Compiler', function () {
         });
 
         it('uses custom sourceFile option instead of path when compiling file', function () {
-            $tmpDir  = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+            $tmpDir   = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
             $filePath = $tmpDir . '/styles.scss';
 
             mkdir($tmpDir, 0777, true);
@@ -572,7 +574,7 @@ describe('Compiler', function () {
             mkdir($workDir, 0777, true);
             mkdir($loadDir, 0777, true);
 
-            $cwdPath = $workDir . '/style.scss';
+            $cwdPath  = $workDir . '/style.scss';
             $loadPath = $loadDir . '/style.scss';
 
             file_put_contents($cwdPath, <<<'SCSS'

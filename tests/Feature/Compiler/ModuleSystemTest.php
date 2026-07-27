@@ -354,6 +354,7 @@ describe('Compiler', function () {
             .from-import {
               value: imported;
             }
+
             .test {
               color: red;
               border: 1px solid red;
@@ -406,9 +407,11 @@ describe('Compiler', function () {
                   padding: .25em;
                   line-height: 0;
                 }
+
                 ul, ol {
                   text-align: left;
                 }
+
                 ul ul, ol ol {
                   padding-bottom: 0;
                   padding-left: 0;
@@ -797,6 +800,7 @@ describe('Compiler', function () {
                 .from-forwarded {
                   value: forwarded;
                 }
+
                 .test {
                   color: green;
                 }
@@ -843,6 +847,7 @@ describe('Compiler', function () {
                 .from-forwarded {
                   value: forwarded;
                 }
+
                 .test {
                   color: green;
                 }
@@ -979,6 +984,7 @@ describe('Compiler', function () {
                 .from-forwarded {
                   value: forwarded;
                 }
+
                 .test {
                   color: green;
                   border-color: green;

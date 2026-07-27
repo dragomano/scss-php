@@ -30,8 +30,8 @@ it('keeps ascii css without charset prefix', function () {
     expect($result)->toBe($source);
 });
 
-it('adds blank lines between root rules when splitRules is enabled', function () {
-    $options = new CompilerOptions(splitRules: true);
+it('adds blank lines between root rules in expanded style', function () {
+    $options = new CompilerOptions(style: Style::EXPANDED);
     $source  = /** @lang text */ <<<'CSS'
     .first { width: 1px; }
     .second { width: 2px; }
@@ -114,16 +114,16 @@ it('shortens hue-rotate zero angle in compressed output', function () {
     expect($result)->toBe('.test{filter:hue-rotate(0)saturate(100%)}');
 });
 
-it('skips blank lines in input when splitRules is enabled', function () {
-    $options = new CompilerOptions(splitRules: true);
+it('skips blank lines in input in expanded style', function () {
+    $options = new CompilerOptions(style: Style::EXPANDED);
     $source  = ".a { width: 1px; }\n\n.b { width: 2px; }";
     $result  = $this->optimizer->optimize($source, $options);
 
     expect($result)->toBe(".a { width: 1px; }\n\n.b { width: 2px; }");
 });
 
-it('skips whitespace-only lines in input when splitRules is enabled', function () {
-    $options = new CompilerOptions(splitRules: true);
+it('skips whitespace-only lines in input in expanded style', function () {
+    $options = new CompilerOptions(style: Style::EXPANDED);
     $source  = ".a { width: 1px; }\n   \n.b { width: 2px; }";
     $result  = $this->optimizer->optimize($source, $options);
 
@@ -131,7 +131,7 @@ it('skips whitespace-only lines in input when splitRules is enabled', function (
 });
 
 it('does not insert blank line after root-level line without closing braces', function () {
-    $options = new CompilerOptions(splitRules: true);
+    $options = new CompilerOptions(style: Style::EXPANDED);
     $source  = ".a { width: 1px; }\nwidth: 2px;\n.b { width: 3px; }";
     $result  = $this->optimizer->optimize($source, $options);
 
@@ -139,7 +139,7 @@ it('does not insert blank line after root-level line without closing braces', fu
 });
 
 it('does not insert blank line inside nested blocks', function () {
-    $options = new CompilerOptions(splitRules: true);
+    $options = new CompilerOptions(style: Style::EXPANDED);
     $source  = ".a {\n  .b { width: 1px; }\n}\n.c { width: 2px; }";
     $result  = $this->optimizer->optimize($source, $options);
 
