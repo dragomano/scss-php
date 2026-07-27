@@ -691,7 +691,7 @@ final readonly class SelectorTokenizer
      * @param array<int, string> $splitChars
      * @return array<int, string>
      */
-    public function splitAtTopLevel(string $selector, array $splitChars, bool $handleQuotes = false): array
+    public function splitAtTopLevel(string $selector, array $splitChars, bool $handleQuotes = false, bool $trim = true): array
     {
         $result       = [];
         $buffer       = '';
@@ -753,10 +753,10 @@ final readonly class SelectorTokenizer
             }
 
             if ($parenDepth === 0 && $bracketDepth === 0 && in_array($char, $splitChars, true)) {
-                $trimmed = trim($buffer);
+                $part = $trim ? trim($buffer) : $buffer;
 
-                if ($trimmed !== '') {
-                    $result[] = $trimmed;
+                if ($part !== '') {
+                    $result[] = $part;
                 }
 
                 $buffer = '';
@@ -767,10 +767,10 @@ final readonly class SelectorTokenizer
             $buffer .= $char;
         }
 
-        $trimmed = trim($buffer);
+        $part = $trim ? trim($buffer) : $buffer;
 
-        if ($trimmed !== '') {
-            $result[] = $trimmed;
+        if ($part !== '') {
+            $result[] = $part;
         }
 
         return $result;

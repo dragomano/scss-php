@@ -710,7 +710,8 @@ describe('Compiler', function () {
             SCSS;
 
             $expected = /** @lang text */ <<<'CSS'
-            .main aside:hover, .sidebar p {
+            .main aside:hover,
+            .sidebar p {
               parent-selector: .main aside:hover, .sidebar p;
             }
             CSS;

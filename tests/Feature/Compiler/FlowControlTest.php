@@ -182,7 +182,8 @@ describe('Compiler', function () {
               .article-container {
                 grid-template-columns: 1fr !important;
               }
-              .article-container .featured-article, .article-container .article {
+              .article-container .featured-article,
+              .article-container .article {
                 grid-column: span 1 !important;
               }
             }

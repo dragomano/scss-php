@@ -79,7 +79,9 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
             return '';
         }
 
-        $scope->setVariableLocal('__parent_selector', new StringNode($ruleCtx->parentSelector));
+        $parentSelectorValue = str_replace("\n", ' ', $ruleCtx->parentSelector);
+
+        $scope->setVariableLocal('__parent_selector', new StringNode($parentSelectorValue));
 
         return null;
     }

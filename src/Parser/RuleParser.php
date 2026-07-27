@@ -15,6 +15,7 @@ use Bugo\SCSS\Nodes\VariableDeclarationNode;
 
 use function in_array;
 use function max;
+use function str_contains;
 use function str_starts_with;
 use function strlen;
 use function strpbrk;
@@ -225,7 +226,11 @@ final class RuleParser
             }
 
             if ($token->type === TokenType::WHITESPACE) {
-                $selector .= ' ';
+                if (str_contains($token->value, "\n") && $selector !== '' && $selector[-1] === ',') {
+                    $selector .= "\n";
+                } else {
+                    $selector .= ' ';
+                }
             } elseif ($token->type === TokenType::STRING) {
                 $selector .= '"' . $token->value . '"';
             } elseif ($token->type === TokenType::HASH) {
@@ -275,7 +280,11 @@ final class RuleParser
             }
 
             if ($token->type === TokenType::WHITESPACE) {
-                $buffer .= ' ';
+                if (str_contains($token->value, "\n") && $buffer !== '' && $buffer[-1] === ',') {
+                    $buffer .= "\n";
+                } else {
+                    $buffer .= ' ';
+                }
 
                 $this->stream->advance();
 

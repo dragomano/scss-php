@@ -278,9 +278,9 @@ final readonly class Selector
     /**
      * @return array<int, string>
      */
-    public function splitTopLevelSelectorList(string $selector): array
+    public function splitTopLevelSelectorList(string $selector, bool $trim = true): array
     {
-        return $this->tokenizer->splitAtTopLevel($selector, [','], handleQuotes: true);
+        return $this->tokenizer->splitAtTopLevel($selector, [','], handleQuotes: true, trim: $trim);
     }
 
     /**
@@ -428,25 +428,56 @@ final readonly class Selector
 
     public function combineNestedSelectorWithParent(string $selector, string $parentSelector): string
     {
-        $selectorParts = $this->splitTopLevelSelectorList($selector);
-        $parentParts   = $this->splitTopLevelSelectorList($parentSelector);
+        $selectorParts = $this->splitTopLevelSelectorList($selector, trim: false);
+        $parentParts   = $this->splitTopLevelSelectorList($parentSelector, trim: false);
 
         if ($selectorParts === [] || $parentParts === []) {
             return $selector;
         }
 
         $combined = [];
+        $breaks   = [];
 
-        foreach ($parentParts as $parentPart) {
-            $trimmedParent = trim($parentPart);
+        foreach ($parentParts as $pi => $parentPart) {
+            $parentHasBreak = str_starts_with($parentPart, "\n");
+            $trimmedParent  = ltrim($parentPart);
 
-            foreach ($selectorParts as $selectorPart) {
-                $trimmedSelector = trim($selectorPart);
+            foreach ($selectorParts as $cj => $selectorPart) {
+                $childHasBreak   = str_starts_with($selectorPart, "\n");
+                $trimmedSelector = ltrim($selectorPart);
+
+                $needsBreak = ($parentHasBreak && $pi > 0) || ($childHasBreak && $cj > 0);
+
                 $combined[] = $trimmedParent . ' ' . $trimmedSelector;
+                $breaks[]   = $needsBreak;
             }
         }
 
-        return $this->implodeUniqueSelectorList($combined);
+        // Remove duplicates while preserving break information
+        $uniqueCombined = [];
+        $uniqueBreaks   = [];
+        $seen           = [];
+
+        foreach ($combined as $i => $part) {
+            if (! isset($seen[$part])) {
+                $seen[$part]      = true;
+                $uniqueCombined[] = $part;
+                $uniqueBreaks[]   = $breaks[$i];
+            }
+        }
+
+        // Join with appropriate separators
+        $result = '';
+
+        foreach ($uniqueCombined as $i => $part) {
+            if ($i > 0) {
+                $result .= $uniqueBreaks[$i] ? ",\n" : ', ';
+            }
+
+            $result .= $part;
+        }
+
+        return $result;
     }
 
     public function applyExtendsToSelector(string $selector): string

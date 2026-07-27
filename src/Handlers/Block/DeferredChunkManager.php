@@ -30,6 +30,7 @@ use function array_values;
 use function count;
 use function max;
 use function str_contains;
+use function str_replace;
 use function strtolower;
 use function trim;
 
@@ -448,7 +449,10 @@ final readonly class DeferredChunkManager
 
         if ($compiled !== null && $compiled !== '') {
             if (! $hasRenderedChildren) {
-                $this->render->appendChunk($output, $prefix . $selector . ' {', $node);
+                $formattedSelector = str_replace("\n", "\n" . $prefix, $selector);
+
+                $this->render->appendChunk($output, $prefix . $formattedSelector . ' {', $node);
+
                 $hasRenderedChildren = true;
             }
 

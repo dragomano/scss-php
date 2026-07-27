@@ -22,6 +22,7 @@ use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 
 use function count;
+use function str_replace;
 
 final readonly class ChildrenCompilationStep implements CompilationStepInterface
 {
@@ -196,9 +197,11 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
             $this->render->appendChunk($ruleCtx->output, "\n");
         }
 
+        $formattedSelector = str_replace("\n", "\n" . $ruleCtx->prefix, $ruleCtx->selector);
+
         $this->render->appendChunk(
             $ruleCtx->output,
-            $ruleCtx->prefix . $ruleCtx->selector . ' {',
+            $ruleCtx->prefix . $formattedSelector . ' {',
             $ruleCtx->node,
         );
 
