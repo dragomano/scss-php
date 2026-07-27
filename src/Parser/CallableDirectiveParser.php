@@ -198,6 +198,8 @@ final readonly class CallableDirectiveParser
                 $arguments[] = new ArgumentNode($varName, $defaultValue, $rest);
 
                 if ($rest) {
+                    StreamUtils::consumeCommaSeparator($this->stream);
+
                     break;
                 }
             } else {

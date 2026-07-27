@@ -281,6 +281,31 @@ describe('CallableDirectiveParser', function () {
             ->and($node->arguments)->toBe([]);
     });
 
+    it('consumes trailing comma after rest parameter', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::IDENTIFIER, 'mixin'),
+            callableDirectiveToken(TokenType::LPAREN, '('),
+            callableDirectiveToken(TokenType::DOLLAR, '$'),
+            callableDirectiveToken(TokenType::IDENTIFIER, 'args'),
+            callableDirectiveToken(TokenType::DOT),
+            callableDirectiveToken(TokenType::DOT),
+            callableDirectiveToken(TokenType::DOT),
+            callableDirectiveToken(TokenType::COMMA, ','),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /** @var MixinNode $node */
+        $node = $parser->parseMixinDirective();
+
+        expect($node)->toBeInstanceOf(MixinNode::class)
+            ->and($node->arguments)->toHaveCount(1)
+            ->and($node->arguments[0]->name)->toBe('args')
+            ->and($node->arguments[0]->rest)->toBeTrue();
+    });
+
     it('stops parsing parameter lists when a bare identifier cannot be read', function () {
         $parser = createCallableDirectiveParser([
             callableDirectiveToken(TokenType::IDENTIFIER, 'sample'),
