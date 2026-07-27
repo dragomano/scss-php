@@ -232,7 +232,6 @@ describe('Compiler', function () {
                 border: 2px solid black;
               }
             }
-
             @media (hover: hover) and (color) {
               .button:hover {
                 border-color: #036;

@@ -22,6 +22,7 @@ use Bugo\SCSS\Utils\OutputChunk;
 use Bugo\SCSS\Utils\RawChunk;
 
 use function count;
+use function str_starts_with;
 use function strtolower;
 use function trim;
 
@@ -105,14 +106,13 @@ final readonly class AtRuleNodeHandler
             return $output;
         }
 
-        $this->render->appendChunk($output, $prefix . '@' . $node->name . $prelude . ' {', $node);
-
-        $first = true;
-
         $outputState = $this->render->outputState();
         $outputState->deferral->atRuleStack[] = [];
 
-        $deferredMergedMediaChunks = [];
+        /** @var list<array{chunk: OutputChunk, isMerged: bool}> $orderedChunks */
+        $orderedChunks      = [];
+        $parentSegmentSaved = $this->render->savePosition();
+        $hasParentContent   = false;
 
         $parentAtRuleStack = $this->selector->getCurrentAtRuleStack($ctx->env);
 
@@ -143,7 +143,23 @@ final readonly class AtRuleNodeHandler
                     strtolower($node->name) === 'media'
                     && $child instanceof DirectiveNode
                     && strtolower($child->name) === 'media'
+                    && ! str_starts_with(trim($resolvedPrelude), 'not ')
                 ) {
+                    if ($hasParentContent) {
+                        $this->render->appendChunk($output, "\n" . $prefix . '}');
+
+                        $orderedChunks[] = [
+                            'chunk'    => $this->render->createDeferredChunk($output, $parentSegmentSaved),
+                            'isMerged' => false,
+                        ];
+
+                        $this->render->restorePosition($parentSegmentSaved);
+
+                        $output             = '';
+                        $hasParentContent   = false;
+                        $parentSegmentSaved = $this->render->savePosition();
+                    }
+
                     $childPrelude  = $this->selector->resolveDirectivePrelude($child->prelude, $ctx->env);
                     $parentPrelude = trim($resolvedPrelude);
                     $mergedPrelude = $this->selector->combineMediaQueryPreludes($parentPrelude, $childPrelude);
@@ -163,10 +179,19 @@ final readonly class AtRuleNodeHandler
                     $this->render->restorePosition($saved);
 
                     if ($mergedChunk !== '') {
-                        $deferredMergedMediaChunks[] = $deferredMergedChunk;
+                        $orderedChunks[] = [
+                            'chunk'    => $deferredMergedChunk,
+                            'isMerged' => true,
+                        ];
                     }
 
                     continue;
+                }
+
+                if (! $hasParentContent) {
+                    $parentSegmentSaved = $this->render->savePosition();
+
+                    $this->render->appendChunk($output, $prefix . '@' . $node->name . $prelude . ' {', $node);
                 }
 
                 $this->render->appendChunk($output, "\n");
@@ -177,12 +202,18 @@ final readonly class AtRuleNodeHandler
                 );
 
                 if ($compiled === '') {
+                    if (! $hasParentContent) {
+                        $this->render->restorePosition($parentSegmentSaved);
+
+                        $output = '';
+                    }
+
                     continue;
                 }
 
                 $output .= $compiled;
 
-                $first = false;
+                $hasParentContent = true;
             }
         } finally {
             $ctx->env->exitScope();
@@ -190,7 +221,22 @@ final readonly class AtRuleNodeHandler
 
         $outsideChunks = $this->selector->drainDeferredAtRuleEscapes();
 
-        if ($first) {
+        if ($hasParentContent) {
+            if (! $this->render->collectSourceMappings()) {
+                $output = $this->selector->optimizeAdjacentSiblingRuleBlocks($output);
+            }
+
+            $this->render->appendChunk($output, "\n" . $prefix . '}');
+
+            $orderedChunks[] = [
+                'chunk'    => $this->render->createDeferredChunk($output, $parentSegmentSaved),
+                'isMerged' => false,
+            ];
+
+            $this->render->restorePosition($parentSegmentSaved);
+        }
+
+        if ($orderedChunks === []) {
             if ($outsideChunks === []) {
                 return '';
             }
@@ -209,31 +255,28 @@ final readonly class AtRuleNodeHandler
             return $result;
         }
 
-        if (! $this->render->collectSourceMappings()) {
-            $output = $this->selector->optimizeAdjacentSiblingRuleBlocks($output);
-        }
+        $result    = '';
+        $separator = $this->render->outputSeparator();
 
-        $this->render->appendChunk($output, "\n" . $prefix . '}');
+        foreach ($orderedChunks as $index => $entry) {
+            if ($index > 0) {
+                $previous = $orderedChunks[$index - 1];
 
-        if ($outsideChunks !== []) {
-            $separator = $this->render->outputSeparator();
-
-            foreach ($outsideChunks as $chunk) {
-                $this->render->appendChunk($output, $separator);
-                $this->appendResolvedChunk($output, new RawChunk($chunk));
+                $this->render->appendChunk(
+                    $result,
+                    $previous['isMerged'] && ! $entry['isMerged'] ? "\n" : $separator,
+                );
             }
+
+            $this->appendResolvedChunk($result, $entry['chunk']);
         }
 
-        if ($deferredMergedMediaChunks !== []) {
-            $separator = $this->render->outputSeparator();
-
-            foreach ($deferredMergedMediaChunks as $chunk) {
-                $this->render->appendChunk($output, $separator);
-                $this->appendResolvedChunk($output, $chunk);
-            }
+        foreach ($outsideChunks as $chunk) {
+            $this->render->appendChunk($result, $separator);
+            $this->appendResolvedChunk($result, new RawChunk($chunk));
         }
 
-        return $output;
+        return $result;
     }
 
     private function appendResolvedChunk(string &$output, OutputChunk $chunk): void

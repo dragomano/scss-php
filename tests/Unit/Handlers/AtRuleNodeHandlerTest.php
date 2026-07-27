@@ -189,6 +189,32 @@ it('ignores empty merged nested media chunks and keeps other directive content',
     expect($runtime->atRule()->handleDirective($node, $ctx))->toEqualCss($expected);
 });
 
+it('renders merged nested media blocks before following parent media content', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+    $node    = new DirectiveNode('media', '(a: b)', [
+        new DirectiveNode('media', '(c: d)', [
+            new RuleNode('e', [new DeclarationNode('f', new StringNode('g'))]),
+        ], true),
+        new RuleNode('h', [new DeclarationNode('i', new StringNode('j'))]),
+    ], true);
+
+    $expected = /** @lang text */ <<<'CSS'
+    @media (a: b) and (c: d) {
+      e {
+        f: g;
+      }
+    }
+    @media (a: b) {
+      h {
+        i: j;
+      }
+    }
+    CSS;
+
+    expect($runtime->atRule()->handleDirective($node, $ctx))->toEqualCss($expected);
+});
+
 it('returns an empty string for block directives with no rendered content or escaped chunks', function () {
     $runtime = RuntimeFactory::createRuntime();
     $ctx     = RuntimeFactory::context();

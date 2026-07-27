@@ -10,6 +10,9 @@ use Bugo\SCSS\Style;
 use function explode;
 use function implode;
 use function mb_check_encoding;
+use function str_starts_with;
+use function strpos;
+use function substr;
 use function substr_count;
 use function trim;
 
@@ -39,6 +42,7 @@ final readonly class OutputOptimizer
         $depth  = 0;
 
         $prevClosedAtRoot = false;
+        $prevMediaPrelude = null;
 
         foreach ($lines as $line) {
             $trimmed = trim($line);
@@ -51,10 +55,26 @@ final readonly class OutputOptimizer
             $closeBraces = substr_count($trimmed, '}');
 
             if ($prevClosedAtRoot) {
-                $result[] = '';
+                $shouldAddBlankLine = true;
+
+                if (str_starts_with($trimmed, '@media ') && $prevMediaPrelude !== null) {
+                    $nextPrelude = $this->extractMediaPrelude($trimmed);
+
+                    if ($nextPrelude !== null && $this->isMergedMediaPair($prevMediaPrelude, $nextPrelude)) {
+                        $shouldAddBlankLine = false;
+                    }
+                }
+
+                if ($shouldAddBlankLine) {
+                    $result[] = '';
+                }
             }
 
             $result[] = $line;
+
+            if ($depth === 0 && str_starts_with($trimmed, '@media ')) {
+                $prevMediaPrelude = $this->extractMediaPrelude($trimmed);
+            }
 
             $depth += $openBraces - $closeBraces;
 
@@ -62,6 +82,41 @@ final readonly class OutputOptimizer
         }
 
         return implode("\n", $result);
+    }
+
+    private function isMergedMediaPair(string $preludeA, string $preludeB): bool
+    {
+        return $this->isMergedExtension($preludeA, $preludeB)
+            || $this->isMergedExtension($preludeB, $preludeA);
+    }
+
+    private function isMergedExtension(string $base, string $extended): bool
+    {
+        return str_starts_with($extended, $base . ' and ')
+            || str_starts_with($extended, $base . ' not ');
+    }
+
+    private function extractMediaPrelude(string $line): ?string
+    {
+        if (! str_starts_with($line, '@media ')) {
+            return null;
+        }
+
+        $rest = substr($line, 8);
+
+        $bracePos = strpos($rest, ' {');
+
+        if ($bracePos !== false) {
+            return substr($rest, 0, $bracePos);
+        }
+
+        $bracePos = strpos($rest, '{');
+
+        if ($bracePos !== false) {
+            return substr($rest, 0, $bracePos);
+        }
+
+        return $rest;
     }
 
     private function addCharsetIfNeeded(string $css): string
