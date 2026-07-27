@@ -163,14 +163,14 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             : $value;
     }
 
-    public function evaluateArithmeticList(ListNode $node, bool $strict, Environment $env): ?AstNode
+    public function evaluateArithmeticList(ListNode $node, bool $strict, Environment $env, bool $insideCalc = false): ?AstNode
     {
         $callback = $strict ? null : function (array $items) use ($env): ?string {
             /** @var array<int, AstNode> $items */
             return $this->calculation->detectUnsupportedOperation($items, $env);
         };
 
-        return $this->arithmetic->evaluate($node, $strict, $callback);
+        return $this->arithmetic->evaluate($node, $strict, $callback, $insideCalc);
     }
 
     public function shouldUseCompactSlashSpacing(string $property): bool

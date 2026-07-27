@@ -12,8 +12,8 @@ final readonly class ArithmeticListEvaluator implements ArithmeticListEvaluatorI
 {
     public function __construct(private Evaluator $evaluator) {}
 
-    public function evaluate(ListNode $list, bool $strict, Environment $env): ?AstNode
+    public function evaluate(ListNode $list, bool $strict, Environment $env, bool $insideCalc = false): ?AstNode
     {
-        return $this->evaluator->evaluateArithmeticList($list, $strict, $env);
+        return $this->evaluator->evaluateArithmeticList($list, $strict, $env, $insideCalc);
     }
 }

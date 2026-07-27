@@ -150,14 +150,14 @@ final readonly class CalculationEvaluator
 
             if ($argument instanceof ListNode) {
                 $resolved = $this->resolveConstantsInList($argument);
-
+                $resolved = $this->evaluateCalcSubLists($resolved, $env);
                 $division = $this->simplifyCalcDivision($resolved);
 
                 if ($division instanceof NumberNode) {
                     return $division;
                 }
 
-                $collapsed = $this->arithmeticListEvaluator->evaluate($resolved, true, $env);
+                $collapsed = $this->arithmeticListEvaluator->evaluate($resolved, true, $env, true);
 
                 if ($collapsed instanceof NumberNode) {
                     return $collapsed;
@@ -546,6 +546,29 @@ final readonly class CalculationEvaluator
             } else {
                 $items[] = $item;
             }
+        }
+
+        return $changed ? new ListNode($items, $list->separator, $list->bracketed) : $list;
+    }
+
+    private function evaluateCalcSubLists(ListNode $list, Environment $env): ListNode
+    {
+        $items   = [];
+        $changed = false;
+
+        foreach ($list->items as $item) {
+            if ($item instanceof ListNode && $item->separator === 'space') {
+                $evaluated = $this->arithmeticListEvaluator->evaluate($item, true, $env, true);
+
+                if ($evaluated instanceof NumberNode) {
+                    $items[] = $evaluated;
+                    $changed = true;
+
+                    continue;
+                }
+            }
+
+            $items[] = $item;
         }
 
         return $changed ? new ListNode($items, $list->separator, $list->bracketed) : $list;

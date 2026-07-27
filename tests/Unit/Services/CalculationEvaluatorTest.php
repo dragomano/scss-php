@@ -67,13 +67,13 @@ function createCalculationEvaluator(?Closure $evaluateArithmetic = null): Calcul
         new class ($evaluateArithmetic) implements ArithmeticListEvaluatorInterface {
             public function __construct(private ?Closure $evaluateArithmetic) {}
 
-            public function evaluate(ListNode $list, bool $strict, Environment $env): ?AstNode
+            public function evaluate(ListNode $list, bool $strict, Environment $env, bool $insideCalc = false): ?AstNode
             {
                 if ($this->evaluateArithmetic === null) {
                     return null;
                 }
 
-                return ($this->evaluateArithmetic)($list, $strict, $env);
+                return ($this->evaluateArithmetic)($list, $strict, $env, $insideCalc);
             }
         },
         new class ($format) implements AstToSassValueConverterInterface {

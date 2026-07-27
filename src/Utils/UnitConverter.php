@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Utils;
 use function array_merge;
 use function array_values;
 use function implode;
+use function in_array;
 use function strlen;
 
 final class UnitConverter
@@ -121,6 +122,38 @@ final class UnitConverter
     }
 
     /**
+     * @return array{0: ?string, 1: float}
+     */
+    public static function multiplyWithConversion(?string $left, ?string $right): array
+    {
+        [$leftNumerator, $leftDenominator]   = self::parseParts($left);
+        [$rightNumerator, $rightDenominator] = self::parseParts($right);
+
+        $numerator   = array_merge($leftNumerator, $rightNumerator);
+        $denominator = array_merge($leftDenominator, $rightDenominator);
+
+        [$numerator, $denominator, $conversionFactor] = self::cancelPartsWithConversion($numerator, $denominator);
+
+        return [self::buildString($numerator, $denominator), $conversionFactor];
+    }
+
+    /**
+     * @return array{0: ?string, 1: float}
+     */
+    public static function divideWithConversion(?string $left, ?string $right): array
+    {
+        [$leftNumerator, $leftDenominator]   = self::parseParts($left);
+        [$rightNumerator, $rightDenominator] = self::parseParts($right);
+
+        $numerator   = array_merge($leftNumerator, $rightDenominator);
+        $denominator = array_merge($leftDenominator, $rightNumerator);
+
+        [$numerator, $denominator, $conversionFactor] = self::cancelPartsWithConversion($numerator, $denominator);
+
+        return [self::buildString($numerator, $denominator), $conversionFactor];
+    }
+
+    /**
      * @return array{0: array<int, string>, 1: array<int, string>}
      */
     private static function parsePartsInternal(string $unit): array
@@ -162,6 +195,75 @@ final class UnitConverter
         }
 
         return [$numerator, $denominator];
+    }
+
+    /**
+     * @param array<int, string> $numerator
+     * @param array<int, string> $denominator
+     * @return array{0: array<int, string>, 1: array<int, string>, 2: float}
+     */
+    private static function cancelPartsWithConversion(array $numerator, array $denominator): array
+    {
+        $remainingNumerator  = [];
+        $conversionFactor    = 1.0;
+        $usedDenominatorKeys = [];
+
+        foreach ($numerator as $unit) {
+            $cancelled = false;
+
+            // Exact match first
+            foreach ($denominator as $index => $denominatorUnit) {
+                if (in_array($index, $usedDenominatorKeys, true)) {
+                    continue;
+                }
+
+                if ($denominatorUnit === $unit) {
+                    $usedDenominatorKeys[] = $index;
+
+                    $cancelled = true;
+
+                    break;
+                }
+            }
+
+            // Compatible units with conversion factor
+            if (! $cancelled) {
+                foreach ($denominator as $index => $denominatorUnit) {
+                    if (in_array($index, $usedDenominatorKeys, true)) {
+                        continue;
+                    }
+
+                    if (self::compatible($unit, $denominatorUnit)) {
+                        $leftInfo  = self::CONVERSIONS[$unit] ?? null;
+                        $rightInfo = self::CONVERSIONS[$denominatorUnit] ?? null;
+
+                        if ($leftInfo !== null && $rightInfo !== null) {
+                            $conversionFactor *= (float) $leftInfo['factor'] / (float) $rightInfo['factor'];
+
+                            $usedDenominatorKeys[] = $index;
+
+                            $cancelled = true;
+
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (! $cancelled) {
+                $remainingNumerator[] = $unit;
+            }
+        }
+
+        $remainingDenominator = [];
+
+        foreach ($denominator as $index => $unit) {
+            if (! in_array($index, $usedDenominatorKeys, true)) {
+                $remainingDenominator[] = $unit;
+            }
+        }
+
+        return [$remainingNumerator, $remainingDenominator, $conversionFactor];
     }
 
     /**

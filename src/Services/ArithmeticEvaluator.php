@@ -33,7 +33,7 @@ final readonly class ArithmeticEvaluator
     /**
      * @param Closure(array<int, AstNode>): ?string|null $onUnsupportedOperation
      */
-    public function evaluate(ListNode $node, bool $strict, ?Closure $onUnsupportedOperation = null): ?AstNode
+    public function evaluate(ListNode $node, bool $strict, ?Closure $onUnsupportedOperation = null, bool $insideCalc = false): ?AstNode
     {
         if ($node->separator !== 'space') {
             return null;
@@ -51,14 +51,14 @@ final readonly class ArithmeticEvaluator
             }
 
             if (count($node->items) % 2 !== 0) {
-                $strictResult = $this->evaluateStrictList($node->items, $node->bracketed);
+                $strictResult = $this->evaluateStrictList($node->items, $node->bracketed, $insideCalc);
 
                 if ($strictResult !== null) {
                     return $strictResult;
                 }
             }
 
-            $items = $this->evaluateSegments($node->items, $node->bracketed);
+            $items = $this->evaluateSegments($node->items, $node->bracketed, $insideCalc);
 
             if ($items === null) {
                 if (! $strict && $onUnsupportedOperation !== null) {
@@ -107,9 +107,9 @@ final readonly class ArithmeticEvaluator
         }
 
         if ($operator === '*') {
-            $unit = UnitConverter::multiply($left->unit, $right->unit);
+            [$unit, $conversionFactor] = UnitConverter::multiplyWithConversion($left->unit, $right->unit);
 
-            return new NumberNode((float) $left->value * (float) $right->value, $unit, false);
+            return new NumberNode((float) $left->value * (float) $right->value * $conversionFactor, $unit, false);
         }
 
         if ((float) $right->value === 0.0) {
@@ -133,9 +133,9 @@ final readonly class ArithmeticEvaluator
             );
         }
 
-        $unit = UnitConverter::divide($left->unit, $right->unit);
+        [$unit, $conversionFactor] = UnitConverter::divideWithConversion($left->unit, $right->unit);
 
-        return new NumberNode((float) $left->value / (float) $right->value, $unit, false);
+        return new NumberNode((float) $left->value / (float) $right->value * $conversionFactor, $unit, false);
     }
 
     /**
@@ -167,13 +167,14 @@ final readonly class ArithmeticEvaluator
     /**
      * @param array<int, AstNode> $items
      */
-    private function evaluateStrictList(array $items, bool $bracketed): ?NumberNode
+    private function evaluateStrictList(array $items, bool $bracketed, bool $insideCalc = false): ?NumberNode
     {
         $first = $items[0] ?? null;
         $mid   = $items[1] ?? null;
         $last  = $items[2] ?? null;
 
         if (! $bracketed
+            && ! $insideCalc
             && count($items) === 3
             && $first instanceof NumberNode
             && $first->isLiteral
@@ -249,13 +250,14 @@ final readonly class ArithmeticEvaluator
      * @param array<int, AstNode> $items
      * @return array<int, AstNode>|null
      */
-    private function evaluateSegments(array $items, bool $bracketed): ?array
+    private function evaluateSegments(array $items, bool $bracketed, bool $insideCalc = false): ?array
     {
         $result  = [];
         $count   = count($items);
         $changed = false;
 
         if (! $bracketed
+            && ! $insideCalc
             && $count >= 3
             && $items[0] instanceof NumberNode
             && $items[0]->isLiteral
@@ -290,7 +292,7 @@ final readonly class ArithmeticEvaluator
                 && ($nextToken = $items[$i + 1] ?? null) instanceof StringNode
                 && isset(self::ARITHMETIC_OPERATORS[$nextToken->value])
                 && ($nextItem = $items[$i + 2]) instanceof NumberNode
-                && ! ($nextToken->value === '/' && $value->isLiteral && $nextItem->isLiteral)
+                && ($insideCalc || ! ($nextToken->value === '/' && $value->isLiteral && $nextItem->isLiteral))
             ) {
                 $next    = $nextItem;
                 $value   = $this->applyOperator($value, $nextToken->value, $next);
