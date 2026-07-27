@@ -585,6 +585,8 @@ final readonly class ColorFunctionEvaluator
     {
         [$r, $g, $b] = $this->extractSrgbChannels($color);
 
+        $alpha = $this->converter->toAlpha($color);
+
         $values = [
             'red'   => $this->parseNumberChannel($named, 'red', 'color'),
             'green' => $this->parseNumberChannel($named, 'green', 'color'),
@@ -595,7 +597,13 @@ final readonly class ColorFunctionEvaluator
             ? $this->manipulators->srgb->change($r, $g, $b, $values)
             : $this->manipulators->srgb->adjust($r, $g, $b, $values);
 
-        return $this->converter->serializeAsSrgbString($newR, $newG, $newB);
+        $alphaValue = $this->parseColorChannel($named, 'alpha');
+
+        if ($alphaValue !== null) {
+            $alpha = $modify($alpha, $alphaValue);
+        }
+
+        return $this->converter->serializeAsSrgbString($newR, $newG, $newB, $alpha);
     }
 
     private function isGenericColorFunction(AstNode $color): bool

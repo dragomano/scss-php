@@ -602,14 +602,14 @@ final readonly class ColorNodeConverter
         ], $alpha);
     }
 
-    public function serializeAsSrgbString(float $r, float $g, float $b): FunctionNode
+    public function serializeAsSrgbString(float $r, float $g, float $b, float $alpha = 1.0): FunctionNode
     {
         return $this->buildFunctionalColorNode('color', [
             new StringNode('srgb'),
             new NumberNode($r),
             new NumberNode($g),
             new NumberNode($b),
-        ], 1.0);
+        ], $alpha);
     }
 
     public function buildHslFunctionNode(float $hue, float $saturation, float $lightness, float $alpha): FunctionNode
