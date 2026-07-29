@@ -477,4 +477,42 @@ describe('Compiler', function () {
         expect(fn() => $this->compiler->compileString($source))
             ->toThrow(UndefinedSymbolException::class, 'Undefined mixin: my-mixin');
     });
+
+    it('makes @content block variable reassignments visible in the mixin and calling scope', function () {
+        $source = <<<'SCSS'
+        @mixin a($param: param) {
+          $in-mixin: in-mixin;
+          @content;
+          param: $param;
+          in-mixin: $in-mixin;
+        }
+
+        $global: global;
+
+        a {
+          $in-style-rule: in-style-rule;
+          @include a {
+            $param: in-include;
+            $in-mixin: in-include;
+            $global: in-include;
+            $in-style-rule: in-include;
+          }
+          global: $global;
+          in-style-rule: $in-style-rule;
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        a {
+          param: param;
+          in-mixin: in-mixin;
+          global: global;
+          in-style-rule: in-include;
+        }
+        CSS;
+
+        $css = $this->compiler->compileString($source);
+
+        expect($css)->toEqualCss($expected);
+    });
 });

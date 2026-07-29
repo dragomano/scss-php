@@ -321,16 +321,18 @@ final readonly class AtRuleNodeHandler
 
         $ctx->env->enterScope($contentScope);
 
+        $childScope = $ctx->env->getCurrentScope();
+
         if ($mixinParentSelector instanceof StringNode) {
-            $ctx->env->getCurrentScope()->setVariableLocal('__parent_selector', $mixinParentSelector);
+            $childScope->setVariableLocal('__parent_selector', $mixinParentSelector);
         }
 
         if ($moduleGlobalTarget instanceof Scope) {
-            $ctx->env->getCurrentScope()->setVariableLocal('__module_global_target', $moduleGlobalTarget);
+            $childScope->setVariableLocal('__module_global_target', $moduleGlobalTarget);
         }
 
         if ($atRuleStack !== []) {
-            $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $atRuleStack);
+            $childScope->setVariableLocal('__at_rule_stack', $atRuleStack);
         }
 
         if ($contentArguments !== []) {
@@ -338,9 +340,11 @@ final readonly class AtRuleNodeHandler
                 $contentArguments,
                 $resolvedPositional,
                 $resolvedNamed,
-                $ctx->env->getCurrentScope(),
+                $childScope,
             );
         }
+
+        $contentVarsBefore = $contentScope->getVariables();
 
         $output     = '';
         $first      = true;
@@ -378,7 +382,22 @@ final readonly class AtRuleNodeHandler
                 $first = false;
             }
         } finally {
+            $childSnapshotAfter = $childScope->getVariables();
             $ctx->env->exitScope();
+        }
+
+        $executionScope = $ctx->env->getCurrentScope();
+
+        /** @var mixed $value */
+        foreach ($childSnapshotAfter as $name => $value) {
+            if (isset($contentVarsBefore[$name]) && $contentVarsBefore[$name] !== $value) {
+                if ($name !== '' && $name[0] === '-') {
+                    continue;
+                }
+
+                $contentScope->setVariableLocal($name, $value);
+                $executionScope->setVariableLocal($name, $value);
+            }
         }
 
         return $output;
