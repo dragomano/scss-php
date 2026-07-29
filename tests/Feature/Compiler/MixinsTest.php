@@ -115,7 +115,6 @@ describe('Compiler', function () {
             background-color: red;
           }
         }
-
         .pulse {
           animation-name: inline-u1;
           animation-duration: 2s;

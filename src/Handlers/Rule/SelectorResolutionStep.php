@@ -6,14 +6,19 @@ namespace Bugo\SCSS\Handlers\Rule;
 
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Runtime\AtRuleContextEntry;
+use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Services\Context;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 
 use function array_pop;
+use function ctype_digit;
 use function implode;
+use function is_array;
 use function str_contains;
+use function strlen;
 
 final readonly class SelectorResolutionStep implements CompilationStepInterface
 {
@@ -33,6 +38,11 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
         $selector = str_contains($node->selector, '#{')
             ? $this->evaluation->interpolateText($node->selector, $env)
             : $node->selector;
+
+        // Normalize scientific notation in keyframe selectors (13E+1% → 13e+1%)
+        if ($this->isInsideKeyframes($scope)) {
+            $selector = $this->normalizeScientificNotation($selector);
+        }
 
         $scopeParentSelector = $scope->getStringVariable('__parent_selector')?->value;
         $atRootVar           = $scope->getAstVariable('__at_root_context');
@@ -84,5 +94,54 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
         $scope->setVariableLocal('__parent_selector', new StringNode($parentSelectorValue));
 
         return null;
+    }
+
+    private function isInsideKeyframes(Scope $scope): bool
+    {
+        if (! $scope->hasVariable('__at_rule_stack')) {
+            return false;
+        }
+
+        $atRuleStack = $scope->getVariable('__at_rule_stack');
+
+        if (! is_array($atRuleStack)) {
+            return false;
+        }
+
+        foreach ($atRuleStack as $entry) {
+            if ($entry instanceof AtRuleContextEntry && $entry->name === 'keyframes') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function normalizeScientificNotation(string $selector): string
+    {
+        $length = strlen($selector);
+        $result = '';
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $selector[$i];
+
+            if (($char === 'E' || $char === 'e') && $i > 0 && ctype_digit($selector[$i - 1])) {
+                $j = $i + 1;
+
+                if ($j < $length && ($selector[$j] === '+' || $selector[$j] === '-')) {
+                    $j++;
+                }
+
+                if ($j < $length && ctype_digit($selector[$j])) {
+                    $result .= 'e';
+
+                    continue;
+                }
+            }
+
+            $result .= $char;
+        }
+
+        return $result;
     }
 }

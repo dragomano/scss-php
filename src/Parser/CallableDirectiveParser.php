@@ -20,7 +20,6 @@ use function count;
 use function str_contains;
 use function str_starts_with;
 use function strpos;
-use function strtolower;
 use function substr;
 use function trim;
 
@@ -123,7 +122,7 @@ final readonly class CallableDirectiveParser
         if (str_starts_with($name, '--')) {
             // Resolve interpolation in the name: --#{a} → --a
             while (str_contains($name, '#{')) {
-                $start = strpos($name, '#{' );
+                $start = strpos($name, '#{');
 
                 if ($start === false) {
                     break;

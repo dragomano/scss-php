@@ -280,6 +280,7 @@ final readonly class DeferredChunkManager
         bool &$first,
         AstNode $child,
         TraversalContext $ctx,
+        bool $hasRenderedChildren = false,
     ): void {
         /** @var StatementNode $child */
         $parentSelector = $this->selector->getCurrentParentSelector($ctx->env);
@@ -297,7 +298,7 @@ final readonly class DeferredChunkManager
         $stackIndex = count($this->render->outputState()->deferral->bubblingStack) - 1;
 
         if ($stackIndex >= 0) {
-            if ($this->shouldDeferBubblingChunkToTrailingRoot($child)) {
+            if ($this->shouldDeferBubblingChunkToTrailingRoot($child, $hasRenderedChildren)) {
                 $this->render->restorePosition($preparedChunk['saved']);
 
                 $atRootStackIndex = count($this->render->outputState()->deferral->atRootStack) - 1;
@@ -549,13 +550,27 @@ final readonly class DeferredChunkManager
         return array_values($stack);
     }
 
-    private function shouldDeferBubblingChunkToTrailingRoot(AstNode $node): bool
+    private function shouldDeferBubblingChunkToTrailingRoot(AstNode $node, bool $hasRenderedChildren = false): bool
     {
         if ($node instanceof SupportsNode) {
             return true;
         }
 
-        return $node instanceof DirectiveNode && strtolower($node->name) === 'media';
+        if (! $node instanceof DirectiveNode) {
+            return false;
+        }
+
+        $name = strtolower($node->name);
+
+        if ($name === 'media') {
+            return true;
+        }
+
+        if (str_contains($name, 'keyframes')) {
+            return $hasRenderedChildren;
+        }
+
+        return false;
     }
 
     /**

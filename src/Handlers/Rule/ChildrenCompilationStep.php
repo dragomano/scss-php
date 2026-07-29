@@ -18,10 +18,13 @@ use Bugo\SCSS\Nodes\ReturnNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\Visitable;
+use Bugo\SCSS\Runtime\AtRuleContextEntry;
+use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 
 use function count;
+use function is_array;
 use function str_replace;
 
 final readonly class ChildrenCompilationStep implements CompilationStepInterface
@@ -69,7 +72,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
                 continue;
             }
 
-            if ($this->evaluation->isBubblingAtRuleNode($child)) {
+            if ($this->evaluation->isBubblingAtRuleNode($child) && ! $this->isInsideKeyframes($scope)) {
                 if ($ruleCtx->hasRenderedChildren) {
                     $ruleCtx->output = $this->render->trimTrailingNewlines($ruleCtx->output);
 
@@ -126,6 +129,8 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
             $deferredAtRootCount = null;
 
             if ($child instanceof IncludeNode) {
+                $scope->setVariableLocal('__parent_rule_has_rendered_children', $ruleCtx->hasRenderedChildren);
+
                 $atRootStackIndex    = count($outputState->deferral->atRootStack) - 1;
                 $deferredAtRootCount = count($outputState->deferral->atRootStack[$atRootStackIndex]);
             }
@@ -206,5 +211,26 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
         );
 
         $ruleCtx->hasRenderedChildren = true;
+    }
+
+    private function isInsideKeyframes(Scope $scope): bool
+    {
+        if (! $scope->hasVariable('__at_rule_stack')) {
+            return false;
+        }
+
+        $atRuleStack = $scope->getVariable('__at_rule_stack');
+
+        if (! is_array($atRuleStack)) {
+            return false;
+        }
+
+        foreach ($atRuleStack as $entry) {
+            if ($entry instanceof AtRuleContextEntry && $entry->name === 'keyframes') {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

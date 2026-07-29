@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Handlers;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -22,6 +23,8 @@ use Bugo\SCSS\Utils\OutputChunk;
 use Bugo\SCSS\Utils\RawChunk;
 
 use function count;
+use function str_contains;
+use function str_ends_with;
 use function str_starts_with;
 use function strtolower;
 use function trim;
@@ -95,7 +98,14 @@ final readonly class AtRuleNodeHandler
         $resolvedPrelude = '';
 
         if ($node->prelude !== '') {
-            $resolvedPrelude = $this->selector->resolveDirectivePrelude($node->prelude, $ctx->env);
+            // For @keyframes, only interpolate #{} but don't resolve $var references
+            if ($this->isKeyframesDirective($node)) {
+                $resolvedPrelude = str_contains($node->prelude, '#{')
+                    ? $this->evaluation->interpolateText($node->prelude, $ctx->env)
+                    : $node->prelude;
+            } else {
+                $resolvedPrelude = $this->selector->resolveDirectivePrelude($node->prelude, $ctx->env);
+            }
 
             $prelude = ' ' . $resolvedPrelude;
         }
@@ -133,6 +143,48 @@ final readonly class AtRuleNodeHandler
              * @var array<int, AstNode> $body
              */
             $body = $node->body;
+
+            // For keyframes with comment-only body, output compact format { /**/ }
+            if ($this->isKeyframesDirective($node) && $this->isCommentOnlyBody($body)) {
+                $this->render->appendChunk(
+                    $output,
+                    $prefix . '@' . $node->name . $prelude . ' { /**/ }',
+                    $node,
+                );
+
+                $orderedChunks[] = [
+                    'chunk'    => $this->render->createDeferredChunk($output, $parentSegmentSaved),
+                    'isMerged' => false,
+                ];
+
+                $this->render->restorePosition($parentSegmentSaved);
+
+                $ctx->env->exitScope();
+
+                $outsideChunks = $this->selector->drainDeferredAtRuleEscapes();
+
+                if ($orderedChunks === [] && $outsideChunks === []) {
+                    return '';
+                }
+
+                $result    = '';
+                $separator = $this->render->outputSeparator();
+
+                foreach ($orderedChunks as $index => $entry) {
+                    if ($index > 0) {
+                        $this->render->appendChunk($result, $separator);
+                    }
+
+                    $this->appendResolvedChunk($result, $entry['chunk']);
+                }
+
+                foreach ($outsideChunks as $chunk) {
+                    $this->render->appendChunk($result, $separator);
+                    $this->appendResolvedChunk($result, new RawChunk($chunk));
+                }
+
+                return $result;
+            }
 
             foreach ($body as $child) {
                 if ($this->evaluation->applyVariableDeclaration($child, $ctx->env)) {
@@ -234,6 +286,13 @@ final readonly class AtRuleNodeHandler
             ];
 
             $this->render->restorePosition($parentSegmentSaved);
+        } elseif ($node->hasBlock && $this->isKeyframesDirective($node)) {
+            $emptyOutput = $prefix . '@' . $node->name . $prelude . ' {}';
+
+            $orderedChunks[] = [
+                'chunk'    => $this->render->createDeferredChunk($emptyOutput, $parentSegmentSaved),
+                'isMerged' => false,
+            ];
         }
 
         if ($orderedChunks === []) {
@@ -282,6 +341,32 @@ final readonly class AtRuleNodeHandler
     private function appendResolvedChunk(string &$output, OutputChunk $chunk): void
     {
         $this->render->appendOutputChunk($output, $chunk);
+    }
+
+    private function isKeyframesDirective(DirectiveNode $node): bool
+    {
+        $name = strtolower($node->name);
+
+        return $name === 'keyframes'
+            || str_ends_with($name, '-keyframes');
+    }
+
+    /**
+     * @param array<int, AstNode> $body
+     */
+    private function isCommentOnlyBody(array $body): bool
+    {
+        if ($body === []) {
+            return true;
+        }
+
+        foreach ($body as $child) {
+            if (! $child instanceof CommentNode) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function compileContentDirective(DirectiveNode $node, TraversalContext $ctx): string

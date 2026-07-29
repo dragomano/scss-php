@@ -41,8 +41,10 @@ final readonly class OutputOptimizer
         $result = [];
         $depth  = 0;
 
-        $prevClosedAtRoot = false;
-        $prevMediaPrelude = null;
+        $prevClosedAtRoot          = false;
+        $prevClosedInsideKeyframes = false;
+        $prevMediaPrelude          = null;
+        $insideKeyframes           = false;
 
         foreach ($lines as $line) {
             $trimmed = trim($line);
@@ -54,8 +56,22 @@ final readonly class OutputOptimizer
             $openBraces  = substr_count($trimmed, '{');
             $closeBraces = substr_count($trimmed, '}');
 
+            $isKeyframesLine = str_starts_with($trimmed, '@') && str_contains($trimmed, 'keyframes');
+
+            if ($depth === 0 && $openBraces > 0 && $isKeyframesLine) {
+                $insideKeyframes = true;
+            }
+
             if ($prevClosedAtRoot) {
                 $shouldAddBlankLine = true;
+
+                if ($prevClosedInsideKeyframes) {
+                    $shouldAddBlankLine = false;
+                }
+
+                if (str_starts_with($trimmed, '@keyframes ')) {
+                    $shouldAddBlankLine = false;
+                }
 
                 if (str_starts_with($trimmed, '@media ') && $prevMediaPrelude !== null) {
                     $nextPrelude = $this->extractMediaPrelude($trimmed);
@@ -79,6 +95,11 @@ final readonly class OutputOptimizer
             $depth += $openBraces - $closeBraces;
 
             $prevClosedAtRoot = $depth === 0 && $closeBraces > 0;
+            $prevClosedInsideKeyframes = $prevClosedAtRoot && $insideKeyframes;
+
+            if ($depth === 0) {
+                $insideKeyframes = false;
+            }
         }
 
         return implode("\n", $result);
@@ -102,8 +123,7 @@ final readonly class OutputOptimizer
             return null;
         }
 
-        $rest = substr($line, 8);
-
+        $rest     = substr($line, 8);
         $bracePos = strpos($rest, ' {');
 
         if ($bracePos !== false) {

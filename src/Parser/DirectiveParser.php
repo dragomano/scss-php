@@ -420,6 +420,7 @@ final readonly class DirectiveParser
                 && in_array($token->type, [
                     TokenType::SEMICOLON,
                     TokenType::LBRACE,
+                    TokenType::RBRACE,
                     TokenType::EOF,
                 ], true)
             ) {

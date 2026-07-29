@@ -231,7 +231,10 @@ final readonly class MixinHandler
                 }
 
                 if ($this->evaluation->isBubblingAtRuleNode($child)) {
-                    $this->chunks->appendIncludeBubblingChunk($output, $first, $child, $ctx);
+                    $parentHasRendered = $includeCallScope->hasVariable('__parent_rule_has_rendered_children')
+                        && $includeCallScope->getVariable('__parent_rule_has_rendered_children') === true;
+
+                    $this->chunks->appendIncludeBubblingChunk($output, $first, $child, $ctx, $parentHasRendered);
 
                     continue;
                 }

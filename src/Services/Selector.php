@@ -158,6 +158,10 @@ final readonly class Selector
         }
 
         if ($node instanceof DirectiveNode && $node->hasBlock) {
+            if ($this->isBubblingDirective($node) && ! $attachParentSelector) {
+                return $node;
+            }
+
             return new DirectiveNode(
                 $node->name,
                 $node->prelude,
