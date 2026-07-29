@@ -17,8 +17,10 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Utils\NameHelper;
 
 use function count;
+use function str_contains;
 use function str_starts_with;
 use function strpos;
+use function strtolower;
 use function substr;
 use function trim;
 
@@ -96,24 +98,92 @@ final readonly class CallableDirectiveParser
     {
         $this->stream->skipWhitespace();
 
-        $name = '';
+        $name          = '';
+        $rawName       = '';
+        $parenPosition = false;
 
         if ($this->stream->is(TokenType::IDENTIFIER)) {
             $name = $this->parsingContext->consumeIdentifier();
         } elseif ($this->stream->is(TokenType::CSS_VARIABLE)) {
-            $rawName = $this->stream->current()->value;
-
+            $rawName       = $this->stream->current()->value;
             $parenPosition = strpos($rawName, '(');
-
-            $name = $parenPosition === false ? $rawName : substr($rawName, 0, $parenPosition);
+            $name          = $parenPosition === false ? $rawName : substr($rawName, 0, $parenPosition);
 
             $this->stream->advance();
+
+            if (str_contains($name, '#{') && ! str_contains($name, '}')) {
+                if ($this->stream->is(TokenType::RBRACE)) {
+                    $name .= '}';
+
+                    $this->stream->advance();
+                }
+            }
         }
 
         if (str_starts_with($name, '--')) {
+            // Resolve interpolation in the name: --#{a} → --a
+            while (str_contains($name, '#{')) {
+                $start = strpos($name, '#{' );
+
+                if ($start === false) {
+                    break;
+                }
+
+                $end = strpos($name, '}', $start + 2);
+
+                if ($end === false) {
+                    break;
+                }
+
+                $name = substr($name, 0, $start) . substr($name, $start + 2, $end - $start - 2) . substr($name, $end + 1);
+            }
+
             $selector = '@function ' . $name;
 
-            if ($this->stream->consume(TokenType::RPAREN)) {
+            // The CSS_VARIABLE token may already contain '(' and part of the signature
+            if ($parenPosition !== false) {
+                $partialSignature = substr($rawName, $parenPosition);
+
+                // Check if this contains Sass-style $ parameters — strip them (not valid CSS)
+                if (str_contains($partialSignature, '$')) {
+                    $depth = substr_count($partialSignature, '(') - substr_count($partialSignature, ')');
+
+                    while (! $this->stream->isEof() && $depth > 0) {
+                        $token = $this->stream->current();
+
+                        if ($token->type === TokenType::LPAREN) {
+                            $depth++;
+                        } elseif ($token->type === TokenType::RPAREN) {
+                            $depth--;
+                        }
+
+                        $this->stream->advance();
+                    }
+
+                    $selector .= '()';
+                } else {
+                    $signature = $partialSignature;
+                    $depth     = substr_count($partialSignature, '(') - substr_count($partialSignature, ')');
+
+                    while (! $this->stream->isEof() && $depth > 0) {
+                        $token = $this->stream->current();
+
+                        if ($token->type === TokenType::LPAREN) {
+                            $depth++;
+                        } elseif ($token->type === TokenType::RPAREN) {
+                            $depth--;
+                        }
+
+                        $signature .= $token->type === TokenType::WHITESPACE
+                            ? ' '
+                            : StreamUtils::tokenToRawString($token->type, $token->value);
+
+                        $this->stream->advance();
+                    }
+
+                    $selector .= $signature;
+                }
+            } elseif ($this->stream->consume(TokenType::RPAREN)) {
                 $selector .= '()';
             } elseif ($this->stream->consume(TokenType::LPAREN)) {
                 $signature = '(';
@@ -136,6 +206,31 @@ final readonly class CallableDirectiveParser
                 }
 
                 $selector .= $signature;
+            }
+
+            // Handle CSS function return type: returns <ident>
+            $this->stream->skipWhitespace();
+
+            if (StreamUtils::consumeKeyword($this->stream, 'returns', true)) {
+                $selector .= ' returns';
+
+                $this->stream->skipWhitespace();
+
+                $returnType = '';
+
+                while (! $this->stream->isEof() && ! $this->stream->is(TokenType::LBRACE)) {
+                    $token = $this->stream->current();
+
+                    $returnType .= $token->type === TokenType::WHITESPACE
+                        ? ' '
+                        : StreamUtils::tokenToRawString($token->type, $token->value);
+
+                    $this->stream->advance();
+                }
+
+                if ($returnType !== '') {
+                    $selector .= ' ' . trim($returnType);
+                }
             }
 
             $this->stream->skipWhitespace();
@@ -222,8 +317,7 @@ final readonly class CallableDirectiveParser
 
     private function parseParameterDefaultValue(): ?AstNode
     {
-        $savedPos = $this->stream->getPosition();
-
+        $savedPos     = $this->stream->getPosition();
         $defaultValue = $this->valueContext->parseValueUntil([TokenType::COMMA, TokenType::RPAREN]);
 
         if (! ($defaultValue instanceof ListNode) || count($defaultValue->items) !== 0) {
