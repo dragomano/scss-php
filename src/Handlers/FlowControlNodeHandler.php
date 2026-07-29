@@ -97,11 +97,12 @@ final readonly class FlowControlNodeHandler
         $from     = (int) $fromNode->value;
         $to       = (int) $toNode->value;
 
+        $step = $from <= $to ? 1 : -1;
+
         if (! $node->inclusive) {
-            $to += $from <= $to ? -1 : 1;
+            $to -= $step;
         }
 
-        $step          = $from <= $to ? 1 : -1;
         $iterations    = 0;
         $maxIterations = 10000;
 

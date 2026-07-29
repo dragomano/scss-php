@@ -136,11 +136,12 @@ final readonly class UserFunctionExecutor
                 $from     = (int) $fromNode->value;
                 $to       = (int) $toNode->value;
 
+                $step = $from <= $to ? 1 : -1;
+
                 if (! $statement->inclusive) {
-                    $to += $from <= $to ? -1 : 1;
+                    $to -= $step;
                 }
 
-                $step          = $from <= $to ? 1 : -1;
                 $iterations    = 0;
                 $maxIterations = 10000;
 

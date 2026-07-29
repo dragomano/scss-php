@@ -123,3 +123,19 @@ it('preserves units in for-loop variable', function () {
 
     expect($result)->toBe("  val: 1px;\n  val: 2px;\n  val: 3px;");
 });
+
+it('produces empty output for exclusive range where from equals to', function () {
+    $runtime = RuntimeFactory::createRuntime();
+
+    $ctx = RuntimeFactory::context(indent: 1);
+    $ctx->env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.rule'));
+
+    $result = $runtime->flow()->handleFor(
+        new ForNode('i', new NumberNode(1), new NumberNode(1), false, [
+            new DeclarationNode('b', new VariableReferenceNode('i')),
+        ]),
+        $ctx,
+    );
+
+    expect($result)->toBe('');
+});
