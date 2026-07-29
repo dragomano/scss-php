@@ -6,13 +6,16 @@ namespace Bugo\SCSS\Services;
 
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
+use Bugo\SCSS\Nodes\ForNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NullNode;
+use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StatementNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -35,6 +38,7 @@ use function ctype_alpha;
 use function ctype_digit;
 use function implode;
 use function in_array;
+use function is_numeric;
 use function str_contains;
 use function str_starts_with;
 use function strlen;
@@ -334,6 +338,7 @@ final readonly class Selector
 
         if ($baseValue !== null) {
             $this->render->appendChunk($output, $prefix . $baseProperty . ': ' . $baseValue . ';');
+
             $hasOutput = true;
         }
 
@@ -380,6 +385,70 @@ final readonly class Selector
                 $this->render->appendChunk($output, $line, $child);
 
                 $hasOutput = true;
+
+                continue;
+            }
+
+            if ($child instanceof ForNode) {
+                $fromNode = $this->valueEvaluator->evaluate($child->from, $env);
+
+                if (! $fromNode instanceof NumberNode) {
+                    $formatted = $this->valueFormatter->format($fromNode, $env);
+
+                    if (! is_numeric($formatted)) {
+                        throw new InvalidLoopBoundaryException($formatted);
+                    }
+
+                    $fromNode = new NumberNode((float) $formatted);
+                }
+
+                $toNode = $this->valueEvaluator->evaluate($child->to, $env);
+
+                if (! $toNode instanceof NumberNode) {
+                    $formatted = $this->valueFormatter->format($toNode, $env);
+
+                    if (! is_numeric($formatted)) {
+                        throw new InvalidLoopBoundaryException($formatted);
+                    }
+
+                    $toNode = new NumberNode((float) $formatted);
+                }
+
+                $unit = $fromNode->unit;
+                $from = (int) $fromNode->value;
+                $to   = (int) $toNode->value;
+                $step = $from <= $to ? 1 : -1;
+
+                if (! $child->inclusive) {
+                    $to -= $step;
+                }
+
+                $env->enterScope();
+
+                try {
+                    for ($i = $from; $step > 0 ? $i <= $to : $i >= $to; $i += $step) {
+                        $env->getCurrentScope()->setVariable($child->variable, new NumberNode($i, $unit));
+
+                        $chunk = $this->compileNestedPropertyBlockChildren(
+                            $child->body,
+                            $env,
+                            $indent,
+                            $baseProperty,
+                        );
+
+                        if ($chunk !== '') {
+                            if ($hasOutput) {
+                                $this->render->appendChunk($output, "\n");
+                            }
+
+                            $this->render->appendChunk($output, $chunk, $child);
+
+                            $hasOutput = true;
+                        }
+                    }
+                } finally {
+                    $env->exitScope();
+                }
 
                 continue;
             }
