@@ -130,8 +130,11 @@ final readonly class UserFunctionExecutor
             }
 
             if ($statement instanceof ForNode) {
-                $from = $this->loopBoundary($statement->from, $env);
-                $to   = $this->loopBoundary($statement->to, $env);
+                $fromNode = $this->loopBoundary($statement->from, $env);
+                $toNode   = $this->loopBoundary($statement->to, $env);
+                $unit     = $fromNode->unit;
+                $from     = (int) $fromNode->value;
+                $to       = (int) $toNode->value;
 
                 if (! $statement->inclusive) {
                     $to += $from <= $to ? -1 : 1;
@@ -148,7 +151,7 @@ final readonly class UserFunctionExecutor
                         throw new MaxIterationsExceededException('@for');
                     }
 
-                    $env->getCurrentScope()->setVariable($statement->variable, new NumberNode($i));
+                    $env->getCurrentScope()->setVariable($statement->variable, new NumberNode($i, $unit));
 
                     $result = $this->runStatements($statement->body, $env);
 
@@ -246,14 +249,14 @@ final readonly class UserFunctionExecutor
         return null;
     }
 
-    private function loopBoundary(AstNode $node, Environment $env): int
+    private function loopBoundary(AstNode $node, Environment $env): NumberNode
     {
         $resolved = $this->valueEvaluator->evaluate($node, $env);
 
         if ($resolved instanceof NumberNode) {
-            return (int) $resolved->value;
+            return $resolved;
         }
 
-        return 0;
+        return new NumberNode(0);
     }
 }

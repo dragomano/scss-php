@@ -137,6 +137,26 @@ describe('UserFunctionExecutor', function () {
         expect($result->value)->toBe('loop-result');
     });
 
+    it('preserves units in for-loop variable', function () {
+        $env = new Environment();
+        $function = new CallableDefinition([], [
+            new ForNode('i', new NumberNode(1, 'px'), new NumberNode(3, 'px'), true, [
+                new ReturnNode(new VariableReferenceNode('i')),
+            ]),
+        ], $env->getCurrentScope(), 1);
+
+        $result = $this->executor->executeDefinition('for-units', $function, [], [], $env);
+
+        expect($result)->toBeInstanceOf(NumberNode::class);
+
+        if (! $result instanceof NumberNode) {
+            throw new RuntimeException('Expected result to be NumberNode.');
+        }
+
+        expect($result->value)->toBe(1)
+            ->and($result->unit)->toBe('px');
+    });
+
     it('throws after too many while-loop iterations', function () {
         $env = new Environment();
         $function = new CallableDefinition([], [

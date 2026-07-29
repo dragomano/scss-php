@@ -107,3 +107,19 @@ it('accepts numeric string loop boundaries', function () {
 
     expect($result)->toBe("  step: 1;\n  step: 2;");
 });
+
+it('preserves units in for-loop variable', function () {
+    $runtime = RuntimeFactory::createRuntime();
+
+    $ctx = RuntimeFactory::context(indent: 1);
+    $ctx->env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.rule'));
+
+    $result = $runtime->flow()->handleFor(
+        new ForNode('i', new NumberNode(1, 'px'), new NumberNode(3, 'px'), true, [
+            new DeclarationNode('val', new VariableReferenceNode('i')),
+        ]),
+        $ctx,
+    );
+
+    expect($result)->toBe("  val: 1px;\n  val: 2px;\n  val: 3px;");
+});

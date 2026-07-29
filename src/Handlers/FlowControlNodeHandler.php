@@ -89,10 +89,13 @@ final readonly class FlowControlNodeHandler
 
     public function handleFor(ForNode $node, TraversalContext $ctx): string
     {
-        $output = '';
-        $first  = true;
-        $from   = (int) $this->toLoopNumber($node->from, $ctx->env);
-        $to     = (int) $this->toLoopNumber($node->to, $ctx->env);
+        $output   = '';
+        $first    = true;
+        $fromNode = $this->toLoopNumber($node->from, $ctx->env);
+        $toNode   = $this->toLoopNumber($node->to, $ctx->env);
+        $unit     = $fromNode->unit;
+        $from     = (int) $fromNode->value;
+        $to       = (int) $toNode->value;
 
         if (! $node->inclusive) {
             $to += $from <= $to ? -1 : 1;
@@ -114,7 +117,7 @@ final readonly class FlowControlNodeHandler
                     throw new MaxIterationsExceededException('@for');
                 }
 
-                $ctx->env->getCurrentScope()->setVariable($node->variable, new NumberNode($i));
+                $ctx->env->getCurrentScope()->setVariable($node->variable, new NumberNode($i, $unit));
 
                 $this->compileBody($node->body, $bodyCtx, $output, $first);
             }
@@ -183,12 +186,12 @@ final readonly class FlowControlNodeHandler
         }
     }
 
-    private function toLoopNumber(AstNode $node, Environment $env): float
+    private function toLoopNumber(AstNode $node, Environment $env): NumberNode
     {
         $resolved = $this->evaluation->evaluateValue($node, $env);
 
         if ($resolved instanceof NumberNode) {
-            return (float) $resolved->value;
+            return $resolved;
         }
 
         $formatted = $this->render->format($resolved, $env);
@@ -197,6 +200,6 @@ final readonly class FlowControlNodeHandler
             throw new InvalidLoopBoundaryException($formatted);
         }
 
-        return (float) $formatted;
+        return new NumberNode((float) $formatted);
     }
 }
