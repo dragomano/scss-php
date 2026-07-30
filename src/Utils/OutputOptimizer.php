@@ -43,8 +43,10 @@ final readonly class OutputOptimizer
 
         $prevClosedAtRoot          = false;
         $prevClosedInsideKeyframes = false;
+        $prevClosedInsideFontFace  = false;
         $prevMediaPrelude          = null;
         $insideKeyframes           = false;
+        $insideFontFace            = false;
 
         foreach ($lines as $line) {
             $trimmed = trim($line);
@@ -57,9 +59,14 @@ final readonly class OutputOptimizer
             $closeBraces = substr_count($trimmed, '}');
 
             $isKeyframesLine = str_starts_with($trimmed, '@') && str_contains($trimmed, 'keyframes');
+            $isFontFaceLine = str_starts_with($trimmed, '@font-face');
 
             if ($depth === 0 && $openBraces > 0 && $isKeyframesLine) {
                 $insideKeyframes = true;
+            }
+
+            if ($depth === 0 && $openBraces > 0 && $isFontFaceLine) {
+                $insideFontFace = true;
             }
 
             if ($prevClosedAtRoot) {
@@ -69,7 +76,15 @@ final readonly class OutputOptimizer
                     $shouldAddBlankLine = false;
                 }
 
+                if ($prevClosedInsideFontFace) {
+                    $shouldAddBlankLine = false;
+                }
+
                 if (str_starts_with($trimmed, '@keyframes ')) {
+                    $shouldAddBlankLine = false;
+                }
+
+                if (str_starts_with($trimmed, '@font-face')) {
                     $shouldAddBlankLine = false;
                 }
 
@@ -94,11 +109,13 @@ final readonly class OutputOptimizer
 
             $depth += $openBraces - $closeBraces;
 
-            $prevClosedAtRoot = $depth === 0 && $closeBraces > 0;
+            $prevClosedAtRoot          = $depth === 0 && $closeBraces > 0;
             $prevClosedInsideKeyframes = $prevClosedAtRoot && $insideKeyframes;
+            $prevClosedInsideFontFace  = $prevClosedAtRoot && $insideFontFace;
 
             if ($depth === 0) {
                 $insideKeyframes = false;
+                $insideFontFace  = false;
             }
         }
 

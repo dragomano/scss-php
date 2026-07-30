@@ -136,7 +136,15 @@ final readonly class Selector
             return true;
         }
 
-        return $node instanceof DirectiveNode && $this->isBubblingDirective($node);
+        if ($node instanceof DirectiveNode && $this->isBubblingDirective($node)) {
+            return true;
+        }
+
+        if ($node instanceof RuleNode && $this->isBubblingRuleNode($node)) {
+            return true;
+        }
+
+        return false;
     }
 
     public function normalizeBubblingNodeForSelector(StatementNode $node, string $selector): StatementNode
@@ -173,6 +181,15 @@ final readonly class Selector
                     ),
                     $node->body,
                 ),
+                true,
+            );
+        }
+
+        if ($node instanceof RuleNode && $this->isBubblingRuleNode($node)) {
+            return new DirectiveNode(
+                'font-face',
+                '',
+                $node->children,
                 true,
             );
         }
@@ -827,6 +844,11 @@ final readonly class Selector
             '-o-keyframes' => true,
             default        => false,
         };
+    }
+
+    private function isBubblingRuleNode(RuleNode $node): bool
+    {
+        return $node->selector === '@font-face';
     }
 
     private function normalizeBubblingChild(AstNode $child, string $selector, bool $attachParentSelector): AstNode

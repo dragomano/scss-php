@@ -556,6 +556,10 @@ final readonly class DeferredChunkManager
             return true;
         }
 
+        if ($node instanceof RuleNode && $node->selector === '@font-face') {
+            return $hasRenderedChildren;
+        }
+
         if (! $node instanceof DirectiveNode) {
             return false;
         }

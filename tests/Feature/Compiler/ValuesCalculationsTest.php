@@ -500,13 +500,11 @@ describe('Compiler', function () {
               font-family: "Roboto";
               font-weight: 100;
             }
-
             @font-face {
               src: url("../fonts/roboto/Roboto-Light.woff2") format("woff2");
               font-family: "Roboto";
               font-weight: 300;
             }
-
             @font-face {
               src: url(../fonts/roboto/Roboto-Regular.woff2) format("woff2");
               font-family: "Roboto";
