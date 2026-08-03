@@ -155,7 +155,11 @@ final readonly class ModuleDirectiveParser
             if (
                 $parenDepth === 0
                 && $bracketDepth === 0
-                && ($token->type === TokenType::COMMA || $token->type === TokenType::SEMICOLON)
+                && (
+                    $token->type === TokenType::COMMA
+                    || $token->type === TokenType::SEMICOLON
+                    || $token->type === TokenType::RBRACE
+                )
             ) {
                 break;
             }

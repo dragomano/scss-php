@@ -187,6 +187,16 @@ describe('Parser', function () {
                 ->and($ast->children[0]->imports)->toBe(['url(theme) [foo, bar]']);
         });
 
+        it('stops @import entries at the closing brace of a nested block', function () {
+            $source = 'a {@import "_imported.scss"}';
+
+            $ast = $this->parser->parse($source);
+
+            expect($ast->children[0])->toBeInstanceOf(RuleNode::class)
+                ->and($ast->children[0]->children[0])->toBeInstanceOf(ImportNode::class)
+                ->and($ast->children[0]->children[0]->imports)->toBe(['"_imported.scss"']);
+        });
+
         it('parses @forward directives', function () {
             $source = '@forward "_forwarded.scss";';
 
