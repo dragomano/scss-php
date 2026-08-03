@@ -29,6 +29,7 @@ use Bugo\SCSS\Services\FunctionConditionEvaluator;
 use Bugo\SCSS\Services\Module;
 use Bugo\SCSS\Services\ModuleVariableAssigner;
 use Bugo\SCSS\Services\ModuleVariableAssignerInterface;
+use Bugo\SCSS\Services\PlainCssRenderer;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\RuntimeAstValueEvaluator;
 use Bugo\SCSS\Services\RuntimeAstValueFormatter;
@@ -78,6 +79,8 @@ final class CompilerRuntime
     private ?FlowControlNodeHandler $flowControlHandler = null;
 
     private ?ModuleNodeHandler $moduleLoadHandler = null;
+
+    private ?PlainCssRenderer $plainCssRenderer = null;
 
     private ?RootNodeHandler $rootHandler = null;
 
@@ -142,6 +145,11 @@ final class CompilerRuntime
         return $this->render ??= $this->createRender();
     }
 
+    public function plainCssRenderer(): PlainCssRenderer
+    {
+        return $this->plainCssRenderer ??= $this->createPlainCssRenderer();
+    }
+
     public function context(): Context
     {
         return $this->context ??= new Context($this->ctx, $this->options, $this->logger);
@@ -201,7 +209,13 @@ final class CompilerRuntime
             $this->evaluation(),
             $this->selector(),
             $this->dispatcher,
+            $this->plainCssRenderer(),
         );
+    }
+
+    private function createPlainCssRenderer(): PlainCssRenderer
+    {
+        return new PlainCssRenderer($this->dispatcher, $this->render());
     }
 
     private function createEvaluator(): Evaluator

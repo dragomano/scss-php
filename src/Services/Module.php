@@ -37,7 +37,9 @@ use function ksort;
 use function ltrim;
 use function pathinfo;
 use function serialize;
+use function str_contains;
 use function str_ends_with;
+use function str_repeat;
 use function str_starts_with;
 use function strlen;
 use function strtolower;
@@ -56,6 +58,7 @@ final readonly class Module
         private Evaluator $evaluation,
         private Selector $selector,
         private NodeDispatcherInterface $dispatcher,
+        private PlainCssRenderer $plainCssRenderer,
     ) {}
 
     public function assignModuleVariable(
@@ -179,10 +182,9 @@ final readonly class Module
             throw ModuleResolutionException::circularDependency($moduleId);
         }
 
-        $moduleSource = $this->ctx->normalizerPipeline->process(
-            $file['content'],
-            Syntax::fromPath($file['path'], $file['content']),
-        );
+        $syntax = Syntax::fromPath($file['path'], $file['content']);
+
+        $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
 
         $moduleAst = $this->parser->parse($moduleSource);
 
@@ -208,7 +210,9 @@ final readonly class Module
         $state->loadingFiles[$moduleId] = true;
 
         try {
-            $compiledCss = $this->dispatcher->compile($moduleAst, $moduleEnv);
+            $compiledCss = $syntax === Syntax::CSS
+                ? $this->plainCssRenderer->render($moduleAst, $moduleEnv)
+                : $this->dispatcher->compile($moduleAst, $moduleEnv);
         } finally {
             unset($state->loadingFiles[$moduleId]);
         }
@@ -343,10 +347,9 @@ final readonly class Module
 
         $this->loader->addPath(dirname($file['path']));
 
-        $moduleSource = $this->ctx->normalizerPipeline->process(
-            $file['content'],
-            Syntax::fromPath($file['path'], $file['content']),
-        );
+        $syntax = Syntax::fromPath($file['path'], $file['content']);
+
+        $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
 
         $moduleAst = $this->parser->parse($moduleSource);
         $moduleEnv = new Environment();
@@ -371,7 +374,11 @@ final readonly class Module
         }
 
         try {
-            $css = $compileCss ? $this->dispatcher->compile($moduleAst, $moduleEnv) : '';
+            $css = $compileCss
+                ? ($syntax === Syntax::CSS
+                    ? $this->plainCssRenderer->render($moduleAst, $moduleEnv)
+                    : $this->dispatcher->compile($moduleAst, $moduleEnv))
+                : '';
         } finally {
             if ($fromImport) {
                 $this->ctx->moduleState->importEvaluationDepth--;
@@ -396,31 +403,52 @@ final readonly class Module
 
     public function qualifyImportedCssWithParentSelector(string $css, string $parentSelector): string
     {
-        $lines  = explode("\n", $css);
-        $result = [];
-        $depth  = 0;
+        $lines     = explode("\n", $css);
+        $result    = [];
+        $depth     = 0;
+        $wrapDepth = 0;
 
         foreach ($lines as $line) {
             $trimmed = trim($line);
 
-            if (
-                $depth === 0
-                && $trimmed !== ''
-                && str_ends_with($trimmed, '{')
-                && ! str_starts_with($trimmed, '@')
-            ) {
-                $selector = trim(substr($trimmed, 0, -1));
+            if ($depth === 0 && $wrapDepth === 0) {
+                if (
+                    $trimmed !== ''
+                    && str_ends_with($trimmed, '{')
+                    && ! str_starts_with($trimmed, '@')
+                ) {
+                    $selector = trim(substr($trimmed, 0, -1));
 
-                if ($selector !== '') {
-                    $leadingSpaces = strlen($line) - strlen(ltrim($line, ' '));
-                    $combined      = $this->selector->combineNestedSelectorWithParent($selector, $parentSelector);
-                    $line          = str_repeat(' ', $leadingSpaces) . $combined . ' {';
+                    if ($selector !== '') {
+                        $leadingSpaces = strlen($line) - strlen(ltrim($line, ' '));
+                        $indent        = str_repeat(' ', $leadingSpaces);
+
+                        if (str_contains($selector, '&')) {
+                            $result[]  = $indent . $parentSelector . ' {';
+                            $result[]  = '  ' . $line;
+                            $wrapDepth = 1;
+                        } else {
+                            $combined = $this->selector->combineNestedSelectorWithParent($selector, $parentSelector);
+                            $result[] = $indent . $combined . ' {';
+                        }
+                    } else {
+                        $result[] = $line;
+                    }
+                } else {
+                    $result[] = $line;
                 }
+            } elseif ($wrapDepth > 0) {
+                $result[] = $trimmed === '' ? $line : '  ' . $line;
+            } else {
+                $result[] = $line;
             }
 
-            $result[] = $line;
-
             $depth += substr_count($line, '{') - substr_count($line, '}');
+
+            if ($wrapDepth > 0 && $depth === 0) {
+                $result[]  = '}';
+                $wrapDepth = 0;
+            }
         }
 
         return implode("\n", $result);
