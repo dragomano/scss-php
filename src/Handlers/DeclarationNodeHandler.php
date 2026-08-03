@@ -194,7 +194,7 @@ final readonly class DeclarationNodeHandler
     private function formatRawListNode(ListNode $node): string
     {
         $items = array_map(
-            fn(AstNode $item): string => $this->formatRawCssValue($item),
+            $this->formatRawCssValue(...),
             $node->items,
         );
 
@@ -208,7 +208,7 @@ final readonly class DeclarationNodeHandler
     private function formatRawFunctionNode(FunctionNode $node): string
     {
         $args = array_map(
-            fn(AstNode $arg): string => $this->formatRawCssValue($arg),
+            $this->formatRawCssValue(...),
             $node->arguments,
         );
 

@@ -40,7 +40,7 @@ describe('Output Formatting', function () {
 
         $expected = /** @lang text */ <<<'CSS'
         .a {
-          color: #f00;
+          color: #ff0000;
         }
         CSS;
 

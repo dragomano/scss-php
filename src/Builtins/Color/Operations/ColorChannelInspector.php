@@ -308,7 +308,7 @@ final readonly class ColorChannelInspector
     private function resolveLabChannel(AstNode $color, string $channelName): NumberNode
     {
         $alpha = $this->converter->toAlpha($color);
-        $lab   = $this->runtime->spaceConverter->xyzD50ToLabColor($this->converter->toXyzD50($color), $alpha);
+        $lab   = $this->runtime->spaceConverter->xyzD50ToLab($this->converter->toXyzD50($color), $alpha);
 
         return match ($channelName) {
             'lightness' => new NumberNode($lab->lValue(), '%'),
@@ -335,7 +335,7 @@ final readonly class ColorChannelInspector
     private function resolveOklabChannel(AstNode $color, string $channelName): NumberNode
     {
         $alpha = $this->converter->toAlpha($color);
-        $oklab = $this->runtime->spaceConverter->xyzD65ToOklabColor($this->converter->toXyzD65($color), $alpha);
+        $oklab = $this->runtime->spaceConverter->xyzD65ToOklab($this->converter->toXyzD65($color), $alpha);
 
         return match ($channelName) {
             'lightness' => new NumberNode($oklab->lValue(), '%'),
@@ -352,9 +352,9 @@ final readonly class ColorChannelInspector
         $xyz = $this->runtime->spaceConverter->rgbToXyzD65($rgb);
 
         return match ($channelName) {
-            'x'     => new NumberNode($xyz->x),
-            'y'     => new NumberNode($xyz->y),
-            'z'     => new NumberNode($xyz->z),
+            'x'     => new NumberNode((float) $xyz->x),
+            'y'     => new NumberNode((float) $xyz->y),
+            'z'     => new NumberNode((float) $xyz->z),
             'alpha' => new NumberNode($rgb->a),
             default => throw new UnknownColorChannelException('XYZ', $channelName),
         };
@@ -366,9 +366,9 @@ final readonly class ColorChannelInspector
         $xyz = $this->runtime->spaceConverter->rgbToXyzD50($rgb);
 
         return match ($channelName) {
-            'x'     => new NumberNode($xyz->x),
-            'y'     => new NumberNode($xyz->y),
-            'z'     => new NumberNode($xyz->z),
+            'x'     => new NumberNode((float) $xyz->x),
+            'y'     => new NumberNode((float) $xyz->y),
+            'z'     => new NumberNode((float) $xyz->z),
             'alpha' => new NumberNode($rgb->a),
             default => throw new UnknownColorChannelException('XYZ-D50', $channelName),
         };

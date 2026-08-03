@@ -9,7 +9,6 @@ use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
 use Bugo\SCSS\Builtins\Color\Operations\ColorChannelInspector;
 use Bugo\SCSS\Builtins\Color\Operations\ColorConstructorEvaluator;
 use Bugo\SCSS\Builtins\Color\Operations\ColorFunctionEvaluator;
-use Bugo\SCSS\Builtins\Color\Support\ColorManipulators;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
 
@@ -30,12 +29,6 @@ final class ColorModuleFactory
             literalSerializer: $components->literalSerializer,
         );
 
-        $manipulators = new ColorManipulators(
-            $components->legacyManipulator,
-            $components->perceptualManipulator,
-            $components->srgbManipulator,
-        );
-
         $converter        = new ColorNodeConverter($runtime);
         $spaceConverter   = new ColorSpaceConverter($runtime, $converter);
         $channelInspector = new ColorChannelInspector($runtime, $converter, $spaceConverter);
@@ -45,7 +38,10 @@ final class ColorModuleFactory
             channelInspector: $channelInspector,
             functions: new ColorFunctionEvaluator(
                 $runtime,
-                $manipulators,
+                $components->legacyManipulator,
+                $components->perceptualManipulator,
+                $components->srgbManipulator,
+                $components->mixResolver,
                 $converter,
                 $spaceConverter,
             ),

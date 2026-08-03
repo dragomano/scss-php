@@ -108,6 +108,7 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
             return false;
         }
 
+        /** @var list<AtRuleContextEntry|array<string, mixed>> $atRuleStack */
         foreach ($atRuleStack as $entry) {
             if ($entry instanceof AtRuleContextEntry && $entry->name === 'keyframes') {
                 return true;

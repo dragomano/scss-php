@@ -377,7 +377,7 @@ final class SassListModule extends AbstractModule
             }
 
             $items = array_map(
-                static fn($pair) => new ListNode([$pair->key, $pair->value]),
+                static fn($pair): ListNode => new ListNode([$pair->key, $pair->value]),
                 $value->pairs,
             );
 

@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Builtins\Color\Operations;
 
+use Bugo\Iris\Manipulators\LegacyManipulator;
+use Bugo\Iris\Manipulators\PerceptualManipulator;
+use Bugo\Iris\Manipulators\SrgbManipulator;
+use Bugo\Iris\Operations\ColorMixResolver;
 use Bugo\Iris\Spaces\HslColor;
 use Bugo\Iris\Spaces\OklchColor;
 use Bugo\Iris\Spaces\RgbColor;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
-use Bugo\SCSS\Builtins\Color\Support\ColorManipulators;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
@@ -18,6 +21,7 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
+use Bugo\SCSS\Values\AstValueInspector;
 
 use function abs;
 use function array_filter;
@@ -35,7 +39,10 @@ final readonly class ColorFunctionEvaluator
 {
     public function __construct(
         private ColorRuntime $runtime,
-        private ColorManipulators $manipulators,
+        private LegacyManipulator $legacy,
+        private PerceptualManipulator $perceptual,
+        private SrgbManipulator $srgb,
+        private ColorMixResolver $mixResolver,
         private ColorNodeConverter $converter,
         private ColorSpaceConverter $spaceInterop,
     ) {}
@@ -91,7 +98,7 @@ final readonly class ColorFunctionEvaluator
 
         $rgb = $this->converter->toRgb($color);
 
-        $scaledRgb = $this->manipulators->legacy->scale(
+        $scaledRgb = $this->legacy->scale(
             $rgb,
             $this->runtime->modelConverter->rgbToHslColor($rgb),
             [
@@ -135,7 +142,7 @@ final readonly class ColorFunctionEvaluator
             return $this->converter->serializeAsOklchString($scaled);
         }
 
-        return $this->converter->serializeAsFloatRgb($this->runtime->spaceConverter->oklchToSrgb($scaled));
+        return $this->converter->serializeAsFloatRgb($this->runtime->spaceConverter->oklchToRgb($scaled));
     }
 
     /** @param array<int, AstNode> $positional */
@@ -152,7 +159,7 @@ final readonly class ColorFunctionEvaluator
         }
 
         if ($this->converter->isLegacyColor($color)) {
-            $adjustedRgb = $this->manipulators->legacy->spin($this->converter->toRgb($color), $degrees);
+            $adjustedRgb = $this->legacy->spin($this->converter->toRgb($color), $degrees);
 
             return $this->converter->serializeRgbResult($adjustedRgb);
         }
@@ -183,8 +190,8 @@ final readonly class ColorFunctionEvaluator
             $rgb = $this->converter->toRgb($color);
 
             $adjustedRgb = $direction > 0
-                ? $this->manipulators->legacy->fadeIn($rgb, $amount)
-                : $this->manipulators->legacy->fadeOut($rgb, -$amount);
+                ? $this->legacy->fadeIn($rgb, $amount)
+                : $this->legacy->fadeOut($rgb, -$amount);
 
             return $this->converter->serializeRgbResult($adjustedRgb);
         }
@@ -221,11 +228,11 @@ final readonly class ColorFunctionEvaluator
 
             $modified = match ($channel) {
                 'lightness'  => $direction > 0
-                    ? $this->manipulators->legacy->lighten($rgb, $amount)
-                    : $this->manipulators->legacy->darken($rgb, -$amount),
+                    ? $this->legacy->lighten($rgb, $amount)
+                    : $this->legacy->darken($rgb, -$amount),
                 'saturation' => $direction > 0
-                    ? $this->manipulators->legacy->saturate($rgb, $amount)
-                    : $this->manipulators->legacy->desaturate($rgb, -$amount),
+                    ? $this->legacy->saturate($rgb, $amount)
+                    : $this->legacy->desaturate($rgb, -$amount),
                 default      => null,
             };
 
@@ -252,7 +259,7 @@ final readonly class ColorFunctionEvaluator
         }
 
         if ($space === null && $this->converter->isLegacyColor($color)) {
-            $adjustedRgb = $this->manipulators->legacy->spin($this->converter->toRgb($color), 180.0);
+            $adjustedRgb = $this->legacy->spin($this->converter->toRgb($color), 180.0);
 
             return $this->converter->serializeRgbResult($adjustedRgb);
         }
@@ -272,7 +279,7 @@ final readonly class ColorFunctionEvaluator
 
         if ($this->converter->isLegacyColor($color)) {
             $hsl     = $this->converter->toHsl($color);
-            $grayRgb = $this->runtime->modelConverter->hslToRgbColor($this->manipulators->legacy->grayscale($hsl));
+            $grayRgb = $this->runtime->modelConverter->hslToRgbColor($this->legacy->grayscale($hsl));
 
             return $this->converter->serializeRgbResult($grayRgb);
         }
@@ -296,7 +303,7 @@ final readonly class ColorFunctionEvaluator
         $rgb       = $this->converter->toRgb($color);
         $oklch     = $this->createOklchFromRgb($rgb);
         $grayOklch = new OklchColor(l: $oklch->l, c: 0.0, h: $oklch->h, a: $rgb->a);
-        $grayRgb   = $this->runtime->spaceConverter->oklchToSrgb($grayOklch);
+        $grayRgb   = $this->runtime->spaceConverter->oklchToRgb($grayOklch);
 
         if ($nativeSpace === 'srgb') {
             return $this->converter->serializeAsSrgbString(
@@ -345,7 +352,7 @@ final readonly class ColorFunctionEvaluator
             return $this->mixInOklchSpace($color1, $color2, $p, $hueMethod);
         }
 
-        $mixedRgbInner = $this->manipulators->legacy->mix($rgb1, $rgb2, $p);
+        $mixedRgbInner = $this->legacy->mix($rgb1, $rgb2, $p);
 
         if ($methodNode instanceof StringNode || $methodNode instanceof ListNode) {
             return $this->converter->serializeRgbResult($mixedRgbInner);
@@ -406,7 +413,7 @@ final readonly class ColorFunctionEvaluator
             );
         }
 
-        $invertedRgb = $this->manipulators->legacy->invert($rgb, $p);
+        $invertedRgb = $this->legacy->invert($rgb, $p);
 
         return $this->converter->serializeRgbResult($invertedRgb);
     }
@@ -441,6 +448,8 @@ final readonly class ColorFunctionEvaluator
 
         return match ($workingSpace) {
             'oklch' => $this->applyInOklchSpace($color, $named, $modify),
+            'oklab' => $this->applyInOklabSpace($color, $named, $modify),
+            'lch'   => $this->applyInLchSpace($color, $named, $modify),
             'lab'   => $this->applyInLabSpace($color, $named, $modify, $isLegacy),
             'srgb'  => $this->applyInSrgbSpace($color, $named, $modify),
             default => $this->isGenericColorFunction($color)
@@ -464,11 +473,28 @@ final readonly class ColorFunctionEvaluator
             'lightness'  => $this->parsePercentageChannel($named, 'lightness', $context),
         ];
 
+        if ($context === 'change-color') {
+            $hasHslChannel = $values['hue'] !== null
+                || $values['saturation'] !== null
+                || $values['lightness'] !== null;
+
+            if (! $hasHslChannel) {
+                $newR = $values['red'] ?? $rgb->r;
+                $newG = $values['green'] ?? $rgb->g;
+                $newB = $values['blue'] ?? $rgb->b;
+                $newA = $values['alpha'] !== null
+                    ? $this->runtime->argumentParser->clamp($values['alpha'], 1.0)
+                    : $rgb->a;
+
+                return $this->converter->serializeRgbResult(new RgbColor(r: $newR, g: $newG, b: $newB, a: $newA));
+            }
+        }
+
         $hsl = $this->runtime->modelConverter->rgbToHslColor($rgb);
 
         $modifiedRgb = $context === 'change-color'
-            ? $this->manipulators->legacy->change($rgb, $hsl, $values)
-            : $this->manipulators->legacy->adjust($rgb, $hsl, $values);
+            ? $this->legacy->change($rgb, $hsl, $values)
+            : $this->legacy->adjust($rgb, $hsl, $values);
 
         return $this->converter->serializeRgbResult($modifiedRgb);
     }
@@ -479,8 +505,12 @@ final readonly class ColorFunctionEvaluator
      */
     private function applyInOklchSpace(AstNode $color, array $named, callable $modify): AstNode
     {
-        $isNativeOklch = $this->converter->isNativeSpace($color, 'oklch');
-        $baseColor     = $this->converter->createBaseOklchColor($color);
+        if ($this->converter->isNativeSpace($color, 'oklch')) {
+            /** @var FunctionNode $color */
+            return $this->applyInNativeOklch($color, $named, $modify);
+        }
+
+        $baseColor = $this->converter->createBaseOklchColor($color);
 
         $values = [
             'lightness' => $this->parsePercentageChannel($named, 'lightness', 'color'),
@@ -490,21 +520,17 @@ final readonly class ColorFunctionEvaluator
         ];
 
         $newOklchInner = $this->isDirectChange($modify)
-            ? $this->manipulators->perceptual->changeOklch($baseColor, $values)
-            : $this->manipulators->perceptual->adjustOklch($baseColor, $values);
+            ? $this->perceptual->changeOklch($baseColor, $values)
+            : $this->perceptual->adjustOklch($baseColor, $values);
 
-        if ($isNativeOklch) {
-            return $this->converter->serializeAsOklchString($newOklchInner);
-        }
-
-        $unclampedRgb = $this->runtime->spaceConverter->oklchToSrgbUnclamped($newOklchInner);
+        $unclampedRgb = $this->runtime->spaceConverter->oklchToRgb($newOklchInner);
 
         $r = $unclampedRgb->r ?? 0.0;
         $g = $unclampedRgb->g ?? 0.0;
         $b = $unclampedRgb->b ?? 0.0;
 
         if ($r >= 0.0 && $r <= 1.0 && $g >= 0.0 && $g <= 1.0 && $b >= 0.0 && $b <= 1.0) {
-            return $this->converter->serializeAsFloatRgb($this->runtime->spaceConverter->oklchToSrgb($newOklchInner));
+            return $this->converter->serializeAsFloatRgb($this->runtime->spaceConverter->oklchToRgb($newOklchInner));
         }
 
         return $this->converter->serializeAsUnclampedHsl($r, $g, $b, $unclampedRgb->a);
@@ -514,33 +540,303 @@ final readonly class ColorFunctionEvaluator
      * @param array<string, AstNode> $named
      * @param callable(float, float): float $modify
      */
-    private function applyInLabSpace(AstNode $color, array $named, callable $modify, bool $isLegacy): AstNode
+    private function applyInNativeOklch(FunctionNode $color, array $named, callable $modify): AstNode
     {
-        $values = $this->buildLabChannelValues($named);
+        $baseChannels   = $this->converter->readNativeOklchChannels($color);
+        $isDirectChange = $this->isDirectChange($modify);
 
-        if ($this->converter->isNativeSpace($color, 'lab')) {
-            /** @var FunctionNode $color */
-            $lab = $this->converter->readNativeLab($color);
+        [$newL, $lProvided] = $this->parseOklchChannelValue($named, 'lightness', 'percentage');
+        [$newC, $cProvided] = $this->parseOklchChannelValue($named, 'chroma', 'chroma');
+        [$newH, $hProvided] = $this->parseOklchChannelValue($named, 'hue', 'number');
+        [$newA, $aProvided] = $this->parseOklchChannelValue($named, 'alpha', 'number');
 
-            $newLabInner = $this->isDirectChange($modify)
-                ? $this->manipulators->perceptual->changeLab($lab, $values)
-                : $this->manipulators->perceptual->adjustLab($lab, $values);
+        $resultL = $lProvided
+            ? ($isDirectChange ? $newL : $this->runtime->spaceConverter->clamp($modify($baseChannels['l'] ?? 0.0, $newL ?? 0.0), 100.0))
+            : $baseChannels['l'];
+        $resultC = $cProvided
+            ? ($isDirectChange ? $newC : $modify($baseChannels['c'] ?? 0.0, $newC ?? 0.0))
+            : $baseChannels['c'];
+        $resultH = $hProvided
+            ? ($isDirectChange ? $newH : $this->runtime->spaceConverter->normalizeHue($modify($baseChannels['h'] ?? 0.0, $newH ?? 0.0)))
+            : $baseChannels['h'];
+        $resultA = $aProvided
+            ? $this->runtime->spaceConverter->clamp($isDirectChange ? ($newA ?? 1.0) : $modify($baseChannels['a'], $newA ?? 0.0), 1.0)
+            : $baseChannels['a'];
 
-            return $this->converter->buildLabColorNode($newLabInner);
+        if ($resultC !== null && $resultC < 0.0) {
+            $resultC = abs($resultC);
+
+            if ($resultH !== null) {
+                $resultH = $this->runtime->spaceConverter->normalizeHue($resultH + 180.0);
+            }
         }
 
-        $lab = $this->runtime->spaceConverter->xyzD50ToLabColor(
+        return $this->converter->buildOklchColorNodeWithNone([
+            'l' => $resultL,
+            'c' => $resultC,
+            'h' => $resultH,
+            'a' => $resultA,
+        ]);
+    }
+
+    /**
+     * @param array<string, AstNode> $named
+     * @return array{0: ?float, 1: bool} [value, wasProvided]
+     */
+    private function parseOklchChannelValue(array $named, string $channel, string $type): array
+    {
+        if (! array_key_exists($channel, $named)) {
+            return [null, false];
+        }
+
+        $node = $named[$channel];
+
+        if (AstValueInspector::isNoneKeyword($node)) {
+            return [null, true];
+        }
+
+        if ($type === 'percentage') {
+            $value = $this->runtime->argumentParser->asPercentage($node, 'color');
+
+            if ($node instanceof NumberNode && $node->unit === null) {
+                return [$value * 100.0, true];
+            }
+
+            return [$value, true];
+        }
+
+        if ($type === 'lch-percentage') {
+            $value = $this->runtime->argumentParser->asPercentage($node, 'color');
+
+            return [$value, true];
+        }
+
+        if ($type === 'chroma') {
+            $value = $this->runtime->argumentParser->asNumber($node, 'color');
+
+            if ($node instanceof NumberNode && $node->unit === '%') {
+                return [$value / 100.0 * 0.4, true];
+            }
+
+            return [$value, true];
+        }
+
+        if ($type === 'lch-chroma') {
+            $value = $this->runtime->argumentParser->asNumber($node, 'color');
+
+            if ($node instanceof NumberNode && $node->unit === '%') {
+                return [$value / 100.0 * 150.0, true];
+            }
+
+            return [$value, true];
+        }
+
+        if ($type === 'oklab-ab') {
+            $value = $this->runtime->argumentParser->asNumber($node, 'color');
+
+            if ($node instanceof NumberNode && $node->unit === '%') {
+                return [$value / 100.0 * 0.4, true];
+            }
+
+            return [$value, true];
+        }
+
+        if ($type === 'lab-ab') {
+            $value = $this->runtime->argumentParser->asNumber($node, 'color');
+
+            if ($node instanceof NumberNode && $node->unit === '%') {
+                return [$value / 100.0 * 125.0, true];
+            }
+
+            return [$value, true];
+        }
+
+        return [$this->runtime->argumentParser->asNumber($node, 'color'), true];
+    }
+
+    /**
+     * @param array<string, AstNode> $named
+     * @param callable(float, float): float $modify
+     */
+    private function applyInOklabSpace(AstNode $color, array $named, callable $modify): AstNode
+    {
+        if (! $this->converter->isNativeSpace($color, 'oklab')) {
+            $context = 'color.change';
+
+            return $this->applyInLegacySpace($color, $named, $context);
+        }
+
+        /** @var FunctionNode $color */
+        [$channels, $alpha] = $this->converter->extractRawChannelsPublic($color);
+
+        $baseL = $this->converter->isMissingPublic($channels[0] ?? null)
+            ? null
+            : $this->runtime->argumentParser->asPercentage($channels[0], 'color');
+        $baseA = $this->converter->isMissingPublic($channels[1] ?? null)
+            ? null
+            : $this->runtime->argumentParser->asNumber($channels[1], 'color');
+        $baseB = $this->converter->isMissingPublic($channels[2] ?? null)
+            ? null
+            : $this->runtime->argumentParser->asNumber($channels[2], 'color');
+        $baseAlpha = $this->converter->parseAlphaPublic($alpha, 'color');
+
+        [$newL, $lProvided]         = $this->parseOklchChannelValue($named, 'lightness', 'percentage');
+        [$newA, $aProvided]         = $this->parseOklchChannelValue($named, 'a', 'oklab-ab');
+        [$newB, $bProvided]         = $this->parseOklchChannelValue($named, 'b', 'oklab-ab');
+        [$newAlpha, $alphaProvided] = $this->parseOklchChannelValue($named, 'alpha', 'number');
+
+        $isDirectChange = $this->isDirectChange($modify);
+
+        $resultL = $lProvided
+            ? ($isDirectChange ? $newL : $this->runtime->spaceConverter->clamp($modify($baseL ?? 0.0, $newL ?? 0.0), 100.0))
+            : $baseL;
+        $resultA = $aProvided
+            ? ($isDirectChange ? $newA : $modify($baseA ?? 0.0, $newA ?? 0.0))
+            : $baseA;
+        $resultB = $bProvided
+            ? ($isDirectChange ? $newB : $modify($baseB ?? 0.0, $newB ?? 0.0))
+            : $baseB;
+        $resultAlpha = $alphaProvided
+            ? $this->runtime->spaceConverter->clamp($isDirectChange ? ($newAlpha ?? 1.0) : $modify($baseAlpha, $newAlpha ?? 0.0), 1.0)
+            : $baseAlpha;
+
+        return $this->converter->buildOklabColorNodeWithNone([
+            'l'     => $resultL,
+            'a'     => $resultA,
+            'b'     => $resultB,
+            'alpha' => $resultAlpha,
+        ]);
+    }
+
+    /**
+     * @param array<string, AstNode> $named
+     * @param callable(float, float): float $modify
+     */
+    private function applyInLchSpace(AstNode $color, array $named, callable $modify): AstNode
+    {
+        if (! $this->converter->isNativeSpace($color, 'lch')) {
+            $context = 'color.change';
+
+            return $this->applyInLegacySpace($color, $named, $context);
+        }
+
+        /** @var FunctionNode $color */
+        [$channels, $alpha] = $this->converter->extractRawChannelsPublic($color);
+
+        $baseL = $this->converter->isMissingPublic($channels[0] ?? null)
+            ? null
+            : $this->runtime->argumentParser->asPercentage($channels[0], 'color');
+        $baseC = $this->converter->isMissingPublic($channels[1] ?? null)
+            ? null
+            : $this->runtime->argumentParser->asNumber($channels[1], 'color');
+        $baseH = $this->converter->isMissingPublic($channels[2] ?? null)
+            ? null
+            : $this->runtime->argumentParser->asHueAngle($channels[2], 'color');
+        $baseAlpha = $this->converter->parseAlphaPublic($alpha, 'color');
+
+        [$newL, $lProvided]         = $this->parseOklchChannelValue($named, 'lightness', 'lch-percentage');
+        [$newC, $cProvided]         = $this->parseOklchChannelValue($named, 'chroma', 'lch-chroma');
+        [$newH, $hProvided]         = $this->parseOklchChannelValue($named, 'hue', 'number');
+        [$newAlpha, $alphaProvided] = $this->parseOklchChannelValue($named, 'alpha', 'number');
+
+        $isDirectChange = $this->isDirectChange($modify);
+
+        $resultL = $lProvided
+            ? ($isDirectChange ? $newL : $this->runtime->spaceConverter->clamp($modify($baseL ?? 0.0, $newL ?? 0.0), 100.0))
+            : $baseL;
+        $resultC = $cProvided
+            ? ($isDirectChange ? $newC : $modify($baseC ?? 0.0, $newC ?? 0.0))
+            : $baseC;
+        $resultH = $hProvided
+            ? ($isDirectChange ? $newH : $this->runtime->spaceConverter->normalizeHue($modify($baseH ?? 0.0, $newH ?? 0.0)))
+            : $baseH;
+        $resultAlpha = $alphaProvided
+            ? $this->runtime->spaceConverter->clamp($isDirectChange ? ($newAlpha ?? 1.0) : $modify($baseAlpha, $newAlpha ?? 0.0), 1.0)
+            : $baseAlpha;
+
+        if ($resultC !== null && $resultC < 0.0) {
+            $resultC = abs($resultC);
+
+            if ($resultH !== null) {
+                $resultH = $this->runtime->spaceConverter->normalizeHue($resultH + 180.0);
+            }
+        }
+
+        return $this->converter->buildLchColorNodeWithNone($resultL, $resultC, $resultH, $resultAlpha);
+    }
+
+    /**
+     * @param array<string, AstNode> $named
+     * @param callable(float, float): float $modify
+     */
+    private function applyInLabSpace(AstNode $color, array $named, callable $modify, bool $isLegacy): AstNode
+    {
+        if ($this->converter->isNativeSpace($color, 'lab')) {
+            return $this->applyInNativeLab($color, $named, $modify);
+        }
+
+        $values = $this->buildLabChannelValues($named);
+
+        $lab = $this->runtime->spaceConverter->xyzD50ToLab(
             $this->converter->toXyzD50($color),
             $this->converter->toAlpha($color),
         );
 
         $newLabInner = $this->isDirectChange($modify)
-            ? $this->manipulators->perceptual->changeLab($lab, $values)
-            : $this->manipulators->perceptual->adjustLab($lab, $values);
+            ? $this->perceptual->changeLab($lab, $values)
+            : $this->perceptual->adjustLab($lab, $values);
 
         $newRgb = $this->converter->convertLabToRgb($newLabInner);
 
         return $isLegacy ? $this->converter->fromRgb($newRgb) : $this->serializeFloatRgbFromByteRgb($newRgb);
+    }
+
+    /**
+     * @param array<string, AstNode> $named
+     * @param callable(float, float): float $modify
+     */
+    private function applyInNativeLab(AstNode $color, array $named, callable $modify): AstNode
+    {
+        /** @var FunctionNode $color */
+        [$channels, $alpha] = $this->converter->extractRawChannelsPublic($color);
+
+        $baseL = $this->converter->isMissingPublic($channels[0] ?? null)
+            ? null
+            : $this->runtime->argumentParser->asPercentage($channels[0], 'color');
+        $baseA = $this->converter->isMissingPublic($channels[1] ?? null)
+            ? null
+            : $this->runtime->argumentParser->asNumber($channels[1], 'color');
+        $baseB = $this->converter->isMissingPublic($channels[2] ?? null)
+            ? null
+            : $this->runtime->argumentParser->asNumber($channels[2], 'color');
+        $baseAlpha = $this->converter->parseAlphaPublic($alpha, 'color');
+
+        [$newL, $lProvided]         = $this->parseOklchChannelValue($named, 'lightness', 'lch-percentage');
+        [$newA, $aProvided]         = $this->parseOklchChannelValue($named, 'a', 'lab-ab');
+        [$newB, $bProvided]         = $this->parseOklchChannelValue($named, 'b', 'lab-ab');
+        [$newAlpha, $alphaProvided] = $this->parseOklchChannelValue($named, 'alpha', 'number');
+
+        $isDirectChange = $this->isDirectChange($modify);
+
+        $resultL = $lProvided
+            ? ($isDirectChange ? $newL : $this->runtime->spaceConverter->clamp($modify($baseL ?? 0.0, $newL ?? 0.0), 100.0))
+            : $baseL;
+        $resultA = $aProvided
+            ? ($isDirectChange ? $newA : $modify($baseA ?? 0.0, $newA ?? 0.0))
+            : $baseA;
+        $resultB = $bProvided
+            ? ($isDirectChange ? $newB : $modify($baseB ?? 0.0, $newB ?? 0.0))
+            : $baseB;
+        $resultAlpha = $alphaProvided
+            ? $this->runtime->spaceConverter->clamp($isDirectChange ? ($newAlpha ?? 1.0) : $modify($baseAlpha, $newAlpha ?? 0.0), 1.0)
+            : $baseAlpha;
+
+        return $this->converter->buildLabColorNodeWithNone([
+            'l'     => $resultL,
+            'a'     => $resultA,
+            'b'     => $resultB,
+            'alpha' => $resultAlpha,
+        ]);
     }
 
     private function formatColorAdjustHint(AstNode $color, string $channel, string $formattedAmount): string
@@ -594,8 +890,8 @@ final readonly class ColorFunctionEvaluator
         ];
 
         [$newR, $newG, $newB] = $this->isDirectChange($modify)
-            ? $this->manipulators->srgb->change($r, $g, $b, $values)
-            : $this->manipulators->srgb->adjust($r, $g, $b, $values);
+            ? $this->srgb->change($r, $g, $b, $values)
+            : $this->srgb->adjust($r, $g, $b, $values);
 
         $alphaValue = $this->parseColorChannel($named, 'alpha');
 
@@ -948,7 +1244,7 @@ final readonly class ColorFunctionEvaluator
         }
 
         /** @var array{0: float, 1: float, 2: float} $channels */
-        $channels = $this->runtime->spaceConverter->rgbToRec2020($this->converter->toRgb($color));
+        $channels = $this->runtime->spaceConverter->rgbToRec2020Channels($this->converter->toRgb($color));
 
         return [$channels[0], $channels[1], $channels[2]];
     }
@@ -971,7 +1267,7 @@ final readonly class ColorFunctionEvaluator
 
     private function interpolateHue(float $h1, float $h2, float $p, ?string $method = null): float
     {
-        return $this->manipulators->mixResolver->mixOklch(
+        return $this->mixResolver->mixOklch(
             new OklchColor(0.0, 0.0, $h1),
             new OklchColor(0.0, 0.0, $h2),
             $p,
@@ -997,7 +1293,7 @@ final readonly class ColorFunctionEvaluator
             $h2 = $hsl1->h;
         }
 
-        $mixedHsl = $this->manipulators->mixResolver->mixHsl(
+        $mixedHsl = $this->mixResolver->mixHsl(
             new HslColor($h1, $hsl1->s, $hsl1->l, $hsl1->a),
             new HslColor($h2, $hsl2->s, $hsl2->l, $hsl2->a),
             $p,
@@ -1066,6 +1362,6 @@ final readonly class ColorFunctionEvaluator
             ], $mix->a);
         }
 
-        return $this->converter->serializeLegacyRgbFunction($this->runtime->spaceConverter->oklchToSrgb($mix));
+        return $this->converter->serializeLegacyRgbFunction($this->runtime->spaceConverter->oklchToRgb($mix));
     }
 }

@@ -205,6 +205,7 @@ final readonly class ColorNodeConverter
     {
         if ($color instanceof FunctionNode) {
             return match (strtolower($color->name)) {
+                'rgb', 'rgba'     => 'rgb',
                 'hwb', 'hwba'     => 'hwb',
                 'lab', 'laba'     => 'lab',
                 'lch', 'lcha'     => 'lch',
@@ -344,6 +345,25 @@ final readonly class ColorNodeConverter
         );
     }
 
+    /**
+     * @return array{l: float|null, c: float|null, h: float|null, a: float}
+     */
+    public function readNativeOklchChannels(FunctionNode $color): array
+    {
+        [$channels, $alpha] = $this->extractRawChannels($color);
+
+        $lMissing = $this->isMissing($channels[0] ?? null);
+        $cMissing = $this->isMissing($channels[1] ?? null);
+        $hMissing = $this->isMissing($channels[2] ?? null);
+
+        return [
+            'l' => $lMissing ? null : $this->parseLightness($channels[0] ?? null, 'color'),
+            'c' => $cMissing ? null : $this->parseChroma($channels[1] ?? null, 'color'),
+            'h' => $hMissing ? null : $this->parseHue($channels[2] ?? null, 'color'),
+            'a' => $this->parseAlpha($alpha, 'color'),
+        ];
+    }
+
     public function createOklchFromRgb(RgbColor $rgb): OklchColor
     {
         $oklch = $this->runtime->spaceConverter->rgbToOklch($rgb);
@@ -363,7 +383,7 @@ final readonly class ColorNodeConverter
 
     public function convertLabToRgb(LabColor $lab): RgbColor
     {
-        return $this->runtime->spaceConverter->labToRgbColor($lab);
+        return $this->runtime->spaceConverter->labToRgb($lab);
     }
 
     /**
@@ -450,6 +470,15 @@ final readonly class ColorNodeConverter
 
     public function serializeRgbResult(RgbColor $rgb): AstNode
     {
+        // When values are out of gamut, serialize as unclamped HSL
+        $outOfGamut = $rgb->r < 0.0 || $rgb->r > 255.0
+            || $rgb->g < 0.0 || $rgb->g > 255.0
+            || $rgb->b < 0.0 || $rgb->b > 255.0;
+
+        if ($outOfGamut) {
+            return $this->serializeAsUnclampedHsl($rgb->rValue(), $rgb->gValue(), $rgb->bValue(), $rgb->a);
+        }
+
         $hasFractionalChannels = abs($rgb->rValue() - round($rgb->rValue())) > 0.0000001
             || abs($rgb->gValue() - round($rgb->gValue())) > 0.0000001
             || abs($rgb->bValue() - round($rgb->bValue())) > 0.0000001;
@@ -508,9 +537,9 @@ final readonly class ColorNodeConverter
 
     public function serializeLegacyRgbFunction(RgbColor $rgb): FunctionNode
     {
-        $r = new NumberNode($this->runtime->spaceConverter->roundFloat($rgb->rValue() * 255.0));
-        $g = new NumberNode($this->runtime->spaceConverter->roundFloat($rgb->gValue() * 255.0));
-        $b = new NumberNode($this->runtime->spaceConverter->roundFloat($rgb->bValue() * 255.0));
+        $r = new NumberNode(round($rgb->rValue() * 255.0, 6));
+        $g = new NumberNode(round($rgb->gValue() * 255.0, 6));
+        $b = new NumberNode(round($rgb->bValue() * 255.0, 6));
 
         if (abs($rgb->a - 1.0) < 0.000001) {
             return new FunctionNode('rgb', [$r, $g, $b]);
@@ -518,7 +547,7 @@ final readonly class ColorNodeConverter
 
         return new FunctionNode(
             'rgba',
-            [$r, $g, $b, new NumberNode($this->runtime->spaceConverter->roundFloat($rgb->a))],
+            [$r, $g, $b, new NumberNode(round($rgb->a, 6))],
         );
     }
 
@@ -529,7 +558,11 @@ final readonly class ColorNodeConverter
             || abs($byteRgb->bValue() - round($byteRgb->bValue())) > 0.0000001
             || abs($byteRgb->a - 1.0) > 0.0000001;
 
-        if (! $hasFractional && $source instanceof ColorNode) {
+        $inGamut = $byteRgb->rValue() >= 0 && $byteRgb->rValue() <= 255
+            && $byteRgb->gValue() >= 0 && $byteRgb->gValue() <= 255
+            && $byteRgb->bValue() >= 0 && $byteRgb->bValue() <= 255;
+
+        if (! $hasFractional && $inGamut) {
             return $this->fromRgb($byteRgb);
         }
 
@@ -562,6 +595,26 @@ final readonly class ColorNodeConverter
             $c,
             new NumberNode($oklch->hValue(), 'deg'),
         ], $oklch->a);
+    }
+
+    /**
+     * @param array{l: float|null, c: float|null, h: float|null, a: float} $channels
+     */
+    public function buildOklchColorNodeWithNone(array $channels): FunctionNode
+    {
+        $lNode = $channels['l'] !== null
+            ? new NumberNode($channels['l'], '%')
+            : new StringNode('none');
+
+        $cNode = $channels['c'] !== null
+            ? new NumberNode($channels['c'])
+            : new StringNode('none');
+
+        $hNode = $channels['h'] !== null
+            ? new NumberNode($channels['h'], 'deg')
+            : new StringNode('none');
+
+        return $this->buildFunctionalColorNode('oklch', [$lNode, $cNode, $hNode], $channels['a']);
     }
 
     public function buildLabColorNode(LabColor $lab): FunctionNode
@@ -616,8 +669,8 @@ final readonly class ColorNodeConverter
     {
         $arguments = [
             new NumberNode($this->runtime->spaceConverter->normalizeHue($hue)),
-            new NumberNode($this->runtime->spaceConverter->roundFloat($saturation), '%'),
-            new NumberNode($this->runtime->spaceConverter->roundFloat($lightness), '%'),
+            new NumberNode($saturation, '%'),
+            new NumberNode($lightness, '%'),
         ];
 
         if (abs($alpha - 1.0) >= 0.000001) {
@@ -630,19 +683,26 @@ final readonly class ColorNodeConverter
         return new FunctionNode('hsl', $arguments);
     }
 
-    public function serializeAsUnclampedHsl(float $r, float $g, float $b, float $alpha): FunctionNode
+    public function serializeAsUnclampedHsl(float $r, float $g, float $b, float $alpha, bool $round = false): FunctionNode
     {
+        // Normalize 0-255 input to 0-1 range for HSL math
+        $r /= 255.0;
+        $g /= 255.0;
+        $b /= 255.0;
+
         $max   = max($r, $g, $b);
         $min   = min($r, $g, $b);
         $delta = $max - $min;
 
         $l = ($max + $min) / 2.0;
 
-        if ($delta <= 0.0) {
+        $denom = 1.0 - abs(2.0 * $l - 1.0);
+
+        if ($delta <= 0.0 || abs($denom) < 1e-10 || ($max > 0.0 && $delta / $max < 1e-10)) {
             $h = 0.0;
             $s = 0.0;
         } else {
-            $s = $delta / (1.0 - abs(2.0 * $l - 1.0));
+            $s = $delta / $denom;
 
             if ($max === $r) {
                 $h = 60.0 * (($g - $b) / $delta);
@@ -655,15 +715,21 @@ final readonly class ColorNodeConverter
             } else {
                 $h = 60.0 * ((($r - $g) / $delta) + 4.0);
             }
+
+            if ($s < 0.0) {
+                $h += 180.0;
+                $s = abs($s);
+            }
         }
 
         $h = $this->runtime->spaceConverter->normalizeHue($h);
 
-        $precision = 10;
+        $trimFloat = fn(float $value): float => (float) $this->runtime->spaceConverter->trimFloat($value, 10);
+
         $arguments = [
-            new NumberNode((float) $this->runtime->spaceConverter->trimFloat($h, $precision)),
-            new NumberNode((float) $this->runtime->spaceConverter->trimFloat($s * 100.0, $precision), '%'),
-            new NumberNode((float) $this->runtime->spaceConverter->trimFloat($l * 100.0, $precision), '%'),
+            new NumberNode($round ? $trimFloat($h) : $h),
+            new NumberNode($round ? $trimFloat($s * 100.0) : $s * 100.0, '%'),
+            new NumberNode($round ? $trimFloat($l * 100.0) : $l * 100.0, '%'),
         ];
 
         if (abs($alpha - 1.0) >= 0.000001) {
@@ -674,6 +740,42 @@ final readonly class ColorNodeConverter
         }
 
         return new FunctionNode('hsl', $arguments);
+    }
+
+    public function serializeAsUnclampedHwb(float $r, float $g, float $b, float $alpha): FunctionNode
+    {
+        $max = max($r, $g, $b);
+        $min = min($r, $g, $b);
+
+        $h = $this->runtime->spaceConverter->hueFromNormalizedRgb(
+            new NormalizedRgbChannels(
+                r: $r / 255.0,
+                g: $g / 255.0,
+                b: $b / 255.0,
+                a: 1.0,
+                max: $max / 255.0,
+                min: $min / 255.0,
+                delta: ($max - $min) / 255.0,
+            ),
+        );
+
+        $h = $this->runtime->spaceConverter->normalizeHue($h);
+
+        $precision = 10;
+        $arguments = [
+            new NumberNode((float) $this->runtime->spaceConverter->trimFloat($h, $precision)),
+            new NumberNode((float) $this->runtime->spaceConverter->trimFloat($min * 100.0 / 255.0, $precision), '%'),
+            new NumberNode((float) $this->runtime->spaceConverter->trimFloat((255.0 - $max) * 100.0 / 255.0, $precision), '%'),
+        ];
+
+        if (abs($alpha - 1.0) >= 0.000001) {
+            return new FunctionNode(
+                'hwb',
+                [$arguments[0], $arguments[1], $arguments[2], $this->buildAlphaNode($alpha)],
+            );
+        }
+
+        return new FunctionNode('hwb', $arguments);
     }
 
     public function buildRgbFunctionNode(float $red, float $green, float $blue, float $alpha): FunctionNode
@@ -735,7 +837,82 @@ final readonly class ColorNodeConverter
 
     public function buildAlphaNode(float $alpha): NumberNode
     {
-        return new NumberNode($this->runtime->spaceConverter->roundFloat($alpha));
+        return new NumberNode(round($alpha, 6));
+    }
+
+    /**
+     * @return array{0: array<int, AstNode>, 1: ?AstNode}
+     */
+    public function extractRawChannelsPublic(FunctionNode $color): array
+    {
+        return $this->extractRawChannels($color);
+    }
+
+    public function isMissingPublic(?AstNode $node): bool
+    {
+        return $this->isMissing($node);
+    }
+
+    public function parseAlphaPublic(?AstNode $node, string $context): float
+    {
+        return $this->parseAlpha($node, $context);
+    }
+
+    /**
+     * @param array{l: float|null, a: float|null, b: float|null, alpha: float} $channels
+     */
+    public function buildOklabColorNodeWithNone(array $channels): FunctionNode
+    {
+        $lNode = $channels['l'] !== null
+            ? new NumberNode($channels['l'], '%')
+            : new StringNode('none');
+
+        $aNode = $channels['a'] !== null
+            ? new NumberNode($channels['a'])
+            : new StringNode('none');
+
+        $bNode = $channels['b'] !== null
+            ? new NumberNode($channels['b'])
+            : new StringNode('none');
+
+        return $this->buildFunctionalColorNode('oklab', [$lNode, $aNode, $bNode], $channels['alpha']);
+    }
+
+    /**
+     * @param array{l: float|null, a: float|null, b: float|null, alpha: float} $channels
+     */
+    public function buildLabColorNodeWithNone(array $channels): FunctionNode
+    {
+        $lNode = $channels['l'] !== null
+            ? new NumberNode($channels['l'], '%')
+            : new StringNode('none');
+
+        $aNode = $channels['a'] !== null
+            ? new NumberNode($channels['a'])
+            : new StringNode('none');
+
+        $bNode = $channels['b'] !== null
+            ? new NumberNode($channels['b'])
+            : new StringNode('none');
+
+        return $this->buildFunctionalColorNode('lab', [$lNode, $aNode, $bNode], $channels['alpha']);
+    }
+
+    public function buildLchColorNodeWithNone(?float $l, ?float $c, ?float $h, float $alpha): FunctionNode
+    {
+        $lNode = $l !== null
+            ? new NumberNode($l, '%')
+            : new StringNode('none');
+
+        $cNode = $c !== null
+            ? new NumberNode($c)
+            : new StringNode('none');
+
+        $hNode = $h !== null
+            ? new NumberNode($h, 'deg')
+            : new StringNode('none');
+
+        return $this->buildFunctionalColorNode('lch', [$lNode, $cNode, $hNode], $alpha);
     }
 
     /**
@@ -751,10 +928,7 @@ final readonly class ColorNodeConverter
 
     private function parseLightness(?AstNode $node, string $context): float
     {
-        return $this->runtime->argumentParser->clamp(
-            $this->runtime->argumentParser->asPercentage($node, $context),
-            100.0,
-        );
+        return $this->runtime->argumentParser->asPercentage($node, $context);
     }
 
     private function parseChroma(?AstNode $node, string $context): float

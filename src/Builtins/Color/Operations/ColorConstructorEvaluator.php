@@ -68,6 +68,7 @@ final readonly class ColorConstructorEvaluator
                         $this->parser->normalizeHue(
                             $this->parser->asNumber($arguments[0], 'hsl'),
                         ),
+                        'deg',
                     ),
                     $satMissing ? new StringNode('none') : new NumberNode(
                         $this->parser->asPercentage($arguments[1], 'hsl'),
@@ -248,8 +249,8 @@ final readonly class ColorConstructorEvaluator
     {
         $arguments = $this->parser->parseFunctionalColorArguments($positional, 'hwb', 3);
         $hue       = $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hwb'));
-        $whiteness = $this->parser->clamp($this->parser->asPercentage($arguments[1], 'hwb'), 100.0);
-        $blackness = $this->parser->clamp($this->parser->asPercentage($arguments[2], 'hwb'), 100.0);
+        $whiteness = $this->parser->asPercentage($arguments[1], 'hwb');
+        $blackness = $this->parser->asPercentage($arguments[2], 'hwb');
         $alpha     = $this->parser->parseAlphaOrDefault($arguments, 3, 'hwb');
 
         $sum = $whiteness + $blackness;
@@ -290,7 +291,7 @@ final readonly class ColorConstructorEvaluator
     public function labFunction(array $positional): AstNode
     {
         $arguments = $this->parser->parseFunctionalColorArguments($positional, 'lab', 3);
-        $lightness = $this->parser->clamp($this->parser->asPercentage($arguments[0], 'lab'), 100.0);
+        $lightness = $this->parser->asPercentage($arguments[0], 'lab');
         $a         = $this->parser->asAbsoluteChannel($arguments[1], 'lab', 125.0);
         $b         = $this->parser->asAbsoluteChannel($arguments[2], 'lab', 125.0);
         $alpha     = $this->parser->parseAlphaOrDefault($arguments, 3, 'lab');
@@ -304,14 +305,10 @@ final readonly class ColorConstructorEvaluator
     public function lchFunction(array $positional): AstNode
     {
         $arguments = $this->parser->parseFunctionalColorArguments($positional, 'lch', 3);
-        $lightness = $this->parser->clamp($this->parser->asPercentage($arguments[0], 'lch'), 100.0);
+        $lightness = $this->parser->asPercentage($arguments[0], 'lch');
         $chroma    = $this->parser->asAbsoluteChannel($arguments[1], 'lch', 150.0);
         $hue       = $this->parser->normalizeHue($this->parser->asHueAngle($arguments[2], 'lch'));
         $alpha     = $this->parser->parseAlphaOrDefault($arguments, 3, 'lch');
-
-        if ($chroma < 0.0) {
-            $chroma = 0.0;
-        }
 
         return $this->converter->buildLchColorNode(new LchColor($lightness, $chroma, $hue), $alpha);
     }
@@ -322,7 +319,7 @@ final readonly class ColorConstructorEvaluator
     public function oklabFunction(array $positional): AstNode
     {
         $arguments = $this->parser->parseFunctionalColorArguments($positional, 'oklab', 3);
-        $lightness = $this->parser->clamp($this->parser->asPercentage($arguments[0], 'oklab'), 100.0);
+        $lightness = $this->parser->asPercentage($arguments[0], 'oklab');
         $a         = $this->parser->asAbsoluteChannel($arguments[1], 'oklab', 0.4);
         $b         = $this->parser->asAbsoluteChannel($arguments[2], 'oklab', 0.4);
         $alpha     = $this->parser->parseAlphaOrDefault($arguments, 3, 'oklab');
@@ -336,14 +333,10 @@ final readonly class ColorConstructorEvaluator
     public function oklchFunction(array $positional): AstNode
     {
         $arguments = $this->parser->parseFunctionalColorArguments($positional, 'oklch', 3);
-        $lightness = $this->parser->clamp($this->parser->asPercentage($arguments[0], 'oklch'), 100.0);
+        $lightness = $this->parser->asPercentage($arguments[0], 'oklch');
         $chroma    = $this->parser->asAbsoluteChannel($arguments[1], 'oklch', 0.4);
         $hue       = $this->parser->normalizeHue($this->parser->asHueAngle($arguments[2], 'oklch'));
         $alpha     = $this->parser->parseAlphaOrDefault($arguments, 3, 'oklch');
-
-        if ($chroma < 0.0) {
-            $chroma = 0.0;
-        }
 
         return $this->converter->serializeAsOklchString(new OklchColor($lightness, $chroma, $hue, $alpha));
     }

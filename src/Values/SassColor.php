@@ -6,6 +6,9 @@ namespace Bugo\SCSS\Values;
 
 use Bugo\Iris\Serializers\Serializer;
 
+use function str_starts_with;
+use function trim;
+
 final class SassColor extends AbstractSassValue
 {
     public function __construct(
@@ -16,6 +19,13 @@ final class SassColor extends AbstractSassValue
 
     public function toCss(): string
     {
+        $trimmed = trim($this->value);
+
+        // Preserve original hex format
+        if (str_starts_with($trimmed, '#')) {
+            return $trimmed;
+        }
+
         return $this->colorSerializer->serialize($this->value, $this->outputHexColors);
     }
 

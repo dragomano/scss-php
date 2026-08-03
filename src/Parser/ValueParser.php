@@ -586,7 +586,7 @@ final readonly class ValueParser implements
                 TokenType::COMMENT_PRESERVED,
                 TokenType::COMMENT_SILENT,
             ], true)) {
-                $buffer .= StreamUtils::wrapComment($token);
+                $buffer .= StreamUtils::wrapComment($token) ?? '';
 
                 $this->stream->advance();
 

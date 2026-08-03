@@ -434,7 +434,7 @@ final readonly class DirectiveParser
                 TokenType::COMMENT_PRESERVED,
                 TokenType::COMMENT_SILENT,
             ], true)) {
-                $prelude .= StreamUtils::wrapComment($token);
+                $prelude .= StreamUtils::wrapComment($token) ?? '';
 
                 $this->stream->advance();
 

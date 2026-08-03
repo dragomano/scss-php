@@ -163,10 +163,6 @@ final readonly class AtRuleNodeHandler
 
                 $outsideChunks = $this->selector->drainDeferredAtRuleEscapes();
 
-                if ($orderedChunks === [] && $outsideChunks === []) {
-                    return '';
-                }
-
                 $result    = '';
                 $separator = $this->render->outputSeparator();
 
@@ -286,7 +282,7 @@ final readonly class AtRuleNodeHandler
             ];
 
             $this->render->restorePosition($parentSegmentSaved);
-        } elseif ($node->hasBlock && $this->isKeyframesDirective($node)) {
+        } elseif ($this->isKeyframesDirective($node)) {
             $emptyOutput = $prefix . '@' . $node->name . $prelude . ' {}';
 
             $orderedChunks[] = [

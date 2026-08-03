@@ -6,13 +6,23 @@ namespace Bugo\SCSS\Values;
 
 use Bugo\SCSS\Utils\UnitConverter;
 
+use function abs;
 use function is_infinite;
 use function is_int;
 use function is_nan;
+use function round;
 use function rtrim;
-use function sprintf;
 use function str_contains;
+use function str_ends_with;
+use function str_repeat;
+use function str_replace;
 use function str_starts_with;
+use function strlen;
+use function strpos;
+use function substr;
+use function var_export;
+
+use const PHP_INT_MAX;
 
 final class SassNumber extends AbstractSassValue
 {
@@ -65,14 +75,100 @@ final class SassNumber extends AbstractSassValue
             return $this->compressLeadingZero((string) $value);
         }
 
-        $formatted = rtrim(sprintf('%.10F', $value), '0');
-        $trimmed   = rtrim($formatted, '.');
+        if (abs($value) < PHP_INT_MAX) {
+            $rounded = round($value);
 
-        if ($trimmed === '-0') {
-            return '0';
+            if ($rounded == $value) {
+                return $this->compressLeadingZero((string) (int) $rounded);
+            }
         }
 
-        return $this->compressLeadingZero($trimmed);
+        $text = $this->removeExponent(str_replace('E', 'e', var_export($value, true)));
+
+        if (strlen($text) < 12) {
+            return $this->compressLeadingZero($text);
+        }
+
+        return $this->compressLeadingZero($this->roundDecimalString($text));
+    }
+
+    private function removeExponent(string $text): string
+    {
+        $ePos = strpos($text, 'e');
+
+        if ($ePos === false) {
+            return $text;
+        }
+
+        $negative = str_starts_with($text, '-');
+        $mantissa = $negative ? substr($text, 1, $ePos - 1) : substr($text, 0, $ePos);
+        $exponent = (int) substr($text, $ePos + 1);
+
+        $dotPos = strpos($mantissa, '.');
+        $digits = $dotPos === false
+            ? $mantissa
+            : substr($mantissa, 0, $dotPos) . substr($mantissa, $dotPos + 1);
+
+        $decimalIndex = ($dotPos === false ? strlen($mantissa) : $dotPos) + $exponent;
+
+        if ($decimalIndex <= 0) {
+            return ($negative ? '-' : '') . '0.' . str_repeat('0', -$decimalIndex) . $digits;
+        }
+
+        if ($decimalIndex >= strlen($digits)) {
+            return $digits . str_repeat('0', $decimalIndex - strlen($digits));
+        }
+
+        return substr($digits, 0, $decimalIndex) . '.' . substr($digits, $decimalIndex);
+    }
+
+    private function roundDecimalString(string $text): string
+    {
+        if (str_ends_with($text, '.0')) {
+            return substr($text, 0, -2);
+        }
+
+        $dot = strpos($text, '.');
+
+        if ($dot === false) {
+            return $text;
+        }
+
+        $negative = str_starts_with($text, '-');
+        $intPart  = $negative ? substr($text, 1, $dot - 1) : substr($text, 0, $dot);
+        $fracPart = substr($text, $dot + 1);
+
+        if (strlen($fracPart) <= 10) {
+            return $text;
+        }
+
+        $significant = substr($fracPart, 0, 10);
+        $carry       = ((int) $fracPart[10]) >= 5;
+
+        if ($carry) {
+            for ($i = 9; $i >= 0; $i--) {
+                if ($significant[$i] !== '9') {
+                    $significant[$i] = (string) ((int) $significant[$i] + 1);
+                    $carry = false;
+
+                    break;
+                }
+
+                $significant[$i] = '0';
+            }
+
+            if ($carry) {
+                $intPart = (string) ((int) $intPart + 1);
+            }
+        }
+
+        $significant = rtrim($significant, '0');
+
+        if ($significant === '') {
+            return $negative && $intPart === '0' ? '0' : ($negative ? '-' : '') . $intPart;
+        }
+
+        return ($negative ? '-' : '') . $intPart . '.' . $significant;
     }
 
     private function formatNonFiniteValue(): string
@@ -107,18 +203,7 @@ final class SassNumber extends AbstractSassValue
             return $unit ?? '';
         }
 
-        /** @var array<string, true>|null $set */
-        static $set = null;
-
-        if ($set === null) {
-            $set = [];
-
-            foreach (self::ZERO_UNITS as $zeroUnit) {
-                $set[$zeroUnit] = true;
-            }
-        }
-
-        return isset($set[$unit]) ? '' : $unit;
+        return in_array($unit, self::ZERO_UNITS, true) ? '' : $unit;
     }
 
     private function isCompoundUnit(?string $unit): bool
@@ -133,11 +218,7 @@ final class SassNumber extends AbstractSassValue
 
     private function formatUnitFactor(string $unit): string
     {
-        if (! $this->isCompoundUnit($unit)) {
-            return '1' . $unit;
-        }
-
-        return '1' . $this->formatCompoundUnitSuffix($unit);
+        return '1' . ($this->isCompoundUnit($unit) ? $this->formatCompoundUnitSuffix($unit) : $unit);
     }
 
     private function formatCompoundUnitSuffix(string $unit): string

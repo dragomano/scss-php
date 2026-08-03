@@ -267,7 +267,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-change {
-              value: #f23;
+              value: #ff2233;
             }
             CSS;
 
@@ -985,7 +985,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .color-lighten {
-                  value: #333;
+                  value: #333333;
                 }
                 CSS;
 
@@ -1003,7 +1003,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .color-darken {
-                  value: #ccc;
+                  value: #cccccc;
                 }
                 CSS;
 
@@ -1454,7 +1454,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: hsl(120 50% none);
+                  color: hsl(120deg 50% none);
                 }
                 CSS;
 
@@ -1607,7 +1607,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: #036;
+                  color: #003366;
                 }
                 CSS;
 
@@ -1716,7 +1716,7 @@ describe('Sass Color Module Feature', function () {
             ->and($messages)->toContain('lighten() is deprecated. Suggestions: color.scale(#e1d7d2, $lightness: 100%), or color.adjust(#e1d7d2, $lightness: 30%)')
             ->and($messages)->toContain('lighten() is deprecated. Suggestions: color.scale(#6b717f, $lightness: 36.9565217793%), or color.adjust(#6b717f, $lightness: 20%)')
             ->and($messages)->toContain('lighten() is deprecated. Suggestions: color.scale(#036, $lightness: 75%), or color.adjust(#036, $lightness: 60%)')
-            ->and($messages)->toContain('#9cf')
+            ->and($messages)->toContain('#99ccff')
             ->and($messages)->toContain('darken() is deprecated. Suggestions: color.scale(#036, $lightness: -100%), or color.adjust(#036, $lightness: -30%)')
             ->and($messages)->toContain('black')
             ->and($messages)->toContain('color.lightness() is deprecated. Suggestion: color.channel(#e1d7d2, "lightness", $space: hsl)')

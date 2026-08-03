@@ -5,16 +5,16 @@ declare(strict_types=1);
 use Bugo\SCSS\Values\SassColor;
 
 describe('SassColor', function () {
-    it('six-digit hex color is normalized and shortened when possible', function () {
+    it('six-digit hex color preserves original format', function () {
         $color = new SassColor('#FF0000');
 
-        expect($color->toCss())->toBe('#f00');
+        expect($color->toCss())->toBe('#FF0000');
     });
 
-    it('three-digit hex is returned lowercased', function () {
+    it('three-digit hex is returned as-is', function () {
         $color = new SassColor('#F00');
 
-        expect($color->toCss())->toBe('#f00');
+        expect($color->toCss())->toBe('#F00');
     });
 
     it('named color passes through unchanged (no hash prefix)', function () {
@@ -36,16 +36,16 @@ describe('SassColor', function () {
         expect((string) $color)->toBe('blue');
     });
 
-    it('lowercase six-digit hex is shortened when possible', function () {
+    it('lowercase six-digit hex is returned as-is', function () {
         $color = new SassColor('#aabbcc');
 
-        expect($color->toCss())->toBe('#abc');
+        expect($color->toCss())->toBe('#aabbcc');
     });
 
-    it('uppercase six-digit hex is lowercased and shortened when possible', function () {
+    it('uppercase six-digit hex is returned as-is', function () {
         $color = new SassColor('#AABBCC');
 
-        expect($color->toCss())->toBe('#abc');
+        expect($color->toCss())->toBe('#AABBCC');
     });
 
     it('preserves rgb colors when hex output is disabled', function () {

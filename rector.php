@@ -4,7 +4,6 @@ use Rector\CodeQuality\Rector\BooleanOr\RepeatedOrEqualToInArrayRector;
 use Rector\CodingStyle\Rector\If_\NullableCompareToNullRector;
 use Rector\Config\RectorConfig;
 use Rector\Exception\Configuration\InvalidConfigurationException;
-use Rector\Php81\Rector\FuncCall\NullToStrictStringFuncCallArgRector;
 use Rector\Privatization\Rector\ClassConst\PrivatizeFinalClassConstantRector;
 use Rector\Privatization\Rector\ClassMethod\PrivatizeFinalClassMethodRector;
 use Rector\Privatization\Rector\Property\PrivatizeFinalClassPropertyRector;
@@ -16,7 +15,6 @@ try {
         ])
         ->withSkip([
             NullableCompareToNullRector::class,
-            NullToStrictStringFuncCallArgRector::class,
             RepeatedOrEqualToInArrayRector::class,
         ])
         ->withPhpSets()

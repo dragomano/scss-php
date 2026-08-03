@@ -423,11 +423,11 @@ describe('Compiler', function () {
 
         $expected = /** @lang text */ <<<'CSS'
         .class-0 .light {
-          color: #9cf;
+          color: #99ccff;
         }
 
         .class-0 .dark {
-          color: #06c;
+          color: #0066cc;
         }
 
         .class-0.nested-1 {

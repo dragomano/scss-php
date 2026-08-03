@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Utils;
 
-use function explode;
 use function str_contains;
+use function strpos;
+use function substr;
 
 final class NameHelper
 {
@@ -40,15 +41,15 @@ final class NameHelper
     private static function split(string $name, ?string $defaultMember): array
     {
         // @pest-mutate-ignore
-        if (! str_contains($name, '.')) {
+        $dot = strpos($name, '.');
+
+        if ($dot === false) {
             return ['namespace' => $name, 'member' => $defaultMember];
         }
 
-        $parts = explode('.', $name, 2);
-
         return [
-            'namespace' => $parts[0],
-            'member'    => $parts[1] ?? $defaultMember,
+            'namespace' => substr($name, 0, $dot),
+            'member'    => substr($name, $dot + 1),
         ];
     }
 }

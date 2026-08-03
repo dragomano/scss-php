@@ -63,7 +63,7 @@ describe('Sass Map Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .map-get {
-              value: #123;
+              value: #112233;
             }
             CSS;
 

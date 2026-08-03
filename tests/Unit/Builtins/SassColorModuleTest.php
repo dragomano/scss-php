@@ -771,7 +771,7 @@ describe('SassColorModule', function () {
         expect($result)->toBeInstanceOf(FunctionNode::class)->and($result->name)->toBe('lch');
     });
 
-    it('clamps negative chroma in lch and oklch constructors to zero', function () {
+    it('preserves negative chroma in lch and oklch constructors', function () {
         $lch = $this->module->call('lch', [
             new NumberNode(50, '%'),
             new NumberNode(-10),
@@ -787,11 +787,11 @@ describe('SassColorModule', function () {
         expect($lch)->toBeInstanceOf(FunctionNode::class)
             ->and($lch->name)->toBe('lch')
             ->and($lch->arguments[0])->toBeInstanceOf(ListNode::class)
-            ->and($lch->arguments[0]->items[1]->value)->toBe(0.0)
+            ->and($lch->arguments[0]->items[1]->value)->toBe(-10.0)
             ->and($oklch)->toBeInstanceOf(FunctionNode::class)
             ->and($oklch->name)->toBe('oklch')
             ->and($oklch->arguments[0])->toBeInstanceOf(ListNode::class)
-            ->and($oklch->arguments[0]->items[1]->value)->toBe(0.0);
+            ->and($oklch->arguments[0]->items[1]->value)->toBe(-0.2);
     });
 
     it('returns same generic color space unchanged to preserve missing channels', function () {
