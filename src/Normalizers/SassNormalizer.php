@@ -154,6 +154,7 @@ final readonly class SassNormalizer implements SourceNormalizer
             $pendingEmptyLines = [];
 
             [$trimmed, $index] = $this->mergeParenthesizedDeclaration($trimmed, $level, $index, $lines, $indentSize);
+            [$trimmed, $index] = $this->mergeBracketedDeclaration($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeDirectiveHeader($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeSingleLineDirectiveParenthesizedCall(
                 $trimmed,
@@ -389,6 +390,26 @@ final readonly class SassNormalizer implements SourceNormalizer
      * @param array<int, string> $lines
      * @return array{0: string, 1: int}
      */
+    private function mergeBracketedDeclaration(
+        string $trimmed,
+        int $level,
+        int $index,
+        array $lines,
+        int $indentSize,
+    ): array {
+        $candidate = rtrim($trimmed);
+
+        if (! str_contains($candidate, ':') || $this->bracketBalance($candidate) <= 0) {
+            return [$trimmed, $index];
+        }
+
+        return $this->mergeBracketedContinuation($candidate, $level, $index, $lines, $indentSize);
+    }
+
+    /**
+     * @param array<int, string> $lines
+     * @return array{0: string, 1: int}
+     */
     private function mergeDirectiveHeader(
         string $trimmed,
         int $level,
@@ -491,6 +512,43 @@ final readonly class SassNormalizer implements SourceNormalizer
         return [$merged, $index];
     }
 
+    /**
+     * @param array<int, string> $lines
+     * @return array{0: string, 1: int}
+     */
+    private function mergeBracketedContinuation(
+        string $merged,
+        int $level,
+        int $index,
+        array $lines,
+        int $indentSize,
+    ): array {
+        $depth = $this->bracketBalance($merged);
+        $max   = count($lines);
+
+        while ($depth > 0 && $index + 1 < $max) {
+            $nextLine    = rtrim($lines[$index + 1], "\r\n");
+            $nextTrimmed = ltrim($nextLine);
+
+            if ($nextTrimmed === '') {
+                break;
+            }
+
+            $leadingSpaces = strlen($nextLine) - strlen($nextTrimmed);
+            $nextLevel     = intdiv($leadingSpaces, $indentSize);
+
+            if ($nextLevel <= $level) {
+                break;
+            }
+
+            $merged .= $this->bracketedContinuationSeparator($merged, $nextTrimmed) . $nextTrimmed;
+            $depth += $this->bracketBalance($nextTrimmed);
+            $index++;
+        }
+
+        return [$merged, $index];
+    }
+
     private function looksLikeDirectiveHeaderContinuation(string $line): bool
     {
         if (str_starts_with($line, '$') || ctype_digit($line[0])) {
@@ -509,6 +567,22 @@ final readonly class SassNormalizer implements SourceNormalizer
     private function parenthesisBalance(string $line): int
     {
         return substr_count($line, '(') - substr_count($line, ')');
+    }
+
+    private function bracketBalance(string $line): int
+    {
+        return substr_count($line, '[') - substr_count($line, ']');
+    }
+
+    private function bracketedContinuationSeparator(string $merged, string $continuation): string
+    {
+        $last = $merged[strlen($merged) - 1];
+
+        if ($last === '[' || $continuation[0] === ']') {
+            return '';
+        }
+
+        return ' ';
     }
 
     private function detectLineEnding(string $source): string

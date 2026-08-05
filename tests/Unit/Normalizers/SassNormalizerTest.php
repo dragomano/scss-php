@@ -85,6 +85,23 @@ describe('SassNormalizer', function () {
         expect($this->normalizer->normalize($sass))->toBe($expected);
     });
 
+    it('merges multiline bracketed declaration values', function () {
+        $sass = <<<'SASS'
+        a
+          b: [
+            c d
+            ]
+        SASS;
+
+        $expected = <<<'SCSS'
+        a {
+          b: [c d];
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
     it('converts mixins with parameters', function () {
         $sass = <<<'SASS'
         =button($size, $color)

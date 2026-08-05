@@ -34,6 +34,30 @@ describe('Compiler', function () {
             );
     });
 
+    it('compiles an empty bracketed list in indented sass', function () {
+        expect((new Compiler())->compileString("a\n  b: []", Syntax::SASS))->toEqualCss("a {\n  b: [];\n}");
+    });
+
+    it('compiles a bracketed list after an opening line break in indented sass', function () {
+        expect((new Compiler())->compileString("a\n  b: [\n    c]", Syntax::SASS))->toEqualCss("a {\n  b: [c];\n}");
+    });
+
+    it('compiles a bracketed list before a closing line break in indented sass', function () {
+        expect((new Compiler())->compileString("a\n  b: [c\n    ]", Syntax::SASS))->toEqualCss("a {\n  b: [c];\n}");
+    });
+
+    it('compiles a multiline bracketed list after an opening line break in indented sass', function () {
+        expect((new Compiler())->compileString("a\n  b: [\n    c d]", Syntax::SASS))->toEqualCss("a {\n  b: [c d];\n}");
+    });
+
+    it('compiles a multiline bracketed list between values in indented sass', function () {
+        expect((new Compiler())->compileString("a\n  b: [c\n    d]", Syntax::SASS))->toEqualCss("a {\n  b: [c d];\n}");
+    });
+
+    it('compiles a multiline bracketed list before a closing line break in indented sass', function () {
+        expect((new Compiler())->compileString("a\n  b: [c d\n    ]", Syntax::SASS))->toEqualCss("a {\n  b: [c d];\n}");
+    });
+
     it('throws for unexpected closing parentheses in indented sass before compilation', function () {
         $compiler = new Compiler();
         $source   = ".grid\n  color: red)\n";
