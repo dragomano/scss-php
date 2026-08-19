@@ -10,8 +10,6 @@ use Bugo\SCSS\Nodes\Visitable;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Render;
 
-use function strlen;
-
 final readonly class RootNodeHandler
 {
     public function __construct(
@@ -21,27 +19,28 @@ final readonly class RootNodeHandler
 
     public function handle(RootNode $node, TraversalContext $ctx): string
     {
-        $output        = '';
-        $nextSeparator = '';
+        $output = '';
 
         foreach ($node->children as $child) {
             $savedPosition = null;
 
-            if ($nextSeparator !== '' && $this->render->collectSourceMappings()) {
+            if ($output !== '' && $this->render->collectSourceMappings()) {
                 $savedPosition = $this->render->savePosition();
 
                 $dummy = '';
 
-                $this->render->appendChunk($dummy, $nextSeparator);
+                $this->render->appendChunk($dummy, "\n\n");
             }
 
             /** @var Visitable $child */
             $compiled = $this->dispatcher->compileWithContext($child, $ctx);
 
             if ($compiled !== '') {
-                $output .= $nextSeparator . $compiled;
+                if ($output !== '') {
+                    $output .= "\n";
+                }
 
-                $nextSeparator = $compiled[strlen($compiled) - 1] === "\n" ? '' : "\n";
+                $output .= $compiled;
             } elseif ($savedPosition !== null) {
                 $this->render->restorePosition($savedPosition);
             }

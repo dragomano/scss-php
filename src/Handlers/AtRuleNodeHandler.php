@@ -23,6 +23,7 @@ use Bugo\SCSS\Utils\OutputChunk;
 use Bugo\SCSS\Utils\RawChunk;
 
 use function count;
+use function in_array;
 use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
@@ -282,7 +283,7 @@ final readonly class AtRuleNodeHandler
             ];
 
             $this->render->restorePosition($parentSegmentSaved);
-        } elseif ($this->isKeyframesDirective($node)) {
+        } elseif (! in_array(strtolower($node->name), ['media', 'supports'], true)) {
             $emptyOutput = $prefix . '@' . $node->name . $prelude . ' {}';
 
             $orderedChunks[] = [
@@ -448,7 +449,9 @@ final readonly class AtRuleNodeHandler
              */
             foreach ($contentBlock as $child) {
                 /** @var Visitable $child */
-                $compiled = $this->dispatcher->compileWithContext($child, $contentCtx);
+                $compiled = $this->render->trimAndAdjustState(
+                    $this->dispatcher->compileWithContext($child, $contentCtx),
+                );
 
                 if ($compiled === '') {
                     continue;

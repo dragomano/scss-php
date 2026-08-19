@@ -7,7 +7,7 @@ use Bugo\SCSS\Compiler;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Loader;
 use Bugo\SCSS\Style;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -124,7 +124,7 @@ describe('Compiler', function () {
                 $map = json_decode((string) file_get_contents($mapFile), true);
 
                 expect($map)->toBeArray()
-                    ->and($map['mappings'] ?? null)->toBe('AAEA;EACE,OAHI;;;AAMN;EACE');
+                    ->and($map['mappings'] ?? null)->toBe('AAEA;EACE,OAHI;;;;AAMN;EACE');
             } finally {
                 if (file_exists($mapFile)) {
                     unlink($mapFile);

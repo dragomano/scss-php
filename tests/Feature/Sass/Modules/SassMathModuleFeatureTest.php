@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Sass Math Module Feature', function () {
     beforeEach(function () {

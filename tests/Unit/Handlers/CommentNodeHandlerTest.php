@@ -6,7 +6,7 @@ use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Style;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('renders preserved and interpolated comments', function () {
     $runtime = RuntimeFactory::createRuntime();

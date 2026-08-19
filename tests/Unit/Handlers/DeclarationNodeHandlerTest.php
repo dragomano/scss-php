@@ -13,7 +13,7 @@ use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Text;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('renders declarations with important flag', function () {
     $runtime = RuntimeFactory::createRuntime();

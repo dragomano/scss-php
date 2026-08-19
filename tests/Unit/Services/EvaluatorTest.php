@@ -37,7 +37,7 @@ use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Style;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('evaluates variable references and resolves spread arguments', function () {
     $runtime = RuntimeFactory::createRuntime();

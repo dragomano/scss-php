@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Loader;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Sass Meta Module Feature', function () {
     beforeEach(function () {

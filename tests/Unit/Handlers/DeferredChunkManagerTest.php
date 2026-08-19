@@ -13,7 +13,7 @@ use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Utils\DeferredChunk;
 use Bugo\SCSS\Utils\RawChunk;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('DeferredChunkManager', function () {
     beforeEach(function () {
@@ -260,7 +260,7 @@ describe('DeferredChunkManager', function () {
             ->and($state->first)->toBeFalse();
     });
 
-    it('returns immediately for empty included bubbling chunks without a parent selector', function () {
+    it('appends empty included bubbling directives directly to output without a parent selector', function () {
         $output = '';
         $state  = new class {
             public bool $first = true;
@@ -269,8 +269,8 @@ describe('DeferredChunkManager', function () {
 
         $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx);
 
-        expect($output)->toBe('')
-            ->and($state->first)->toBeTrue();
+        expect($output)->toBe('@foo bar {}')
+            ->and($state->first)->toBeFalse();
     });
 
     it('defers supports include bubbling chunks when only the bubbling stack is available', function () {
@@ -413,7 +413,7 @@ describe('DeferredChunkManager', function () {
             ->toContain('@media screen and print');
     });
 
-    it('returns null for empty interleaved bubbling chunks', function () {
+    it('returns an interleaved chunk for empty bubbling directives', function () {
         $chunk = $this->manager->compileInterleavedBubblingChunk(
             '.host',
             $this->ctx->env->getCurrentScope(),
@@ -421,7 +421,8 @@ describe('DeferredChunkManager', function () {
             $this->ctx,
         );
 
-        expect($chunk)->toBeNull();
+        expect($chunk)->not->toBeNull()
+            ->and($chunk->content())->toBe('@foo bar {}');
     });
 
     it('returns null for empty interleaved merged media chunks', function () {

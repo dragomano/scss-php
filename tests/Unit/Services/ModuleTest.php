@@ -16,7 +16,7 @@ use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\States\LoadedModule;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('Module service', function () {
     beforeEach(function () {
@@ -239,5 +239,20 @@ describe('Module service', function () {
         $this->module->mergeScopeExports($from, $to, visibility: 'show', members: ['', 'keep-me']);
 
         expect($to->hasFunction('keep-me'))->toBeTrue();
+    });
+
+    it('loadAndEvaluateModule() returns empty css when compilation is disabled', function () {
+        $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
+
+        $result = $this->module->loadAndEvaluateModule('theme', compileCss: false);
+
+        expect($result['css'])->toBe('');
+    });
+
+    it('qualifyImportedCssWithParentSelector() preserves bare brace lines', function () {
+        $css = "{\n  color: red;\n}\n";
+
+        expect($this->module->qualifyImportedCssWithParentSelector($css, '.parent'))
+            ->toBe($css);
     });
 });

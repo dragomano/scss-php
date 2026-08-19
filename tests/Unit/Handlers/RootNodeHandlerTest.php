@@ -7,7 +7,7 @@ use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('joins compiled root children with line breaks', function () {
     $runtime = RuntimeFactory::createRuntime();

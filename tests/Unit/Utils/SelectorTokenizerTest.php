@@ -42,7 +42,7 @@ describe('SelectorTokenizer', function () {
 
     it('tokenizeCompound() handles attribute selector', function () {
         $tokens = $this->tokenizer->tokenizeCompound('[type="text"]');
-        expect($tokens)->toContain('[type="text"]');
+        expect($tokens)->toContain('[type=text]');
     });
 
     it('tokenizeCompound() handles universal selector', function () {
@@ -80,8 +80,8 @@ describe('SelectorTokenizer', function () {
         expect($this->tokenizer->unifyCompounds('.foo', '.foo'))->toBe('.foo');
     });
 
-    it('unifyCompounds() returns empty string when only universal selectors remain', function () {
-        expect($this->tokenizer->unifyCompounds('*', '*'))->toBe('');
+    it('unifyCompounds() returns universal selector when only universal selectors remain', function () {
+        expect($this->tokenizer->unifyCompounds('*', '*'))->toBe('*');
     });
 
     it('unifyCompounds() returns null for incompatible element types', function () {
@@ -268,8 +268,8 @@ describe('SelectorTokenizer', function () {
             ->and($ordered[2])->toBe(':hover');
     });
 
-    it('orderTokens() places pseudo-elements before other tokens', function () {
-        expect($this->tokenizer->orderTokens(['div', '::before']))->toBe(['::before', 'div']);
+    it('orderTokens() places type selectors before pseudo-elements', function () {
+        expect($this->tokenizer->orderTokens(['div', '::before']))->toBe(['div', '::before']);
     });
 
     it('orderTokens() ignores empty tokens while preserving selector ordering', function () {
@@ -348,7 +348,7 @@ describe('SelectorTokenizer', function () {
 
         it('continues parsing after bracket group', function () {
             $tokens = $this->tokenizer->tokenizeCompound('[type="text"]div');
-            expect($tokens)->toContain('[type="text"]')
+            expect($tokens)->toContain('[type=text]')
                 ->and($tokens)->toContain('div');
         });
     });

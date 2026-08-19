@@ -6,7 +6,7 @@ use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
 use Bugo\SCSS\Exceptions\UndefinedOperationException;
 use Bugo\SCSS\Syntax;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -955,7 +955,6 @@ describe('Compiler', function () {
               transition-duration: 4s;
               transition-delay: 2s;
             }
-
             .enlarge:hover {
               font-size: 36px;
             }

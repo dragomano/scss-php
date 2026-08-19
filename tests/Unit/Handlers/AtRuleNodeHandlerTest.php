@@ -19,7 +19,7 @@ use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\States\OutputState;
 use Bugo\SCSS\Utils\DeferredChunk;
 use Bugo\SCSS\Utils\OutputChunk;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('handles @at-root blocks', function () {
     $runtime = RuntimeFactory::createRuntime();

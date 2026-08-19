@@ -26,7 +26,7 @@ use Bugo\SCSS\Services\DiagnosticDirectiveHandlerInterface;
 use Bugo\SCSS\Services\EachLoopBinderInterface;
 use Bugo\SCSS\Services\UserFunctionExecutor;
 use Bugo\SCSS\Services\VariableDeclarationApplierInterface;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('UserFunctionExecutor', function () {
     beforeEach(function () {

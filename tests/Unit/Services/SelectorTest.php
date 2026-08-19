@@ -26,7 +26,7 @@ use Bugo\SCSS\Services\ModuleVariableAssigner;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\SelectorTokenizer;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('Selector', function () {
     beforeEach(function () {

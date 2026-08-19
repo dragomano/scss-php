@@ -15,7 +15,7 @@ use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('Condition', function () {
     beforeEach(function () {

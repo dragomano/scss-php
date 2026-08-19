@@ -15,7 +15,7 @@ use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\ComparisonListEvaluatorInterface;
 use Bugo\SCSS\Services\ConditionalEvaluator;
 use Bugo\SCSS\Values\ValueFactory;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('ConditionalEvaluator', function () {
     beforeEach(function () {

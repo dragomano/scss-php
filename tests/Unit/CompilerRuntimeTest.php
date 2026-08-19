@@ -8,7 +8,7 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Runtime\Environment;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('CompilerRuntime', function () {
     it('uses slash-division evaluation when applying variable declarations during extend collection', function () {

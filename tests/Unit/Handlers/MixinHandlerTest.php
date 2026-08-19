@@ -16,7 +16,7 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Scope;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 beforeEach(function () {
     $this->compilerContext = new CompilerContext();

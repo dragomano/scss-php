@@ -13,7 +13,7 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\Text;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('Text service', function () {
     beforeEach(function () {

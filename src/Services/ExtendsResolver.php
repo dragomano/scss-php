@@ -27,8 +27,10 @@ use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 
+use function array_column;
 use function array_flip;
 use function array_keys;
+use function array_push;
 use function array_reverse;
 use function array_slice;
 use function array_unique;
@@ -44,9 +46,14 @@ use function strpos;
 use function strtolower;
 use function substr;
 use function trim;
+use function usort;
 
 final readonly class ExtendsResolver
 {
+    private const MAX_EXTEND_VARIANTS = 256;
+
+    private const MAX_EXTEND_VARIANT_COMPOUNDS = 16;
+
     public function __construct(
         private CompilerContext $ctx,
         private Text $text,
@@ -85,9 +92,7 @@ final readonly class ExtendsResolver
         }
 
         if ($node instanceof IfNode) {
-            $branch = $this->resolveIfBranch($node, $env);
-
-            $this->collectChildren($branch, $env, applyDeclarations: true);
+            $this->collectIfExtends($node, $env);
 
             return;
         }
@@ -119,32 +124,409 @@ final readonly class ExtendsResolver
 
     public function finalizeCollectedExtends(): void
     {
-        $outputState = $this->ctx->outputState;
+        $state = $this->ctx->outputState->extends;
 
-        foreach ($outputState->extends->pendingExtends as [
-            'target'  => $target,
-            'source'  => $source,
-            'context' => $sourceContext,
-        ]) {
-            $this->assertExtendTargetExists($target);
-            $this->assertExtendContextIsCompatible($target, $sourceContext);
-            $this->registerExtend($target, $source);
+        if ($state->events === []) {
+            foreach ($state->pendingExtends as [
+                'target'   => $target,
+                'source'   => $source,
+                'context'  => $sourceContext,
+                'optional' => $optional,
+                'priority' => $priority,
+            ]) {
+                if (! $this->assertExtendTargetExists($target, $optional)) {
+                    continue;
+                }
+
+                $this->assertExtendContextIsCompatible($target, $sourceContext);
+                $this->registerExtend($target, $source, $priority);
+            }
+
+            return;
+        }
+
+        $this->playExtendEvents();
+    }
+
+    private function playExtendEvents(): void
+    {
+        $state = $this->ctx->outputState->extends;
+
+        /** @var array<string, array<int, array{source: string, priority: int}>> $extensionsByTarget */
+        $extensionsByTarget = [];
+
+        /** @var array<string, array<int, true>> $selectorsBySimple */
+        $selectorsBySimple = [];
+
+        /** @var array<string, true> $originals */
+        $originals = [];
+
+        /** @var array<string, int> $sourceSpecificity */
+        $sourceSpecificity = [];
+
+        $boxes = [];
+
+        foreach ($state->events as $event) {
+            if ($event['type'] === 'rule') {
+                $resolvedParts = $event['resolvedParts'];
+                $boxId         = $event['boxId'];
+
+                foreach ($resolvedParts as $part) {
+                    $originals[$part] = true;
+                }
+
+                if ($extensionsByTarget === []) {
+                    $selectors = $resolvedParts;
+                } else {
+                    $selectors = $this->extendList($resolvedParts, $extensionsByTarget);
+                }
+
+                $boxes[$boxId] = [
+                    'rawParts'  => $event['rawParts'],
+                    'selectors' => $this->trimBoxSelectors($selectors, $originals, $sourceSpecificity),
+                    'originals' => $resolvedParts,
+                    'context'   => $event['context'],
+                ];
+
+                foreach ($boxes[$boxId]['selectors'] as $complex) {
+                    foreach ($this->simpleSelectorsOf($complex) as $simple) {
+                        $selectorsBySimple[$simple][$boxId] = true;
+                    }
+                }
+
+                continue;
+            }
+
+            $target     = $event['target'];
+            $sourceBox  = $boxes[$event['boxId']]['selectors'] ?? [];
+            $newSources = [];
+
+            if (! $this->assertExtendTargetExists($target, $event['optional'])) {
+                continue;
+            }
+
+            $this->assertExtendContextIsCompatible($target, $event['context']);
+
+            foreach ($sourceBox as $source) {
+                if ($source === $target) {
+                    continue;
+                }
+
+                $exists = false;
+
+                foreach ($extensionsByTarget[$target] ?? [] as $extension) {
+                    if ($extension['source'] === $source) {
+                        $exists = true;
+
+                        break;
+                    }
+                }
+
+                if ($exists) {
+                    continue;
+                }
+
+                $extensionsByTarget[$target][] = [
+                    'source'   => $source,
+                    'priority' => $event['priority'],
+                ];
+
+                foreach ($this->simpleSelectorsOf($source) as $simple) {
+                    $sourceSpecificity[$simple] ??= $this->selectorSpecificity($source);
+                }
+
+                $newSources[] = [
+                    'source'   => $source,
+                    'priority' => $event['priority'],
+                ];
+            }
+
+            if ($newSources === []) {
+                continue;
+            }
+
+            $snapshot = $extensionsByTarget;
+
+            foreach ($snapshot as $oldTarget => $existingExtensions) {
+                foreach ($existingExtensions as $existing) {
+                    if (! $this->complexContainsSimple($existing['source'], $target)) {
+                        continue;
+                    }
+
+                    $extendedExtenders = $this->extendList([$existing['source']], [$target => $newSources]);
+
+                    foreach (array_slice($extendedExtenders, 1) as $extended) {
+                        if (
+                            $extended === $existing['source']
+                            || $this->hasExtensionSource($extensionsByTarget[$oldTarget] ?? [], $extended)
+                        ) {
+                            continue;
+                        }
+
+                        $transitive = [
+                            'source'   => $extended,
+                            'priority' => $event['priority'],
+                        ];
+
+                        $extensionsByTarget[$oldTarget][] = $transitive;
+
+                        if ($oldTarget === $target) {
+                            $newSources[] = $transitive;
+                        }
+                    }
+                }
+            }
+
+            foreach (array_keys($selectorsBySimple[$target] ?? []) as $affectedBoxId) {
+                $box          = $boxes[$affectedBoxId];
+                $oldSelectors = $box['selectors'];
+                $newSelectors = $this->trimBoxSelectors(
+                    $this->extendList($oldSelectors, [$target => $newSources]),
+                    $originals,
+                    $sourceSpecificity,
+                );
+
+                if ($newSelectors === $oldSelectors) {
+                    continue;
+                }
+
+                foreach ($oldSelectors as $complex) {
+                    foreach ($this->simpleSelectorsOf($complex) as $simple) {
+                        unset($selectorsBySimple[$simple][$affectedBoxId]);
+                    }
+                }
+
+                $box['selectors']      = $newSelectors;
+                $boxes[$affectedBoxId] = $box;
+
+                foreach ($newSelectors as $complex) {
+                    foreach ($this->simpleSelectorsOf($complex) as $simple) {
+                        $selectorsBySimple[$simple][$affectedBoxId] = true;
+                    }
+                }
+            }
+        }
+
+        $state->boxes     = $boxes;
+        $state->extendMap = [];
+
+        foreach ($extensionsByTarget as $target => $extensions) {
+            foreach ($extensions as $extension) {
+                $state->extendMap[$target][] = $extension;
+            }
         }
     }
 
-    public function registerExtend(string $target, string $source): void
+    /**
+     * @param array<int, string> $selectors
+     * @param array<string, array<int, array{source: string, priority: int}>> $extensionsByTarget
+     * @return array<int, string>
+     */
+    private function extendList(array $selectors, array $extensionsByTarget): array
     {
-        $target = trim($target);
-        $source = trim($source);
+        $result = [];
 
-        if ($target === '' || $source === '') {
+        foreach ($selectors as $complex) {
+            $result[] = $complex;
+
+            foreach ($extensionsByTarget as $target => $extensions) {
+                $variants = [];
+
+                foreach ($extensions as $extension) {
+                    $source = $extension['source'];
+
+                    if ($source === $target) {
+                        continue;
+                    }
+
+                    foreach ($this->replaceExtendTargetInSelectorPart($complex, $target, $source) as $variant) {
+                        if ($variant !== '' && $variant !== $complex && ! in_array($variant, $variants, true)) {
+                            $variants[] = $variant;
+                        }
+                    }
+                }
+
+                array_push($result, ...$variants);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, string> $selectors
+     * @param array<string, true> $originals
+     * @param array<string, int> $sourceSpecificity
+     * @return array<int, string>
+     */
+    private function trimBoxSelectors(array $selectors, array $originals, array $sourceSpecificity): array
+    {
+        $protectedLookup = array_flip(array_keys($originals));
+
+        $result = [];
+
+        for ($i = count($selectors) - 1; $i >= 0; $i--) {
+            $complex = $selectors[$i];
+
+            if (isset($protectedLookup[$complex])) {
+                $duplicateIndex = array_search($complex, $result, true);
+
+                if ($duplicateIndex === false) {
+                    array_unshift($result, $complex);
+
+                    continue;
+                }
+
+                $slice   = array_slice($result, 0, $duplicateIndex + 1);
+                $rotated = array_merge([array_pop($slice)], $slice);
+                $result  = array_merge($rotated, array_slice($result, $duplicateIndex + 1));
+
+                continue;
+            }
+
+            $maxSpecificity = $this->maxSourceSpecificity($complex, $sourceSpecificity);
+
+            $isRedundant = false;
+
+            foreach ($result as $candidate) {
+                if (
+                    $this->selectorSpecificity($candidate) >= $maxSpecificity
+                    && $this->isSuperselectorOf($candidate, $complex)
+                ) {
+                    $isRedundant = true;
+
+                    break;
+                }
+            }
+
+            if (! $isRedundant) {
+                for ($j = 0; $j < $i; $j++) {
+                    $candidate = $selectors[$j];
+
+                    if (
+                        $this->selectorSpecificity($candidate) >= $maxSpecificity
+                        && $this->isSuperselectorOf($candidate, $complex)
+                    ) {
+                        $isRedundant = true;
+
+                        break;
+                    }
+                }
+            }
+
+            if (! $isRedundant) {
+                array_unshift($result, $complex);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<string, int> $sourceSpecificity
+     */
+    private function maxSourceSpecificity(string $complex, array $sourceSpecificity): int
+    {
+        $max = 0;
+
+        foreach ($this->splitSelectorCompoundsByDescendant($complex) as $compound) {
+            foreach ($this->tokenizeSelectorCompound($compound) as $simple) {
+                if ($simple !== '') {
+                    $max = max($max, $sourceSpecificity[$simple] ?? 0);
+                }
+            }
+        }
+
+        return $max;
+    }
+
+    private function selectorSpecificity(string $complex): int
+    {
+        $specificity = 0;
+
+        foreach ($this->splitSelectorCompoundsByDescendant($complex) as $compound) {
+            foreach ($this->tokenizeSelectorCompound($compound) as $simple) {
+                $specificity += $this->simpleSpecificity($simple);
+            }
+        }
+
+        return $specificity;
+    }
+
+    private function simpleSpecificity(string $simple): int
+    {
+        if ($simple === '' || $simple === '*' || $simple === '*|*' || $simple[0] === '%') {
+            return 0;
+        }
+
+        if ($simple[0] === '#') {
+            return 100;
+        }
+
+        if ($simple[0] === '.' || $simple[0] === '[') {
+            return 10;
+        }
+
+        if ($simple[0] === ':' && ($simple[1] ?? '') !== ':') {
+            return 10;
+        }
+
+        return 1;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function simpleSelectorsOf(string $complex): array
+    {
+        $simples = [];
+
+        foreach ($this->splitSelectorCompoundsByDescendant($complex) as $compound) {
+            foreach ($this->tokenizeSelectorCompound($compound) as $simple) {
+                if ($simple !== '') {
+                    $simples[] = $simple;
+                }
+            }
+        }
+
+        return $simples;
+    }
+
+    /**
+     * @param array<int, array{source: string, priority: int}> $extensions
+     */
+    private function hasExtensionSource(array $extensions, string $source): bool
+    {
+        foreach ($extensions as $extension) {
+            if ($extension['source'] === $source) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function complexContainsSimple(string $complex, string $simple): bool
+    {
+        return in_array($simple, $this->simpleSelectorsOf($complex), true);
+    }
+
+    public function registerExtend(string $target, string $source, int $priority = 0): void
+    {
+        $target = $this->tokenizer->normalizeSelectorAttributes(trim($target));
+        $source = $this->tokenizer->normalizeSelectorAttributes(trim($source));
+
+        if ($target === '' || $source === '' || $target === $source) {
             return;
         }
 
         $state = $this->ctx->outputState;
 
         $state->extends->extendMap[$target] ??= [];
-        $state->extends->extendMap[$target][] = $source;
+        $state->extends->extendMap[$target][] = [
+            'source'   => $source,
+            'priority' => $priority,
+        ];
     }
 
     /**
@@ -152,7 +534,7 @@ final readonly class ExtendsResolver
      */
     public function extractSimpleExtendTargetSelectors(string $target): array
     {
-        $target = trim($target);
+        $target = $this->tokenizer->normalizeSelectorAttributes(trim($target));
 
         if ($target === '') {
             return [];
@@ -173,6 +555,18 @@ final readonly class ExtendsResolver
             return $selector;
         }
 
+        $state = $this->ctx->outputState->extends;
+
+        if ($state->boxes !== []) {
+            $parts = $this->splitTopLevelSelectorList($selector);
+
+            foreach ($state->boxes as $box) {
+                if ($box['rawParts'] === $parts) {
+                    return $this->renderBoxSelectors($box['selectors']);
+                }
+            }
+        }
+
         $parts  = SelectorHelper::splitList($selector, false);
         $result = [];
         $exact  = [];
@@ -182,16 +576,22 @@ final readonly class ExtendsResolver
                 continue;
             }
 
-            if (! str_starts_with($part, '%')) {
+            $part = $this->tokenizer->normalizeSelectorAttributes($part);
+
+            $isPlaceholderPart = str_contains($part, '%');
+
+            if (! $isPlaceholderPart) {
                 $result[] = $part;
                 $exact[]  = $part;
             }
 
-            $extenders = $this->collectTransitiveExactExtenders($part);
+            foreach ($this->applyExtendsIncrementally($part) as $candidate) {
+                if (str_contains($candidate, '%')) {
+                    continue;
+                }
 
-            array_push($result, ...$extenders);
-            array_push($exact, ...$extenders);
-            array_push($result, ...$this->collectReplacementVariants($part));
+                $result[] = $candidate;
+            }
         }
 
         $unique      = array_values(array_unique($result));
@@ -200,13 +600,89 @@ final readonly class ExtendsResolver
         return implode(', ', $this->trimRedundantSelectors($unique, $uniqueExact));
     }
 
+    /**
+     * @param array<int, string> $selectors
+     */
+    private function renderBoxSelectors(array $selectors): string
+    {
+        $filtered = [];
+
+        foreach ($selectors as $selector) {
+            if (str_contains($selector, '%')) {
+                continue;
+            }
+
+            $filtered[] = $selector;
+        }
+
+        return implode(', ', array_values(array_unique($filtered)));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function applyExtendsIncrementally(string $part): array
+    {
+        $allResults = [$part];
+        $seen       = [$part => true];
+
+        foreach ($this->orderedExtends() as $extend) {
+            $next = [];
+
+            foreach ($allResults as $selector) {
+                $next[] = $selector;
+
+                foreach ($this->replaceExtendTargetInSelectorPart(
+                    $selector,
+                    $extend['target'],
+                    $extend['source'],
+                ) as $variant) {
+                    if ($variant !== '' && ! isset($seen[$variant])) {
+                        $seen[$variant] = true;
+                        $next[]         = $variant;
+                    }
+                }
+            }
+
+            $allResults = $next;
+        }
+
+        return $allResults;
+    }
+
+    /**
+     * @return array<int, array{target: string, source: string}>
+     */
+    private function orderedExtends(): array
+    {
+        $extends = [];
+
+        foreach ($this->ctx->outputState->extends->extendMap as $target => $sources) {
+            foreach ($sources as $source) {
+                $extends[] = [
+                    'target'   => $target,
+                    'source'   => $source['source'],
+                    'priority' => $source['priority'],
+                ];
+            }
+        }
+
+        usort(
+            $extends,
+            static fn(array $left, array $right): int => $left['priority'] <=> $right['priority'],
+        );
+
+        return $extends;
+    }
+
     public function hasCollectedExtends(): bool
     {
         $state = $this->ctx->outputState->extends;
 
         return $state->extendMap !== []
             || $state->pendingExtends !== []
-            || $state->selectorContexts !== [];
+            || $state->selectorContexts !== []
+            || $state->boxes !== [];
     }
 
     private function collectRootExtends(RootNode $node, Environment $env): void
@@ -230,31 +706,69 @@ final readonly class ExtendsResolver
 
     private function collectRuleExtends(RuleNode $node, Environment $env): void
     {
-        $selector = $this->text->interpolateText($node->selector, $env);
+        $rawSelector = $this->text->interpolateText($node->selector, $env);
+        $selector    = $rawSelector;
 
         $parentSelectorNode = $env->getCurrentScope()->getStringVariable('__parent_selector');
         $parentSelector     = $parentSelectorNode?->value;
 
-        if (
-            $parentSelector !== null
-            && str_contains($selector, '&')
-            && ! str_contains($parentSelector, '%')
-        ) {
-            $selector = SelectorHelper::resolveNested($selector, $parentSelector);
+        if ($parentSelector !== null) {
+            $selector = str_contains($selector, '&')
+                ? SelectorHelper::resolveNested($selector, $parentSelector)
+                : $this->combineNestedSelectorWithParent($selector, $parentSelector);
         }
 
         $currentContext = $this->getCurrentExtendDirectiveContext($env);
         $outputState    = $this->ctx->outputState;
 
+        $rawParts = [];
+
+        foreach ($this->splitTopLevelSelectorList($rawSelector) as $selectorPart) {
+            if ($selectorPart === '') {
+                continue;
+            }
+
+            $rawParts[] = $selectorPart;
+        }
+
+        $resolvedParts = [];
+
         foreach ($this->splitTopLevelSelectorList($selector) as $selectorPart) {
+            if ($selectorPart === '') {
+                continue;
+            }
+
+            $resolvedParts[] = $selectorPart;
+
             $outputState->extends->selectorContexts[$selectorPart] ??= [];
             $outputState->extends->selectorContexts[$selectorPart][$currentContext] = true;
+
+            foreach ($this->splitSelectorCompoundsByDescendant($selectorPart) as $compound) {
+                foreach ($this->tokenizeSelectorCompound($compound) as $simpleSelector) {
+                    $outputState->extends->selectorContexts[$simpleSelector] ??= [];
+                    $outputState->extends->selectorContexts[$simpleSelector][$currentContext] = true;
+                }
+            }
         }
+
+        $outputState->extends->ruleCount++;
+
+        $outputState->extends->events[] = [
+            'type'          => 'rule',
+            'boxId'         => $outputState->extends->ruleCount - 1,
+            'rawParts'      => $rawParts,
+            'resolvedParts' => $resolvedParts,
+            'context'       => $currentContext,
+        ];
 
         $env->enterScope();
         $env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode($selector));
 
-        $this->collectChildren($node->children, $env, $selector, $currentContext);
+        $outputState->extends->ruleStack[] = $outputState->extends->ruleCount - 1;
+
+        $this->collectChildren($node->children, $env, $selector, $currentContext, applyDeclarations: true);
+
+        array_pop($outputState->extends->ruleStack);
 
         $env->exitScope();
     }
@@ -283,7 +797,14 @@ final readonly class ExtendsResolver
         $this->collectExtendsInDirectiveContext($body, $contextSegment, $env);
     }
 
-    private function collectEachExtends(EachNode $node, Environment $env): void
+    private function collectIfExtends(IfNode $node, Environment $env, ?string $selector = null, string $currentContext = ''): void
+    {
+        $branch = $this->resolveIfBranch($node, $env);
+
+        $this->collectChildren($branch, $env, $selector, $currentContext, applyDeclarations: true);
+    }
+
+    private function collectEachExtends(EachNode $node, Environment $env, ?string $selector = null, string $currentContext = ''): void
     {
         $iterableValue = $this->valueEvaluator->evaluate($node->list, $env);
         $items         = $this->eachLoopBinder->items($iterableValue);
@@ -293,13 +814,13 @@ final readonly class ExtendsResolver
         foreach ($items as $item) {
             $this->eachLoopBinder->assign($node->variables, $item, $env);
 
-            $this->collectChildren($node->body, $env, applyDeclarations: true);
+            $this->collectChildren($node->body, $env, $selector, $currentContext, applyDeclarations: true);
         }
 
         $env->exitScope();
     }
 
-    private function collectForExtends(ForNode $node, Environment $env): void
+    private function collectForExtends(ForNode $node, Environment $env, ?string $selector = null, string $currentContext = ''): void
     {
         $from = (int) $this->toLoopNumber($node->from, $env);
         $to   = (int) $this->toLoopNumber($node->to, $env);
@@ -320,13 +841,13 @@ final readonly class ExtendsResolver
 
             $env->getCurrentScope()->setVariable($node->variable, new NumberNode($i));
 
-            $this->collectChildren($node->body, $env, applyDeclarations: true);
+            $this->collectChildren($node->body, $env, $selector, $currentContext, applyDeclarations: true);
         }
 
         $env->exitScope();
     }
 
-    private function collectWhileExtends(WhileNode $node, Environment $env): void
+    private function collectWhileExtends(WhileNode $node, Environment $env, ?string $selector = null, string $currentContext = ''): void
     {
         $iterations = 0;
 
@@ -335,7 +856,7 @@ final readonly class ExtendsResolver
 
             $this->assertIterationLimit($iterations, '@while');
 
-            $this->collectChildren($node->body, $env, applyDeclarations: true);
+            $this->collectChildren($node->body, $env, $selector, $currentContext, applyDeclarations: true);
         }
     }
 
@@ -345,7 +866,7 @@ final readonly class ExtendsResolver
     private function collectTransitiveExactExtenders(string $part): array
     {
         $result  = [];
-        $pending = array_reverse($this->ctx->outputState->extends->extendMap[$part] ?? []);
+        $pending = $this->orderedExtendSources($part);
         $seen    = [];
         $index   = 0;
 
@@ -360,7 +881,7 @@ final readonly class ExtendsResolver
 
             $result[] = $extender;
 
-            foreach (array_reverse($this->ctx->outputState->extends->extendMap[$extender] ?? []) as $nestedExtender) {
+            foreach ($this->orderedExtendSources($extender) as $nestedExtender) {
                 if (isset($seen[$nestedExtender])) {
                     continue;
                 }
@@ -370,6 +891,21 @@ final readonly class ExtendsResolver
         }
 
         return $result;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function orderedExtendSources(string $target): array
+    {
+        $extenders = $this->ctx->outputState->extends->extendMap[$target] ?? [];
+
+        usort(
+            $extenders,
+            static fn(array $left, array $right): int => $right['priority'] <=> $left['priority'],
+        );
+
+        return array_column($extenders, 'source');
     }
 
     /**
@@ -385,6 +921,10 @@ final readonly class ExtendsResolver
         while ($index < count($pending)) {
             $currentPart = $pending[$index++];
 
+            if (count($this->splitSelectorCompoundsByDescendant($currentPart)) > self::MAX_EXTEND_VARIANT_COMPOUNDS) {
+                continue;
+            }
+
             foreach ($this->getOrderedReplacementTargets($currentPart) as $target) {
                 foreach ($this->generateExtendedVariants($currentPart, $target) as $extendedPart) {
                     if ($extendedPart === '' || isset($seen[$extendedPart])) {
@@ -395,6 +935,10 @@ final readonly class ExtendsResolver
 
                     $result[]  = $extendedPart;
                     $pending[] = $extendedPart;
+
+                    if (count($result) >= self::MAX_EXTEND_VARIANTS) {
+                        return $result;
+                    }
                 }
             }
         }
@@ -409,7 +953,11 @@ final readonly class ExtendsResolver
     {
         $variants = [];
 
-        foreach (array_reverse($this->ctx->outputState->extends->extendMap[$target] ?? []) as $extender) {
+        foreach ($this->orderedExtendSources($target) as $extender) {
+            if ($extender === $target) {
+                continue;
+            }
+
             array_push($variants, ...$this->replaceExtendTargetInSelectorPart($part, $target, $extender));
         }
 
@@ -540,23 +1088,136 @@ final readonly class ExtendsResolver
         $superselectorCompounds = $this->splitSelectorCompoundsByDescendant($superselector);
         $selectorCompounds      = $this->splitSelectorCompoundsByDescendant($selector);
 
-        if (count($superselectorCompounds) !== count($selectorCompounds)) {
+        if (count($superselectorCompounds) > count($selectorCompounds)) {
             return false;
         }
 
-        $isStrict = false;
+        $superselectorPseudo = $this->lastCompoundPseudoElement($superselectorCompounds);
+        $selectorPseudo      = $this->lastCompoundPseudoElement($selectorCompounds);
 
-        foreach ($selectorCompounds as $i => $selectorCompound) {
-            if (! $this->tokenizer->doesCompoundSatisfy($selectorCompound, $superselectorCompounds[$i])) {
-                return false;
+        if ($superselectorPseudo !== $selectorPseudo) {
+            return false;
+        }
+
+        $index  = 0;
+        $length = count($selectorCompounds);
+
+        foreach ($superselectorCompounds as $superselectorCompound) {
+            $matched = false;
+
+            while ($index < $length) {
+                $selectorCompound = $selectorCompounds[$index];
+
+                if ($this->compoundContainsUniversal($selectorCompound)) {
+                    $matched = $this->universalSuperselectorMatch($selectorCompound, $superselectorCompound);
+                } else {
+                    $matched = $this->tokenizer->doesCompoundSatisfy($selectorCompound, $superselectorCompound);
+                }
+
+                if ($matched) {
+                    $index++;
+
+                    break;
+                }
+
+                $index++;
             }
 
-            if (! $this->tokenizer->doesCompoundSatisfy($superselectorCompounds[$i], $selectorCompound)) {
-                $isStrict = true;
+            if (! $matched) {
+                return false;
             }
         }
 
-        return $isStrict;
+        return true;
+    }
+
+    private function compoundContainsUniversal(string $compound): bool
+    {
+        foreach ($this->tokenizer->tokenizeCompound($compound) as $token) {
+            if ($this->isUniversalTypeToken($token)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isUniversalTypeToken(string $token): bool
+    {
+        return $token === '*'
+            || $token === '*|*'
+            || str_ends_with($token, '|*');
+    }
+
+    private function universalSuperselectorMatch(string $selectorCompound, string $superselectorCompound): bool
+    {
+        $selectorTokens      = $this->tokenizer->tokenizeCompound($selectorCompound);
+        $superselectorTokens = $this->tokenizer->tokenizeCompound($superselectorCompound);
+
+        $selectorUniversalNamespace = null;
+
+        foreach ($selectorTokens as $token) {
+            if ($this->isUniversalTypeToken($token)) {
+                $selectorUniversalNamespace = $this->typeTokenNamespace($token);
+            }
+        }
+
+        foreach ($superselectorTokens as $token) {
+            if ($this->isUniversalTypeToken($token)) {
+                $namespace = $this->typeTokenNamespace($token);
+
+                if (
+                    $namespace !== null
+                    && $namespace !== '*'
+                    && ($selectorUniversalNamespace === null || $selectorUniversalNamespace !== $namespace)
+                ) {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (! in_array($token, $selectorTokens, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function typeTokenNamespace(string $token): ?string
+    {
+        if ($token === '*') {
+            return null;
+        }
+
+        $separatorIndex = strpos($token, '|');
+
+        if ($separatorIndex === false) {
+            return null;
+        }
+
+        return substr($token, 0, $separatorIndex);
+    }
+
+    /**
+     * @param array<int, string> $compounds
+     */
+    private function lastCompoundPseudoElement(array $compounds): ?string
+    {
+        if ($compounds === []) {
+            return null;
+        }
+
+        $lastCompound = $compounds[count($compounds) - 1];
+
+        foreach ($this->tokenizer->tokenizeCompound($lastCompound) as $token) {
+            if ($this->tokenizer->isPseudoElementToken($token)) {
+                return $token;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -588,18 +1249,68 @@ final readonly class ExtendsResolver
     ): void {
         foreach ($children as $child) {
             if ($child instanceof ExtendNode && $selector !== null) {
-                foreach ($this->extractSimpleExtendTargetSelectors($child->selector) as $extendTarget) {
-                    $this->ctx->outputState->extends->pendingExtends[] = [
-                        'target'  => $extendTarget,
-                        'source'  => $selector,
-                        'context' => $currentContext,
-                    ];
+                $extendTargetSelector = $this->text->interpolateText($child->selector, $env);
+
+                $state = $this->ctx->outputState->extends;
+                $state->extendSequence++;
+
+                $boxId = $state->ruleStack !== [] ? $state->ruleStack[count($state->ruleStack) - 1] : null;
+
+                foreach ($this->extractSimpleExtendTargetSelectors($extendTargetSelector) as $extendTarget) {
+                    if ($boxId !== null) {
+                        $state->events[] = [
+                            'type'     => 'extend',
+                            'boxId'    => $boxId,
+                            'target'   => $extendTarget,
+                            'context'  => $currentContext,
+                            'optional' => $child->optional,
+                            'priority' => $state->extendSequence,
+                        ];
+                    }
+
+                    foreach ($this->splitTopLevelSelectorList($selector) as $sourcePart) {
+                        if ($sourcePart === '') {
+                            continue;
+                        }
+
+                        $state->pendingExtends[] = [
+                            'target'   => $extendTarget,
+                            'source'   => $sourcePart,
+                            'context'  => $currentContext,
+                            'optional' => $child->optional,
+                            'priority' => $state->extendSequence,
+                        ];
+                    }
                 }
 
                 continue;
             }
 
             if ($applyDeclarations && $this->variableDeclarationApplier->apply($child, $env)) {
+                continue;
+            }
+
+            if ($child instanceof IfNode) {
+                $this->collectIfExtends($child, $env, $selector, $currentContext);
+
+                continue;
+            }
+
+            if ($child instanceof EachNode) {
+                $this->collectEachExtends($child, $env, $selector, $currentContext);
+
+                continue;
+            }
+
+            if ($child instanceof ForNode) {
+                $this->collectForExtends($child, $env, $selector, $currentContext);
+
+                continue;
+            }
+
+            if ($child instanceof WhileNode) {
+                $this->collectWhileExtends($child, $env, $selector, $currentContext);
+
                 continue;
             }
 
@@ -723,23 +1434,17 @@ final readonly class ExtendsResolver
      */
     private function replaceExtendTargetInStructuredSelectorPart(string $part, string $target, string $extender): ?array
     {
-        if (
-            $this->tokenizer->hasUnsupportedTopLevelCombinator($part)
-            || $this->tokenizer->hasUnsupportedTopLevelCombinator($target)
-            || $this->tokenizer->hasUnsupportedTopLevelCombinator($extender)
-        ) {
+        $targetTokens = $this->tokenizeSelectorCompound($target);
+
+        if ($targetTokens === []) {
             return null;
         }
 
-        $targetTokens      = $this->tokenizeSelectorCompound($target);
-        $partCompounds     = $this->splitSelectorCompoundsByDescendant($part);
-        $extenderCompounds = $this->splitSelectorCompoundsByDescendant($extender);
+        if ($this->tokenizer->hasUnsupportedTopLevelCombinator($extender)) {
+            return null;
+        }
 
-        return $this->tokenizer->replaceExtendTargetInStructuredSelector(
-            $partCompounds,
-            $targetTokens,
-            $extenderCompounds,
-        );
+        return $this->tokenizer->weaveExtendedSelector($part, $target, $extender);
     }
 
     private function replaceExtendTargetInSelectorPartFallback(string $part, string $target, string $extender): ?string
@@ -828,18 +1533,22 @@ final readonly class ExtendsResolver
         }
     }
 
-    private function assertExtendTargetExists(string $target): void
+    private function assertExtendTargetExists(string $target, bool $optional = false): bool
     {
         if (isset($this->ctx->outputState->extends->selectorContexts[$target])) {
-            return;
+            return true;
         }
 
         if (! str_starts_with($target, '%')) {
-            return;
+            return true;
         }
 
         if (! NameNormalizer::isPrivate(substr($target, 1))) {
-            return;
+            return true;
+        }
+
+        if ($optional) {
+            return false;
         }
 
         throw new SassErrorException('The target selector was not found.');
@@ -851,5 +1560,25 @@ final readonly class ExtendsResolver
     private function splitTopLevelSelectorList(string $selector): array
     {
         return $this->tokenizer->splitAtTopLevel($selector, [','], handleQuotes: true);
+    }
+
+    private function combineNestedSelectorWithParent(string $selector, string $parentSelector): string
+    {
+        $selectorParts = $this->splitTopLevelSelectorList($selector);
+        $parentParts   = $this->splitTopLevelSelectorList($parentSelector);
+
+        if ($selectorParts === [] || $parentParts === []) {
+            return $selector;
+        }
+
+        $combined = [];
+
+        foreach ($parentParts as $parentPart) {
+            foreach ($selectorParts as $selectorPart) {
+                $combined[] = $parentPart . ' ' . $selectorPart;
+            }
+        }
+
+        return implode(', ', array_values(array_unique($combined)));
     }
 }

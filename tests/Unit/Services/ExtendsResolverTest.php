@@ -186,9 +186,11 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->pendingExtends)->toBe([
             [
-                'target'  => '%picked-target',
-                'source'  => '.picked',
-                'context' => '',
+                'target'   => '%picked-target',
+                'source'   => '.picked',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
             ],
         ]);
     });
@@ -211,9 +213,11 @@ describe('ExtendsResolver', function () {
             ->and($definition->line())->toBe(12)
             ->and($this->ctx->outputState->extends->pendingExtends)->toBe([
                 [
-                    'target'  => '%picked-target',
-                    'source'  => '.picked',
-                    'context' => '',
+                    'target'   => '%picked-target',
+                    'source'   => '.picked',
+                    'context'  => '',
+                    'optional' => false,
+                    'priority' => 1,
                 ],
             ]);
     });
@@ -230,9 +234,11 @@ describe('ExtendsResolver', function () {
         expect($this->ctx->outputState->extends->selectorContexts)->toHaveKey('.parent:hover')
             ->and($this->ctx->outputState->extends->pendingExtends)->toBe([
                 [
-                    'target'  => '%hover-target',
-                    'source'  => '.parent:hover',
-                    'context' => '',
+                    'target'   => '%hover-target',
+                    'source'   => '.parent:hover',
+                    'context'  => '',
+                    'optional' => false,
+                    'priority' => 1,
                 ],
             ]);
     });
@@ -263,14 +269,18 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->pendingExtends)->toBe([
             [
-                'target'  => '%grid-target',
-                'source'  => '.grid',
-                'context' => '@supports (display: grid)',
+                'target'   => '%grid-target',
+                'source'   => '.grid',
+                'context'  => '@supports (display: grid)',
+                'optional' => false,
+                'priority' => 1,
             ],
             [
-                'target'  => '%screen-target',
-                'source'  => '.screen',
-                'context' => '@media screen',
+                'target'   => '%screen-target',
+                'source'   => '.screen',
+                'context'  => '@media screen',
+                'optional' => false,
+                'priority' => 2,
             ],
         ]);
     });
@@ -361,14 +371,18 @@ describe('ExtendsResolver', function () {
         expect($state->assigned)->toBe(['first', 'second'])
             ->and($this->ctx->outputState->extends->pendingExtends)->toBe([
                 [
-                    'target'  => '%item-target',
-                    'source'  => '.item',
-                    'context' => '',
+                    'target'   => '%item-target',
+                    'source'   => '.item',
+                    'context'  => '',
+                    'optional' => false,
+                    'priority' => 1,
                 ],
                 [
-                    'target'  => '%item-target',
-                    'source'  => '.item',
-                    'context' => '',
+                    'target'   => '%item-target',
+                    'source'   => '.item',
+                    'context'  => '',
+                    'optional' => false,
+                    'priority' => 2,
                 ],
             ]);
     });
@@ -386,9 +400,11 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->pendingExtends)->toBe([
             [
-                'target'  => '%root-target',
-                'source'  => '.rooted',
-                'context' => '',
+                'target'   => '%root-target',
+                'source'   => '.rooted',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
             ],
         ]);
     });
@@ -430,9 +446,11 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->pendingExtends)->toBe([
             [
-                'target'  => '%target',
-                'source'  => '.source',
-                'context' => '',
+                'target'   => '%target',
+                'source'   => '.source',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
             ],
         ]);
     });
@@ -476,7 +494,7 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->selectorContexts)->toHaveKey('.foo')
             ->and($this->ctx->outputState->extends->pendingExtends)->toHaveCount(1)
-            ->and($this->ctx->outputState->extends->pendingExtends[0]['source'])->toBe('.foo,');
+            ->and($this->ctx->outputState->extends->pendingExtends[0]['source'])->toBe('.foo');
     });
 
     it('skips empty parts in applyExtendsToSelector', function () {
@@ -555,14 +573,18 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->pendingExtends)->toBe([
             [
-                'target'  => '%if-target',
-                'source'  => '.if-body',
-                'context' => '',
+                'target'   => '%if-target',
+                'source'   => '.if-body',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
             ],
             [
-                'target'  => '%else-target',
-                'source'  => '.else-body',
-                'context' => '',
+                'target'   => '%else-target',
+                'source'   => '.else-body',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 2,
             ],
         ]);
     });

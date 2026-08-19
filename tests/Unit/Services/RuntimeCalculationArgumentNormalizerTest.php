@@ -6,7 +6,7 @@ use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Services\RuntimeCalculationArgumentNormalizer;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('RuntimeCalculationArgumentNormalizer', function () {
     it('delegates calculation argument normalization to the runtime evaluation service', function () {

@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Style;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Output Formatting', function () {
     beforeEach(function () {

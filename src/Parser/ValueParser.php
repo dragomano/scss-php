@@ -428,6 +428,16 @@ final readonly class ValueParser implements
 
             if ($this->stream->is(TokenType::COMMA)) {
                 $this->stream->advance();
+
+                continue;
+            }
+
+            if ($this->stream->consume(TokenType::RBRACKET)) {
+                break;
+            }
+
+            if ($value === null) {
+                break;
             }
         }
 

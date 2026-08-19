@@ -13,7 +13,6 @@ use function is_nan;
 use function round;
 use function rtrim;
 use function str_contains;
-use function str_ends_with;
 use function str_repeat;
 use function str_replace;
 use function str_starts_with;
@@ -104,30 +103,20 @@ final class SassNumber extends AbstractSassValue
         $mantissa = $negative ? substr($text, 1, $ePos - 1) : substr($text, 0, $ePos);
         $exponent = (int) substr($text, $ePos + 1);
 
-        $dotPos = strpos($mantissa, '.');
-        $digits = $dotPos === false
-            ? $mantissa
-            : substr($mantissa, 0, $dotPos) . substr($mantissa, $dotPos + 1);
+        $dotPos = (int) strpos($mantissa, '.');
+        $digits = substr($mantissa, 0, $dotPos) . substr($mantissa, $dotPos + 1);
 
-        $decimalIndex = ($dotPos === false ? strlen($mantissa) : $dotPos) + $exponent;
+        $decimalIndex = $dotPos + $exponent;
 
         if ($decimalIndex <= 0) {
             return ($negative ? '-' : '') . '0.' . str_repeat('0', -$decimalIndex) . $digits;
         }
 
-        if ($decimalIndex >= strlen($digits)) {
-            return $digits . str_repeat('0', $decimalIndex - strlen($digits));
-        }
-
-        return substr($digits, 0, $decimalIndex) . '.' . substr($digits, $decimalIndex);
+        return $digits . str_repeat('0', $decimalIndex - strlen($digits));
     }
 
     private function roundDecimalString(string $text): string
     {
-        if (str_ends_with($text, '.0')) {
-            return substr($text, 0, -2);
-        }
-
         $dot = strpos($text, '.');
 
         if ($dot === false) {

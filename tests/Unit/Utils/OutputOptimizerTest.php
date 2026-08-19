@@ -11,9 +11,9 @@ beforeEach(function () {
 });
 
 it('adds charset for non ascii css', function () {
-    $source = /** @lang text */ <<<'CSS'
+    $source = /** @lang text */ <<<'SCSS'
     .test { content: "панда"; }
-    CSS;
+    SCSS;
 
     $result = $this->optimizer->optimize($source, new CompilerOptions());
 
@@ -21,9 +21,9 @@ it('adds charset for non ascii css', function () {
 });
 
 it('keeps ascii css without charset prefix', function () {
-    $source = /** @lang text */ <<<'CSS'
+    $source = /** @lang text */ <<<'SCSS'
     .test { color: red; }
-    CSS;
+    SCSS;
 
     $result = $this->optimizer->optimize($source, new CompilerOptions());
 
@@ -32,10 +32,10 @@ it('keeps ascii css without charset prefix', function () {
 
 it('adds blank lines between root rules in expanded style', function () {
     $options = new CompilerOptions(style: Style::EXPANDED);
-    $source  = /** @lang text */ <<<'CSS'
+    $source  = /** @lang text */ <<<'SCSS'
     .first { width: 1px; }
     .second { width: 2px; }
-    CSS;
+    SCSS;
 
     $expected = /** @lang text */ <<<'CSS'
     .first { width: 1px; }
@@ -50,9 +50,9 @@ it('adds blank lines between root rules in expanded style', function () {
 
 it('compresses css output when style is compressed', function () {
     $options = new CompilerOptions(style: Style::COMPRESSED);
-    $source  = /** @lang text */ <<<'CSS'
+    $source  = /** @lang text */ <<<'SCSS'
     /* comment */ .test { width: 10px; opacity: 0.7; } /*# sourceMappingURL=style.css.map */
-    CSS;
+    SCSS;
 
     $result = $this->optimizer->optimize($source, $options);
 
@@ -61,9 +61,9 @@ it('compresses css output when style is compressed', function () {
 
 it('removes spaces around multiplication in math expressions when compressed', function () {
     $options = new CompilerOptions(style: Style::COMPRESSED);
-    $source  = /** @lang text */ <<<'CSS'
+    $source  = /** @lang text */ <<<'SCSS'
     .test { padding: max(8px, min(10px, 2vw) * 2); }
-    CSS;
+    SCSS;
 
     $result = $this->optimizer->optimize($source, $options);
 
@@ -72,9 +72,9 @@ it('removes spaces around multiplication in math expressions when compressed', f
 
 it('keeps preserved comments without inserting extra spaces when compressed', function () {
     $options = new CompilerOptions(style: Style::COMPRESSED);
-    $source  = /** @lang text */ <<<'CSS'
+    $source  = /** @lang text */ <<<'SCSS'
     /*! one */ /*! two */ .test { width: 1px; }
-    CSS;
+    SCSS;
 
     $result = $this->optimizer->optimize($source, $options);
 
@@ -83,9 +83,9 @@ it('keeps preserved comments without inserting extra spaces when compressed', fu
 
 it('removes spaces between adjacent function calls when compressed', function () {
     $options = new CompilerOptions(style: Style::COMPRESSED);
-    $source  = /** @lang text */ <<<'CSS'
+    $source  = /** @lang text */ <<<'SCSS'
     .test { filter: hue-rotate(120deg) saturate(113%); }
-    CSS;
+    SCSS;
 
     $result = $this->optimizer->optimize($source, $options);
 
@@ -94,9 +94,9 @@ it('removes spaces between adjacent function calls when compressed', function ()
 
 it('preserves raw rgba literals in compressed output', function () {
     $options = new CompilerOptions(style: Style::COMPRESSED);
-    $source  = /** @lang text */ <<<'CSS'
+    $source  = /** @lang text */ <<<'SCSS'
     .test { box-shadow: 0 2px 5px rgba(0,0,0,.3); color: rgba(255,255,255,1); }
-    CSS;
+    SCSS;
 
     $result = $this->optimizer->optimize($source, $options);
 
@@ -105,50 +105,59 @@ it('preserves raw rgba literals in compressed output', function () {
 
 it('shortens hue-rotate zero angle in compressed output', function () {
     $options = new CompilerOptions(style: Style::COMPRESSED);
-    $source  = /** @lang text */ <<<'CSS'
+    $source  = /** @lang text */ <<<'SCSS'
     .test { filter: hue-rotate(0deg) saturate(100%); }
-    CSS;
+    SCSS;
 
     $result = $this->optimizer->optimize($source, $options);
 
     expect($result)->toBe('.test{filter:hue-rotate(0)saturate(100%)}');
 });
 
-it('skips blank lines in input in expanded style', function () {
+it('keeps blank lines in input in expanded style', function () {
     $options = new CompilerOptions(style: Style::EXPANDED);
-    $source  = ".a { width: 1px; }\n\n.b { width: 2px; }";
-    $result  = $this->optimizer->optimize($source, $options);
+    $source  = /** @lang text */ <<<'SCSS'
+    .a { width: 1px; }
 
-    expect($result)->toBe(".a { width: 1px; }\n\n.b { width: 2px; }");
+    .b { width: 2px; }
+    SCSS;
+
+    $result = $this->optimizer->optimize($source, $options);
+
+    expect($result)->toBe($source);
 });
 
-it('skips whitespace-only lines in input in expanded style', function () {
-    $options = new CompilerOptions(style: Style::EXPANDED);
-    $source  = ".a { width: 1px; }\n   \n.b { width: 2px; }";
-    $result  = $this->optimizer->optimize($source, $options);
+it('adds blank lines inside nested blocks', function () {
+    $options  = new CompilerOptions(style: Style::EXPANDED);
+    $source   = /** @lang text */ <<<'SCSS'
+    .a {
+      .b { width: 1px; }
+    }
+    .c { width: 2px; }
+    SCSS;
 
-    expect($result)->toBe(".a { width: 1px; }\n\n.b { width: 2px; }");
-});
+    $expected = /** @lang text */ <<<'CSS'
+    .a .b { width: 1px; }
 
-it('does not insert blank line after root-level line without closing braces', function () {
-    $options = new CompilerOptions(style: Style::EXPANDED);
-    $source  = ".a { width: 1px; }\nwidth: 2px;\n.b { width: 3px; }";
-    $result  = $this->optimizer->optimize($source, $options);
+    .c { width: 2px; }
+    CSS;
 
-    expect($result)->toBe(".a { width: 1px; }\n\nwidth: 2px;\n.b { width: 3px; }");
-});
+    $result = $this->optimizer->optimize($source, $options);
 
-it('does not insert blank line inside nested blocks', function () {
-    $options = new CompilerOptions(style: Style::EXPANDED);
-    $source  = ".a {\n  .b { width: 1px; }\n}\n.c { width: 2px; }";
-    $result  = $this->optimizer->optimize($source, $options);
-
-    expect($result)->toBe(".a {\n  .b { width: 1px; }\n}\n\n.c { width: 2px; }");
+    expect($result)->toBe($expected);
 });
 
 it('preserves css content after charset declaration', function () {
-    $source = '.test { content: "панда"; }';
+    $source   = /** @lang text */ <<<'SCSS'
+    .test { content: "панда"; }
+    SCSS;
+
+    $expected = /** @lang text */ <<<'CSS'
+    @charset "UTF-8";
+    .test { content: "панда"; }
+    CSS;
+
     $result = $this->optimizer->optimize($source, new CompilerOptions());
 
-    expect($result)->toBe("@charset \"UTF-8\";\n.test { content: \"панда\"; }");
+    expect($result)->toBe($expected);
 });

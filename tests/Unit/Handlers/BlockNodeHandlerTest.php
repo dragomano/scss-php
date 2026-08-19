@@ -17,7 +17,7 @@ use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Style;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('handles local mixin includes', function () {
     $runtime = RuntimeFactory::createRuntime();

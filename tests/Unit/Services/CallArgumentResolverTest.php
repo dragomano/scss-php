@@ -14,7 +14,7 @@ use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\CallArgumentResolver;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('CallArgumentResolver', function () {
     beforeEach(function () {

@@ -100,3 +100,10 @@ it('returns null when divide cancels all parts', function () {
 it('returns false when only one unit is known in compatible check', function () {
     expect(UnitConverter::compatible('unknown', 'px'))->toBeFalse();
 })->covers(UnitConverter::class);
+
+it('applies conversion factor when cancelling compatible units', function () {
+    [$unit, $factor] = UnitConverter::multiplyWithConversion('px/in', 'cm');
+
+    expect($unit)->toBe('cm')
+        ->and($factor)->toEqualWithDelta(1.0 / 96.0, 0.000001);
+})->covers(UnitConverter::class);

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests;
+namespace Tests\Support;
 
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;

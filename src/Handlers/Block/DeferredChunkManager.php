@@ -79,7 +79,7 @@ final readonly class DeferredChunkManager
 
         foreach ($trailingRootChunks as $chunk) {
             if ($result !== '') {
-                $this->render->appendChunk($result, $segmentSeparator);
+                $this->render->appendChunk($result, $segmentSeparator . "\n");
             }
 
             $this->appendResolvedChunk($result, $chunk);

@@ -12,7 +12,7 @@ use Bugo\SCSS\Utils\DeferredChunk;
 use Bugo\SCSS\Utils\SourceMapMapping;
 use Bugo\SCSS\Utils\SourceMapPosition;
 use Bugo\SCSS\Visitor;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('renders indentation and trims trailing newlines', function () {
     $runtime = RuntimeFactory::createRuntime();

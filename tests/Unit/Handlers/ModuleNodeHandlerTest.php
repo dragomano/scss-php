@@ -9,7 +9,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\Services\Module;
 use Bugo\SCSS\States\ModuleState;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('handles @import, @forward and @use css emission', function () {
     $runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);

@@ -7,7 +7,7 @@ use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Syntax;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Compiler', function () {
     beforeEach(function () {

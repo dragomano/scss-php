@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Parser;
 
+use Bugo\SCSS\Lexer\Token;
 use Bugo\SCSS\Lexer\TokenStream;
 use Bugo\SCSS\Lexer\TokenType;
 use Bugo\SCSS\Nodes\AstNode;
@@ -130,11 +131,22 @@ final readonly class DirectiveParser
     {
         $this->stream->skipWhitespace();
 
-        $selector = StreamUtils::readRawUntilToken($this->stream, TokenType::SEMICOLON);
+        $selector = StreamUtils::readRawUntil(
+            $this->stream,
+            fn(Token $token): bool => $token->type === TokenType::SEMICOLON || $token->type === TokenType::RBRACE,
+        );
 
         StreamUtils::consumeSemicolonFromStream($this->stream);
 
-        return new ExtendNode(trim($selector));
+        $selector = trim($selector);
+        $optional = false;
+
+        if (str_ends_with($selector, '!optional')) {
+            $optional = true;
+            $selector = trim(substr($selector, 0, -strlen('!optional')));
+        }
+
+        return new ExtendNode($selector, $optional);
     }
 
     public function parseAtRootDirective(): AtRootNode

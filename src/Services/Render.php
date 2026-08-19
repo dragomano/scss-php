@@ -46,25 +46,7 @@ final readonly class Render
 
     public function optimize(string $compiled): string
     {
-        $optimized = $this->ctx->optimizer->optimize($compiled, $this->options);
-
-        if (
-            $optimized !== $compiled
-            && $this->sourceMapHelper->shouldRemapMappingsAfterOptimization(
-                $this->options->sourceMapFile,
-                count($this->ctx->sourceMapState->mappings),
-                $compiled,
-                $optimized,
-            )
-        ) {
-            $this->ctx->sourceMapState->mappings = $this->sourceMapHelper->remapMappingsAfterOptimization(
-                $this->ctx->sourceMapState->mappings,
-                $compiled,
-                $optimized,
-            );
-        }
-
-        return $optimized;
+        return $this->ctx->optimizer->optimize($compiled, $this->options);
     }
 
     public function appendChunk(string &$output, string $chunk, ?Visitable $origin = null): void

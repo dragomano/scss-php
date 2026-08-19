@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Loader;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -124,6 +124,61 @@ describe('Compiler', function () {
 
             expect(fn() => $this->compiler->compileString($source))
                 ->toThrow(SassErrorException::class, 'Complex selectors may not be extended');
+        });
+
+        it('supports @extend without trailing semicolon', function () {
+            $source = <<<'SCSS'
+            .base {
+              color: red;
+            }
+
+            .alert {
+              @extend .base
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .base, .alert {
+              color: red;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('silently ignores missing target when @extend is optional', function () {
+            $source = <<<'SCSS'
+            .base {
+              color: red;
+            }
+
+            .alert {
+              @extend .missing !optional;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .base {
+              color: red;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('still throws for a missing private placeholder target', function () {
+            $source = <<<'SCSS'
+            .alert {
+              @extend %-missing;
+            }
+            SCSS;
+
+            expect(fn() => $this->compiler->compileString($source))
+                ->toThrow(SassErrorException::class, 'The target selector was not found.');
         });
 
         it('throws when @extend crosses media query boundaries', function () {

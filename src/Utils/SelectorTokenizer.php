@@ -6,8 +6,13 @@ namespace Bugo\SCSS\Utils;
 
 use function array_fill_keys;
 use function array_merge;
+use function array_pop;
+use function array_reverse;
+use function array_shift;
+use function array_slice;
 use function array_splice;
 use function array_unique;
+use function array_unshift;
 use function array_values;
 use function count;
 use function ctype_alnum;
@@ -59,6 +64,14 @@ final readonly class SelectorTokenizer
             }
 
             if ($char === '*') {
+                if ($index + 1 < $length && $compound[$index + 1] === '|') {
+                    $index++;
+
+                    $tokens[] = $this->readNamespacedType($compound, $index, '*');
+
+                    continue;
+                }
+
                 $tokens[] = '*';
 
                 $index++;
@@ -66,8 +79,20 @@ final readonly class SelectorTokenizer
                 continue;
             }
 
+            if ($char === '|') {
+                $tokens[] = $this->readNamespacedType($compound, $index, '');
+
+                continue;
+            }
+
             if ($this->isIdentifierChar($char)) {
-                $tokens[] = $this->readIdentifier($compound, $index);
+                $token = $this->readIdentifier($compound, $index);
+
+                if ($index < $length && $compound[$index] === '|') {
+                    $token = $this->readNamespacedType($compound, $index, $token);
+                }
+
+                $tokens[] = $token;
 
                 continue;
             }
@@ -135,6 +160,10 @@ final readonly class SelectorTokenizer
             return null;
         }
 
+        if ($remainingCompound === '') {
+            return $replacement;
+        }
+
         if ($this->unifyCompounds($replacement, $remainingCompound) === null) {
             return null;
         }
@@ -156,7 +185,21 @@ final readonly class SelectorTokenizer
                 }
             }
 
+            if ($this->shouldNormalizePseudoOrder($orderedTokens)) {
+                return implode('', $this->orderTokens($orderedTokens));
+            }
+
             return implode('', $orderedTokens);
+        }
+
+        if ($this->extractTypeToken($replacementTokens) !== '') {
+            $unified = $this->unifyCompounds($replacement, $remainingCompound);
+
+            if ($unified === null) {
+                return null;
+            }
+
+            return $unified;
         }
 
         foreach ($remainingTokens as $token) {
@@ -190,14 +233,14 @@ final readonly class SelectorTokenizer
         $leftType  = $this->extractTypeToken($leftTokens);
         $rightType = $this->extractTypeToken($rightTokens);
 
-        if (
-            $leftType !== ''
-            && $leftType !== '*'
-            && $rightType !== ''
-            && $rightType !== '*'
-            && $leftType !== $rightType
-        ) {
-            return null;
+        if ($leftType !== '' && $rightType !== '') {
+            $resolvedType = $this->unifyTypeTokens($leftType, $rightType);
+
+            if ($resolvedType === null) {
+                return null;
+            }
+        } else {
+            $resolvedType = $leftType !== '' ? $leftType : $rightType;
         }
 
         $leftId  = $this->extractIdToken($leftTokens);
@@ -207,10 +250,8 @@ final readonly class SelectorTokenizer
             return null;
         }
 
-        $resolvedType = $leftType !== '' && $leftType !== '*' ? $leftType : $rightType;
-
         $result = [];
-        if ($resolvedType !== '' && $resolvedType !== '*') {
+        if ($resolvedType !== '' && ! $this->isUniversalTypeToken($resolvedType)) {
             $result[] = $resolvedType;
         }
 
@@ -218,7 +259,8 @@ final readonly class SelectorTokenizer
 
         foreach ($leftTokens as $token) {
             if (
-                in_array($token, ['', '*', $leftType], true)
+                in_array($token, ['', '*', '*|*'], true)
+                || $token === $leftType
                 || in_array($token, $mergedNonTypeTokens, true)
             ) {
                 continue;
@@ -229,7 +271,8 @@ final readonly class SelectorTokenizer
 
         foreach ($rightTokens as $token) {
             if (
-                in_array($token, ['', '*', $rightType], true)
+                in_array($token, ['', '*', '*|*'], true)
+                || $token === $rightType
                 || in_array($token, $mergedNonTypeTokens, true)
             ) {
                 continue;
@@ -245,6 +288,10 @@ final readonly class SelectorTokenizer
         }
 
         if ($result === []) {
+            if ($resolvedType !== '') {
+                return $resolvedType;
+            }
+
             return '';
         }
 
@@ -267,8 +314,8 @@ final readonly class SelectorTokenizer
         $requiredType  = $this->extractTypeToken($requiredTokens);
         $candidateType = $this->extractTypeToken($candidateTokens);
 
-        if ($requiredType !== '' && $requiredType !== '*') {
-            if ($candidateType === '' || $candidateType === '*' || $candidateType !== $requiredType) {
+        if ($requiredType !== '' && ! $this->isUniversalTypeToken($requiredType)) {
+            if (! $this->doesTypeSatisfy($candidateType, $requiredType)) {
                 return false;
             }
         }
@@ -276,14 +323,26 @@ final readonly class SelectorTokenizer
         /** @var array<string, true> $candidateTokenSet */
         $candidateTokenSet = array_fill_keys($candidateTokens, true);
 
+        $candidateIsUniversal = $this->isUniversalTypeToken($candidateType);
+
         foreach ($requiredTokens as $requiredToken) {
-            if (in_array($requiredToken, ['', '*', $requiredType], true)) {
+            if (in_array($requiredToken, ['', '*', '*|*', $requiredType], true)) {
                 continue;
             }
 
-            if (! isset($candidateTokenSet[$requiredToken])) {
+            if (isset($candidateTokenSet[$requiredToken])) {
+                continue;
+            }
+
+            if ($this->isPseudoElementToken($requiredToken)) {
                 return false;
             }
+
+            if ($candidateIsUniversal) {
+                continue;
+            }
+
+            return false;
         }
 
         return true;
@@ -512,13 +571,37 @@ final readonly class SelectorTokenizer
      * @param array<int, string> $tokens
      * @return array<int, string>
      */
+    public function normalizeSelectorAttributes(string $selector): string
+    {
+        if (! str_contains($selector, '[')) {
+            return $selector;
+        }
+
+        $result = '';
+        $length = strlen($selector);
+        $index  = 0;
+
+        while ($index < $length) {
+            if ($selector[$index] === '[') {
+                $result .= $this->normalizeAttributeToken($this->readBracketGroup($selector, $index, '[', ']'));
+
+                continue;
+            }
+
+            $result .= $selector[$index];
+            $index++;
+        }
+
+        return $result;
+    }
+
     public function orderTokens(array $tokens): array
     {
+        $types                = [];
         $ids                  = [];
         $classesAndAttributes = [];
         $pseudoClasses        = [];
         $pseudoElements       = [];
-        $other                = [];
 
         foreach ($tokens as $token) {
             if ($token === '') {
@@ -538,7 +621,7 @@ final readonly class SelectorTokenizer
             }
 
             if ($token[0] === ':') {
-                if (str_starts_with($token, '::')) {
+                if ($this->isPseudoElementToken($token)) {
                     $pseudoElements[] = $token;
                 } else {
                     $pseudoClasses[] = $token;
@@ -547,10 +630,10 @@ final readonly class SelectorTokenizer
                 continue;
             }
 
-            $other[] = $token;
+            $types[] = $token;
         }
 
-        return array_merge($ids, $classesAndAttributes, $pseudoClasses, $pseudoElements, $other);
+        return array_merge($types, $ids, $classesAndAttributes, $pseudoClasses, $pseudoElements);
     }
 
     /**
@@ -688,6 +771,148 @@ final readonly class SelectorTokenizer
     }
 
     /**
+     * @return array<int, string>
+     */
+    public function weaveExtendedSelector(string $part, string $target, string $extender): array
+    {
+        if (
+            $this->hasBogusTopLevelCombinatorSequence($part)
+            || $this->hasBogusTopLevelCombinatorSequence($target)
+            || $this->hasBogusTopLevelCombinatorSequence($extender)
+        ) {
+            return [];
+        }
+
+        $partComponents     = $this->parseComplexComponents($part);
+        $extenderComponents = $this->parseComplexComponents($extender);
+
+        if ($partComponents === [] || $extenderComponents === []) {
+            return [];
+        }
+
+        $partLeading     = $partComponents[0]['lead'] ?? '';
+        $extenderLeading = $extenderComponents[0]['lead'] ?? '';
+
+        if ($partLeading !== '' && $extenderLeading !== '' && $partLeading !== $extenderLeading) {
+            return [];
+        }
+
+        $leading = $partLeading !== '' ? $partLeading : $extenderLeading;
+
+        $targetTokens = $this->tokenizeCompound($target);
+
+        $replacementSubject = $extenderComponents[count($extenderComponents) - 1];
+
+        $multiCompoundExtender = count($extenderComponents) > 1;
+
+        $resolved = [];
+
+        if (! $multiCompoundExtender) {
+            $replaceable = [];
+
+            foreach ($partComponents as $index => $component) {
+                if ($this->removeTokensFromCompound($component['sel'], $targetTokens) !== null) {
+                    $replaceable[] = $index;
+                }
+            }
+
+            $positionCount = count($replaceable);
+
+            for ($size = 1; $size <= $positionCount; $size++) {
+                $subsets = [];
+
+                $this->collectCombinations($replaceable, $size, 0, [], $subsets);
+
+                foreach ($subsets as $subset) {
+                    $candidate = [];
+                    $valid     = true;
+
+                    foreach ($partComponents as $index => $component) {
+                        if (in_array($index, $subset, true)) {
+                            $unifiedSubject = $this->replaceTokensInCompound(
+                                $component['sel'],
+                                $targetTokens,
+                                $replacementSubject['sel'],
+                            );
+
+                            if ($unifiedSubject === null) {
+                                $valid = false;
+
+                                break;
+                            }
+
+                            $candidate[] = [
+                                'sel'  => $unifiedSubject,
+                                'comb' => $component['comb'],
+                            ];
+                        } else {
+                            $candidate[] = $component;
+                        }
+                    }
+
+                    if (! $valid) {
+                        continue;
+                    }
+
+                    if ($leading !== '' && ! isset($candidate[0]['lead'])) {
+                        $candidate[0]['lead'] = $leading;
+                    }
+
+                    $resolved[] = $this->complexComponentsToString($candidate);
+                }
+            }
+
+            return array_values(array_unique($resolved));
+        }
+
+        foreach ($partComponents as $index => $component) {
+            $remainingCompound = $this->removeTokensFromCompound($component['sel'], $targetTokens);
+
+            if ($remainingCompound === null) {
+                continue;
+            }
+
+            $unifiedSubject = $this->unifyCompounds($remainingCompound, $replacementSubject['sel']);
+
+            if ($unifiedSubject === null) {
+                continue;
+            }
+
+            $prefix = array_slice($partComponents, 0, $index);
+            $suffix = array_slice($partComponents, $index + 1);
+
+            $wovenPrefixes = $this->weaveParents($prefix, $extenderComponents) ?? [];
+
+            foreach ($wovenPrefixes as $wovenPrefix) {
+                $candidate = $wovenPrefix;
+
+                $candidate[] = [
+                    'sel'  => $unifiedSubject,
+                    'comb' => $suffix === [] ? '' : $component['comb'],
+                ];
+
+                foreach ($suffix as $suffixComponent) {
+                    $candidate[] = $suffixComponent;
+                }
+
+                if ($leading !== '' && ! isset($candidate[0]['lead'])) {
+                    $candidate[0]['lead'] = $leading;
+                }
+
+                $resolved[] = $this->complexComponentsToString($candidate);
+            }
+        }
+
+        return array_values(array_unique($resolved));
+    }
+
+    public function isPseudoElementToken(string $token): bool
+    {
+        return str_starts_with($token, '::')
+            || in_array($token, [':before', ':after', ':first-line', ':first-letter'], true);
+    }
+
+    /**
      * @param array<int, string> $splitChars
      * @return array<int, string>
      */
@@ -776,6 +1001,335 @@ final readonly class SelectorTokenizer
         return $result;
     }
 
+    /**
+     * @return array<int, array{sel: string, comb: string}>
+     */
+    public function parseComplexComponents(string $complex): array
+    {
+        $items        = [];
+        $buffer       = '';
+        $length       = strlen($complex);
+        $parenDepth   = 0;
+        $bracketDepth = 0;
+        $quote        = '';
+
+        $flush = function () use (&$items, &$buffer): void {
+            if ($buffer !== '') {
+                $items[] = $buffer;
+                $buffer = '';
+            }
+        };
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $complex[$i];
+
+            if ($quote !== '') {
+                $buffer .= $char;
+
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+                $buffer .= $char;
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $bracketDepth++;
+                $buffer .= $char;
+
+                continue;
+            }
+
+            if ($char === ']' && $bracketDepth > 0) {
+                $bracketDepth--;
+                $buffer .= $char;
+
+                continue;
+            }
+
+            if ($char === '(') {
+                $parenDepth++;
+                $buffer .= $char;
+
+                continue;
+            }
+
+            if ($char === ')' && $parenDepth > 0) {
+                $parenDepth--;
+                $buffer .= $char;
+
+                continue;
+            }
+
+            if ($parenDepth !== 0 || $bracketDepth !== 0) {
+                $buffer .= $char;
+
+                continue;
+            }
+
+            if ($char === '>' || $char === '+' || $char === '~') {
+                $flush();
+
+                $items[] = $char;
+
+                continue;
+            }
+
+            if ($char === ' ') {
+                $flush();
+
+                continue;
+            }
+
+            $buffer .= $char;
+        }
+
+        $flush();
+
+        $components = [];
+        $count      = count($items);
+        $leading    = '';
+
+        if ($count > 0 && in_array($items[0], ['>', '+', '~'], true)) {
+            $leading = $items[0];
+        }
+
+        for ($i = 0; $i < $count; $i++) {
+            if (in_array($items[$i], ['>', '+', '~'], true)) {
+                continue;
+            }
+
+            $next = $i + 1 < $count ? $items[$i + 1] : '';
+            $comb = in_array($next, ['>', '+', '~'], true) ? $next : '';
+
+            $component = ['sel' => $items[$i], 'comb' => $comb];
+
+            if ($leading !== '' && $components === []) {
+                $component['lead'] = $leading;
+            }
+
+            $components[] = $component;
+        }
+
+        return $components;
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string}> $components
+     */
+    public function complexComponentsToString(array $components): string
+    {
+        $result = '';
+        $count  = count($components);
+
+        foreach ($components as $i => $component) {
+            if ($i === 0 && isset($component['lead'])) {
+                $result .= $component['lead'] . ' ';
+            }
+
+            $result .= $component['sel'];
+
+            if ($i < $count - 1) {
+                $result .= $component['comb'] === '' ? ' ' : ' ' . $component['comb'] . ' ';
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, array<int, array{sel: string, comb: string}>> $complexes
+     * @return array<int, array<int, array{sel: string, comb: string}>>
+     */
+    public function weave(array $complexes): array
+    {
+        if ($complexes === []) {
+            return [];
+        }
+
+        $prefixes = [$complexes[0]];
+        $count    = count($complexes);
+
+        for ($index = 1; $index < $count; $index++) {
+            $complex = $complexes[$index];
+
+            if (count($complex) === 1) {
+                foreach ($prefixes as $i => $prefix) {
+                    $prefixes[$i] = [...$prefix, $complex[0]];
+                }
+
+                continue;
+            }
+
+            $newPrefixes = [];
+
+            foreach ($prefixes as $prefix) {
+                foreach ($this->weaveParents($prefix, $complex) ?? [] as $parentPrefix) {
+                    $newPrefixes[] = [...$parentPrefix, $complex[count($complex) - 1]];
+                }
+            }
+
+            $prefixes = $newPrefixes;
+        }
+
+        return $prefixes;
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string}> $prefix
+     * @param array<int, array{sel: string, comb: string}> $base
+     * @return array<int, array<int, array{sel: string, comb: string}>>|null
+     */
+    public function weaveParents(array $prefix, array $base): ?array
+    {
+        $queue1 = $prefix;
+        $queue2 = $base === [] ? [] : array_slice($base, 0, -1);
+
+        $rootish1 = $this->firstIfRootish($queue1);
+        $rootish2 = $this->firstIfRootish($queue2);
+
+        if ($rootish1 !== null && $rootish2 !== null) {
+            $rootish = $this->unifyCompounds($rootish1['sel'], $rootish2['sel']);
+
+            if ($rootish === null) {
+                return null;
+            }
+
+            array_unshift($queue1, ['sel' => $rootish, 'comb' => $rootish1['comb']]);
+            array_unshift($queue2, ['sel' => $rootish, 'comb' => $rootish2['comb']]);
+        } elseif ($rootish1 !== null || $rootish2 !== null) {
+            $rootish = $rootish1 ?? $rootish2;
+
+            array_unshift($queue1, $rootish);
+            array_unshift($queue2, $rootish);
+        }
+
+        $trailingCombinators = $this->mergeTrailingCombinators($queue1, $queue2);
+
+        if ($trailingCombinators === null) {
+            return null;
+        }
+
+        $groups1 = $this->groupSelectors($queue1);
+        $groups2 = $this->groupSelectors($queue2);
+
+        $lcs = $this->longestCommonSubsequence(
+            $groups2,
+            $groups1,
+            function (array $group1, array $group2): ?array {
+                if ($group1 === $group2) {
+                    return $group1;
+                }
+
+                if ($this->complexIsParentSuperselector($group1, $group2)) {
+                    return $group2;
+                }
+
+                if ($this->complexIsParentSuperselector($group2, $group1)) {
+                    return $group1;
+                }
+
+                if (! $this->mustUnify($group1, $group2)) {
+                    return null;
+                }
+
+                return $this->unifyGroups($group1, $group2);
+            },
+        );
+
+        $choices = [];
+
+        foreach ($lcs as $group) {
+            $options = [];
+
+            foreach ($this->chunks(
+                $groups1,
+                $groups2,
+                fn(array $queue): bool => $queue !== [] && $this->complexIsParentSuperselector($queue[0], $group),
+            ) as $chunk) {
+                $flat = [];
+
+                foreach ($chunk as $components) {
+                    $flat = [...$flat, ...$components];
+                }
+
+                $options[] = $flat;
+            }
+
+            if ($options !== []) {
+                $choices[] = $options;
+            }
+
+            $choices[] = [$group];
+
+            array_shift($groups1);
+            array_shift($groups2);
+        }
+
+        $options = [];
+
+        foreach ($this->chunks($groups1, $groups2, static fn(array $queue): bool => $queue === []) as $chunk) {
+            $flat = [];
+
+            foreach ($chunk as $components) {
+                $flat = [...$flat, ...$components];
+            }
+
+            $options[] = $flat;
+        }
+
+        if ($options !== []) {
+            $choices[] = $options;
+        }
+
+        foreach ($trailingCombinators as $trailingChoice) {
+            $choices[] = $trailingChoice;
+        }
+
+        $result = [];
+
+        foreach ($this->paths($choices) as $path) {
+            $components = [];
+
+            foreach ($path as $option) {
+                $components = [...$components, ...$option];
+            }
+
+            $result[] = $components;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, int> $positions
+     * @param array<int, int> $current
+     * @param array<int, array<int, int>> $result
+     */
+    private function collectCombinations(array $positions, int $size, int $start, array $current, array &$result): void
+    {
+        if (count($current) === $size) {
+            $result[] = $current;
+
+            return;
+        }
+
+        for ($i = $start; $i < count($positions); $i++) {
+            $current[] = $positions[$i];
+
+            $this->collectCombinations($positions, $size, $i + 1, $current, $result);
+
+            array_pop($current);
+        }
+    }
+
     private function readPseudoSelector(string $compound, int &$index): string
     {
         $length = strlen($compound);
@@ -842,7 +1396,110 @@ final readonly class SelectorTokenizer
             $index++;
         }
 
-        return $token;
+        if ($open === '[') {
+            return $this->normalizeAttributeToken($token);
+        }
+
+        return $this->normalizePseudoToken($token);
+    }
+
+    private function normalizeAttributeToken(string $token): string
+    {
+        $inner = substr($token, 1, -1);
+        $eq    = strpos($inner, '=');
+
+        if ($eq === false) {
+            return $token;
+        }
+
+        $operatorStart = $eq;
+
+        while ($operatorStart > 0 && in_array($inner[$operatorStart - 1], ['~', '|', '^', '$', '*'], true)) {
+            $operatorStart--;
+        }
+
+        $name = rtrim(substr($inner, 0, $operatorStart));
+
+        if ($name === '') {
+            return $token;
+        }
+
+        $operator = substr($inner, $operatorStart, $eq - $operatorStart + 1);
+        $value    = ltrim(substr($inner, $eq + 1));
+
+        return '[' . $name . $operator . $this->unquoteIdentifierValue($value) . ']';
+    }
+
+    private function normalizePseudoToken(string $token): string
+    {
+        if (! str_contains($token, '[')) {
+            return $token;
+        }
+
+        $result = '';
+        $length = strlen($token);
+        $index  = 0;
+
+        while ($index < $length) {
+            if ($token[$index] === '[') {
+                $result .= $this->normalizeAttributeToken($this->readBracketGroup($token, $index, '[', ']'));
+
+                continue;
+            }
+
+            $result .= $token[$index];
+            $index++;
+        }
+
+        return $result;
+    }
+
+    private function unquoteIdentifierValue(string $value): string
+    {
+        $length = strlen($value);
+
+        if ($length < 2) {
+            return $value;
+        }
+
+        $quote = $value[0];
+
+        if (($quote !== '"' && $quote !== "'") || $value[$length - 1] !== $quote) {
+            return $value;
+        }
+
+        $inner = substr($value, 1, -1);
+
+        if (! $this->isIdentifier($inner)) {
+            return $value;
+        }
+
+        return $inner;
+    }
+
+    private function isIdentifier(string $value): bool
+    {
+        $length = strlen($value);
+
+        if ($length === 0) {
+            return false;
+        }
+
+        if (! (ctype_alpha($value[0]) || $value[0] === '_' || $value[0] === '-')) {
+            return false;
+        }
+
+        if ($value[0] === '-' && ($length === 1 || $value[1] === '-')) {
+            return false;
+        }
+
+        for ($index = 1; $index < $length; $index++) {
+            if (! (ctype_alnum($value[$index]) || $value[$index] === '_' || $value[$index] === '-')) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function readIdentifier(string $input, int &$index): string
@@ -932,12 +1589,17 @@ final readonly class SelectorTokenizer
      */
     private function shouldNormalizePseudoOrder(array $tokens): bool
     {
-        $hasPseudo    = false;
-        $hasClassLike = false;
+        $hasPseudoClass  = false;
+        $hasPseudoElement = false;
+        $hasClassLike    = false;
 
         foreach ($tokens as $token) {
             if ($token[0] === ':') {
-                $hasPseudo = true;
+                if ($this->isPseudoElementToken($token)) {
+                    $hasPseudoElement = true;
+                } else {
+                    $hasPseudoClass = true;
+                }
 
                 continue;
             }
@@ -947,6 +1609,612 @@ final readonly class SelectorTokenizer
             }
         }
 
-        return $hasPseudo && $hasClassLike;
+        return ($hasPseudoClass && $hasPseudoElement) || (($hasPseudoClass || $hasPseudoElement) && $hasClassLike);
+    }
+
+    private function isUniversalTypeToken(string $token): bool
+    {
+        return $token === '*' || $token === '*|*';
+    }
+
+    private function unifyTypeTokens(string $left, string $right): ?string
+    {
+        $leftType  = $this->parseTypeToken($left);
+        $rightType = $this->parseTypeToken($right);
+
+        if ($leftType['element'] === $rightType['element'] || $leftType['element'] === '*') {
+            $namespace = $this->unifyNamespaces($leftType['namespace'], $rightType['namespace']);
+
+            if ($namespace === null) {
+                return null;
+            }
+
+            return $namespace === '' ? $rightType['element'] : $namespace . '|' . $rightType['element'];
+        }
+
+        if ($rightType['element'] === '*') {
+            $namespace = $this->unifyNamespaces($leftType['namespace'], $rightType['namespace']);
+
+            if ($namespace === null) {
+                return null;
+            }
+
+            return $namespace === '' ? $leftType['element'] : $namespace . '|' . $leftType['element'];
+        }
+
+        return null;
+    }
+
+    private function unifyNamespaces(?string $left, ?string $right): ?string
+    {
+        if ($left === $right || $left === '*') {
+            return $right ?? '';
+        }
+
+        if ($right === '*') {
+            return $left ?? '';
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{namespace: ?string, element: string}
+     */
+    private function parseTypeToken(string $token): array
+    {
+        $pipe = strpos($token, '|');
+
+        if ($pipe === false) {
+            return ['namespace' => null, 'element' => $token];
+        }
+
+        $namespace = substr($token, 0, $pipe);
+
+        return ['namespace' => $namespace, 'element' => substr($token, $pipe + 1)];
+    }
+
+    private function doesTypeSatisfy(string $candidateType, string $requiredType): bool
+    {
+        $candidate = $this->parseTypeToken($candidateType);
+        $required  = $this->parseTypeToken($requiredType);
+
+        if ($required['element'] === '*') {
+            if ($required['namespace'] === '*') {
+                return true;
+            }
+
+            if ($required['namespace'] === null) {
+                return $candidate['namespace'] === null;
+            }
+
+            return $required['namespace'] === $candidate['namespace'];
+        }
+
+        if ($candidate['element'] !== $required['element']) {
+            return false;
+        }
+
+        if ($required['namespace'] === '*') {
+            return true;
+        }
+
+        return $required['namespace'] === $candidate['namespace'];
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string}> $queue
+     * @return array{sel: string, comb: string}|null
+     */
+    private function firstIfRootish(array &$queue): ?array
+    {
+        if ($queue === []) {
+            return null;
+        }
+
+        foreach ($this->tokenizeCompound($queue[0]['sel']) as $token) {
+            if (! str_starts_with($token, ':')) {
+                continue;
+            }
+
+            $name  = substr($token, 1);
+            $paren = strpos($name, '(');
+
+            if ($paren !== false) {
+                $name = substr($name, 0, $paren);
+            }
+
+            if (in_array($name, ['root', 'scope', 'host', 'host-context'], true)) {
+                return array_shift($queue);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string}> $components1
+     * @param array<int, array{sel: string, comb: string}> $components2
+     * @param array<int, array<int, array<int, array{sel: string, comb: string}>>> $result
+     * @return array<int, array<int, array<int, array{sel: string, comb: string}>>>|null
+     */
+    private function mergeTrailingCombinators(array &$components1, array &$components2, array $result = []): ?array
+    {
+        $combinators1 = $components1 === [] ? '' : $components1[count($components1) - 1]['comb'];
+        $combinators2 = $components2 === [] ? '' : $components2[count($components2) - 1]['comb'];
+
+        if ($combinators1 === '' && $combinators2 === '') {
+            return $result;
+        }
+
+        if ($combinators1 === '~' && $combinators2 === '~') {
+            $component1 = array_pop($components1);
+            $component2 = array_pop($components2);
+
+            if ($this->compoundIsSuperselector($component1['sel'], $component2['sel'])) {
+                array_unshift($result, [[$component2]]);
+            } elseif ($this->compoundIsSuperselector($component2['sel'], $component1['sel'])) {
+                array_unshift($result, [[$component1]]);
+            } else {
+                $choices = [[$component1, $component2], [$component2, $component1]];
+
+                $unified = $this->unifyCompounds($component1['sel'], $component2['sel']);
+
+                if ($unified !== null) {
+                    $choices[] = [['sel' => $unified, 'comb' => $combinators1]];
+                }
+
+                array_unshift($result, $choices);
+            }
+
+            return $this->mergeTrailingCombinators($components1, $components2, $result);
+        }
+
+        if (in_array($combinators1, ['>', '+', '~'], true) && $combinators1 === $combinators2) {
+            $component1 = array_pop($components1);
+            $component2 = array_pop($components2);
+
+            $unified = $this->unifyCompounds($component1['sel'], $component2['sel']);
+
+            if ($unified === null) {
+                return null;
+            }
+
+            array_unshift($result, [[['sel' => $unified, 'comb' => $combinators1]]]);
+
+            return $this->mergeTrailingCombinators($components1, $components2, $result);
+        }
+
+        if (
+            ($combinators1 === '~' && $combinators2 === '+')
+            || ($combinators1 === '+' && $combinators2 === '~')
+        ) {
+            $next      = $combinators1 === '+' ? array_pop($components1) : array_pop($components2);
+            $following = $combinators1 === '+' ? array_pop($components2) : array_pop($components1);
+
+            if ($this->compoundIsSuperselector($following['sel'], $next['sel'])) {
+                array_unshift($result, [[$next]]);
+            } else {
+                $choices = [[$following, $next]];
+                $unified = $this->unifyCompounds($following['sel'], $next['sel']);
+
+                if ($unified !== null) {
+                    $choices[] = [['sel' => $unified, 'comb' => $next['comb']]];
+                }
+
+                array_unshift($result, $choices);
+            }
+
+            return $this->mergeTrailingCombinators($components1, $components2, $result);
+        }
+
+        $siblingSide = null;
+
+        if (in_array($combinators1, ['+', '~'], true) && $combinators2 === '>') {
+            $siblingSide = &$components1;
+        } elseif (in_array($combinators2, ['+', '~'], true) && $combinators1 === '>') {
+            $siblingSide = &$components2;
+        }
+
+        if ($siblingSide !== null) {
+            $sibling = array_pop($siblingSide);
+
+            array_unshift($result, [[$sibling]]);
+
+            return $this->mergeTrailingCombinators($components1, $components2, $result);
+        }
+
+        if ($combinators1 !== '' && $combinators2 === '') {
+            $combinatorSide = &$components1;
+            $descendantSide = &$components2;
+        } elseif ($combinators2 !== '' && $combinators1 === '') {
+            $combinatorSide = &$components2;
+            $descendantSide = &$components1;
+        } else {
+            return null;
+        }
+
+        if (
+            ($combinators1 !== '' ? $combinators1 : $combinators2) === '>'
+            && $descendantSide !== []
+            && $combinatorSide !== []
+            && $this->compoundIsSuperselector(
+                $descendantSide[count($descendantSide) - 1]['sel'],
+                $combinatorSide[count($combinatorSide) - 1]['sel'],
+            )
+        ) {
+            array_pop($descendantSide);
+        }
+
+        $component = array_pop($combinatorSide);
+
+        array_unshift($result, [[$component]]);
+
+        return $this->mergeTrailingCombinators($components1, $components2, $result);
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string}> $components
+     * @return array<int, array<int, array{sel: string, comb: string}>>
+     */
+    private function groupSelectors(array $components): array
+    {
+        $groups = [];
+        $group  = [];
+
+        foreach ($components as $component) {
+            $group[] = $component;
+
+            if ($component['comb'] === '') {
+                $groups[] = $group;
+                $group    = [];
+            }
+        }
+
+        if ($group !== []) {
+            $groups[] = $group;
+        }
+
+        return $groups;
+    }
+
+    /**
+     * @param array<int, array<int, array{sel: string, comb: string}>> $queue1
+     * @param array<int, array<int, array{sel: string, comb: string}>> $queue2
+     * @return array<int, array<int, array<int, array{sel: string, comb: string}>>>
+     */
+    private function chunks(array &$queue1, array &$queue2, callable $done): array
+    {
+        $chunk1 = [];
+
+        while ($queue1 !== [] && ! $done($queue1)) {
+            $chunk1[] = array_shift($queue1);
+        }
+
+        $chunk2 = [];
+
+        while ($queue2 !== [] && ! $done($queue2)) {
+            $chunk2[] = array_shift($queue2);
+        }
+
+        if ($chunk1 === [] && $chunk2 === []) {
+            return [];
+        }
+
+        if ($chunk1 === []) {
+            return [$chunk2];
+        }
+
+        if ($chunk2 === []) {
+            return [$chunk1];
+        }
+
+        return [[...$chunk1, ...$chunk2], [...$chunk2, ...$chunk1]];
+    }
+
+    /**
+     * @param array<int, array<int, array{sel: string, comb: string}>> $sequence1
+     * @param array<int, array<int, array{sel: string, comb: string}>> $sequence2
+     * @return array<int, array<int, array{sel: string, comb: string}>>
+     */
+    private function longestCommonSubsequence(array $sequence1, array $sequence2, callable $select): array
+    {
+        $m = count($sequence1);
+        $n = count($sequence2);
+
+        $dp = array_fill(0, $m + 1, array_fill(0, $n + 1, 0));
+
+        for ($i = 1; $i <= $m; $i++) {
+            for ($j = 1; $j <= $n; $j++) {
+                if ($select($sequence1[$i - 1], $sequence2[$j - 1]) !== null) {
+                    $dp[$i][$j] = $dp[$i - 1][$j - 1] + 1;
+                } else {
+                    $dp[$i][$j] = max($dp[$i - 1][$j], $dp[$i][$j - 1]);
+                }
+            }
+        }
+
+        $result = [];
+        $i      = $m;
+        $j      = $n;
+
+        while ($i > 0 && $j > 0) {
+            $selected = $select($sequence1[$i - 1], $sequence2[$j - 1]);
+
+            if ($selected !== null) {
+                $result[] = $selected;
+                $i--;
+                $j--;
+
+                continue;
+            }
+
+            if ($dp[$i - 1][$j] >= $dp[$i][$j - 1]) {
+                $i--;
+            } else {
+                $j--;
+            }
+        }
+
+        return array_reverse($result);
+    }
+
+    /**
+     * @param array<int, array<int, mixed>> $choices
+     * @return array<int, array<int, mixed>>
+     */
+    private function paths(array $choices): array
+    {
+        $paths = [[]];
+
+        foreach ($choices as $choice) {
+            $newPaths = [];
+
+            foreach ($choice as $option) {
+                foreach ($paths as $path) {
+                    $newPaths[] = [...$path, $option];
+                }
+            }
+
+            $paths = $newPaths;
+        }
+
+        return $paths;
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string}> $complex1
+     * @param array<int, array{sel: string, comb: string}> $complex2
+     */
+    private function complexIsParentSuperselector(array $complex1, array $complex2): bool
+    {
+        if (count($complex1) > count($complex2)) {
+            return false;
+        }
+
+        $placeholder = ['sel' => '%_weave', 'comb' => ''];
+
+        return $this->complexIsSuperselector(
+            [...$complex1, $placeholder],
+            [...$complex2, $placeholder],
+        );
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string}> $complex1
+     * @param array<int, array{sel: string, comb: string}> $complex2
+     */
+    private function complexIsSuperselector(array $complex1, array $complex2): bool
+    {
+        if ($complex1 === [] || $complex2 === []) {
+            return false;
+        }
+
+        if ($complex1[count($complex1) - 1]['comb'] !== '') {
+            return false;
+        }
+
+        if ($complex2[count($complex2) - 1]['comb'] !== '') {
+            return false;
+        }
+
+        $i1   = 0;
+        $i2   = 0;
+        $prev = '';
+
+        while (true) {
+            $remaining1 = count($complex1) - $i1;
+            $remaining2 = count($complex2) - $i2;
+
+            if ($remaining1 === 0 || $remaining2 === 0) {
+                return false;
+            }
+
+            if ($remaining1 > $remaining2) {
+                return false;
+            }
+
+            $component1  = $complex1[$i1];
+            $combinator1 = $component1['comb'];
+
+            if ($remaining1 === 1) {
+                $last = $complex2[count($complex2) - 1];
+
+                return $this->compoundIsSuperselector($component1['sel'], $last['sel'])
+                    && $this->compatibleWithPreviousCombinator(
+                        $prev,
+                        $i2 < count($complex2) - 1 ? array_slice($complex2, $i2, count($complex2) - 1 - $i2) : [],
+                    );
+            }
+
+            $end = $i2;
+
+            while (true) {
+                $component2 = $complex2[$end];
+
+                if ($this->compoundIsSuperselector($component1['sel'], $component2['sel'])) {
+                    break;
+                }
+
+                $end++;
+
+                if ($end === count($complex2) - 1) {
+                    return false;
+                }
+            }
+
+            if (! $this->compatibleWithPreviousCombinator(
+                $prev,
+                array_slice($complex2, $i2, $end - $i2),
+            )) {
+                return false;
+            }
+
+            $combinator2 = $complex2[$end]['comb'];
+
+            if (! $this->isSupercombinator($combinator1, $combinator2)) {
+                return false;
+            }
+
+            $i1++;
+
+            $i2   = $end + 1;
+            $prev = $combinator1;
+
+            if (count($complex1) - $i1 === 1) {
+                if ($combinator1 === '~') {
+                    foreach (array_slice($complex2, $i2, max(0, count($complex2) - 1 - $i2)) as $component) {
+                        if (! $this->isSupercombinator($combinator1, $component['comb'])) {
+                            return false;
+                        }
+                    }
+                } elseif ($combinator1 !== '') {
+                    if (count($complex2) - $i2 > 1) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string}> $parents
+     */
+    private function compatibleWithPreviousCombinator(string $previous, array $parents): bool
+    {
+        if ($parents === []) {
+            return true;
+        }
+
+        if ($previous === '') {
+            return true;
+        }
+
+        if ($previous !== '~') {
+            return false;
+        }
+
+        foreach ($parents as $component) {
+            if ($component['comb'] !== '~' && $component['comb'] !== '+') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function isSupercombinator(string $combinator1, string $combinator2): bool
+    {
+        return $combinator1 === $combinator2
+            || ($combinator1 === '' && $combinator2 === '>')
+            || ($combinator1 === '~' && $combinator2 === '+');
+    }
+
+    private function compoundIsSuperselector(string $general, string $specific): bool
+    {
+        return $this->doesCompoundSatisfy($specific, $general);
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string}> $group1
+     * @param array<int, array{sel: string, comb: string}> $group2
+     */
+    private function mustUnify(array $group1, array $group2): bool
+    {
+        $uniqueSelectors = [];
+
+        foreach ($group1 as $component) {
+            foreach ($this->tokenizeCompound($component['sel']) as $token) {
+                if ($token[0] === '#' || $this->isPseudoElementToken($token)) {
+                    $uniqueSelectors[] = $token;
+                }
+            }
+        }
+
+        if ($uniqueSelectors === []) {
+            return false;
+        }
+
+        foreach ($group2 as $component) {
+            foreach ($this->tokenizeCompound($component['sel']) as $token) {
+                if (in_array($token, $uniqueSelectors, true)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string}> $group1
+     * @param array<int, array{sel: string, comb: string}> $group2
+     * @return array<int, array{sel: string, comb: string}>|null
+     */
+    private function unifyGroups(array $group1, array $group2): ?array
+    {
+        if (count($group1) === 1 && count($group2) === 1) {
+            $unified = $this->unifyCompounds($group1[0]['sel'], $group2[0]['sel']);
+
+            if ($unified === null) {
+                return null;
+            }
+
+            $comb = $group1[0]['comb'] !== '' ? $group1[0]['comb'] : $group2[0]['comb'];
+
+            return [['sel' => $unified, 'comb' => $comb]];
+        }
+
+        $woven = $this->weave([$group1, $group2]);
+
+        if (count($woven) !== 1) {
+            return null;
+        }
+
+        return $woven[0];
+    }
+
+    private function readNamespacedType(string $compound, int &$index, string $prefix): string
+    {
+        $token  = $prefix;
+        $length = strlen($compound);
+
+        if ($index < $length && $compound[$index] === '|') {
+            $token .= '|';
+
+            $index++;
+        }
+
+        if ($index < $length) {
+            if ($compound[$index] === '*') {
+                $token .= '*';
+
+                $index++;
+            } else {
+                $token .= $this->readIdentifier($compound, $index);
+            }
+        }
+
+        return $token;
     }
 }
