@@ -77,15 +77,12 @@ describe('Compiler', function () {
             );
     });
 
-    it('throws for unterminated multiline comments in indented sass before compilation', function () {
+    it('auto-closes unterminated multiline comments in indented sass before compilation', function () {
         $compiler = new Compiler();
         $source   = ".grid\n  /* comment\n";
 
         expect(fn() => $compiler->compileString($source, Syntax::SASS))
-            ->toThrow(
-                InvalidSyntaxException::class,
-                'Unterminated comment starting at line 2.',
-            );
+            ->not->toThrow(InvalidSyntaxException::class);
     });
 
     it('throws for incomplete directive headers in indented sass before compilation', function () {

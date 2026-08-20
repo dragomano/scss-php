@@ -24,6 +24,7 @@ use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\CallableParameterBinder;
 use Bugo\SCSS\Services\DiagnosticDirectiveHandlerInterface;
 use Bugo\SCSS\Services\EachLoopBinderInterface;
+use Bugo\SCSS\Services\LoopIterator;
 use Bugo\SCSS\Services\UserFunctionExecutor;
 use Bugo\SCSS\Services\VariableDeclarationApplierInterface;
 use Tests\Support\RuntimeFactory;
@@ -86,6 +87,7 @@ describe('UserFunctionExecutor', function () {
                     $this->testCase->diagnostics[] = $kind;
                 }
             },
+            new LoopIterator(),
         );
     });
 

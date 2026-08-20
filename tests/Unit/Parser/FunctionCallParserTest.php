@@ -14,7 +14,7 @@ use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Parser\FunctionCallParser;
 use Bugo\SCSS\Parser\FunctionCallParsingContextInterface;
 use Bugo\SCSS\Parser\InlineValueParserInterface;
-use Bugo\SCSS\Parser\StreamUtils;
+use Bugo\SCSS\Parser\TokenStreamHelper;
 
 function functionCallToken(
     TokenType $type,
@@ -82,7 +82,7 @@ function createFunctionCallParser(array $tokens, array $overrides = []): array
 
             $buffer .= $token->type === TokenType::WHITESPACE
                 ? ' '
-                : StreamUtils::tokenToRawString($token->type, $token->value);
+                : TokenStreamHelper::tokenToRawString($token->type, $token->value);
 
             $stream->advance();
         }
@@ -95,7 +95,7 @@ function createFunctionCallParser(array $tokens, array $overrides = []): array
     $parseVariableReference = $overrides['parseVariableReference'] ?? function () use ($stream): VariableReferenceNode {
         $stream->consume(TokenType::DOLLAR);
 
-        $name = StreamUtils::consumeIdentifier($stream);
+        $name = TokenStreamHelper::consumeIdentifier($stream);
 
         return new VariableReferenceNode($name);
     };
@@ -112,7 +112,7 @@ function createFunctionCallParser(array $tokens, array $overrides = []): array
 
             $buffer .= $token->type === TokenType::WHITESPACE
                 ? ' '
-                : StreamUtils::tokenToRawString($token->type, $token->value);
+                : TokenStreamHelper::tokenToRawString($token->type, $token->value);
 
             $stream->advance();
         }

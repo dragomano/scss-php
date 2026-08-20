@@ -8,13 +8,14 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\StringHelper;
 use Bugo\SCSS\Values\ValueFactory;
+use Throwable;
 
-use function array_key_exists;
 use function array_slice;
 use function array_values;
 use function count;
@@ -46,42 +47,108 @@ final readonly class ConditionalEvaluator
             return null;
         }
 
-        $condition = $arguments[0];
-        $truthy    = $arguments[1] ?? $this->valueFactory->createNullNode();
-        $hasElse   = array_key_exists(2, $arguments);
-        $falsy     = $arguments[2] ?? $this->valueFactory->createNullNode();
-        $result    = $this->evaluateInlineIfCondition($condition, $env);
+        return $this->evaluateInlineIfFunctionInner($name, $arguments, $env);
+    }
 
-        if ($result['kind'] === 'bool') {
-            /** @var array{kind: 'bool', value: bool} $result */
-            $value = $result['value'];
+    /**
+     * @param array<int, AstNode> $arguments
+     */
+    private function evaluateInlineIfFunctionInner(string $name, array $arguments, Environment $env): AstNode
+    {
 
-            if ($value) {
-                return $this->valueEvaluator->evaluate($truthy, $env);
+        $decoded = $this->decodeIfArguments($arguments);
+        $clauses = $decoded['clauses'];
+        $else    = $decoded['else'];
+
+        $cssParts = [];
+        $isCss    = false;
+
+        foreach ($clauses as [$condition, $value]) {
+            $result = $this->evaluateInlineIfCondition($condition, $env);
+
+            if ($result['kind'] === 'bool') {
+                /** @var array{kind: 'bool', value: bool} $result */
+                if ($result['value']) {
+                    return $this->valueEvaluator->evaluate($value, $env);
+                }
+
+                continue;
             }
 
-            return $this->valueEvaluator->evaluate($falsy, $env);
-        }
+            /** @var array{kind: 'css', expression: string} $result */
+            $isCss = true;
 
-        $truthyText = $this->valueFormatter->format(
-            $this->valueEvaluator->evaluate($truthy, $env),
-            $env,
-        );
-
-        /** @var array{kind: 'css', expression: string} $result */
-        $expression = 'if(' . $result['expression'] . ': ' . $truthyText;
-
-        if ($hasElse) {
-            $falsyText   = $this->valueFormatter->format(
-                $this->valueEvaluator->evaluate($falsy, $env),
+            $valueText = $this->valueFormatter->format(
+                $this->valueEvaluator->evaluate($value, $env),
                 $env,
             );
-            $expression .= '; else: ' . $falsyText;
+
+            $cssParts[] = $result['expression'] . ': ' . $valueText;
         }
 
-        $expression .= ')';
+        if ($isCss) {
+            $expression = 'if(' . implode('; ', $cssParts);
 
-        return new StringNode($expression);
+            if ($else !== null) {
+                $expression .= '; else: ' . $this->valueFormatter->format(
+                    $this->valueEvaluator->evaluate($else, $env),
+                    $env,
+                );
+            }
+
+            $expression .= ')';
+
+            return new StringNode($expression);
+        }
+
+        return $else !== null
+            ? $this->valueEvaluator->evaluate($else, $env)
+            : $this->valueFactory->createNullNode();
+    }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     * @return array{clauses: array<array{0: AstNode, 1: AstNode}>, else: AstNode|null}
+     */
+    private function decodeIfArguments(array $arguments): array
+    {
+        $hasSentinel = false;
+
+        foreach ($arguments as $argument) {
+            if ($argument instanceof StringNode && $argument->value === '__else__') {
+                $hasSentinel = true;
+
+                break;
+            }
+        }
+
+        if (! $hasSentinel && count($arguments) === 3) {
+            return [
+                'clauses' => [[$arguments[0], $arguments[1]]],
+                'else'    => $arguments[2],
+            ];
+        }
+
+        $clauses = [];
+        $else    = null;
+        $count   = count($arguments);
+        $index   = 0;
+
+        while ($index < $count) {
+            $argument = $arguments[$index];
+
+            if ($argument instanceof StringNode && $argument->value === '__else__') {
+                $else ??= $arguments[$index + 1] ?? null;
+                $index += 2;
+
+                continue;
+            }
+
+            $clauses[] = [$argument, $arguments[$index + 1] ?? $this->valueFactory->createNullNode()];
+            $index     += 2;
+        }
+
+        return ['clauses' => $clauses, 'else' => $else];
     }
 
     /**
@@ -131,6 +198,26 @@ final readonly class ConditionalEvaluator
      */
     private function evaluateInlineIfCondition(AstNode $condition, Environment $env, bool $forceBoolean = false): array
     {
+        $condition = $this->normalizeRawConnectorIfs($condition, $env);
+
+        $isParenthesized = $condition instanceof ListNode && $condition->parenthesized;
+
+        if (
+            $condition instanceof ListNode
+            && $condition->separator === 'space'
+            && count($condition->items) > 0
+            && $this->hasLogicalOperator($condition->items)
+        ) {
+            $result = $this->evaluateInlineIfListCondition($condition->items, $env);
+
+            if ($result['kind'] === 'css') {
+                /** @var array{kind: 'css', expression: string} $result */
+                $result['expression'] = $this->wrapParensIfNeeded($isParenthesized, $result['expression']);
+            }
+
+            return $result;
+        }
+
         $resolved = $this->valueEvaluator->evaluate($condition, $env);
 
         if (
@@ -164,14 +251,150 @@ final readonly class ConditionalEvaluator
                 return ['kind' => 'bool', 'value' => $this->condition->evaluate($expression, $env)];
             }
 
-            return ['kind' => 'css', 'expression' => $resolved->value];
+            return ['kind' => 'css', 'expression' => $this->wrapParensIfNeeded($isParenthesized, $resolved->value)];
         }
 
         if ($resolved instanceof FunctionNode) {
-            return ['kind' => 'css', 'expression' => $this->valueFormatter->format($resolved, $env)];
+            return ['kind' => 'css', 'expression' => $this->wrapParensIfNeeded($isParenthesized, $this->valueFormatter->format($resolved, $env))];
         }
 
         return ['kind' => 'bool', 'value' => $this->condition->isTruthy($resolved)];
+    }
+
+    private function wrapParensIfNeeded(bool $isParenthesized, string $expression): string
+    {
+        if (! $isParenthesized) {
+            return $expression;
+        }
+
+        return '(' . trim($expression) . ')';
+    }
+
+    private function stripRedundantRawParens(string $expression): string
+    {
+        $expression = trim($expression);
+
+        if ($expression === '' || $expression[0] !== '(' || $expression[strlen($expression) - 1] !== ')') {
+            return $expression;
+        }
+
+        $depth = 0;
+
+        for ($i = 0; $i < strlen($expression); $i++) {
+            if ($expression[$i] === '(') {
+                $depth++;
+            } elseif ($expression[$i] === ')') {
+                $depth--;
+
+                if ($depth === 0 && $i !== strlen($expression) - 1) {
+                    return $expression;
+                }
+            }
+        }
+
+        return substr($expression, 1, -1);
+    }
+
+    private function normalizeRawConnectorIfs(AstNode $node, Environment $env): AstNode
+    {
+        if ($node instanceof FunctionNode && strtolower($node->name) === 'if') {
+            $decoded = $this->decodeIfArguments($node->arguments);
+
+            if (count($decoded['clauses']) === 0 && $decoded['else'] !== null) {
+                return new StringNode(
+                    'if(else: '
+                    . $this->valueFormatter->format($this->valueEvaluator->evaluate($decoded['else'], $env), $env)
+                    . ')',
+                );
+            }
+
+            return new FunctionNode(
+                $node->name,
+                array_map(fn(AstNode $argument): AstNode => $this->normalizeRawConnectorIfs($argument, $env), $node->arguments),
+            );
+        }
+
+        if ($node instanceof ListNode) {
+            $items = array_map(
+                fn(AstNode $item): AstNode => $this->normalizeRawConnectorIfs($item, $env),
+                $node->items,
+            );
+
+            $items = $this->mergeInterpolatedFunctionCalls($items);
+
+            return new ListNode(array_values($items), $node->separator, $node->bracketed, $node->parenthesized);
+        }
+
+        if ($node instanceof StringNode && str_contains($node->value, '#{')) {
+            try {
+                $value = $this->text->replaceInterpolations($node->value, $env);
+            } catch (Throwable) {
+                $value = $node->value;
+            }
+
+            return new StringNode($value, $node->quoted);
+        }
+
+        return $node;
+    }
+
+    /**
+     * An interpolation like `#{css}()` is parsed as a bare string followed by an
+     * empty parenthesized group; merge them into a single function call.
+     *
+     * @param AstNode[] $items
+     * @return AstNode[]
+     */
+    private function mergeInterpolatedFunctionCalls(array $items): array
+    {
+        $merged = [];
+
+        foreach ($items as $item) {
+            $previous = $merged === [] ? null : $merged[count($merged) - 1];
+
+            if (
+                $previous instanceof StringNode
+                && ! $previous->quoted
+                && (
+                    ($item instanceof ListNode && $item->parenthesized && count($item->items) === 0)
+                    || ($item instanceof MapNode && count($item->pairs) === 0)
+                )
+            ) {
+                $merged[count($merged) - 1] = new FunctionNode($previous->value, []);
+
+                continue;
+            }
+
+            $merged[] = $item;
+        }
+
+        return $merged;
+    }
+
+    /**
+     * @param AstNode[] $items
+     */
+    private function hasLogicalOperator(array $items): bool
+    {
+        /** @var AstNode $item */
+        foreach ($items as $item) {
+            if (
+                $item instanceof StringNode
+                && in_array(strtolower(trim($item->value)), ['and', 'or', 'not'], true)
+            ) {
+                return true;
+            }
+
+            if (
+                $item instanceof FunctionNode
+                && in_array(strtolower($item->name), ['and', 'or', 'not'], true)
+                && count($item->arguments) >= 1
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function isLikelySassBooleanCondition(string $expression): bool
@@ -307,6 +530,10 @@ final readonly class ConditionalEvaluator
                 return ['kind' => 'bool', 'value' => false];
             }
 
+            if (count($cssParts) === 1) {
+                $cssParts[0] = $this->stripRedundantRawParens($cssParts[0]);
+            }
+
             return ['kind' => 'css', 'expression' => implode(' or ', $cssParts)];
         }
 
@@ -333,6 +560,10 @@ final readonly class ConditionalEvaluator
 
             if ($cssParts === []) {
                 return ['kind' => 'bool', 'value' => true];
+            }
+
+            if (count($cssParts) === 1) {
+                $cssParts[0] = $this->stripRedundantRawParens($cssParts[0]);
             }
 
             return ['kind' => 'css', 'expression' => implode(' and ', $cssParts)];

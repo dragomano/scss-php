@@ -132,7 +132,14 @@ final readonly class SassNormalizer implements SourceNormalizer
             if (str_starts_with($trimmed, '//')) {
                 $this->flushPendingEmptyLines($result, $pendingEmptyLines);
 
-                $result[] = $line;
+                $commentLine = $line;
+
+                while ($this->hasUnclosedInterpolation($commentLine) && $index + 1 < $lineCount) {
+                    $commentLine .= ' ' . ltrim($lines[$index + 1]);
+                    $index++;
+                }
+
+                $result[] = $commentLine;
 
                 continue;
             }
@@ -156,6 +163,7 @@ final readonly class SassNormalizer implements SourceNormalizer
             [$trimmed, $index] = $this->mergeParenthesizedDeclaration($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeBracketedDeclaration($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeDirectiveHeader($trimmed, $level, $index, $lines, $indentSize);
+            [$trimmed, $index] = $this->mergeOperatorContinuation($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeSingleLineDirectiveParenthesizedCall(
                 $trimmed,
                 $level,
@@ -225,7 +233,6 @@ final readonly class SassNormalizer implements SourceNormalizer
         $parenStack          = [];
         $inSingleLineComment = false;
         $inMultilineComment  = false;
-        $commentStartLine    = 0;
         $stringQuote         = null;
         $stringStartLine     = 0;
         $escaped             = false;
@@ -281,7 +288,6 @@ final readonly class SassNormalizer implements SourceNormalizer
 
             if ($char === '/' && $next === '*') {
                 $inMultilineComment = true;
-                $commentStartLine   = $line;
                 $i++;
 
                 continue;
@@ -311,10 +317,6 @@ final readonly class SassNormalizer implements SourceNormalizer
 
         if ($stringQuote !== null) {
             throw InvalidSyntaxException::unterminatedString($stringStartLine);
-        }
-
-        if ($inMultilineComment) {
-            throw InvalidSyntaxException::unterminatedComment($commentStartLine);
         }
 
         if ($parenStack !== []) {
@@ -370,6 +372,77 @@ final readonly class SassNormalizer implements SourceNormalizer
      * @param array<int, string> $lines
      * @return array{0: string, 1: int}
      */
+    private function mergeOperatorContinuation(
+        string $trimmed,
+        int $level,
+        int $index,
+        array $lines,
+        int $indentSize,
+    ): array {
+        $candidate = rtrim($trimmed);
+
+        if (! $this->endsWithContinuationOperator($candidate)) {
+            return [$trimmed, $index];
+        }
+
+        $max = count($lines);
+
+        while ($index + 1 < $max) {
+            $nextLine    = rtrim($lines[$index + 1], "\r\n");
+            $nextTrimmed = ltrim($nextLine);
+
+            if ($nextTrimmed === '') {
+                break;
+            }
+
+            $leadingSpaces = strlen($nextLine) - strlen($nextTrimmed);
+            $nextLevel     = intdiv($leadingSpaces, $indentSize);
+
+            if ($nextLevel < $level) {
+                break;
+            }
+
+            $candidate .= ' ' . $nextTrimmed;
+            $index++;
+
+            if (! $this->endsWithContinuationOperator($candidate)) {
+                break;
+            }
+        }
+
+        return [$candidate, $index];
+    }
+
+    private function endsWithContinuationOperator(string $line): bool
+    {
+        $last = $line[strlen($line) - 1] ?? '';
+
+        if ($last === '+' || $last === '-' || $last === '*' || $last === '/') {
+            if ($line === '--') {
+                return false;
+            }
+
+            return true;
+        }
+
+        foreach ([' not', ' and', ' or'] as $suffix) {
+            if (str_ends_with($line, $suffix) || $line === trim($suffix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function hasUnclosedInterpolation(string $text): bool
+    {
+        return substr_count($text, '#{') > substr_count($text, '}');
+    }
+
+    /**
+     * @param array<int, string> $lines
+     * @return array{0: string, 1: int}
+     */
     private function mergeParenthesizedDeclaration(
         string $trimmed,
         int $level,
@@ -379,7 +452,13 @@ final readonly class SassNormalizer implements SourceNormalizer
     ): array {
         $candidate = rtrim($trimmed);
 
-        if (! str_contains($candidate, ':') || ! str_ends_with($candidate, '(')) {
+        if (! str_contains($candidate, ':')) {
+            return [$trimmed, $index];
+        }
+
+        $hasOpenParen = str_ends_with($candidate, '(') || $this->parenthesisBalance($candidate) > 0;
+
+        if (! $hasOpenParen) {
             return [$trimmed, $index];
         }
 
@@ -494,11 +573,7 @@ final readonly class SassNormalizer implements SourceNormalizer
             $leadingSpaces = strlen($nextLine) - strlen($nextTrimmed);
             $nextLevel     = intdiv($leadingSpaces, $indentSize);
 
-            if ($nextLevel < $level) {
-                throw InvalidSyntaxException::expectedClosingParenthesis($line);
-            }
-
-            if ($nextLevel === $level && ! str_starts_with($nextTrimmed, ')')) {
+            if ($nextLevel < $level || ($nextLevel === $level && ! str_starts_with($nextTrimmed, ')'))) {
                 throw InvalidSyntaxException::expectedClosingParenthesis($line);
             }
 

@@ -27,13 +27,14 @@ use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 
-use function array_column;
 use function array_flip;
 use function array_keys;
+use function array_pop;
 use function array_push;
-use function array_reverse;
+use function array_search;
 use function array_slice;
 use function array_unique;
+use function array_unshift;
 use function array_values;
 use function count;
 use function ctype_alnum;
@@ -50,10 +51,6 @@ use function usort;
 
 final readonly class ExtendsResolver
 {
-    private const MAX_EXTEND_VARIANTS = 256;
-
-    private const MAX_EXTEND_VARIANT_COMPOUNDS = 16;
-
     public function __construct(
         private CompilerContext $ctx,
         private Text $text,
@@ -164,10 +161,19 @@ final readonly class ExtendsResolver
         /** @var array<string, int> $sourceSpecificity */
         $sourceSpecificity = [];
 
+        /**
+         * @var array<int, array{
+         *     rawParts: array<int, string>,
+         *     selectors: array<int, string>,
+         *     originals: array<int, string>,
+         *     context: string
+         * }> $boxes
+         */
         $boxes = [];
 
         foreach ($state->events as $event) {
             if ($event['type'] === 'rule') {
+                /** @var array{type: 'rule', boxId: int, rawParts: array<int, string>, resolvedParts: array<int, string>, context: string} $event */
                 $resolvedParts = $event['resolvedParts'];
                 $boxId         = $event['boxId'];
 
@@ -197,6 +203,7 @@ final readonly class ExtendsResolver
                 continue;
             }
 
+            /** @var array{type: 'extend', boxId: int, target: string, context: string, optional: bool, priority: int} $event */
             $target     = $event['target'];
             $sourceBox  = $boxes[$event['boxId']]['selectors'] ?? [];
             $newSources = [];
@@ -363,9 +370,11 @@ final readonly class ExtendsResolver
     {
         $protectedLookup = array_flip(array_keys($originals));
 
+        /** @var list<string> $result */
         $result = [];
 
         for ($i = count($selectors) - 1; $i >= 0; $i--) {
+            /** @var string $complex */
             $complex = $selectors[$i];
 
             if (isset($protectedLookup[$complex])) {
@@ -377,9 +386,30 @@ final readonly class ExtendsResolver
                     continue;
                 }
 
-                $slice   = array_slice($result, 0, $duplicateIndex + 1);
-                $rotated = array_merge([array_pop($slice)], $slice);
+                $slice = array_slice($result, 0, $duplicateIndex + 1);
+
+                /** @var non-empty-list<string> $slice */
+                $rotated = array_merge([$slice[count($slice) - 1]], array_slice($slice, 0, -1));
                 $result  = array_merge($rotated, array_slice($result, $duplicateIndex + 1));
+
+                continue;
+            }
+
+            if ($this->isSimpleCompound($complex)) {
+                $isRedundant = false;
+
+                /** @var string $candidate */
+                foreach ($result as $candidate) {
+                    if ($candidate === $complex) {
+                        $isRedundant = true;
+
+                        break;
+                    }
+                }
+
+                if (! $isRedundant) {
+                    array_unshift($result, $complex);
+                }
 
                 continue;
             }
@@ -388,6 +418,7 @@ final readonly class ExtendsResolver
 
             $isRedundant = false;
 
+            /** @var string $candidate */
             foreach ($result as $candidate) {
                 if (
                     $this->selectorSpecificity($candidate) >= $maxSpecificity
@@ -401,6 +432,7 @@ final readonly class ExtendsResolver
 
             if (! $isRedundant) {
                 for ($j = 0; $j < $i; $j++) {
+                    /** @var string $candidate */
                     $candidate = $selectors[$j];
 
                     if (
@@ -419,6 +451,7 @@ final readonly class ExtendsResolver
             }
         }
 
+        /** @var list<string> $result */
         return $result;
     }
 
@@ -438,6 +471,14 @@ final readonly class ExtendsResolver
         }
 
         return $max;
+    }
+
+    private function isSimpleCompound(string $selector): bool
+    {
+        return ! str_contains($selector, ' ')
+            && ! str_contains($selector, '>')
+            && ! str_contains($selector, '+')
+            && ! str_contains($selector, '~');
     }
 
     private function selectorSpecificity(string $complex): int
@@ -651,10 +692,11 @@ final readonly class ExtendsResolver
     }
 
     /**
-     * @return array<int, array{target: string, source: string}>
+     * @return array<int, array{target: string, source: string, priority: int}>
      */
     private function orderedExtends(): array
     {
+        /** @var array<int, array{target: string, source: string, priority: int}> $extends */
         $extends = [];
 
         foreach ($this->ctx->outputState->extends->extendMap as $target => $sources) {
@@ -858,140 +900,6 @@ final readonly class ExtendsResolver
 
             $this->collectChildren($node->body, $env, $selector, $currentContext, applyDeclarations: true);
         }
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function collectTransitiveExactExtenders(string $part): array
-    {
-        $result  = [];
-        $pending = $this->orderedExtendSources($part);
-        $seen    = [];
-        $index   = 0;
-
-        while ($index < count($pending)) {
-            $extender = $pending[$index++];
-
-            if (isset($seen[$extender])) {
-                continue;
-            }
-
-            $seen[$extender] = true;
-
-            $result[] = $extender;
-
-            foreach ($this->orderedExtendSources($extender) as $nestedExtender) {
-                if (isset($seen[$nestedExtender])) {
-                    continue;
-                }
-
-                $pending[] = $nestedExtender;
-            }
-        }
-
-        return $result;
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function orderedExtendSources(string $target): array
-    {
-        $extenders = $this->ctx->outputState->extends->extendMap[$target] ?? [];
-
-        usort(
-            $extenders,
-            static fn(array $left, array $right): int => $right['priority'] <=> $left['priority'],
-        );
-
-        return array_column($extenders, 'source');
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function collectReplacementVariants(string $part): array
-    {
-        $result  = [];
-        $pending = [$part];
-        $seen    = [$part => true];
-        $index   = 0;
-
-        while ($index < count($pending)) {
-            $currentPart = $pending[$index++];
-
-            if (count($this->splitSelectorCompoundsByDescendant($currentPart)) > self::MAX_EXTEND_VARIANT_COMPOUNDS) {
-                continue;
-            }
-
-            foreach ($this->getOrderedReplacementTargets($currentPart) as $target) {
-                foreach ($this->generateExtendedVariants($currentPart, $target) as $extendedPart) {
-                    if ($extendedPart === '' || isset($seen[$extendedPart])) {
-                        continue;
-                    }
-
-                    $seen[$extendedPart] = true;
-
-                    $result[]  = $extendedPart;
-                    $pending[] = $extendedPart;
-
-                    if (count($result) >= self::MAX_EXTEND_VARIANTS) {
-                        return $result;
-                    }
-                }
-            }
-        }
-
-        return $result;
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function generateExtendedVariants(string $part, string $target): array
-    {
-        $variants = [];
-
-        foreach ($this->orderedExtendSources($target) as $extender) {
-            if ($extender === $target) {
-                continue;
-            }
-
-            array_push($variants, ...$this->replaceExtendTargetInSelectorPart($part, $target, $extender));
-        }
-
-        return $variants;
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function getOrderedReplacementTargets(string $part): array
-    {
-        $targets = [];
-        $seen    = [];
-        $parts   = $this->splitSelectorCompoundsByDescendant($part);
-
-        foreach (array_reverse($parts) as $compound) {
-            foreach (array_reverse($this->tokenizeSelectorCompound($compound)) as $target) {
-                if (
-                    $target === ''
-                    || $target === $part
-                    || isset($seen[$target])
-                    || ! isset($this->ctx->outputState->extends->extendMap[$target])
-                    || $this->ctx->outputState->extends->extendMap[$target] === []
-                ) {
-                    continue;
-                }
-
-                $seen[$target] = true;
-
-                $targets[] = $target;
-            }
-        }
-
-        return $targets;
     }
 
     /**

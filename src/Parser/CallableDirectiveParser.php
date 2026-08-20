@@ -35,7 +35,7 @@ final readonly class CallableDirectiveParser
     {
         $this->stream->skipWhitespace();
 
-        $identifier = StreamUtils::parseQualifiedIdentifier($this->stream);
+        $identifier = TokenStreamHelper::parseQualifiedIdentifier($this->stream);
 
         $namespace = null;
         $mixin     = $identifier;
@@ -62,7 +62,7 @@ final readonly class CallableDirectiveParser
 
         $this->stream->skipWhitespace();
 
-        if (StreamUtils::consumeKeyword($this->stream, 'using', true)) {
+        if (TokenStreamHelper::consumeKeyword($this->stream, 'using', true)) {
             $contentArguments = $this->parseParameterList();
 
             $this->stream->skipWhitespace();
@@ -76,7 +76,7 @@ final readonly class CallableDirectiveParser
             $this->parsingContext->decrementBlockDepth();
             $this->stream->consume(TokenType::RBRACE);
         } else {
-            StreamUtils::consumeSemicolonFromStream($this->stream);
+            TokenStreamHelper::consumeSemicolonFromStream($this->stream);
         }
 
         return new IncludeNode($namespace, $mixin, $arguments, $contentBlock, $contentArguments);
@@ -175,7 +175,7 @@ final readonly class CallableDirectiveParser
 
                         $signature .= $token->type === TokenType::WHITESPACE
                             ? ' '
-                            : StreamUtils::tokenToRawString($token->type, $token->value);
+                            : TokenStreamHelper::tokenToRawString($token->type, $token->value);
 
                         $this->stream->advance();
                     }
@@ -199,7 +199,7 @@ final readonly class CallableDirectiveParser
 
                     $signature .= $token->type === TokenType::WHITESPACE
                         ? ' '
-                        : StreamUtils::tokenToRawString($token->type, $token->value);
+                        : TokenStreamHelper::tokenToRawString($token->type, $token->value);
 
                     $this->stream->advance();
                 }
@@ -210,7 +210,7 @@ final readonly class CallableDirectiveParser
             // Handle CSS function return type: returns <ident>
             $this->stream->skipWhitespace();
 
-            if (StreamUtils::consumeKeyword($this->stream, 'returns', true)) {
+            if (TokenStreamHelper::consumeKeyword($this->stream, 'returns', true)) {
                 $selector .= ' returns';
 
                 $this->stream->skipWhitespace();
@@ -222,7 +222,7 @@ final readonly class CallableDirectiveParser
 
                     $returnType .= $token->type === TokenType::WHITESPACE
                         ? ' '
-                        : StreamUtils::tokenToRawString($token->type, $token->value);
+                        : TokenStreamHelper::tokenToRawString($token->type, $token->value);
 
                     $this->stream->advance();
                 }
@@ -249,7 +249,7 @@ final readonly class CallableDirectiveParser
 
         $value = $this->valueContext->parseValue();
 
-        StreamUtils::consumeSemicolonFromStream($this->stream);
+        TokenStreamHelper::consumeSemicolonFromStream($this->stream);
 
         return new ReturnNode($value);
     }
@@ -287,12 +287,12 @@ final readonly class CallableDirectiveParser
                     $defaultValue = $this->parseParameterDefaultValue();
                 }
 
-                $rest = StreamUtils::consumeEllipsis($this->stream);
+                $rest = TokenStreamHelper::consumeEllipsis($this->stream);
 
                 $arguments[] = new ArgumentNode($varName, $defaultValue, $rest);
 
                 if ($rest) {
-                    StreamUtils::consumeCommaSeparator($this->stream);
+                    TokenStreamHelper::consumeCommaSeparator($this->stream);
 
                     break;
                 }
@@ -306,7 +306,7 @@ final readonly class CallableDirectiveParser
                 }
             }
 
-            StreamUtils::consumeCommaSeparator($this->stream);
+            TokenStreamHelper::consumeCommaSeparator($this->stream);
         }
 
         $this->stream->consume(TokenType::RPAREN);

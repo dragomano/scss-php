@@ -13,5 +13,6 @@ final class ListNode extends AstNode
         public array $items = [],
         public string $separator = 'space',
         public bool $bracketed = false,
+        public bool $parenthesized = false,
     ) {}
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Utils;
 
+use function array_fill;
 use function array_fill_keys;
 use function array_merge;
 use function array_pop;
@@ -19,10 +20,14 @@ use function ctype_alnum;
 use function ctype_alpha;
 use function implode;
 use function in_array;
+use function max;
 use function str_starts_with;
 use function strlen;
 use function trim;
 
+/**
+ * @phpstan-type Complex array<int, array{sel: string, comb: string, lead?: string}>
+ */
 final readonly class SelectorTokenizer
 {
     /**
@@ -194,10 +199,6 @@ final readonly class SelectorTokenizer
 
         if ($this->extractTypeToken($replacementTokens) !== '') {
             $unified = $this->unifyCompounds($replacement, $remainingCompound);
-
-            if ($unified === null) {
-                return null;
-            }
 
             return $unified;
         }
@@ -568,8 +569,7 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, string> $tokens
-     * @return array<int, string>
+     * @return string
      */
     public function normalizeSelectorAttributes(string $selector): string
     {
@@ -595,6 +595,10 @@ final readonly class SelectorTokenizer
         return $result;
     }
 
+    /**
+     * @param array<int, string> $tokens
+     * @return array<int, string>
+     */
     public function orderTokens(array $tokens): array
     {
         $types                = [];
@@ -844,6 +848,7 @@ final readonly class SelectorTokenizer
                             $candidate[] = [
                                 'sel'  => $unifiedSubject,
                                 'comb' => $component['comb'],
+                                'lead' => '',
                             ];
                         } else {
                             $candidate[] = $component;
@@ -884,11 +889,13 @@ final readonly class SelectorTokenizer
             $wovenPrefixes = $this->weaveParents($prefix, $extenderComponents) ?? [];
 
             foreach ($wovenPrefixes as $wovenPrefix) {
+                /** @var array<int, array{sel: string, comb: string, lead?: string}> $candidate */
                 $candidate = $wovenPrefix;
 
                 $candidate[] = [
                     'sel'  => $unifiedSubject,
                     'comb' => $suffix === [] ? '' : $component['comb'],
+                    'lead' => '',
                 ];
 
                 foreach ($suffix as $suffixComponent) {
@@ -896,7 +903,7 @@ final readonly class SelectorTokenizer
                 }
 
                 if ($leading !== '' && ! isset($candidate[0]['lead'])) {
-                    $candidate[0]['lead'] = $leading;
+                    $candidate[0] = ['sel' => $candidate[0]['sel'], 'comb' => $candidate[0]['comb'], 'lead' => $leading];
                 }
 
                 $resolved[] = $this->complexComponentsToString($candidate);
@@ -1002,11 +1009,13 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @return array<int, array{sel: string, comb: string}>
+     * @return array<int, array{sel: string, comb: string, lead?: string}>
      */
     public function parseComplexComponents(string $complex): array
     {
+        /** @var array<string> $items */
         $items        = [];
+        /** @var string $buffer */
         $buffer       = '';
         $length       = strlen($complex);
         $parenDepth   = 0;
@@ -1122,7 +1131,7 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string}> $components
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
      */
     public function complexComponentsToString(array $components): string
     {
@@ -1130,7 +1139,7 @@ final readonly class SelectorTokenizer
         $count  = count($components);
 
         foreach ($components as $i => $component) {
-            if ($i === 0 && isset($component['lead'])) {
+            if ($i === 0 && isset($component['lead']) && $component['lead'] !== '') {
                 $result .= $component['lead'] . ' ';
             }
 
@@ -1145,8 +1154,8 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string}>> $complexes
-     * @return array<int, array<int, array{sel: string, comb: string}>>
+     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $complexes
+     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
      */
     public function weave(array $complexes): array
     {
@@ -1183,9 +1192,9 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string}> $prefix
-     * @param array<int, array{sel: string, comb: string}> $base
-     * @return array<int, array<int, array{sel: string, comb: string}>>|null
+     * @param Complex $prefix
+     * @param Complex $base
+     * @return array<int, Complex>|null
      */
     public function weaveParents(array $prefix, array $base): ?array
     {
@@ -1223,6 +1232,11 @@ final readonly class SelectorTokenizer
         $lcs = $this->longestCommonSubsequence(
             $groups2,
             $groups1,
+            /**
+             * @param Complex $group1
+             * @param Complex $group2
+             * @return Complex|null
+             */
             function (array $group1, array $group2): ?array {
                 if ($group1 === $group2) {
                     return $group1;
@@ -1252,6 +1266,9 @@ final readonly class SelectorTokenizer
             foreach ($this->chunks(
                 $groups1,
                 $groups2,
+                /**
+                 * @param array<int, Complex> $queue
+                 */
                 fn(array $queue): bool => $queue !== [] && $this->complexIsParentSuperselector($queue[0], $group),
             ) as $chunk) {
                 $flat = [];
@@ -1703,8 +1720,8 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string}> $queue
-     * @return array{sel: string, comb: string}|null
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $queue
+     * @return array{sel: string, comb: string, lead?: string}|null
      */
     private function firstIfRootish(array &$queue): ?array
     {
@@ -1733,10 +1750,10 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string}> $components1
-     * @param array<int, array{sel: string, comb: string}> $components2
-     * @param array<int, array<int, array<int, array{sel: string, comb: string}>>> $result
-     * @return array<int, array<int, array<int, array{sel: string, comb: string}>>>|null
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $components1
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $components2
+     * @param array<int, array<int, array<int, array{sel: string, comb: string, lead?: string}>>> $result
+     * @return array<int, array<int, array<int, array{sel: string, comb: string, lead?: string}>>>|null
      */
     private function mergeTrailingCombinators(array &$components1, array &$components2, array $result = []): ?array
     {
@@ -1748,7 +1765,9 @@ final readonly class SelectorTokenizer
         }
 
         if ($combinators1 === '~' && $combinators2 === '~') {
+            /** @var array{sel: string, comb: string, lead?: string} $component1 */
             $component1 = array_pop($components1);
+            /** @var array{sel: string, comb: string, lead?: string} $component2 */
             $component2 = array_pop($components2);
 
             if ($this->compoundIsSuperselector($component1['sel'], $component2['sel'])) {
@@ -1771,7 +1790,9 @@ final readonly class SelectorTokenizer
         }
 
         if (in_array($combinators1, ['>', '+', '~'], true) && $combinators1 === $combinators2) {
+            /** @var array{sel: string, comb: string, lead?: string} $component1 */
             $component1 = array_pop($components1);
+            /** @var array{sel: string, comb: string, lead?: string} $component2 */
             $component2 = array_pop($components2);
 
             $unified = $this->unifyCompounds($component1['sel'], $component2['sel']);
@@ -1789,7 +1810,9 @@ final readonly class SelectorTokenizer
             ($combinators1 === '~' && $combinators2 === '+')
             || ($combinators1 === '+' && $combinators2 === '~')
         ) {
+            /** @var array{sel: string, comb: string, lead?: string} $next */
             $next      = $combinators1 === '+' ? array_pop($components1) : array_pop($components2);
+            /** @var array{sel: string, comb: string, lead?: string} $following */
             $following = $combinators1 === '+' ? array_pop($components2) : array_pop($components1);
 
             if ($this->compoundIsSuperselector($following['sel'], $next['sel'])) {
@@ -1817,6 +1840,7 @@ final readonly class SelectorTokenizer
         }
 
         if ($siblingSide !== null) {
+            /** @var array{sel: string, comb: string, lead?: string} $sibling */
             $sibling = array_pop($siblingSide);
 
             array_unshift($result, [[$sibling]]);
@@ -1827,7 +1851,7 @@ final readonly class SelectorTokenizer
         if ($combinators1 !== '' && $combinators2 === '') {
             $combinatorSide = &$components1;
             $descendantSide = &$components2;
-        } elseif ($combinators2 !== '' && $combinators1 === '') {
+        } elseif ($combinators1 === '') {
             $combinatorSide = &$components2;
             $descendantSide = &$components1;
         } else {
@@ -1846,6 +1870,7 @@ final readonly class SelectorTokenizer
             array_pop($descendantSide);
         }
 
+        /** @var array{sel: string, comb: string, lead?: string} $component */
         $component = array_pop($combinatorSide);
 
         array_unshift($result, [[$component]]);
@@ -1854,8 +1879,8 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string}> $components
-     * @return array<int, array<int, array{sel: string, comb: string}>>
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
+     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
      */
     private function groupSelectors(array $components): array
     {
@@ -1879,9 +1904,10 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string}>> $queue1
-     * @param array<int, array<int, array{sel: string, comb: string}>> $queue2
-     * @return array<int, array<int, array<int, array{sel: string, comb: string}>>>
+     * @param array<int, Complex> $queue1
+     * @param array<int, Complex> $queue2
+     * @param callable(array<int, Complex>): bool $done
+     * @return array<int, array<int, Complex>>
      */
     private function chunks(array &$queue1, array &$queue2, callable $done): array
     {
@@ -1913,15 +1939,15 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string}>> $sequence1
-     * @param array<int, array<int, array{sel: string, comb: string}>> $sequence2
-     * @return array<int, array<int, array{sel: string, comb: string}>>
+     * @param array<int, Complex> $sequence1
+     * @param array<int, Complex> $sequence2
+     * @param callable(Complex, Complex): ?Complex $select
+     * @return array<int, Complex>
      */
     private function longestCommonSubsequence(array $sequence1, array $sequence2, callable $select): array
     {
-        $m = count($sequence1);
-        $n = count($sequence2);
-
+        $m  = count($sequence1);
+        $n  = count($sequence2);
         $dp = array_fill(0, $m + 1, array_fill(0, $n + 1, 0));
 
         for ($i = 1; $i <= $m; $i++) {
@@ -1960,8 +1986,8 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array<int, mixed>> $choices
-     * @return array<int, array<int, mixed>>
+     * @param array<int, array<int, Complex>> $choices
+     * @return array<int, array<int, Complex>>
      */
     private function paths(array $choices): array
     {
@@ -1983,8 +2009,8 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string}> $complex1
-     * @param array<int, array{sel: string, comb: string}> $complex2
+     * @param Complex $complex1
+     * @param Complex $complex2
      */
     private function complexIsParentSuperselector(array $complex1, array $complex2): bool
     {
@@ -2001,8 +2027,8 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string}> $complex1
-     * @param array<int, array{sel: string, comb: string}> $complex2
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $complex1
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $complex2
      */
     private function complexIsSuperselector(array $complex1, array $complex2): bool
     {
@@ -2098,7 +2124,7 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string}> $parents
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $parents
      */
     private function compatibleWithPreviousCombinator(string $previous, array $parents): bool
     {
@@ -2136,8 +2162,12 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string}> $group1
-     * @param array<int, array{sel: string, comb: string}> $group2
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $group1
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $group2
+     */
+    /**
+     * @param Complex $group1
+     * @param Complex $group2
      */
     private function mustUnify(array $group1, array $group2): bool
     {
@@ -2167,9 +2197,9 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string}> $group1
-     * @param array<int, array{sel: string, comb: string}> $group2
-     * @return array<int, array{sel: string, comb: string}>|null
+     * @param Complex $group1
+     * @param Complex $group2
+     * @return Complex|null
      */
     private function unifyGroups(array $group1, array $group2): ?array
     {

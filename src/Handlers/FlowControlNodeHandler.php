@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Handlers;
 
 use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
-use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\EachNode;
@@ -17,6 +16,7 @@ use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
+use Bugo\SCSS\Services\LoopIterator;
 use Bugo\SCSS\Services\Render;
 
 use function is_numeric;
@@ -28,6 +28,7 @@ final readonly class FlowControlNodeHandler
         private NodeDispatcherInterface $dispatcher,
         private Evaluator $evaluation,
         private Render $render,
+        private LoopIterator $loopIterator,
     ) {}
 
     public function handleIf(IfNode $node, TraversalContext $ctx): string
@@ -97,31 +98,23 @@ final readonly class FlowControlNodeHandler
         $from     = (int) $fromNode->value;
         $to       = (int) $toNode->value;
 
-        $step = $from <= $to ? 1 : -1;
-
-        if (! $node->inclusive) {
-            $to -= $step;
-        }
-
-        $iterations    = 0;
-        $maxIterations = 10000;
-
         $ctx->env->enterScope();
 
         try {
             $bodyCtx = new TraversalContext($ctx->env, $ctx->indent);
 
-            for ($i = $from; $step > 0 ? $i <= $to : $i >= $to; $i += $step) {
-                $iterations++;
+            $this->loopIterator->forLoop(
+                $from,
+                $to,
+                $node->inclusive,
+                function (int $i) use ($node, $unit, $ctx, $bodyCtx, &$output, &$first) {
+                    $ctx->env->getCurrentScope()->setVariable($node->variable, new NumberNode($i, $unit));
 
-                if ($iterations > $maxIterations) {
-                    throw new MaxIterationsExceededException('@for');
-                }
+                    $this->compileBody($node->body, $bodyCtx, $output, $first);
 
-                $ctx->env->getCurrentScope()->setVariable($node->variable, new NumberNode($i, $unit));
-
-                $this->compileBody($node->body, $bodyCtx, $output, $first);
-            }
+                    return true;
+                },
+            );
         } finally {
             $ctx->env->exitScope();
         }
@@ -131,21 +124,16 @@ final readonly class FlowControlNodeHandler
 
     public function handleWhile(WhileNode $node, TraversalContext $ctx): string
     {
-        $output        = '';
-        $first         = true;
-        $iterations    = 0;
-        $maxIterations = 10000;
-        $bodyCtx       = new TraversalContext($ctx->env, $ctx->indent);
+        $output  = '';
+        $first   = true;
+        $bodyCtx = new TraversalContext($ctx->env, $ctx->indent);
 
-        while ($this->evaluation->evaluateFunctionCondition($node->condition, $ctx->env)) {
-            $iterations++;
-
-            if ($iterations > $maxIterations) {
-                throw new MaxIterationsExceededException('@while');
-            }
-
-            $this->compileBody($node->body, $bodyCtx, $output, $first);
-        }
+        $this->loopIterator->whileLoop(
+            fn(): bool => $this->evaluation->evaluateFunctionCondition($node->condition, $ctx->env),
+            function () use ($node, $bodyCtx, &$output, &$first): void {
+                $this->compileBody($node->body, $bodyCtx, $output, $first);
+            },
+        );
 
         return $output;
     }

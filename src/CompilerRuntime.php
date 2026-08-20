@@ -26,6 +26,7 @@ use Bugo\SCSS\Services\EachLoopBinder;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\ExtendsResolver;
 use Bugo\SCSS\Services\FunctionConditionEvaluator;
+use Bugo\SCSS\Services\LoopIterator;
 use Bugo\SCSS\Services\Module;
 use Bugo\SCSS\Services\ModuleVariableAssigner;
 use Bugo\SCSS\Services\ModuleVariableAssignerInterface;
@@ -375,6 +376,7 @@ final class CompilerRuntime
             $this->dispatcher,
             $this->evaluation(),
             $this->render(),
+            new LoopIterator(),
         );
     }
 

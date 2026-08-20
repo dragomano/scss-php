@@ -19,11 +19,18 @@ final class TokenStream
     /**
      * @param array<int, Token> $tokens
      */
-    public function __construct(private array $tokens)
-    {
+    public function __construct(
+        private array $tokens,
+        public readonly string $source = '',
+    ) {
         $this->length = count($this->tokens);
 
         $this->tokens[$this->length] = $this->tokens[$this->length - 1];
+    }
+
+    public function getSource(): string
+    {
+        return $this->source;
     }
 
     public function current(): Token

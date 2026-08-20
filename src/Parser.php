@@ -74,7 +74,7 @@ final class Parser implements
     {
         $tokens = $this->tokenizer->tokenize($source);
 
-        $this->stream = new TokenStream($tokens);
+        $this->stream = new TokenStream($tokens, $source);
 
         $this->blockDepth = 0;
 
@@ -195,7 +195,7 @@ final class Parser implements
                 $token = $this->stream->current();
 
                 $statements[] = new CommentNode(
-                    trim($token->value),
+                    trim($token->value, " \t"),
                     $token->type === TokenType::COMMENT_PRESERVED,
                     $token->line,
                     $token->column,
@@ -259,7 +259,7 @@ final class Parser implements
                 $token = $this->stream->current();
 
                 $statements[] = new CommentNode(
-                    trim($token->value),
+                    trim($token->value, " \t"),
                     $token->type === TokenType::COMMENT_PRESERVED,
                     $token->line,
                     $token->column,

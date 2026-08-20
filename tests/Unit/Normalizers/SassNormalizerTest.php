@@ -925,11 +925,13 @@ describe('SassNormalizer', function () {
                 ->toThrow(InvalidSyntaxException::class, 'Unterminated string starting at line 2.');
         });
 
-        it('throws for unterminated multiline comments in indented sass', function () {
+        it('auto-closes unterminated multiline comments at end of file in indented sass', function () {
             $malformed = ".grid\n  /* comment\n";
 
             expect(fn() => $this->normalizer->normalize($malformed))
-                ->toThrow(InvalidSyntaxException::class, 'Unterminated comment starting at line 2.');
+                ->not->toThrow(InvalidSyntaxException::class);
+
+            expect($this->normalizer->normalize($malformed))->toContain('.grid');
         });
     });
 

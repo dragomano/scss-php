@@ -32,6 +32,7 @@ final readonly class UserFunctionExecutor
         private EachLoopBinderInterface $eachLoopBinder,
         private AstValueEvaluatorInterface $slashDivisionValueEvaluator,
         private DiagnosticDirectiveHandlerInterface $diagnosticHandler,
+        private LoopIterator $loopIterator,
     ) {}
 
     /**
@@ -136,29 +137,23 @@ final readonly class UserFunctionExecutor
                 $from     = (int) $fromNode->value;
                 $to       = (int) $toNode->value;
 
-                $step = $from <= $to ? 1 : -1;
+                $result = null;
 
-                if (! $statement->inclusive) {
-                    $to -= $step;
-                }
+                $this->loopIterator->forLoop(
+                    $from,
+                    $to,
+                    $statement->inclusive,
+                    function (int $i) use ($statement, $unit, $env, &$result) {
+                        $env->getCurrentScope()->setVariable($statement->variable, new NumberNode($i, $unit));
 
-                $iterations    = 0;
-                $maxIterations = 10000;
+                        $result = $this->runStatements($statement->body, $env);
 
-                for ($i = $from; $step > 0 ? $i <= $to : $i >= $to; $i += $step) {
-                    $iterations++;
+                        return $result === null;
+                    },
+                );
 
-                    if ($iterations > $maxIterations) {
-                        throw new MaxIterationsExceededException('@for');
-                    }
-
-                    $env->getCurrentScope()->setVariable($statement->variable, new NumberNode($i, $unit));
-
-                    $result = $this->runStatements($statement->body, $env);
-
-                    if ($result !== null) {
-                        return $result;
-                    }
+                if ($result !== null) {
+                    return $result;
                 }
 
                 continue;
@@ -169,21 +164,19 @@ final readonly class UserFunctionExecutor
             }
 
             if ($statement instanceof WhileNode) {
-                $iterations    = 0;
-                $maxIterations = 10000;
+                $iterations = 0;
+                $result     = null;
 
-                while ($this->condition->evaluate($statement->condition, $env)) {
-                    $iterations++;
-
-                    if ($iterations > $maxIterations) {
+                while ($result === null && $this->condition->evaluate($statement->condition, $env)) {
+                    if (++$iterations > LoopIterator::MAX_ITERATIONS) {
                         throw new MaxIterationsExceededException('@while');
                     }
 
                     $result = $this->runStatements($statement->body, $env);
+                }
 
-                    if ($result !== null) {
-                        return $result;
-                    }
+                if ($result !== null) {
+                    return $result;
                 }
 
                 continue;

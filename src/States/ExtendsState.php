@@ -6,7 +6,7 @@ namespace Bugo\SCSS\States;
 
 final class ExtendsState
 {
-    /** @var array<string, array<int, string>> */
+    /** @var array<string, array<int, array{source: string, priority: int}>> */
     public array $extendMap = [];
 
     /** @var array<int, array{target: string, source: string, context: string, optional: bool, priority: int}> */
@@ -40,7 +40,14 @@ final class ExtendsState
 
     public int $extendSequence = 0;
 
-    /** @var array<int, array<string, mixed>> */
+    /**
+     * @var array<int, array{
+     *     rawParts: array<int, string>,
+     *     selectors: array<int, string>,
+     *     originals: array<int, string>,
+     *     context: string
+     * }>
+     */
     public array $boxes = [];
 
     public function reset(): void

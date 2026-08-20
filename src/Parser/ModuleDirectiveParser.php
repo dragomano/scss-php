@@ -35,7 +35,7 @@ final readonly class ModuleDirectiveParser
 
         $this->stream->skipWhitespace();
 
-        if (StreamUtils::consumeKeyword($this->stream, 'as')) {
+        if (TokenStreamHelper::consumeKeyword($this->stream, 'as')) {
             if ($this->stream->consume(TokenType::STAR)) {
                 $namespace = '*';
             } else {
@@ -45,11 +45,11 @@ final readonly class ModuleDirectiveParser
 
         $this->stream->skipWhitespace();
 
-        if (StreamUtils::consumeKeyword($this->stream, 'with')) {
+        if (TokenStreamHelper::consumeKeyword($this->stream, 'with')) {
             $configuration = $this->parseUseConfiguration();
         }
 
-        StreamUtils::consumeSemicolonFromStream($this->stream);
+        TokenStreamHelper::consumeSemicolonFromStream($this->stream);
 
         return new UseNode($path, $namespace, $configuration);
     }
@@ -67,12 +67,12 @@ final readonly class ModuleDirectiveParser
                 $imports[] = $entry;
             }
 
-            if (! StreamUtils::consumeCommaSeparator($this->stream)) {
+            if (! TokenStreamHelper::consumeCommaSeparator($this->stream)) {
                 break;
             }
         }
 
-        StreamUtils::consumeSemicolonFromStream($this->stream);
+        TokenStreamHelper::consumeSemicolonFromStream($this->stream);
 
         return new ImportNode($imports);
     }
@@ -98,7 +98,7 @@ final readonly class ModuleDirectiveParser
             $keyword = strtolower($this->stream->current()->value);
 
             if ($keyword === 'as') {
-                StreamUtils::consumeKeyword($this->stream, $keyword, true);
+                TokenStreamHelper::consumeKeyword($this->stream, $keyword, true);
 
                 $prefix = $this->context->consumeIdentifier();
 
@@ -107,7 +107,7 @@ final readonly class ModuleDirectiveParser
             } elseif ($keyword === 'hide' || $keyword === 'show') {
                 $visibility = $keyword;
 
-                StreamUtils::consumeKeyword($this->stream, $keyword, true);
+                TokenStreamHelper::consumeKeyword($this->stream, $keyword, true);
 
                 while (! $this->stream->isEof() && ! $this->stream->is(TokenType::SEMICOLON)) {
                     $isVariable = $this->stream->consume(TokenType::DOLLAR) !== null;
@@ -117,12 +117,12 @@ final readonly class ModuleDirectiveParser
                         $members[] = $isVariable ? '$' . $name : $name;
                     }
 
-                    if (! StreamUtils::consumeCommaSeparator($this->stream)) {
+                    if (! TokenStreamHelper::consumeCommaSeparator($this->stream)) {
                         break;
                     }
                 }
             } elseif ($keyword === 'with') {
-                StreamUtils::consumeKeyword($this->stream, $keyword, true);
+                TokenStreamHelper::consumeKeyword($this->stream, $keyword, true);
 
                 $configuration = $this->parseForwardConfiguration();
             } else {
@@ -130,7 +130,7 @@ final readonly class ModuleDirectiveParser
             }
         }
 
-        StreamUtils::consumeSemicolonFromStream($this->stream);
+        TokenStreamHelper::consumeSemicolonFromStream($this->stream);
 
         return new ForwardNode($path, $prefix, $visibility, $members, $configuration);
     }
@@ -179,7 +179,7 @@ final readonly class ModuleDirectiveParser
             } elseif ($token->type === TokenType::STRING) {
                 $entry .= '"' . $token->value . '"';
             } else {
-                $entry .= StreamUtils::tokenToRawString($token->type, $token->value);
+                $entry .= TokenStreamHelper::tokenToRawString($token->type, $token->value);
             }
 
             $this->stream->advance();

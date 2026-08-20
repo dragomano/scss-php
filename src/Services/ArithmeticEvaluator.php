@@ -8,6 +8,7 @@ use Bugo\SCSS\Exceptions\DivisionByZeroException;
 use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
 use Bugo\SCSS\Exceptions\UndefinedOperationException;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -17,6 +18,7 @@ use Closure;
 
 use function count;
 use function fmod;
+use function is_infinite;
 use function trim;
 
 final readonly class ArithmeticEvaluator
@@ -88,7 +90,7 @@ final readonly class ArithmeticEvaluator
         }
     }
 
-    public function applyOperator(NumberNode $left, string $operator, NumberNode $right): NumberNode
+    public function applyOperator(NumberNode $left, string $operator, NumberNode $right): AstNode
     {
         if ($operator === '+' || $operator === '-') {
             if (! UnitConverter::compatible($left->unit, $right->unit)) {
@@ -125,6 +127,22 @@ final readonly class ArithmeticEvaluator
             }
 
             $rightValue = UnitConverter::convert((float) $right->value, $right->unit, $left->unit);
+
+            if (is_infinite($rightValue)) {
+                $sameSign = ($left->value >= 0) === ($rightValue >= 0);
+
+                if ($sameSign) {
+                    return new NumberNode((float) $left->value, $left->unit ?? $right->unit, false);
+                }
+
+                return new FunctionNode('calc', [
+                    new ListNode([
+                        new StringNode('NaN'),
+                        new StringNode('*'),
+                        new NumberNode(1.0, $left->unit ?? $right->unit, false),
+                    ], 'space'),
+                ]);
+            }
 
             return new NumberNode(
                 fmod((float) $left->value, $rightValue),
@@ -167,7 +185,7 @@ final readonly class ArithmeticEvaluator
     /**
      * @param array<int, AstNode> $items
      */
-    private function evaluateStrictList(array $items, bool $bracketed, bool $insideCalc = false): ?NumberNode
+    private function evaluateStrictList(array $items, bool $bracketed, bool $insideCalc = false): ?AstNode
     {
         $first = $items[0] ?? null;
         $mid   = $items[1] ?? null;
@@ -201,7 +219,7 @@ final readonly class ArithmeticEvaluator
 
         $collapsed = [];
 
-        /** @var NumberNode $current */
+        /** @var AstNode $current */
         $current   = $items[0];
         $itemCount = count($items);
 
@@ -213,9 +231,10 @@ final readonly class ArithmeticEvaluator
             $next = $items[$i + 1];
 
             if (
-                $operator->value === '*'
-                || $operator->value === '/'
-                || $operator->value === '%'
+                ($operator->value === '*'
+                    || $operator->value === '/'
+                    || $operator->value === '%')
+                && $current instanceof NumberNode
             ) {
                 $current = $this->applyOperator($current, $operator->value, $next);
 
@@ -230,7 +249,7 @@ final readonly class ArithmeticEvaluator
 
         $collapsed[] = $current;
 
-        /** @var NumberNode $result */
+        /** @var AstNode $result */
         $result         = $collapsed[0];
         $collapsedCount = count($collapsed);
 
@@ -239,7 +258,12 @@ final readonly class ArithmeticEvaluator
             $operator = $collapsed[$i];
 
             /** @var NumberNode $next */
-            $next   = $collapsed[$i + 1];
+            $next = $collapsed[$i + 1];
+
+            if (! $result instanceof NumberNode) {
+                return $result;
+            }
+
             $result = $this->applyOperator($result, $operator->value, $next);
         }
 
@@ -292,6 +316,7 @@ final readonly class ArithmeticEvaluator
                 && ($nextToken = $items[$i + 1] ?? null) instanceof StringNode
                 && isset(self::ARITHMETIC_OPERATORS[$nextToken->value])
                 && ($nextItem = $items[$i + 2]) instanceof NumberNode
+                && $value instanceof NumberNode
                 && ($insideCalc || ! ($nextToken->value === '/' && $value->isLiteral && $nextItem->isLiteral))
             ) {
                 $next    = $nextItem;

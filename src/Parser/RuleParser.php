@@ -201,7 +201,7 @@ final class RuleParser
                 break;
             }
 
-            if (StreamUtils::consumeInterpolationFragment(
+            if (TokenStreamHelper::consumeInterpolationFragment(
                 $this->stream,
                 $selector,
                 $interpolationDepth,
@@ -275,7 +275,7 @@ final class RuleParser
         while (! $this->stream->isEof()) {
             $token = $this->stream->current();
 
-            if (StreamUtils::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
+            if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
                 continue;
             }
 

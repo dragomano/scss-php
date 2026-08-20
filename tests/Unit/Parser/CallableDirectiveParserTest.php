@@ -15,7 +15,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Parser\CallableDirectiveParser;
 use Bugo\SCSS\Parser\CallableDirectiveParsingContextInterface;
 use Bugo\SCSS\Parser\CallableDirectiveValueContextInterface;
-use Bugo\SCSS\Parser\StreamUtils;
+use Bugo\SCSS\Parser\TokenStreamHelper;
 
 function callableDirectiveToken(
     TokenType $type,
@@ -51,7 +51,7 @@ function createCallableDirectiveParser(array $tokens, array $overrides = []): Ca
         while (! $stream->isEof() && ! $stream->match(...$stopTypes)) {
             $buffer .= $stream->current()->type === TokenType::WHITESPACE
                 ? ' '
-                : StreamUtils::tokenToRawString($stream->current()->type, $stream->current()->value);
+                : TokenStreamHelper::tokenToRawString($stream->current()->type, $stream->current()->value);
 
             $stream->advance();
         }
@@ -63,7 +63,7 @@ function createCallableDirectiveParser(array $tokens, array $overrides = []): Ca
 
     $parseArgumentList = $overrides['parseArgumentList'] ?? static fn(): array => [];
     $consumeIdentifier = $overrides['consumeIdentifier'] ?? function () use ($stream): string {
-        return StreamUtils::consumeIdentifier($stream);
+        return TokenStreamHelper::consumeIdentifier($stream);
     };
 
     $parseRuleFromSelector = $overrides['parseRuleFromSelector']

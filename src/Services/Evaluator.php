@@ -137,30 +137,33 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
 
     public function evaluateDeclarationValue(AstNode $value, string $property, Environment $env): AstNode
     {
-        if (
-            ! $this->shouldUseCompactSlashSpacing($property)
-            || ! ($value instanceof ListNode)
-            || ! $this->containsSlashToken($value)
-        ) {
+        if ($this->shouldUseCompactSlashSpacing($property)) {
             return $this->evaluateValue($value, $env);
         }
 
-        $items   = [];
-        $changed = false;
-
-        foreach ($value->items as $item) {
-            $evaluatedItem = $this->evaluateValue($item, $env);
-
-            if ($evaluatedItem !== $item) {
-                $changed = true;
-            }
-
-            $items[] = $evaluatedItem;
+        if ($value instanceof ListNode
+            && $value->separator === '/'
+            && count($value->items) === 3
+        ) {
+            return $this->evaluateValueWithSlashDivision($value, $env);
         }
 
-        return $changed
-            ? new ListNode($items, $value->separator, $value->bracketed)
-            : $value;
+        if ($value instanceof ListNode
+            && $value->separator === 'space'
+            && $this->isSlashDivisionCandidate($value)
+        ) {
+            return $this->evaluateValueWithSlashDivision($value, $env);
+        }
+
+        $items = $value instanceof ListNode ? $value->items : [$value];
+
+        foreach ($items as $item) {
+            if ($item instanceof ListNode && $item->separator === 'space' && $this->containsSlashToken($item)) {
+                return $this->evaluateValueWithSlashDivision($item, $env);
+            }
+        }
+
+        return $this->evaluateValue($value, $env);
     }
 
     public function evaluateArithmeticList(ListNode $node, bool $strict, Environment $env, bool $insideCalc = false): ?AstNode
@@ -199,6 +202,32 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return false;
     }
 
+    private function isSlashDivisionCandidate(ListNode $value): bool
+    {
+        if (count($value->items) !== 3) {
+            return false;
+        }
+
+        [$first, $mid, $last] = $value->items;
+
+        if (! ($mid instanceof StringNode && $mid->value === '/')) {
+            return false;
+        }
+
+        if ($first instanceof FunctionNode && strtolower($first->name) === 'calc') {
+            return false;
+        }
+
+        if ($last instanceof FunctionNode && strtolower($last->name) === 'calc') {
+            return false;
+        }
+
+        $firstLiteral = $first instanceof NumberNode && $first->isLiteral;
+        $lastLiteral  = $last instanceof NumberNode && $last->isLiteral;
+
+        return ! ($firstLiteral && $lastLiteral);
+    }
+
     public function isSassNullValue(AstNode $value): bool
     {
         return $value instanceof NullNode;
@@ -214,7 +243,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         $evaluated = $this->evaluateValue($node, $env);
 
         if ($evaluated instanceof ListNode
-            && $evaluated->separator === 'space'
+            && ($evaluated->separator === 'space' || $evaluated->separator === '/')
             && count($evaluated->items) === 3
         ) {
             [$evalFirst, $evalMid, $evalLast] = $evaluated->items;
@@ -664,6 +693,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
                 }
             },
             $this->diagnosticHandler,
+            new LoopIterator(),
         );
     }
 

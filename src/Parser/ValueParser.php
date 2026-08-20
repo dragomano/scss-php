@@ -399,10 +399,16 @@ final readonly class ValueParser implements
                 }
             }
 
+            if (! $singleItem instanceof ListNode) {
+                return new ListNode([$singleItem], 'space', false, true);
+            }
+
+            $singleItem->parenthesized = true;
+
             return $singleItem;
         }
 
-        return new ListNode($items, 'comma');
+        return new ListNode($items, 'comma', false, true);
     }
 
     public function parseBracketedListValue(): AstNode
@@ -446,7 +452,7 @@ final readonly class ValueParser implements
 
     public function parseString(): string
     {
-        return StreamUtils::parseStringToken($this->stream);
+        return TokenStreamHelper::parseStringToken($this->stream);
     }
 
     /**
@@ -495,7 +501,7 @@ final readonly class ValueParser implements
 
             $argument = $this->parseCommaSeparatedValueOrEmptyList();
 
-            if (StreamUtils::consumeEllipsis($this->stream)) {
+            if (TokenStreamHelper::consumeEllipsis($this->stream)) {
                 $argument = new SpreadArgumentNode($argument);
             }
 
@@ -575,12 +581,12 @@ final readonly class ValueParser implements
         while (! $this->stream->isEof()) {
             $token = $this->stream->current();
 
-            if (StreamUtils::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
+            if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
                 continue;
             }
 
             if ($interpolationDepth === 0) {
-                StreamUtils::updateNestingDepth($token, $parenDepth, $bracketDepth);
+                TokenStreamHelper::updateNestingDepth($token, $parenDepth, $bracketDepth);
 
                 if (
                     $parenDepth === 0
@@ -596,14 +602,14 @@ final readonly class ValueParser implements
                 TokenType::COMMENT_PRESERVED,
                 TokenType::COMMENT_SILENT,
             ], true)) {
-                $buffer .= StreamUtils::wrapComment($token) ?? '';
+                $buffer .= TokenStreamHelper::wrapComment($token) ?? '';
 
                 $this->stream->advance();
 
                 continue;
             }
 
-            StreamUtils::appendTokenToBuffer($buffer, $token, true);
+            TokenStreamHelper::appendTokenToBuffer($buffer, $token, true);
 
             $this->stream->advance();
         }
@@ -835,7 +841,7 @@ final readonly class ValueParser implements
                 continue;
             }
 
-            StreamUtils::appendTokenToBuffer($inner, $token, true);
+            TokenStreamHelper::appendTokenToBuffer($inner, $token, true);
 
             $this->stream->advance();
         }

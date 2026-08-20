@@ -1,7 +1,6 @@
 <?php declare(strict_types=1);
 
 use Rector\CodeQuality\Rector\BooleanOr\RepeatedOrEqualToInArrayRector;
-use Rector\CodingStyle\Rector\If_\NullableCompareToNullRector;
 use Rector\Config\RectorConfig;
 use Rector\Exception\Configuration\InvalidConfigurationException;
 use Rector\Privatization\Rector\ClassConst\PrivatizeFinalClassConstantRector;
@@ -14,7 +13,6 @@ try {
             __DIR__ . '/src',
         ])
         ->withSkip([
-            NullableCompareToNullRector::class,
             RepeatedOrEqualToInArrayRector::class,
         ])
         ->withPhpSets()

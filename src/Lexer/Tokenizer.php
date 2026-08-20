@@ -667,7 +667,7 @@ final class Tokenizer
 
     private function makeToken(TokenType $type, string $value, int $length): Token
     {
-        $token = new Token($type, $value, $this->line, $this->column);
+        $token = new Token($type, $value, $this->line, $this->column, $this->position);
 
         $this->advance($length);
 

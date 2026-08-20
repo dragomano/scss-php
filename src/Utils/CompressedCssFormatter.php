@@ -21,8 +21,6 @@ use function trim;
 
 final readonly class CompressedCssFormatter
 {
-    public function __construct() {}
-
     public function format(string $css): string
     {
         $css = $this->removeRegularComments($css);

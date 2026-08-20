@@ -129,8 +129,14 @@ final readonly class FunctionCallEvaluator
 
     private function evaluateBuiltinOrCssFunction(FunctionNode $node, Environment $env): AstNode
     {
-        $arguments = $this->callArguments->expandCallArguments($node->arguments, $env);
-        $arguments = $this->calculation->normalizeArguments($node->name, $arguments);
+        $isModernIf = strtolower($node->name) === 'if' && $node->modernSyntax;
+
+        if ($isModernIf) {
+            $arguments = $node->arguments;
+        } else {
+            $arguments = $this->callArguments->expandCallArguments($node->arguments, $env);
+            $arguments = $this->calculation->normalizeArguments($node->name, $arguments);
+        }
 
         if (strtolower($node->name) === 'if' && count($arguments) >= 2 && ! $node->modernSyntax) {
             $rawCond = $node->arguments[0] ?? $arguments[0];
@@ -157,7 +163,7 @@ final readonly class FunctionCallEvaluator
             );
         }
 
-        $inlineIf = $this->conditional->evaluateInlineIfFunction($node->name, $arguments, $env);
+        $inlineIf = $this->conditional->evaluateInlineIfFunction($node->name, $node->arguments, $env);
 
         if ($inlineIf !== null) {
             return $inlineIf;

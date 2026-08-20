@@ -14,7 +14,7 @@ use function max;
 use function strtolower;
 use function trim;
 
-final class StreamUtils
+final class TokenStreamHelper
 {
     public static function consumeIdentifier(TokenStream $stream): string
     {

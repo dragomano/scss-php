@@ -30,18 +30,32 @@ final readonly class CommentNodeHandler
         $output  = '';
 
         if ($node->isPreserved) {
-            $this->render->appendChunk($output, $prefix . '/*! ' . $comment . ' */', $node);
+            $this->render->appendChunk($output, $this->formatComment($comment, true, $prefix), $node);
 
             return $output;
         }
 
         if ($this->context->options()->style === Style::EXPANDED) {
-            $text = $comment === '' ? '/* */' : '/* ' . $comment . ' */';
-            $this->render->appendChunk($output, $prefix . $text, $node);
+            $this->render->appendChunk($output, $this->formatComment($comment, false, $prefix), $node);
 
             return $output;
         }
 
         return '';
+    }
+
+    private function formatComment(string $comment, bool $preserved, string $prefix): string
+    {
+        if ($comment === '') {
+            return $prefix . ($preserved ? '/*! */' : '/* */');
+        }
+
+        $open = $preserved ? '/*!' : '/*';
+
+        if (str_contains($comment, "\n")) {
+            return $prefix . $open . $comment . '*/';
+        }
+
+        return $prefix . $open . ' ' . $comment . ' */';
     }
 }

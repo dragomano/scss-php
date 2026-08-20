@@ -39,7 +39,7 @@ final readonly class FunctionCallParser
     public function parseIdentifierOrFunction(): AstNode
     {
         $startToken = $this->stream->current();
-        $identifier = StreamUtils::parseQualifiedIdentifier($this->stream);
+        $identifier = TokenStreamHelper::parseQualifiedIdentifier($this->stream);
 
         if ($this->stream->is(TokenType::LPAREN)) {
             if ($identifier === 'url') {
@@ -58,9 +58,7 @@ final readonly class FunctionCallParser
             && $this->stream->is(TokenType::WHITESPACE)
             && $this->stream->peek()->type === TokenType::LPAREN
         ) {
-            $this->stream->skipWhitespace();
-
-            return $this->parseFunctionFromName($identifier);
+            return new StringNode($identifier, false, $startToken->line, $startToken->column);
         }
 
         $moduleVariableSeparator = strpos($identifier, '.$');
@@ -175,7 +173,7 @@ final readonly class FunctionCallParser
             } elseif ($token->type === TokenType::STRING) {
                 $argument .= $this->quoteStringForReparse($token->value);
             } else {
-                $argument .= StreamUtils::tokenToRawString($token->type, $token->value);
+                $argument .= TokenStreamHelper::tokenToRawString($token->type, $token->value);
             }
 
             $this->stream->advance();
@@ -197,6 +195,10 @@ final readonly class FunctionCallParser
     public function parseFunctionFromName(string $name): FunctionNode
     {
         $line = $this->stream->current()->line;
+
+        if (strtolower($name) === 'css' && $this->stream->is(TokenType::LPAREN) && $this->stream->getSource() !== '') {
+            return new FunctionNode($name, [new StringNode($this->captureRawCssArgument())], $line);
+        }
 
         $this->stream->advance();
 
@@ -310,11 +312,62 @@ final readonly class FunctionCallParser
         return $this->parsingContext->parseSingleValue();
     }
 
+    private function captureRawCssArgument(): string
+    {
+        $open = $this->stream->consume(TokenType::LPAREN);
+
+        if ($open === null) {
+            return '';
+        }
+
+        $depth      = 1;
+        $closeStart = null;
+        $source     = $this->stream->getSource();
+
+        while (! $this->stream->isEof()) {
+            $token = $this->stream->current();
+
+            if ($token->type === TokenType::LPAREN) {
+                $depth++;
+
+                $this->stream->advance();
+
+                continue;
+            }
+
+            if ($token->type === TokenType::RPAREN) {
+                $depth--;
+
+                if ($depth === 0) {
+                    $closeStart = $token->start;
+
+                    $this->stream->advance();
+
+                    break;
+                }
+
+                $this->stream->advance();
+
+                continue;
+            }
+
+            $this->stream->advance();
+        }
+
+        if ($closeStart === null) {
+            return '';
+        }
+
+        $start = $open->start + 1;
+
+        return trim(substr($source, $start, $closeStart - $start));
+    }
+
     private function parseFunctionArgument(): ?AstNode
     {
         $argument = $this->parsingContext->parseCommaSeparatedValue();
 
-        if ($argument !== null && StreamUtils::consumeEllipsis($this->stream)) {
+        if ($argument !== null && TokenStreamHelper::consumeEllipsis($this->stream)) {
             return new SpreadArgumentNode($argument);
         }
 
@@ -350,35 +403,49 @@ final readonly class FunctionCallParser
     {
         $savedPosition = $this->stream->getPosition();
 
-        $arguments = [];
-        $condition = $this->parsingContext->parseValueUntil([TokenType::COLON, TokenType::COMMA, TokenType::RPAREN]);
+        $clauses = [];
+        $else    = null;
 
-        if ($condition === null) {
-            $this->stream->setPosition($savedPosition);
+        while (true) {
+            $this->stream->skipWhitespace();
 
-            return null;
-        }
+            if ($this->stream->consume(TokenType::SEMICOLON)) {
+                $this->stream->skipWhitespace();
+            }
 
-        if (! $this->stream->is(TokenType::COLON)) {
-            $this->stream->setPosition($savedPosition);
+            if (
+                $this->stream->is(TokenType::IDENTIFIER)
+                && strtolower($this->stream->current()->value) === 'else'
+            ) {
+                $this->stream->advance();
+                $this->stream->skipWhitespace();
+                $this->stream->consume(TokenType::COLON);
+                $this->stream->skipWhitespace();
 
-            return null;
-        }
+                $else ??= $this->parsingContext->parseValueUntil([TokenType::RPAREN, TokenType::SEMICOLON]);
 
-        $arguments[] = $condition;
+                continue;
+            }
 
-        $this->stream->advance();
-        $this->stream->skipWhitespace();
+            $condition = $this->parsingContext->parseValueUntil([TokenType::COLON, TokenType::COMMA, TokenType::RPAREN]);
 
-        $truthy = $this->parsingContext->parseValueUntil([TokenType::SEMICOLON, TokenType::RPAREN, TokenType::COMMA]);
+            if ($condition === null || ! $this->stream->is(TokenType::COLON)) {
+                break;
+            }
 
-        if ($truthy !== null) {
-            $arguments[] = $truthy;
-        }
+            $this->stream->advance();
+            $this->stream->skipWhitespace();
 
-        $this->stream->skipWhitespace();
+            $value = $this->parsingContext->parseValueUntil([TokenType::SEMICOLON, TokenType::RPAREN, TokenType::COMMA]);
 
-        if ($this->stream->consume(TokenType::SEMICOLON)) {
+            $clauses[] = [$condition, $value];
+
+            $this->stream->skipWhitespace();
+
+            if (! $this->stream->consume(TokenType::SEMICOLON)) {
+                break;
+            }
+
             $this->stream->skipWhitespace();
 
             if (
@@ -389,16 +456,41 @@ final readonly class FunctionCallParser
                 $this->stream->skipWhitespace();
                 $this->stream->consume(TokenType::COLON);
                 $this->stream->skipWhitespace();
-            }
 
-            $falsy = $this->parsingContext->parseValueUntil([TokenType::RPAREN]);
+                $else ??= $this->parsingContext->parseValueUntil([TokenType::RPAREN, TokenType::SEMICOLON]);
 
-            if ($falsy !== null) {
-                $arguments[] = $falsy;
+                continue;
             }
         }
 
+        if ($clauses === [] && $else === null) {
+            $this->stream->setPosition($savedPosition);
+
+            return null;
+        }
+
+        $arguments = [];
+
+        foreach ($clauses as [$condition, $value]) {
+            if ($value === null) {
+                continue;
+            }
+
+            $arguments[] = $condition;
+            $arguments[] = $value;
+        }
+
+        if ($else !== null) {
+            $arguments[] = new StringNode('__else__');
+            $arguments[] = $else;
+        }
+
         $this->stream->skipWhitespace();
+
+        if ($this->stream->consume(TokenType::SEMICOLON)) {
+            $this->stream->skipWhitespace();
+        }
+
         $this->stream->consume(TokenType::RPAREN);
 
         return $arguments;
