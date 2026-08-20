@@ -32,7 +32,7 @@ describe('Output Formatting', function () {
 
         $css = $compiler->compileString('.a { color: #ff000080; border-color: #aabbccdd; }');
 
-        expect($css)->toBe('.a{color:#ff000080;border-color:#abcd}');
+        expect($css)->toBe('.a{color:rgba(255,0,0,.5019607843);border-color:rgba(170,187,204,.8666666667)}');
     });
 
     it('does not shorten hex literals in expanded style', function () {

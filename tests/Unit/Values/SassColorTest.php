@@ -60,4 +60,34 @@ describe('SassColor', function () {
         expect($color->toCss())->toBe('#66b0ff');
     });
 
+    it('expands four-digit hex with digits to rgba', function () {
+        $color = new SassColor('#0123');
+
+        expect($color->toCss())->toBe('rgba(0, 17, 34, .2)');
+    });
+
+    it('expands four-digit hex with letters to rgba', function () {
+        $color = new SassColor('#AbCd');
+
+        expect($color->toCss())->toBe('rgba(170, 187, 204, .8666666667)');
+    });
+
+    it('expands eight-digit hex to rgba', function () {
+        $color = new SassColor('#98765432');
+
+        expect($color->toCss())->toBe('rgba(152, 118, 84, .1960784314)');
+    });
+
+    it('expands eight-digit hex with mixed case to rgba', function () {
+        $color = new SassColor('#aBcDeF12');
+
+        expect($color->toCss())->toBe('rgba(171, 205, 239, .0705882353)');
+    });
+
+    it('preserves four-digit hex with full alpha as rgba', function () {
+        $color = new SassColor('#ff0000ff');
+
+        expect($color->toCss())->toBe('rgba(255, 0, 0, 1)');
+    });
+
 });

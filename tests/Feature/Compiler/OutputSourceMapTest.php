@@ -278,7 +278,7 @@ describe('Compiler', function () {
 
             $css = $compiler->compileString($source);
 
-            expect($css)->toBe('.test{color:#f00;background:#0000;border-color:#00f !important}');
+            expect($css)->toBe('.test{color:#f00;background:rgba(0,0,0,0);border-color:#00f !important}');
         });
 
         it('does not convert named colors to hex inside custom properties in compressed style', function () {
