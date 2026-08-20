@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Builtins\Color\Conversion;
 
 use Bugo\Iris\Encoders\HexEncoder;
-use Bugo\Iris\Encoders\HexShortener;
 use Bugo\SCSS\Builtins\Color\Support\ColorFunctionArgumentList;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
@@ -23,7 +22,6 @@ final readonly class HexColorConverter
 {
     public function __construct(
         private HexEncoder $hexColorEncoder = new HexEncoder(),
-        private HexShortener $hexColorShortener = new HexShortener(),
         private CssColorFunctionConverter $cssColorFunctionConverter = new CssColorFunctionConverter(),
         private ColorFunctionArgumentList $arguments = new ColorFunctionArgumentList(),
     ) {}
@@ -129,7 +127,7 @@ final readonly class HexColorConverter
             ? $this->hexColorEncoder->encodeRgba($rByte, $gByte, $bByte, $aByte)
             : $this->hexColorEncoder->encodeRgb($rByte, $gByte, $bByte);
 
-        return new ColorNode($this->hexColorShortener->shorten($hex));
+        return new ColorNode($hex);
     }
 
     private function clampFloat(float $value): float

@@ -515,7 +515,7 @@ it('compresses fallback hsl() functions to hex colors in compressed mode', funct
         throw new RuntimeException('Expected result to be ColorNode.');
     }
 
-    expect($result->value)->toBe('#f00');
+    expect($result->value)->toBe('#ff0000');
 });
 
 it('returns unchanged nodes for unsupported evaluateValue inputs', function () {

@@ -1532,7 +1532,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: #f00;
+                  color: #ff0000;
                 }
                 CSS;
 

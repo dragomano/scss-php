@@ -56,6 +56,6 @@ describe('CompilerContext', function () {
 
         expect($ctx->valueFactory)->toBe($valueFactory)
             ->and($ctx->valueFactory->fromAst(new ColorNode('rgb(255, 0, 0)'))->toCss())
-            ->toBe('#f00');
+            ->toBe('#ff0000');
     });
 });
