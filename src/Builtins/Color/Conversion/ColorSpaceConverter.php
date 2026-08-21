@@ -541,6 +541,10 @@ final readonly class ColorSpaceConverter
         }
 
         if ($space === 'hsl' || $space === 'hwb') {
+            if ($space === 'hwb' && $this->hasAllGenericChannelsMissing($color)) {
+                return new ColorNode('red');
+            }
+
             $alpha = $this->converter->toAlpha($color);
 
             [$r, $g, $b] = $this->extractUnclampedSrgbChannels($color, false);
@@ -1104,7 +1108,7 @@ final readonly class ColorSpaceConverter
             'display-p3'        => $sc->p3ToXyzD65($channels[0], $channels[1], $channels[2]),
             'display-p3-linear' => $sc->linP3ToXyzD65($channels[0], $channels[1], $channels[2]),
             'srgb-linear'       => $sc->linSrgbToXyzD65($channels[0], $channels[1], $channels[2]),
-            'prophoto-rgb'      => $this->runtime->spaceConverter->prophotoToXyzD65($channels[0], $channels[1], $channels[2]),
+            'prophoto-rgb'      => $this->prophotoToXyzD65($channels[0], $channels[1], $channels[2]),
             'xyz'               => new XyzColor(x: $channels[0], y: $channels[1], z: $channels[2]),
             'xyz-d50'           => $sc->xyzD50ToXyzD65(new XyzColor(x: $channels[0], y: $channels[1], z: $channels[2])),
             default             => $sc->srgbToXyzD65($channels[0], $channels[1], $channels[2]),
@@ -1449,6 +1453,17 @@ final readonly class ColorSpaceConverter
             new NumberNode($prophotoChannels[1]),
             new NumberNode($prophotoChannels[2]),
         ], $alpha);
+    }
+
+    private function prophotoToXyzD65(float $red, float $green, float $blue): XyzColor
+    {
+        $sc = $this->runtime->spaceConverter;
+
+        return $sc->xyzD50ToXyzD65($this->linearProphotoToXyzD50(
+            $sc->linProphoto($red),
+            $sc->linProphoto($green),
+            $sc->linProphoto($blue),
+        ));
     }
 
     private function linearProphotoToXyzD50(float $linR, float $linG, float $linB): XyzColor

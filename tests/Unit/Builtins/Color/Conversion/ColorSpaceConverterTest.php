@@ -152,6 +152,37 @@ describe('ColorSpaceConverter', function () {
             ->and($result->arguments[0]->items[2]->value)->toBe('none');
     });
 
+    it('converts ProPhoto RGB through XYZ D50 to XYZ D65', function () {
+        $color = new FunctionNode('color', [new ListNode([
+            new StringNode('prophoto-rgb'),
+            new NumberNode(0.5),
+            new NumberNode(0.25),
+            new NumberNode(0.75),
+        ])]);
+
+        $xyzD50 = $this->interop->toSpace([$color, new StringNode('xyz-d50')]);
+        $xyzD65 = $this->interop->toSpace([$color, new StringNode('xyz')]);
+
+        expect($xyzD50)->toBeInstanceOf(FunctionNode::class)
+            ->and($xyzD50->name)->toBe('color')
+            ->and($xyzD65)->toBeInstanceOf(FunctionNode::class)
+            ->and($xyzD65->name)->toBe('color');
+    });
+
+    it('converts out-of-range ProPhoto RGB through XYZ D65', function () {
+        $color = new FunctionNode('color', [new ListNode([
+            new StringNode('prophoto-rgb'),
+            new NumberNode(-0.5),
+            new NumberNode(1.5),
+            new NumberNode(2.0),
+        ])]);
+
+        $result = $this->interop->toSpace([$color, new StringNode('xyz')]);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('color');
+    });
+
     it('converts colors to xyz-d50 and wide-gamut generic spaces', function () {
         $xyzD50          = $this->interop->toSpace([new ColorNode('#036'), new StringNode('xyz-d50')]);
         $displayP3Linear = $this->interop->toSpace([new ColorNode('#036'), new StringNode('display-p3-linear')]);
