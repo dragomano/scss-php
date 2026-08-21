@@ -113,6 +113,14 @@ final readonly class ColorSpaceConverter
             }
         }
 
+        if (in_array($space, ['lch', 'lab', 'oklch', 'oklab'], true) && $this->hasAllGenericChannelsMissing($color)) {
+            return $this->converter->buildFunctionalColorNode($space, [
+                $this->missingStringNode(),
+                $this->missingStringNode(),
+                $this->missingStringNode(),
+            ], $this->converter->toAlpha($color));
+        }
+
         if ($space === 'lch') {
             $xyz50 = $this->converter->toXyzD50($color);
             $lch   = $this->runtime->spaceConverter->xyzD50ToLch($xyz50);
@@ -977,6 +985,23 @@ final readonly class ColorSpaceConverter
     public function missingStringNode(): StringNode
     {
         return new StringNode('none');
+    }
+
+    private function hasAllGenericChannelsMissing(AstNode $color): bool
+    {
+        if (! ($color instanceof FunctionNode) || strtolower($color->name) !== 'color') {
+            return false;
+        }
+
+        $channels = $this->converter->extractChannelNodes($color);
+
+        for ($i = 1; $i <= 3; $i++) {
+            if (! $this->runtime->argumentParser->isMissingChannelNode($channels[$i] ?? new StringNode('none'))) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function toXyzD65GenericSpace(AstNode $color, string $space): AstNode

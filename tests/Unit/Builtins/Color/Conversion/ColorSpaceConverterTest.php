@@ -98,6 +98,30 @@ describe('ColorSpaceConverter', function () {
             ->and($result->arguments[0]->items[0]->value)->toBe('none');
     });
 
+    it('preserves all missing generic channels when converting to perceptual spaces', function () {
+        foreach (['lab', 'lch', 'oklab', 'oklch'] as $space) {
+            $result = $this->interop->toSpace([
+                new FunctionNode('color', [new ListNode([
+                    new StringNode('a98-rgb'),
+                    new StringNode('none'),
+                    new StringNode('none'),
+                    new StringNode('none'),
+                ], 'space')]),
+                new StringNode($space),
+            ]);
+
+            expect($result)->toBeInstanceOf(FunctionNode::class)
+                ->and($result->name)->toBe($space)
+                ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
+                ->and($result->arguments[0]->items[0])->toBeInstanceOf(StringNode::class)
+                ->and($result->arguments[0]->items[0]->value)->toBe('none')
+                ->and($result->arguments[0]->items[1])->toBeInstanceOf(StringNode::class)
+                ->and($result->arguments[0]->items[1]->value)->toBe('none')
+                ->and($result->arguments[0]->items[2])->toBeInstanceOf(StringNode::class)
+                ->and($result->arguments[0]->items[2]->value)->toBe('none');
+        }
+    });
+
     it('converts native oklch with present channels to numeric lch lightness and hue', function () {
         $result = $this->interop->toSpace([
             new FunctionNode('oklch', [new ListNode([
