@@ -14,6 +14,7 @@ use Bugo\Iris\Spaces\XyzColor;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
+use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\AstNode;
@@ -40,8 +41,10 @@ describe('ColorNodeConverter', function () {
         $this->converter = new ColorNodeConverter($runtime);
     });
 
-    it('throws for unsupported raw color strings and can parse function strings', function () {
+    it('defers function-like raw color strings and throws for unsupported plain strings', function () {
         expect(fn() => $this->converter->toRgb(new StringNode('definitely-not-a-color(')))
+            ->toThrow(DeferToCssFunctionException::class)
+            ->and(fn() => $this->converter->toRgb(new StringNode('definitely-not-a-color')))
             ->toThrow(UnsupportedColorValueException::class);
 
         $parsed = $this->converter->parseColorString('rgb(10 20 30 / 40%)');

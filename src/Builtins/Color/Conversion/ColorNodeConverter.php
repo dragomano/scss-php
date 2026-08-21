@@ -14,6 +14,7 @@ use Bugo\Iris\Spaces\OklchColor;
 use Bugo\Iris\Spaces\RgbColor;
 use Bugo\Iris\Spaces\XyzColor;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
+use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\AstNode;
@@ -73,14 +74,33 @@ final readonly class ColorNodeConverter
         }
 
         if ($color instanceof StringNode) {
-            $parsedColor = $this->runtime->colorAstParser->parse($color->value);
+            try {
+                $parsedColor = $this->runtime->colorAstParser->parse($color->value);
 
-            if ($parsedColor !== null) {
-                return $this->toRgb($parsedColor);
+                if ($parsedColor !== null) {
+                    return $this->toRgb($parsedColor);
+                }
+            } catch (UnsupportedColorValueException $e) {
+                $this->throwDeferredOrUnsupported($color, $e);
             }
+
+            $this->throwDeferredOrUnsupported($color, null);
         }
 
         throw new UnsupportedColorValueException(strtolower($color->value));
+    }
+
+    private function throwDeferredOrUnsupported(StringNode $color, ?UnsupportedColorValueException $previous): never
+    {
+        if (! $color->quoted && str_contains($color->value, '(')) {
+            throw new DeferToCssFunctionException(
+                $this->runtime->context->errorCtx('color') . ' should be emitted as a CSS function.',
+                0,
+                $previous,
+            );
+        }
+
+        throw $previous ?? new UnsupportedColorValueException(strtolower($color->value));
     }
 
     public function toAlpha(AstNode $color): float
@@ -837,7 +857,7 @@ final readonly class ColorNodeConverter
 
     public function buildAlphaNode(float $alpha): NumberNode
     {
-        return new NumberNode(round($alpha, 6));
+        return new NumberNode($alpha);
     }
 
     /**

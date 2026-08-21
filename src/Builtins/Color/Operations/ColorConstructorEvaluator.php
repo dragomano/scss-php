@@ -17,17 +17,17 @@ use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
 use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\AstNode;
-use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 
-use function abs;
 use function count;
 use function in_array;
+use function max;
 use function round;
 use function sprintf;
+use function str_contains;
 use function strtolower;
 
 final readonly class ColorConstructorEvaluator
@@ -71,7 +71,7 @@ final readonly class ColorConstructorEvaluator
                         'deg',
                     ),
                     $satMissing ? new StringNode('none') : new NumberNode(
-                        $this->parser->asPercentage($arguments[1], 'hsl'),
+                        max(0.0, $this->parser->asPercentage($arguments[1], 'hsl')),
                         '%',
                     ),
                     $lightMissing ? new StringNode('none') : new NumberNode(
@@ -84,7 +84,7 @@ final readonly class ColorConstructorEvaluator
 
         return $this->converter->buildHslFunctionNode(
             $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsl')),
-            $this->parser->asPercentage($arguments[1], 'hsl'),
+            max(0.0, $this->parser->asPercentage($arguments[1], 'hsl')),
             $this->parser->asPercentage($arguments[2], 'hsl'),
             $this->parser->parseAlphaOrDefault($arguments, 3, 'hsl'),
         );
@@ -99,7 +99,7 @@ final readonly class ColorConstructorEvaluator
 
         return $this->converter->buildHslFunctionNode(
             $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsla')),
-            $this->parser->asPercentage($arguments[1], 'hsla'),
+            max(0.0, $this->parser->asPercentage($arguments[1], 'hsla')),
             $this->parser->asPercentage($arguments[2], 'hsla'),
             $this->parser->parseAlphaOrDefault($arguments, 3, 'hsla'),
         );
@@ -107,55 +107,80 @@ final readonly class ColorConstructorEvaluator
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    public function rgbFunction(array $positional): AstNode
+    public function rgbFunction(array $positional, array $named = []): AstNode
     {
-        if (count($positional) === 2 && ($positional[1] instanceof NumberNode)) {
-            try {
-                $rgb   = $this->converter->toRgb($this->parser->requireColor($positional, 0, 'rgb'));
-                $alpha = $this->parser->parseAlphaOrDefault($positional, 1, 'rgb');
+        if (isset($named['red'], $named['green'], $named['blue'])) {
+            return $this->converter->buildRgbFunctionNode(
+                $this->parser->asByte($named['red'], 'rgb'),
+                $this->parser->asByte($named['green'], 'rgb'),
+                $this->parser->asByte($named['blue'], 'rgb'),
+                isset($named['alpha']) ? $this->parser->parseAlphaNode($named['alpha'], 'rgb') : 1.0,
+            );
+        }
 
-                if (abs($alpha - 1.0) < 0.000001) {
-                    return $this->converter->fromRgb(new RgbColor(r: $rgb->r, g: $rgb->g, b: $rgb->b, a: 1.0));
+        $alphaNode = $positional[1] ?? $named['alpha'] ?? null;
+
+        if (isset($positional[0]) && count($positional) <= 2 && $alphaNode instanceof NumberNode) {
+            try {
+                return $this->colorWithAlpha(
+                    $this->parser->requireColor($positional, 0, 'rgb'),
+                    $this->parser->parseAlphaNode($alphaNode, 'rgb'),
+                );
+            } catch (MissingFunctionArgumentsException|UnsupportedColorValueException $e) {
+                if (! $this->isUnresolvableCssValue($positional[0])) {
+                    throw $e;
                 }
 
-                return new FunctionNode('rgba', [
+                return new FunctionNode('rgb', [$positional[0], $alphaNode]);
+            }
+        }
+
+        if (count($positional) === 2) {
+            try {
+                $rgb = $this->converter->toRgb($this->parser->requireColor($positional, 0, 'rgb'));
+            } catch (MissingFunctionArgumentsException|UnsupportedColorValueException) {
+                $rgb = null;
+            }
+
+            if ($rgb !== null) {
+                return new FunctionNode('rgb', [
                     new NumberNode($rgb->rValue()),
                     new NumberNode($rgb->gValue()),
                     new NumberNode($rgb->bValue()),
-                    new NumberNode($alpha),
+                    $positional[1],
                 ]);
-            } catch (MissingFunctionArgumentsException|UnsupportedColorValueException) {
-                // the first argument is not the color
             }
         }
 
         $arguments = $this->parser->parseFunctionalColorArguments($positional, 'rgb', 3);
-        $r         = $this->parser->asByte($arguments[0], 'rgb');
-        $g         = $this->parser->asByte($arguments[1], 'rgb');
-        $b         = $this->parser->asByte($arguments[2], 'rgb');
-        $alpha     = $this->parser->parseAlphaOrDefault($arguments, 3, 'rgb');
 
-        if (abs($alpha - 1.0) < 0.000001) {
-            return new FunctionNode('rgb', [
-                new NumberNode($r),
-                new NumberNode($g),
-                new NumberNode($b),
-            ]);
-        }
+        return $this->converter->buildRgbFunctionNode(
+            $this->parser->asByte($arguments[0], 'rgb'),
+            $this->parser->asByte($arguments[1], 'rgb'),
+            $this->parser->asByte($arguments[2], 'rgb'),
+            $this->parser->parseAlphaOrDefault($arguments, 3, 'rgb'),
+        );
+    }
 
-        return new FunctionNode('rgba', [
-            new NumberNode($r),
-            new NumberNode($g),
-            new NumberNode($b),
-            new NumberNode($alpha),
-        ]);
+    private function colorWithAlpha(AstNode $color, float $alpha): AstNode
+    {
+        $rgb = $this->converter->toRgb($color);
+
+        return $this->converter->serializeRgbResult(new RgbColor(
+            r: $rgb->r,
+            g: $rgb->g,
+            b: $rgb->b,
+            a: $alpha,
+        ));
     }
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    public function rgbaFunction(array $positional): ColorNode
+    public function rgbaFunction(array $positional, array $named = []): AstNode
     {
         if ($this->parser->isRelativeColorSyntax($positional)) {
             throw new DeferToCssFunctionException(
@@ -163,83 +188,87 @@ final readonly class ColorConstructorEvaluator
             );
         }
 
-        if (count($positional) === 2) {
-            $rgb   = $this->converter->toRgb($this->parser->requireColor($positional, 0, 'rgba'));
-            $alpha = $this->parser->clamp($this->parser->asNumber($positional[1], 'rgba'), 1.0);
-
-            return $this->converter->fromRgb(new RgbColor(
-                r: $rgb->r,
-                g: $rgb->g,
-                b: $rgb->b,
-                a: $alpha,
-            ));
-        }
-
-        if (count($positional) < 4) {
-            throw new MissingFunctionArgumentsException(
-                $this->context->errorCtx('rgba'),
-                '2 or 4 arguments',
+        if (isset($named['red'], $named['green'], $named['blue'])) {
+            return $this->converter->buildRgbFunctionNode(
+                $this->parser->asByte($named['red'], 'rgba'),
+                $this->parser->asByte($named['green'], 'rgba'),
+                $this->parser->asByte($named['blue'], 'rgba'),
+                isset($named['alpha']) ? $this->parser->parseAlphaNode($named['alpha'], 'rgba') : 1.0,
             );
         }
 
-        return $this->converter->fromRgb(new RgbColor(
-            r: $this->parser->asByte($positional[0], 'rgba'),
-            g: $this->parser->asByte($positional[1], 'rgba'),
-            b: $this->parser->asByte($positional[2], 'rgba'),
-            a: $this->parser->clamp(
-                $this->parser->asNumber($positional[3], 'rgba'),
-                1.0,
-            ),
-        ));
+        $alphaNode = $positional[1] ?? $named['alpha'] ?? null;
+
+        if (isset($positional[0]) && count($positional) <= 2 && $alphaNode instanceof NumberNode) {
+            try {
+                return $this->colorWithAlpha(
+                    $this->parser->requireColor($positional, 0, 'rgba'),
+                    $this->parser->parseAlphaNode($alphaNode, 'rgba'),
+                );
+            } catch (MissingFunctionArgumentsException|UnsupportedColorValueException $e) {
+                if (! $this->isUnresolvableCssValue($positional[0])) {
+                    throw $e;
+                }
+
+                return new FunctionNode('rgba', [$positional[0], $alphaNode]);
+            }
+        }
+
+        if (count($positional) === 2) {
+            try {
+                $rgb = $this->converter->toRgb($this->parser->requireColor($positional, 0, 'rgba'));
+            } catch (MissingFunctionArgumentsException|UnsupportedColorValueException) {
+                $rgb = null;
+            }
+
+            if ($rgb !== null) {
+                return new FunctionNode('rgba', [
+                    new NumberNode($rgb->rValue()),
+                    new NumberNode($rgb->gValue()),
+                    new NumberNode($rgb->bValue()),
+                    $positional[1],
+                ]);
+            }
+        }
+
+        $arguments = $this->parser->parseFunctionalColorArguments($positional, 'rgba', 3);
+
+        return $this->converter->buildRgbFunctionNode(
+            $this->parser->asByte($arguments[0], 'rgba'),
+            $this->parser->asByte($arguments[1], 'rgba'),
+            $this->parser->asByte($arguments[2], 'rgba'),
+            $this->parser->parseAlphaOrDefault($arguments, 3, 'rgba'),
+        );
     }
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    public function legacyRgbaFunction(array $positional): AstNode
+    public function legacyRgbaFunction(array $positional, array $named = []): AstNode
     {
-        if (count($positional) === 4) {
-            $r     = $this->parser->asByte($positional[0], 'rgba');
-            $g     = $this->parser->asByte($positional[1], 'rgba');
-            $b     = $this->parser->asByte($positional[2], 'rgba');
-            $alpha = $this->parser->parseAlphaOrDefault($positional, 3, 'rgba');
-
-            if (abs($alpha - 1.0) < 0.000001) {
-                return $this->converter->fromRgb(new RgbColor(r: $r, g: $g, b: $b, a: 1.0));
-            }
-
-            return new FunctionNode('rgba', [
-                new NumberNode($r),
-                new NumberNode($g),
-                new NumberNode($b),
-                new NumberNode($alpha),
-            ]);
-        }
-
-        if (count($positional) !== 2 || ! ($positional[1] instanceof NumberNode)) {
+        if ($this->parser->isRelativeColorSyntax($positional)) {
             return new FunctionNode('rgba', $positional);
         }
 
         try {
-            $rgb = $this->converter->toRgb(
-                $this->parser->requireColor($positional, 0, 'rgba'),
-            );
-        } catch (MissingFunctionArgumentsException|UnsupportedColorValueException) {
+            return $this->rgbaFunction($positional, $named);
+        } catch (MissingFunctionArgumentsException|UnsupportedColorValueException|DeferToCssFunctionException) {
             return new FunctionNode('rgba', $positional);
         }
+    }
 
-        $alpha = $this->parser->parseAlphaOrDefault($positional, 1, 'rgba');
-
-        if (abs($alpha - 1.0) < 0.000001) {
-            return $this->converter->fromRgb(new RgbColor(r: $rgb->r, g: $rgb->g, b: $rgb->b, a: 1.0));
+    private function isUnresolvableCssValue(AstNode $value): bool
+    {
+        if ($value instanceof FunctionNode) {
+            return in_array(strtolower($value->name), ['var', 'env'], true);
         }
 
-        return new FunctionNode('rgba', [
-            new NumberNode($rgb->rValue()),
-            new NumberNode($rgb->gValue()),
-            new NumberNode($rgb->bValue()),
-            new NumberNode($alpha),
-        ]);
+        if ($value instanceof StringNode) {
+            return str_contains(strtolower($value->value), '(');
+        }
+
+        return false;
     }
 
     /**

@@ -14,6 +14,7 @@ use Bugo\Iris\Spaces\RgbColor;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
+use Bugo\SCSS\Builtins\Color\Support\LegacyColorMath;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\FunctionNode;
@@ -45,6 +46,7 @@ final readonly class ColorFunctionEvaluator
         private ColorMixResolver $mixResolver,
         private ColorNodeConverter $converter,
         private ColorSpaceConverter $spaceInterop,
+        private LegacyColorMath $legacyMath,
     ) {}
 
     /**
@@ -159,9 +161,10 @@ final readonly class ColorFunctionEvaluator
         }
 
         if ($this->converter->isLegacyColor($color)) {
-            $adjustedRgb = $this->legacy->spin($this->converter->toRgb($color), $degrees);
-
-            return $this->converter->serializeRgbResult($adjustedRgb);
+            return $this->emitModifiedLegacyColor(
+                $color,
+                fn(array $channels): array => $this->legacyMath->shiftChannel($channels, 'h', $degrees),
+            );
         }
 
         return $this->adjustColor([$color], ['hue' => new NumberNode($degrees)], 'adjust-hue');
@@ -187,13 +190,10 @@ final readonly class ColorFunctionEvaluator
         }
 
         if ($this->converter->isLegacyColor($color)) {
-            $rgb = $this->converter->toRgb($color);
-
-            $adjustedRgb = $direction > 0
-                ? $this->legacy->fadeIn($rgb, $amount)
-                : $this->legacy->fadeOut($rgb, -$amount);
-
-            return $this->converter->serializeRgbResult($adjustedRgb);
+            return $this->emitModifiedLegacyColor(
+                $color,
+                fn(array $channels): array => $this->legacyMath->shiftChannel($channels, 'a', $amount),
+            );
         }
 
         return $this->adjustColor([$color], ['alpha' => new NumberNode($amount)], $context);
@@ -223,22 +223,16 @@ final readonly class ColorFunctionEvaluator
             );
         }
 
-        if ($this->converter->isLegacyColor($color)) {
-            $rgb = $this->converter->toRgb($color);
+        if (
+            ($channel === 'lightness' || $channel === 'saturation')
+            && $this->converter->isLegacyColor($color)
+        ) {
+            $key = $channel === 'lightness' ? 'l' : 's';
 
-            $modified = match ($channel) {
-                'lightness'  => $direction > 0
-                    ? $this->legacy->lighten($rgb, $amount)
-                    : $this->legacy->darken($rgb, -$amount),
-                'saturation' => $direction > 0
-                    ? $this->legacy->saturate($rgb, $amount)
-                    : $this->legacy->desaturate($rgb, -$amount),
-                default      => null,
-            };
-
-            if ($modified !== null) {
-                return $this->converter->serializeRgbResult($modified);
-            }
+            return $this->emitModifiedLegacyColor(
+                $color,
+                fn(array $channels): array => $this->legacyMath->shiftChannel($channels, $key, $amount),
+            );
         }
 
         return $this->adjustColor([$color], [$channel => new NumberNode($amount, '%')], $context);
@@ -259,9 +253,10 @@ final readonly class ColorFunctionEvaluator
         }
 
         if ($space === null && $this->converter->isLegacyColor($color)) {
-            $adjustedRgb = $this->legacy->spin($this->converter->toRgb($color), 180.0);
-
-            return $this->converter->serializeRgbResult($adjustedRgb);
+            return $this->emitModifiedLegacyColor(
+                $color,
+                fn(array $channels): array => $this->legacyMath->shiftChannel($channels, 'h', 180.0),
+            );
         }
 
         return $this->applyColorModification(
@@ -278,10 +273,14 @@ final readonly class ColorFunctionEvaluator
         $color = $this->runtime->argumentParser->requireColorOrDefer($positional, 'grayscale');
 
         if ($this->converter->isLegacyColor($color)) {
-            $hsl     = $this->converter->toHsl($color);
-            $grayRgb = $this->runtime->modelConverter->hslToRgbColor($this->legacy->grayscale($hsl));
+            return $this->emitModifiedLegacyColor(
+                $color,
+                function (array $channels): array {
+                    $channels['s'] = 0.0;
 
-            return $this->converter->serializeRgbResult($grayRgb);
+                    return $channels;
+                },
+            );
         }
 
         $nativeSpace = $this->converter->detectNativeColorSpace($color);
@@ -322,10 +321,9 @@ final readonly class ColorFunctionEvaluator
      */
     public function mix(array $positional, array $named): AstNode
     {
-        $color1     = $this->runtime->argumentParser->requireColorOrDefer($positional, 'mix');
-        $color2     = $this->runtime->argumentParser->requireColor($positional, 1, 'mix');
-        $methodNode = $named['method'] ?? ($positional[3] ?? null);
-        $weight     = $this->runtime->argumentParser->asPercentage(
+        $color1 = $this->runtime->argumentParser->requireColorOrDefer($positional, 'mix');
+        $color2 = $this->runtime->argumentParser->requireColor($positional, 1, 'mix');
+        $weight = $this->runtime->argumentParser->asPercentage(
             $named['weight'] ?? ($positional[2] ?? new NumberNode(50)),
             'mix',
         );
@@ -354,11 +352,7 @@ final readonly class ColorFunctionEvaluator
 
         $mixedRgbInner = $this->legacy->mix($rgb1, $rgb2, $p);
 
-        if ($methodNode instanceof StringNode || $methodNode instanceof ListNode) {
-            return $this->converter->serializeRgbResult($mixedRgbInner);
-        }
-
-        return $this->converter->fromRgb($mixedRgbInner);
+        return $this->converter->serializeRgbResult($mixedRgbInner);
     }
 
     /** @param array<int, AstNode> $positional */
@@ -414,6 +408,14 @@ final readonly class ColorFunctionEvaluator
         }
 
         $invertedRgb = $this->legacy->invert($rgb, $p);
+        $legacyHsl   = $this->extractLegacyHsl($color);
+
+        if ($legacyHsl !== null && $legacyHsl['origin'] !== 'rgb') {
+            return $this->emitLegacyHsl(
+                $this->legacyMath->rgbToHsl($invertedRgb),
+                $legacyHsl['origin'],
+            );
+        }
 
         return $this->converter->serializeRgbResult($invertedRgb);
     }
@@ -837,6 +839,117 @@ final readonly class ColorFunctionEvaluator
             'b'     => $resultB,
             'alpha' => $resultAlpha,
         ]);
+    }
+
+    /**
+     * @param callable(array{h: float, s: float, l: float, a: float}): array{h: float, s: float, l: float, a: float} $modify
+     */
+    private function emitModifiedLegacyColor(AstNode $color, callable $modify): AstNode
+    {
+        $legacyHsl = $this->extractLegacyHsl($color) ?? [
+            'channels' => $this->legacyMath->rgbToHsl($this->converter->toRgb($color)),
+            'origin'   => 'rgb',
+        ];
+
+        $modified = $modify($legacyHsl['channels']);
+
+        if ($legacyHsl['origin'] === 'rgb') {
+            return $this->converter->serializeRgbResult(
+                $this->legacyMath->hslToRgb($modified['h'], $modified['s'], $modified['l'], $modified['a']),
+            );
+        }
+
+        return $this->emitLegacyHsl($modified, $legacyHsl['origin']);
+    }
+
+    /**
+     * @return array{channels: array{h: float, s: float, l: float, a: float}, origin: string}|null
+     */
+    private function extractLegacyHsl(AstNode $color): ?array
+    {
+        if ($color instanceof FunctionNode) {
+            $name = strtolower($color->name);
+
+            if ($name === 'hsl' || $name === 'hsla') {
+                [$channels, $alpha] = $this->converter->extractRawChannelsPublic($color);
+
+                if (
+                    ! isset($channels[0], $channels[1], $channels[2])
+                    || $this->runtime->argumentParser->isMissingChannelNode($channels[0])
+                    || $this->runtime->argumentParser->isMissingChannelNode($channels[1])
+                    || $this->runtime->argumentParser->isMissingChannelNode($channels[2])
+                ) {
+                    return null;
+                }
+
+                return [
+                    'channels' => [
+                        'h' => $this->runtime->argumentParser->asNumber($channels[0], 'hsl'),
+                        's' => $this->runtime->argumentParser->asPercentage($channels[1], 'hsl'),
+                        'l' => $this->runtime->argumentParser->asPercentage($channels[2], 'hsl'),
+                        'a' => $this->converter->parseAlphaPublic($alpha, 'hsl'),
+                    ],
+                    'origin' => 'hsl',
+                ];
+            }
+
+            if ($name === 'hwb') {
+                [$channels, $alpha] = $this->converter->extractRawChannelsPublic($color);
+
+                if (! isset($channels[0]) || $this->runtime->argumentParser->isMissingChannelNode($channels[0])) {
+                    return null;
+                }
+
+                $whiteness = isset($channels[1]) && ! $this->runtime->argumentParser->isMissingChannelNode($channels[1])
+                    ? $this->runtime->argumentParser->asPercentage($channels[1], 'hwb')
+                    : 0.0;
+                $blackness = isset($channels[2]) && ! $this->runtime->argumentParser->isMissingChannelNode($channels[2])
+                    ? $this->runtime->argumentParser->asPercentage($channels[2], 'hwb')
+                    : 0.0;
+
+                [$r, $g, $b] = $this->runtime->spaceConverter->hwbToRgb(
+                    $this->runtime->argumentParser->asNumber($channels[0], 'hwb'),
+                    $whiteness / 100.0,
+                    $blackness / 100.0,
+                );
+
+                return [
+                    'channels' => $this->legacyMath->rgbToHsl(new RgbColor(
+                        r: $r * 255.0,
+                        g: $g * 255.0,
+                        b: $b * 255.0,
+                        a: $this->converter->parseAlphaPublic($alpha, 'hwb'),
+                    )),
+                    'origin' => 'hwb',
+                ];
+            }
+        }
+
+        if (! $this->converter->isLegacyColor($color)) {
+            return null;
+        }
+
+        return [
+            'channels' => $this->legacyMath->rgbToHsl($this->converter->toRgb($color)),
+            'origin'   => 'rgb',
+        ];
+    }
+
+    /**
+     * @param array{h: float, s: float, l: float, a: float} $channels
+     */
+    private function emitLegacyHsl(array $channels, string $origin): AstNode
+    {
+        if ($origin === 'hwb' && abs($channels['s']) < 0.0000001) {
+            $channels['h'] = 0.0;
+        }
+
+        return $this->converter->buildHslFunctionNode(
+            $channels['h'],
+            $channels['s'],
+            $channels['l'],
+            $channels['a'],
+        );
     }
 
     private function formatColorAdjustHint(AstNode $color, string $channel, string $formattedAmount): string

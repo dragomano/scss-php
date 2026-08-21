@@ -146,8 +146,11 @@ final readonly class ColorArgumentParser
             return 1.0;
         }
 
-        $arg = $arguments[$index];
+        return $this->parseAlphaNode($arguments[$index], $context);
+    }
 
+    public function parseAlphaNode(AstNode $arg, string $context): float
+    {
         if ($arg instanceof NumberNode && $arg->unit === '%') {
             return $this->clamp((float) $arg->value / 100.0, 1.0);
         }
@@ -342,6 +345,10 @@ final readonly class ColorArgumentParser
     {
         foreach ($arguments as $argument) {
             if ($argument instanceof FunctionNode) {
+                return true;
+            }
+
+            if ($argument instanceof StringNode && ! $argument->quoted && str_contains($argument->value, '(')) {
                 return true;
             }
 

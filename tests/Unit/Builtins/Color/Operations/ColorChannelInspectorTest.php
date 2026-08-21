@@ -11,8 +11,8 @@ use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
 use Bugo\SCSS\Builtins\Color\Operations\ColorChannelInspector;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
+use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\UnknownColorChannelException;
-use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
@@ -149,9 +149,9 @@ describe('ColorChannelReader', function () {
             ->toThrow(UnknownColorChannelException::class);
     });
 
-    it('rethrows unsupported color values for non-global channel alpha calls', function () {
+    it('defers unquoted function-like strings to css emission for channel alpha calls', function () {
         expect(fn() => $this->reader->channelAlpha([new StringNode('definitely-not-a-color(')], 'alpha', null))
-            ->toThrow(UnsupportedColorValueException::class);
+            ->toThrow(DeferToCssFunctionException::class);
     });
 
     it('parses string colors in is-missing and returns false for unknown or absent channel slots', function () {

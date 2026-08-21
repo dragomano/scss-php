@@ -8,6 +8,7 @@ use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
+use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
@@ -220,9 +221,11 @@ describe('BuiltinFunctionRegistry', function () {
 
         $result = $registry->tryCall('color.mix', [new ColorNode('#000000'), new ColorNode('#ffffff'), new NumberNode(50, '%')]);
 
-        /** @var ColorNode $result */
-        expect($result)->toBeInstanceOf(ColorNode::class)
-            ->and($result->value)->toBe('gray');
+        /** @var FunctionNode $result */
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('rgb')
+            ->and($result->arguments[0]->value)->toBe(50.0)
+            ->and($result->arguments[0]->unit)->toBe('%');
     });
 
     it('uses namespaced display name in color module argument errors', function () {

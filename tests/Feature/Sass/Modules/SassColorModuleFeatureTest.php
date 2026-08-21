@@ -23,7 +23,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-mix {
-              value: gray;
+              value: rgb(50%, 50%, 50%);
             }
             CSS;
 
@@ -43,7 +43,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .class-0 {
-              background-color: #197ae1;
+              background-color: rgb(9.7411764706%, 47.6941176471%, 88.2745098039%);
             }
             CSS;
 
@@ -1707,7 +1707,7 @@ describe('Sass Color Module Feature', function () {
             ->and($messages)->toContain('color.blue() is deprecated. Suggestion: color.channel(#e1d7d2, "blue", $space: rgb)')
             ->and($messages)->toContain('blue() is deprecated. Suggestion: color.channel(black, "blue", $space: rgb)')
             ->and($messages)->toContain('desaturate() is deprecated. Suggestions: color.scale(#d2e1dd, $saturation: -100%), or color.adjust(#d2e1dd, $saturation: -30%)')
-            ->and($messages)->toContain('rgb(85.294118%, 85.294118%, 85.294118%)')
+            ->and($messages)->toContain('rgb(85.2941176471%, 85.2941176471%, 85.2941176471%)')
             ->and($messages)->toContain('color.green() is deprecated. Suggestion: color.channel(#e1d7d2, "green", $space: rgb)')
             ->and($messages)->toContain('green() is deprecated. Suggestion: color.channel(black, "green", $space: rgb)')
             ->and($messages)->toContain('color.hue() is deprecated. Suggestion: color.channel(#e1d7d2, "hue", $space: hsl)')

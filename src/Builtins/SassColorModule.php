@@ -143,7 +143,20 @@ final class SassColorModule extends AbstractModule
 
         if (! isset($positional[0]) && isset($named['color'])) {
             $positional[0] = $named['color'];
+
             unset($named['color']);
+        }
+
+        if (! isset($positional[1]) && isset($named['amount'])) {
+            $positional[1] = $named['amount'];
+
+            unset($named['amount']);
+        }
+
+        if (! isset($positional[1]) && isset($named['degrees'])) {
+            $positional[1] = $named['degrees'];
+
+            unset($named['degrees']);
         }
 
         try {
@@ -179,7 +192,7 @@ final class SassColorModule extends AbstractModule
                 'is-powerless'           => $this->channelInspector->isPowerless($positional, $named),
                 'lab'                    => $this->constructors->labFunction($positional),
                 'lch'                    => $this->constructors->lchFunction($positional),
-                'legacy-rgba'            => $this->constructors->legacyRgbaFunction($positional),
+                'legacy-rgba'            => $this->constructors->legacyRgbaFunction($positional, $named),
                 'mix'                    => $this->functions->mix($positional, $named),
                 'oklab'                  => $this->constructors->oklabFunction($positional),
                 'oklch'                  => $this->constructors->oklchFunction($positional),
@@ -187,8 +200,8 @@ final class SassColorModule extends AbstractModule
                 'fade-in',
                 'transparentize',
                 'fade-out'               => $this->legacyAlphaAdjustment($name, $positional, $context),
-                'rgb'                    => $this->constructors->rgbFunction($positional),
-                'rgba'                   => $this->constructors->rgbaFunction($positional),
+                'rgb'                    => $this->constructors->rgbFunction($positional, $named),
+                'rgba'                   => $this->constructors->rgbaFunction($positional, $named),
                 'same'                   => $this->functions->same($positional),
                 'scale', 'scale-color'   => $this->functions->scaleColor($positional, $named),
                 'space'                  => $this->channelInspector->space($positional),

@@ -48,11 +48,9 @@ use Bugo\SCSS\Values\SassMap;
 use Closure;
 use LogicException;
 
-use function abs;
 use function array_slice;
 use function count;
 use function in_array;
-use function round;
 use function str_contains;
 use function str_starts_with;
 use function strtolower;
@@ -418,8 +416,6 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
                 return $this->calculation->formatCalculationFunction($node, $env);
             }
 
-            $node = $this->convertFractionalRgbChannelsToPercentages($node);
-
             $formatted = $this->ctx->valueFactory->fromAst(
                 $node,
                 fn(AstNode $inner): string => $this->format($inner, $env),
@@ -558,64 +554,6 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
     private function getCurrentParentSelector(Environment $env): ?StringNode
     {
         return $env->getCurrentScope()->getStringVariable('__parent_selector');
-    }
-
-    private function convertFractionalRgbChannelsToPercentages(FunctionNode $node): FunctionNode
-    {
-        if (! in_array(strtolower($node->name), ['rgb', 'rgba'], true)) {
-            return $node;
-        }
-
-        $hasNonInteger = false;
-        $index = 0;
-
-        foreach ($node->arguments as $argument) {
-            if ($index >= 3) {
-                break;
-            }
-
-            if (! $argument instanceof NumberNode) {
-                $index++;
-
-                continue;
-            }
-
-            $value = (float) $argument->value;
-
-            if (abs($value - round($value)) > 0.0000001) {
-                $hasNonInteger = true;
-
-                break;
-            }
-
-            $index++;
-        }
-
-        if (! $hasNonInteger) {
-            return $node;
-        }
-
-        $newArguments = [];
-        $index = 0;
-
-        foreach ($node->arguments as $argument) {
-            if (
-                $index < 3
-                && $argument instanceof NumberNode
-                && ($argument->unit === null || $argument->unit === '')
-            ) {
-                $value = (float) $argument->value;
-                $percentValue = $value * 100.0 / 255.0;
-
-                $newArguments[] = new NumberNode($percentValue, '%');
-            } else {
-                $newArguments[] = $argument;
-            }
-
-            $index++;
-        }
-
-        return new FunctionNode($node->name, $newArguments);
     }
 
     /**

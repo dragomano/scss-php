@@ -11,6 +11,7 @@ use Bugo\SCSS\Builtins\Color\Operations\ColorConstructorEvaluator;
 use Bugo\SCSS\Builtins\Color\Operations\ColorFunctionEvaluator;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
+use Bugo\SCSS\Builtins\Color\Support\LegacyColorMath;
 
 final class ColorModuleFactory
 {
@@ -44,6 +45,7 @@ final class ColorModuleFactory
                 $components->mixResolver,
                 $converter,
                 $spaceConverter,
+                new LegacyColorMath($components->spaceConverter),
             ),
             constructors: new ColorConstructorEvaluator(
                 $runtime->argumentParser,
