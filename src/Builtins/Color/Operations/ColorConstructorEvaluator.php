@@ -17,13 +17,14 @@ use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
 use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
-use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 
 use function count;
 use function in_array;
+use function is_nan;
 use function max;
 use function round;
 use function sprintf;
@@ -45,6 +46,10 @@ final readonly class ColorConstructorEvaluator
         'xyz-d65',
     ];
 
+    private const RGB_CHANNEL_NAMES = ['red', 'green', 'blue'];
+
+    private const HSL_CHANNEL_NAMES = ['hue', 'saturation', 'lightness'];
+
     public function __construct(
         private ColorArgumentParser $parser,
         private ColorNodeConverter $converter,
@@ -53,55 +58,66 @@ final readonly class ColorConstructorEvaluator
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    public function hslFunction(array $positional): AstNode
+    public function hslFunction(array $positional, array $named = []): AstNode
     {
+        $positional = $this->mergeNamedChannelArguments(
+            $positional,
+            $named,
+            [...self::HSL_CHANNEL_NAMES, 'alpha'],
+        );
+
+        $input = $this->singleChannelsInput($positional, $named);
+
+        if ($input !== null) {
+            return $this->colorFromChannels('hsl', $input);
+        }
+
         $arguments    = $this->parser->parseFunctionalColorArguments($positional, 'hsl', 3, true);
         $hueMissing   = $this->parser->isMissingChannelNode($arguments[0]);
         $satMissing   = $this->parser->isMissingChannelNode($arguments[1]);
         $lightMissing = $this->parser->isMissingChannelNode($arguments[2]);
 
         if ($hueMissing || $satMissing || $lightMissing) {
-            return new FunctionNode('hsl', [
-                new ListNode([
-                    $hueMissing ? new StringNode('none') : new NumberNode(
-                        $this->parser->normalizeHue(
-                            $this->parser->asNumber($arguments[0], 'hsl'),
-                        ),
-                        'deg',
-                    ),
-                    $satMissing ? new StringNode('none') : new NumberNode(
-                        max(0.0, $this->parser->asPercentage($arguments[1], 'hsl')),
-                        '%',
-                    ),
-                    $lightMissing ? new StringNode('none') : new NumberNode(
-                        $this->parser->asPercentage($arguments[2], 'hsl'),
-                        '%',
-                    ),
-                ], 'space'),
-            ]);
+            return $this->converter->buildModernHslFunctionNode([
+                $hueMissing ? null : $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsl')),
+                $satMissing ? null : $this->clampSaturation($this->parser->asPercentage($arguments[1], 'hsl')),
+                $lightMissing ? null : $this->parser->asPercentage($arguments[2], 'hsl'),
+            ], 1.0);
         }
 
-        return $this->converter->buildHslFunctionNode(
-            $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsl')),
-            max(0.0, $this->parser->asPercentage($arguments[1], 'hsl')),
-            $this->parser->asPercentage($arguments[2], 'hsl'),
+        return $this->buildHslColorFromNodes(
+            [$arguments[0], $arguments[1], $arguments[2]],
             $this->parser->parseAlphaOrDefault($arguments, 3, 'hsl'),
+            'hsl',
         );
     }
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    public function hslaFunction(array $positional): FunctionNode
+    public function hslaFunction(array $positional, array $named = []): AstNode
     {
+        $positional = $this->mergeNamedChannelArguments(
+            $positional,
+            $named,
+            [...self::HSL_CHANNEL_NAMES, 'alpha'],
+        );
+
+        $input = $this->singleChannelsInput($positional, $named);
+
+        if ($input !== null) {
+            return $this->colorFromChannels('hsla', $input);
+        }
+
         $arguments = $this->parser->parseFunctionalColorArguments($positional, 'hsla', 4);
 
-        return $this->converter->buildHslFunctionNode(
-            $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hsla')),
-            max(0.0, $this->parser->asPercentage($arguments[1], 'hsla')),
-            $this->parser->asPercentage($arguments[2], 'hsla'),
+        return $this->buildHslColorFromNodes(
+            [$arguments[0], $arguments[1], $arguments[2]],
             $this->parser->parseAlphaOrDefault($arguments, 3, 'hsla'),
+            'hsla',
         );
     }
 
@@ -118,6 +134,12 @@ final readonly class ColorConstructorEvaluator
                 $this->parser->asByte($named['blue'], 'rgb'),
                 isset($named['alpha']) ? $this->parser->parseAlphaNode($named['alpha'], 'rgb') : 1.0,
             );
+        }
+
+        $input = $this->singleChannelsInput($positional, $named);
+
+        if ($input !== null) {
+            return $this->colorFromChannels('rgb', $input);
         }
 
         $alphaNode = $positional[1] ?? $named['alpha'] ?? null;
@@ -177,6 +199,154 @@ final readonly class ColorConstructorEvaluator
     }
 
     /**
+     * Returns the single channel-list argument when the call has exactly one
+     * effective input that is not a plain color.
+     *
+     * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
+     */
+    private function singleChannelsInput(array $positional, array $named): ?AstNode
+    {
+        if (isset($named['channels']) && $positional === []) {
+            return $named['channels'] instanceof ColorNode ? null : $named['channels'];
+        }
+
+        if (count($positional) === 1 && ! ($positional[0] instanceof ColorNode)) {
+            return $positional[0];
+        }
+
+        return null;
+    }
+
+    /**
+     * Merges named channel arguments into their positional slots.
+     *
+     * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
+     * @param list<string> $names
+     * @return array<int, AstNode>
+     */
+    private function mergeNamedChannelArguments(array $positional, array $named, array $names): array
+    {
+        if ($named === []) {
+            return $positional;
+        }
+
+        $merged = [];
+
+        foreach ($names as $index => $name) {
+            $node = $positional[$index] ?? $named[$name] ?? null;
+
+            if ($node !== null) {
+                $merged[] = $node;
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
+     * Builds a color from the parsed channel list or emits a comma-separated / verbatim CSS form.
+     */
+    private function colorFromChannels(string $function, AstNode $input): AstNode
+    {
+        $isHsl = $function === 'hsl' || $function === 'hsla';
+        $space = $isHsl ? 'hsl' : 'rgb';
+
+        $parsed = $this->parser->parseChannels(
+            $function,
+            'channels',
+            $space,
+            $isHsl ? self::HSL_CHANNEL_NAMES : self::RGB_CHANNEL_NAMES,
+            $input,
+        );
+
+        if ($parsed->isCommaForm()) {
+            return new FunctionNode($function, $parsed->commaArguments);
+        }
+
+        $channels   = $parsed->channels;
+        $alphaValue = $parsed->alphaValue;
+
+        if ($alphaValue === null || $this->hasMissingChannel($channels)) {
+            return $isHsl
+                ? $this->converter->buildModernHslFunctionNode($this->hslChannelFloats($channels), $alphaValue)
+                : $this->converter->buildModernRgbFunctionNode($this->rgbChannelFloats($channels), $alphaValue);
+        }
+
+        if ($isHsl) {
+            return $this->buildHslColorFromNodes($channels, $alphaValue, $function);
+        }
+
+        return $this->converter->buildRgbFunctionNode(
+            $this->parser->asByte($channels[0], $function),
+            $this->parser->asByte($channels[1], $function),
+            $this->parser->asByte($channels[2], $function),
+            $alphaValue,
+        );
+    }
+
+    /**
+     * @param list<AstNode> $channels
+     */
+    private function hasMissingChannel(array $channels): bool
+    {
+        foreach ($channels as $channel) {
+            if ($this->parser->isMissingChannelNode($channel)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param list<AstNode> $channels
+     * @return array{0: ?float, 1: ?float, 2: ?float}
+     */
+    private function rgbChannelFloats(array $channels): array
+    {
+        return [
+            $channels[0] instanceof NumberNode ? $this->parser->asByte($channels[0], 'rgb') : null,
+            $channels[1] instanceof NumberNode ? $this->parser->asByte($channels[1], 'rgb') : null,
+            $channels[2] instanceof NumberNode ? $this->parser->asByte($channels[2], 'rgb') : null,
+        ];
+    }
+
+    /**
+     * @param list<AstNode> $channels
+     * @return array{0: ?float, 1: ?float, 2: ?float}
+     */
+    private function hslChannelFloats(array $channels): array
+    {
+        return [
+            $channels[0] instanceof NumberNode
+                ? $this->parser->normalizeHue($this->parser->asHueAngle($channels[0], 'hsl'))
+                : null,
+            $channels[1] instanceof NumberNode ? $this->parser->asLenientPercentage($channels[1], 'hsl') : null,
+            $channels[2] instanceof NumberNode ? $this->parser->asLenientPercentage($channels[2], 'hsl') : null,
+        ];
+    }
+
+    /**
+     * @param list<AstNode> $channels
+     */
+    private function buildHslColorFromNodes(array $channels, float $alpha, string $context): AstNode
+    {
+        return $this->converter->buildHslFunctionNode(
+            $this->parser->normalizeHue($this->parser->asHueAngle($channels[0], $context)),
+            $this->clampSaturation($this->parser->asLenientPercentage($channels[1], $context)),
+            $this->parser->asLenientPercentage($channels[2], $context),
+            $alpha,
+        );
+    }
+
+    private function clampSaturation(float $value): float
+    {
+        return is_nan($value) ? 0.0 : max(0.0, $value);
+    }
+
+    /**
      * @param array<int, AstNode> $positional
      * @param array<string, AstNode> $named
      */
@@ -195,6 +365,12 @@ final readonly class ColorConstructorEvaluator
                 $this->parser->asByte($named['blue'], 'rgba'),
                 isset($named['alpha']) ? $this->parser->parseAlphaNode($named['alpha'], 'rgba') : 1.0,
             );
+        }
+
+        $input = $this->singleChannelsInput($positional, $named);
+
+        if ($input !== null) {
+            return $this->colorFromChannels('rgba', $input);
         }
 
         $alphaNode = $positional[1] ?? $named['alpha'] ?? null;

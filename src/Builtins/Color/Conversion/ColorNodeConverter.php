@@ -27,6 +27,7 @@ use Bugo\SCSS\Values\AstValueInspector;
 
 use function abs;
 use function in_array;
+use function is_nan;
 use function max;
 use function min;
 use function round;
@@ -855,6 +856,48 @@ final readonly class ColorNodeConverter
         return $channels;
     }
 
+    /**
+     * Builds the modern space-separated form with `none` for missing channels,
+     * e.g. `rgb(none 255 127 / 0.4)`.
+     *
+     * @param array{0: ?float, 1: ?float, 2: ?float} $channels null = missing channel
+     */
+    public function buildModernRgbFunctionNode(array $channels, ?float $alpha): FunctionNode
+    {
+        $nodes = [];
+
+        foreach ($channels as $channel) {
+            $nodes[] = $channel === null ? new StringNode('none') : new NumberNode($channel);
+        }
+
+        return new FunctionNode('rgb', [new ListNode($this->appendModernAlphaTail($nodes, $alpha), 'space')]);
+    }
+
+    /**
+     * Builds the modern space-separated HSL form with `deg` hue units and
+     * `none` for missing channels, e.g. `hsl(180deg none 50% / none)`.
+     *
+     * @param array{0: ?float, 1: ?float, 2: ?float} $channels null = missing channel
+     */
+    public function buildModernHslFunctionNode(array $channels, ?float $alpha): FunctionNode
+    {
+        [$hue, $saturation, $lightness] = $channels;
+
+        $nodes = [
+            $hue === null
+                ? new StringNode('none')
+                : new NumberNode($this->runtime->spaceConverter->normalizeHue($hue), 'deg'),
+            $saturation === null
+                ? new StringNode('none')
+                : new NumberNode(is_nan($saturation) ? 0.0 : max(0.0, $saturation), '%'),
+            $lightness === null
+                ? new StringNode('none')
+                : new NumberNode($lightness, '%'),
+        ];
+
+        return new FunctionNode('hsl', [new ListNode($this->appendModernAlphaTail($nodes, $alpha), 'space')]);
+    }
+
     public function buildAlphaNode(float $alpha): NumberNode
     {
         return new NumberNode($alpha);
@@ -933,6 +976,27 @@ final readonly class ColorNodeConverter
             : new StringNode('none');
 
         return $this->buildFunctionalColorNode('lch', [$lNode, $cNode, $hNode], $alpha);
+    }
+
+    /**
+     * @param list<AstNode> $nodes
+     * @return list<AstNode>
+     */
+    private function appendModernAlphaTail(array $nodes, ?float $alpha): array
+    {
+        if ($alpha === null) {
+            $nodes[] = new StringNode('/');
+            $nodes[] = new StringNode('none');
+
+            return $nodes;
+        }
+
+        if ($alpha < 1.0) {
+            $nodes[] = new StringNode('/');
+            $nodes[] = $this->buildAlphaNode($alpha);
+        }
+
+        return $nodes;
     }
 
     /**
