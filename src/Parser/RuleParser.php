@@ -433,6 +433,20 @@ final class RuleParser
                 continue;
             }
 
+            if ($token->type === TokenType::RBRACE && $depth > 0) {
+                $depth--;
+
+                continue;
+            }
+
+            if ($this->stream->is(TokenType::HASH) && $this->stream->peek()->type === TokenType::LBRACE) {
+                $depth++;
+
+                $this->stream->advance(2);
+
+                continue;
+            }
+
             if ($depth === 0 && $token->type === TokenType::LBRACE) {
                 $this->stream->setPosition($savedPosition);
 

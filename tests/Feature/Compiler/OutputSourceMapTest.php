@@ -214,7 +214,7 @@ describe('Compiler', function () {
             }
         });
 
-        it('optimizes box shorthand for margin and padding during compilation', function () {
+        it('keeps box shorthand values as written during compilation', function () {
             $source = <<<'SCSS'
             .box {
               margin: 10px 20px 10px 20px;
@@ -233,18 +233,18 @@ describe('Compiler', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .box {
-              margin: 10px 20px;
-              padding: 8px;
-              margin-top-bottom: 1px 2px;
+              margin: 10px 20px 10px 20px;
+              padding: 8px 8px 8px 8px;
+              margin-top-bottom: 1px 2px 1px;
             }
 
             .box-3 {
-              margin: 3px 6px;
-              padding: 5px;
+              margin: 3px 6px 3px;
+              padding: 5px 5px 5px;
             }
 
             .box-2 {
-              margin: 4px;
+              margin: 4px 4px;
               padding: 9px 11px;
             }
             CSS;
@@ -254,7 +254,7 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
-        it('optimizes box shorthand for margin and padding in compressed style', function () {
+        it('keeps box shorthand values as written in compressed style', function () {
             $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
 
             $source = <<<'SCSS'
@@ -265,7 +265,7 @@ describe('Compiler', function () {
 
             $css = $compiler->compileString($source);
 
-            expect($css)->toBe('.box{margin:10px 20px;padding:8px;margin-top-bottom:1px 2px}.box-3{margin:3px 6px;padding:5px}.box-2{margin:4px;padding:9px 11px}');
+            expect($css)->toBe('.box{margin:10px 20px 10px 20px;padding:8px 8px 8px 8px;margin-top-bottom:1px 2px 1px}.box-3{margin:3px 6px 3px;padding:5px 5px 5px}.box-2{margin:4px 4px;padding:9px 11px}');
         });
 
         it('converts named colors to hex in compressed style for regular declarations', function () {

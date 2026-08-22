@@ -228,6 +228,11 @@ final readonly class FunctionCallParser
 
             if ($this->stream->is(TokenType::COMMA)) {
                 $this->stream->advance();
+                $this->stream->skipWhitespace();
+
+                if ($this->stream->consume(TokenType::RPAREN)) {
+                    break;
+                }
             }
 
             $this->stream->skipWhitespace();

@@ -702,10 +702,7 @@ final readonly class Text
             }
         }
 
-        if (
-            (str_starts_with($expr, '"') && str_ends_with($expr, '"'))
-            || (str_starts_with($expr, "'") && str_ends_with($expr, "'"))
-        ) {
+        if ($this->isSingleQuotedString($expr)) {
             return substr($expr, 1, -1);
         }
 
@@ -718,6 +715,41 @@ final readonly class Text
         $evaluated = $this->valueEvaluator->evaluate($valueNode, $env);
 
         return $this->formatInterpolationValue($evaluated, $env);
+    }
+
+    private function isSingleQuotedString(string $expr): bool
+    {
+        $length = strlen($expr);
+
+        if ($length < 2) {
+            return false;
+        }
+
+        $quote = $expr[0];
+
+        if ($quote !== '"' && $quote !== "'") {
+            return false;
+        }
+
+        if ($expr[$length - 1] !== $quote) {
+            return false;
+        }
+
+        for ($i = 1; $i < $length - 1; $i++) {
+            $char = $expr[$i];
+
+            if ($char === '\\') {
+                $i++;
+
+                continue;
+            }
+
+            if ($char === $quote) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function formatInterpolationValue(AstNode $value, Environment $env): string

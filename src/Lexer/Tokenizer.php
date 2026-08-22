@@ -329,7 +329,7 @@ final class Tokenizer
         $line   = $this->line;
         $column = $this->column;
         $quote  = $this->source[$this->position];
-        $mask   = '\\' . $quote; // chars that end a plain chunk: backslash or closing quote
+        $mask   = '\\' . $quote . '#'; // chars that end a plain chunk: backslash, closing quote or interpolation start
 
         $this->advance(); // skip opening quote
 
@@ -345,7 +345,23 @@ final class Tokenizer
                 $this->advance($safe);
             }
 
+            if ($this->position >= $this->length) {
+                break;
+            }
+
             $char = $this->source[$this->position];
+
+            if ($char === '#') {
+                if ($this->peekChar() === '{') {
+                    $value .= $this->readRawInterpolation();
+                } else {
+                    $value .= '#';
+
+                    $this->advance();
+                }
+
+                continue;
+            }
 
             if ($char === '\\') {
                 $escapeResult = $this->parseEscapeSequence();
@@ -380,6 +396,90 @@ final class Tokenizer
         }
 
         return new Token(TokenType::STRING, $value, $line, $column);
+    }
+
+    private function readRawInterpolation(): string
+    {
+        $start = $this->position;
+
+        $this->advance(2); // skip "#{"
+
+        $depth = 1;
+
+        while ($this->position < $this->length && $depth > 0) {
+            $char = $this->source[$this->position];
+
+            if ($char === '"' || $char === "'") {
+                $this->skipQuotedChunk($char);
+
+                continue;
+            }
+
+            if ($char === '\\' && $this->position + 1 < $this->length) {
+                $this->advance(2);
+
+                continue;
+            }
+
+            if ($char === '#') {
+                if ($this->peekChar() === '{') {
+                    $depth++;
+
+                    $this->advance(2);
+
+                    continue;
+                }
+
+                $this->advance();
+
+                continue;
+            }
+
+            if ($char === '{') {
+                $depth++;
+            } elseif ($char === '}') {
+                $depth--;
+            }
+
+            $this->advance();
+        }
+
+        return substr($this->source, $start, $this->position - $start);
+    }
+
+    private function skipQuotedChunk(string $quote): void
+    {
+        $this->advance(); // opening quote
+
+        while ($this->position < $this->length) {
+            $char = $this->source[$this->position];
+
+            if ($char === '\\' && $this->position + 1 < $this->length) {
+                $this->advance(2);
+
+                continue;
+            }
+
+            if ($char === '#') {
+                if ($this->peekChar() === '{') {
+                    $this->readRawInterpolation();
+
+                    continue;
+                }
+
+                $this->advance();
+
+                continue;
+            }
+
+            $isClosing = $char === $quote;
+
+            $this->advance();
+
+            if ($isClosing) {
+                return;
+            }
+        }
     }
 
     private function decodeAstralUnicodeEscape(string $hex): ?string

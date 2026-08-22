@@ -148,4 +148,28 @@ describe('User Defined Functions Feature', function () {
 
         expect($css)->toEqualCss($expected);
     });
+
+    it('supports trailing commas in argument and parameter lists', function () {
+        $scss = <<<'SCSS'
+        @function pick($a, $b,) {
+          @return $a $b;
+        }
+
+        .x {
+          a: pick(1px, 2px,);
+          b: keep;
+        }
+        SCSS;
+
+        $css = $this->compiler->compileString($scss);
+
+        $expected = /** @lang text */ <<<'CSS'
+        .x {
+          a: 1px 2px;
+          b: keep;
+        }
+        CSS;
+
+        expect($css)->toEqualCss($expected);
+    });
 });

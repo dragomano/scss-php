@@ -62,7 +62,7 @@ final readonly class ValueFactory
                 $items[] = $this->fromAst($item, $formatter, $preserveZeroUnits)->toCss();
             }
 
-            return new SassList($items, $node->separator, $node->bracketed, false);
+            return new SassList($items, $node->separator, $node->bracketed);
         }
 
         if ($node instanceof MapNode) {
