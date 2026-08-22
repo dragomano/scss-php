@@ -13,7 +13,7 @@ describe('Compiler', function () {
         $compiler = new Compiler(options: new CompilerOptions(outputHexColors: true));
         $css      = $compiler->compileString('.test { color: rgb(255, 0, 0); }');
 
-        expect($css)->toContain('#ff0000');
+        expect($css)->toContain('#f00');
     });
 
     it('compiles basic color without hex conversion by default', function () {

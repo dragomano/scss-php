@@ -1278,7 +1278,7 @@ final readonly class ColorSpaceConverter
     private function buildOutputFromXyzD65(string $space, XyzColor $xyz, float $alpha, ?array $noneChannels = null): AstNode
     {
         if ($space === 'display-p3-linear') {
-            $linearValues = $this->runtime->spaceConverter->xyzD65ToLinearDisplayP3($xyz);
+            $linearValues = $this->runtime->spaceConverter->xyzD65ToLinP3($xyz);
 
             if ($noneChannels !== null) {
                 $outputNodes = [new StringNode($space)];
@@ -1387,7 +1387,7 @@ final readonly class ColorSpaceConverter
                 $xyzD50 = $this->runtime->spaceConverter->xyzD65ToXyzD50($xyzD65);
             }
 
-            $prophotoChannels = $this->xyzD50ToProphotoRgbUnclamped($xyzD50);
+            $prophotoChannels = $this->runtime->spaceConverter->xyzD50ToLinProphoto($xyzD50);
 
             $outputNodes = [new StringNode($space)];
 
@@ -1412,11 +1412,9 @@ final readonly class ColorSpaceConverter
                     $b / 255.0,
                 );
 
-                $xyzD50 = $this->runtime->spaceConverter->xyzD65ToXyzD50($xyzD65);
-
-                $prophotoChannels = $this->xyzD50ToProphotoRgbUnclamped($xyzD50);
-
-                $noneChannels = null;
+                $xyzD50           = $this->runtime->spaceConverter->xyzD65ToXyzD50($xyzD65);
+                $prophotoChannels = $this->runtime->spaceConverter->xyzD50ToLinProphoto($xyzD50);
+                $noneChannels     = null;
 
                 $name = strtolower($color->name);
 
@@ -1443,9 +1441,8 @@ final readonly class ColorSpaceConverter
             }
         }
 
-        $xyzD50 = $this->converter->toXyzD50($color);
-
-        $prophotoChannels = $this->xyzD50ToProphotoRgbUnclamped($xyzD50);
+        $xyzD50           = $this->converter->toXyzD50($color);
+        $prophotoChannels = $this->runtime->spaceConverter->xyzD50ToLinProphoto($xyzD50);
 
         return $this->converter->buildFunctionalColorNode('color', [
             new StringNode($space),
@@ -1475,26 +1472,6 @@ final readonly class ColorSpaceConverter
             y: $m[3] * $linR + $m[4] * $linG + $m[5] * $linB,
             z: $m[8] * $linB,
         );
-    }
-
-    /**
-     * @return array{0: float, 1: float, 2: float}
-     */
-    private function xyzD50ToProphotoRgbUnclamped(XyzColor $xyz): array
-    {
-        $sc = $this->runtime->spaceConverter;
-
-        return [
-            $sc->gamProphoto(
-                1.3457989731028281 * (float) $xyz->x - 0.2555801000799753 * (float) $xyz->y - 0.0511062850675340 * (float) $xyz->z,
-            ),
-            $sc->gamProphoto(
-                -0.5446224939028347 * (float) $xyz->x + 1.5082327413132781 * (float) $xyz->y + 0.0205360323914797 * (float) $xyz->z,
-            ),
-            $sc->gamProphoto(
-                1.2119675456389454 * (float) $xyz->z,
-            ),
-        ];
     }
 
     /**
