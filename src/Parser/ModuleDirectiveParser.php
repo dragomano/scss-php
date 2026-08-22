@@ -177,7 +177,7 @@ final readonly class ModuleDirectiveParser
             if ($token->type === TokenType::WHITESPACE) {
                 $entry .= ' ';
             } elseif ($token->type === TokenType::STRING) {
-                $entry .= '"' . $token->value . '"';
+                $entry .= '"' . ($token->rawValue ?? $token->value) . '"';
             } else {
                 $entry .= TokenStreamHelper::tokenToRawString($token->type, $token->value);
             }

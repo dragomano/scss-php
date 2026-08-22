@@ -11,6 +11,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Utils\StringEscapeDecoder;
 
 use function count;
 use function ctype_alpha;
@@ -703,7 +704,7 @@ final readonly class Text
         }
 
         if ($this->isSingleQuotedString($expr)) {
-            return substr($expr, 1, -1);
+            return StringEscapeDecoder::decodeLiteral(substr($expr, 1, -1));
         }
 
         $valueNode = $this->parser->parseInlineExpression($expr);

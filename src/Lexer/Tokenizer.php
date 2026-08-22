@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Lexer;
 
+use Bugo\SCSS\Utils\StringEscapeDecoder;
+
 use function chr;
 use function ctype_alnum;
 use function ctype_alpha;
@@ -333,7 +335,9 @@ final class Tokenizer
 
         $this->advance(); // skip opening quote
 
-        $value = '';
+        $rawStart = $this->position;
+        $rawEnd   = null;
+        $value    = '';
 
         while ($this->position < $this->length) {
             // Find length of plain (non-special) chunk in one C-level call
@@ -372,30 +376,40 @@ final class Tokenizer
                     continue;
                 }
 
-                if (ctype_xdigit($escapeResult[0] ?? '')) {
-                    $decoded = $this->decodeAstralUnicodeEscape($escapeResult);
-                    if ($decoded !== null) {
-                        $value .= $decoded;
-                    } else {
-                        $value .= '\\' . $escapeResult;
+                if ($escapeResult[0] === '\\') {
+                    $escapedChar = $escapeResult[1];
+
+                    // Line continuation: a backslash before a newline produces nothing
+                    if ($escapedChar === "\n" || $escapedChar === "\r") {
+                        if ($escapedChar === "\r" && $this->peekChar() === "\n") {
+                            $this->advance();
+                        }
+
+                        continue;
                     }
+
+                    $value .= $escapedChar;
 
                     continue;
                 }
 
-                $value .= $escapeResult;
+                $value .= StringEscapeDecoder::hexToUtf8($escapeResult);
 
                 continue;
             }
 
             if ($char === $quote) {
+                $rawEnd = $this->position;
+
                 $this->advance();
 
                 break;
             }
         }
 
-        return new Token(TokenType::STRING, $value, $line, $column);
+        $rawValue = substr($this->source, $rawStart, ($rawEnd ?? $this->length) - $rawStart);
+
+        return new Token(TokenType::STRING, $value, $line, $column, 0, $rawValue);
     }
 
     private function readRawInterpolation(): string
@@ -480,20 +494,6 @@ final class Tokenizer
                 return;
             }
         }
-    }
-
-    private function decodeAstralUnicodeEscape(string $hex): ?string
-    {
-        $codePoint = (int) hexdec($hex);
-
-        if ($codePoint < 0x10000 || $codePoint > 0x10FFFF) {
-            return null;
-        }
-
-        return $this->byte(0xF0 | ($codePoint >> 18))
-            . $this->byte(0x80 | (($codePoint >> 12) & 0x3F))
-            . $this->byte(0x80 | (($codePoint >> 6) & 0x3F))
-            . $this->byte(0x80 | ($codePoint & 0x3F));
     }
 
     private function tokenizeNumber(): Token

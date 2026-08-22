@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Parser;
 use Bugo\SCSS\Lexer\Token;
 use Bugo\SCSS\Lexer\TokenStream;
 use Bugo\SCSS\Lexer\TokenType;
+use Bugo\SCSS\Utils\StringEscapeDecoder;
 use Closure;
 
 use function in_array;
@@ -106,7 +107,7 @@ final class TokenStreamHelper
         }
 
         if ($quoteStringToken && $token->type === TokenType::STRING) {
-            $buffer .= '"' . $token->value . '"';
+            $buffer .= '"' . ($token->rawValue ?? StringEscapeDecoder::encodeQuotedContent($token->value, '"')) . '"';
 
             return;
         }

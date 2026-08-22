@@ -232,7 +232,7 @@ final class RuleParser
                     $selector .= ' ';
                 }
             } elseif ($token->type === TokenType::STRING) {
-                $selector .= '"' . $token->value . '"';
+                $selector .= '"' . ($token->rawValue ?? $token->value) . '"';
             } elseif ($token->type === TokenType::HASH) {
                 $selector .= '#' . $token->value;
             } else {
@@ -292,7 +292,7 @@ final class RuleParser
             }
 
             if ($token->type === TokenType::STRING) {
-                $buffer .= '"' . $token->value . '"';
+                $buffer .= '"' . ($token->rawValue ?? $token->value) . '"';
 
                 $this->stream->advance();
 

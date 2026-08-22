@@ -12,5 +12,6 @@ final class Token
         public int $line,
         public int $column,
         public int $start = 0,
+        public ?string $rawValue = null,
     ) {}
 }
