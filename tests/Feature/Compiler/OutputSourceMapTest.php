@@ -254,7 +254,7 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
-        it('keeps box shorthand values as written in compressed style', function () {
+        it('collapses box shorthand values in compressed style', function () {
             $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
 
             $source = <<<'SCSS'
@@ -265,7 +265,7 @@ describe('Compiler', function () {
 
             $css = $compiler->compileString($source);
 
-            expect($css)->toBe('.box{margin:10px 20px 10px 20px;padding:8px 8px 8px 8px;margin-top-bottom:1px 2px 1px}.box-3{margin:3px 6px 3px;padding:5px 5px 5px}.box-2{margin:4px 4px;padding:9px 11px}');
+            expect($css)->toBe('.box{margin:10px 20px;padding:8px;margin-top-bottom:1px 2px 1px}.box-3{margin:3px 6px;padding:5px}.box-2{margin:4px;padding:9px 11px}');
         });
 
         it('converts named colors to hex in compressed style for regular declarations', function () {

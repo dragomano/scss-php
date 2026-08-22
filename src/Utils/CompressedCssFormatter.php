@@ -21,10 +21,36 @@ use function trim;
 
 final readonly class CompressedCssFormatter
 {
+    private const BOX_SHORTHAND_PROPERTIES = [
+        'margin',
+        'padding',
+        'border-width',
+        'border-style',
+        'border-color',
+        'border-radius',
+        'inset',
+        'scroll-margin',
+        'scroll-padding',
+    ];
+
+    private const BOX_TWO_SIDED_PROPERTIES = [
+        'margin-block',
+        'margin-inline',
+        'padding-block',
+        'padding-inline',
+        'inset-block',
+        'inset-inline',
+        'scroll-margin-block',
+        'scroll-margin-inline',
+        'scroll-padding-block',
+        'scroll-padding-inline',
+    ];
+
     public function format(string $css): string
     {
         $css = $this->removeRegularComments($css);
         $css = $this->compactCss($css);
+        $css = $this->collapseBoxShorthandDeclarations($css);
         $css = $this->optimizeCompressedLiterals($css);
 
         return trim($css);
@@ -227,6 +253,262 @@ final readonly class CompressedCssFormatter
         return ($char >= 'a' && $char <= 'z')
             || ($char >= 'A' && $char <= 'Z')
             || in_array($char, ['_', '-'], true);
+    }
+
+    private function collapseBoxShorthandDeclarations(string $css): string
+    {
+        $parts            = [];
+        $length           = strlen($css);
+        $index            = 0;
+        $inString         = false;
+        $quote            = '';
+        $escaped          = false;
+        $atDeclarationPos = false;
+
+        while ($index < $length) {
+            $char = $css[$index];
+
+            if ($inString) {
+                $parts[] = $char;
+
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === $quote) {
+                    $inString = false;
+                    $quote    = '';
+                }
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $inString = true;
+                $quote    = $char;
+                $parts[]  = $char;
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '{' || $char === ';') {
+                $atDeclarationPos = true;
+
+                $parts[] = $char;
+
+                $index++;
+
+                continue;
+            }
+
+            if (
+                $atDeclarationPos
+                && $this->isIdentifierChar($char)
+                && ($collapsed = $this->collapseBoxShorthandAt($css, $index)) !== null
+            ) {
+                [$replacement, $index] = $collapsed;
+
+                $parts[] = $replacement;
+
+                continue;
+            }
+
+            if (! ctype_space($char)) {
+                $atDeclarationPos = false;
+            }
+
+            $parts[] = $char;
+
+            $index++;
+        }
+
+        return implode('', $parts);
+    }
+
+    /**
+     * @return array{string, int}|null
+     */
+    private function collapseBoxShorthandAt(string $css, int $start): ?array
+    {
+        $length = strlen($css);
+        $index  = $start;
+
+        while ($index < $length && $this->isIdentifierChar($css[$index])) {
+            $index++;
+        }
+
+        $name = substr($css, $start, $index - $start);
+
+        if ($index >= $length || $css[$index] !== ':') {
+            return null;
+        }
+
+        $lowerName = strtolower($name);
+
+        $isTwoSided = in_array($lowerName, self::BOX_TWO_SIDED_PROPERTIES, true);
+
+        if (! $isTwoSided && ! in_array($lowerName, self::BOX_SHORTHAND_PROPERTIES, true)) {
+            return null;
+        }
+
+        $index++;
+
+        $components = [];
+        $current    = '';
+        $parenDepth = 0;
+        $inString   = false;
+        $quote      = '';
+        $escaped    = false;
+
+        while ($index < $length) {
+            $char = $css[$index];
+
+            if ($inString) {
+                $current .= $char;
+
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === $quote) {
+                    $inString = false;
+                }
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $inString = true;
+                $quote    = $char;
+                $current .= $char;
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '(') {
+                $parenDepth++;
+            } elseif ($char === ')') {
+                $parenDepth = max(0, $parenDepth - 1);
+            } elseif ($parenDepth === 0) {
+                if (ctype_space($char)) {
+                    if ($current !== '') {
+                        $components[] = $current;
+                        $current      = '';
+                    }
+
+                    $index++;
+
+                    continue;
+                }
+
+                if ($char === ';' || $char === '}' || $char === '!') {
+                    break;
+                }
+            }
+
+            $current .= $char;
+
+            $index++;
+        }
+
+        if ($current !== '') {
+            $components[] = $current;
+        }
+
+        $collapsed = $this->collapseBoxComponents($components, $isTwoSided);
+
+        if ($collapsed === null) {
+            return null;
+        }
+
+        return [$name . ':' . implode(' ', $collapsed), $index];
+    }
+
+    /**
+     * @param list<string> $components
+     *
+     * @return list<string>|null
+     */
+    private function collapseBoxComponents(array $components, bool $twoSided): ?array
+    {
+        if (in_array('/', $components, true)) {
+            return null;
+        }
+
+        if ($twoSided) {
+            if (count($components) === 2 && $components[0] === $components[1]) {
+                return [$components[0]];
+            }
+
+            return null;
+        }
+
+        return match (count($components)) {
+            4       => $this->collapseFourComponents($components),
+            3       => $this->collapseThreeComponents($components),
+            2       => $components[0] === $components[1] ? [$components[0]] : null,
+            default => null,
+        };
+    }
+
+    /**
+     * @param list<string> $components
+     *
+     * @return list<string>|null
+     */
+    private function collapseFourComponents(array $components): ?array
+    {
+        if (
+            $components[0] === $components[1]
+            && $components[1] === $components[2]
+            && $components[2] === $components[3]
+        ) {
+            return [$components[0]];
+        }
+
+        if ($components[0] === $components[2] && $components[1] === $components[3]) {
+            return [$components[0], $components[1]];
+        }
+
+        if ($components[1] === $components[3]) {
+            return [$components[0], $components[1], $components[2]];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param list<string> $components
+     *
+     * @return list<string>|null
+     */
+    private function collapseThreeComponents(array $components): ?array
+    {
+        if ($components[2] !== $components[0]) {
+            return null;
+        }
+
+        if ($components[1] === $components[0]) {
+            return [$components[0]];
+        }
+
+        return [$components[0], $components[1]];
+    }
+
+    private function isIdentifierChar(string $char): bool
+    {
+        return ($char >= 'a' && $char <= 'z')
+            || ($char >= 'A' && $char <= 'Z')
+            || ($char >= '0' && $char <= '9')
+            || in_array($char, ['-', '_'], true);
     }
 
     private function shortenHex(string $candidate): string

@@ -213,5 +213,97 @@ describe('CompressedCssFormatter', function () {
 
             expect($this->formatter->format($css))->toBe('.a{color:#fff;background:#000}');
         });
+
+        it('collapses four identical box shorthand components', function () {
+            expect($this->formatter->format('.a{margin:8px 8px 8px 8px}'))->toBe('.a{margin:8px}');
+        });
+
+        it('collapses mirrored box shorthand components', function () {
+            expect($this->formatter->format('.a{margin:10px 20px 10px 20px}'))->toBe('.a{margin:10px 20px}');
+        });
+
+        it('drops left box shorthand component when right matches it', function () {
+            expect($this->formatter->format('.a{margin:1px 2px 3px 2px}'))->toBe('.a{margin:1px 2px 3px}');
+        });
+
+        it('collapses three box shorthand components when bottom matches top', function () {
+            expect($this->formatter->format('.a{margin:3px 6px 3px}'))->toBe('.a{margin:3px 6px}');
+        });
+
+        it('collapses three identical box shorthand components', function () {
+            expect($this->formatter->format('.a{padding:5px 5px 5px}'))->toBe('.a{padding:5px}');
+        });
+
+        it('collapses two equal box shorthand components', function () {
+            expect($this->formatter->format('.a{margin:4px 4px}'))->toBe('.a{margin:4px}');
+        });
+
+        it('keeps box shorthand components that differ', function () {
+            expect($this->formatter->format('.a{margin:1px 2px 3px 4px}'))->toBe('.a{margin:1px 2px 3px 4px}');
+        });
+
+        it('collapses equal two-sided logical property values', function () {
+            expect($this->formatter->format('.a{margin-block:1px 1px}'))->toBe('.a{margin-block:1px}');
+        });
+
+        it('keeps differing two-sided logical property values', function () {
+            expect($this->formatter->format('.a{margin-inline:1px 2px}'))->toBe('.a{margin-inline:1px 2px}');
+        });
+
+        it('collapses identical calc() components as whole units', function () {
+            $css = '.a{margin:calc(1px + 2px) 5px calc(1px + 2px) 5px}';
+
+            expect($this->formatter->format($css))->toBe('.a{margin:calc(1px + 2px) 5px}');
+        });
+
+        it('collapses identical quoted string components', function () {
+            $css = '.a{margin:"a b" "a b"}';
+
+            expect($this->formatter->format($css))->toBe('.a{margin:"a b"}');
+        });
+
+        it('collapses declarations that follow other declarations in one block', function () {
+            $css = '.a{margin:4px 4px;padding:8px 8px;color:red}';
+
+            expect($this->formatter->format($css))->toBe('.a{margin:4px;padding:8px;color:red}');
+        });
+
+        it('collapses box shorthand in the last declaration without trailing semicolon', function () {
+            expect($this->formatter->format('{margin:4px 4px}'))->toBe('{margin:4px}');
+        });
+
+        it('preserves important flag when collapsing', function () {
+            expect($this->formatter->format('.a{margin:4px 4px!important}'))->toBe('.a{margin:4px!important}');
+        });
+
+        it('matches box shorthand properties case-insensitively', function () {
+            expect($this->formatter->format('.a{MARGIN:4PX 4PX}'))->toBe('.a{MARGIN:4PX}');
+        });
+
+        it('leaves custom properties untouched', function () {
+            expect($this->formatter->format('.a{--margin:4px 4px}'))->toBe('.a{--margin:4px 4px}');
+        });
+
+        it('leaves properties outside the box shorthand list untouched', function () {
+            $css = '.a{background:red red;grid-area:1 1 1 1}';
+
+            expect($this->formatter->format($css))->toBe('.a{background:red red;grid-area:1 1 1 1}');
+        });
+
+        it('does not collapse slashed border-radius syntax', function () {
+            expect($this->formatter->format('.a{border-radius:10px 20px/5px 20px}'))->toBe('.a{border-radius:10px 20px/5px 20px}');
+        });
+
+        it('ignores declaration-like text inside quoted strings', function () {
+            $css = '.a{content:"margin:4px 4px";margin:4px 4px}';
+
+            expect($this->formatter->format($css))->toBe('.a{content:"margin:4px 4px";margin:4px}');
+        });
+
+        it('collapses box shorthand inside nested at-rule blocks', function () {
+            $css = '@media screen{.a{margin:4px 4px}}';
+
+            expect($this->formatter->format($css))->toBe('@media screen{.a{margin:4px}}');
+        });
     });
 });
