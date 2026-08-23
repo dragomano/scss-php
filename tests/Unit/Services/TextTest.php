@@ -60,6 +60,18 @@ describe('Text service', function () {
         it('keeps trailing text when interpolation is not closed', function () {
             expect($this->text->replaceInterpolations('a#{b', $this->env))->toBe('a#{b');
         });
+
+        it('preserves spacing of nested interpolation resolving to a space list', function () {
+            expect($this->text->interpolateText('#{#{"["\'foo\'"]"}}', $this->env))->toBe('[ foo ]');
+        });
+
+        it('treats nested interpolation results as string literals inside expressions', function () {
+            expect($this->text->interpolateText('#{#{1}+#{2}}', $this->env))->toBe('12');
+        });
+
+        it('assembles quoted templates containing nested interpolations verbatim', function () {
+            expect($this->text->interpolateText('"[#{"["\'foo\'"]"}]"', $this->env))->toBe('"[[ foo ]]"');
+        });
     });
 
     describe('replaceVariableReferencesInText()', function () {

@@ -25,6 +25,20 @@ describe('Tokenizer', function () {
             ->and($tokens[0]->value)->toBe('foo');
     });
 
+    it('keeps non-ASCII letters inside identifiers', function () {
+        $tokens = $this->tokenizer->tokenize('aéb');
+
+        expect($tokens[0]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($tokens[0]->value)->toBe('aéb');
+    });
+
+    it('keeps multi-byte sequences from different planes inside identifiers', function () {
+        $tokens = $this->tokenizer->tokenize('icon-🎉-日本');
+
+        expect($tokens[0]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($tokens[0]->value)->toBe('icon-🎉-日本');
+    });
+
     it('tokenizes number with unit', function () {
         $tokens = $this->tokenizer->tokenize('42px');
 

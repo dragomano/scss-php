@@ -331,16 +331,15 @@ final class Tokenizer
         $line   = $this->line;
         $column = $this->column;
         $quote  = $this->source[$this->position];
-        $mask   = '\\' . $quote . '#'; // chars that end a plain chunk: backslash, closing quote or interpolation start
+        $mask   = '\\' . $quote . '#';
 
-        $this->advance(); // skip opening quote
+        $this->advance();
 
         $rawStart = $this->position;
         $rawEnd   = null;
         $value    = '';
 
         while ($this->position < $this->length) {
-            // Find length of plain (non-special) chunk in one C-level call
             $safe = strcspn($this->source, $mask, $this->position);
 
             if ($safe > 0) {
@@ -388,7 +387,10 @@ final class Tokenizer
                         continue;
                     }
 
-                    $value .= $escapedChar;
+                    // `\#{` protects the hash from starting an interpolation
+                    $value .= $escapedChar === '#' && $this->peekChar(0) === '{'
+                        ? StringEscapeDecoder::PROTECTED_HASH
+                        : $escapedChar;
 
                     continue;
                 }
@@ -463,7 +465,7 @@ final class Tokenizer
 
     private function skipQuotedChunk(string $quote): void
     {
-        $this->advance(); // opening quote
+        $this->advance();
 
         while ($this->position < $this->length) {
             $char = $this->source[$this->position];
@@ -553,7 +555,6 @@ final class Tokenizer
 
         $count = $this->position - $start;
 
-        // Numbers never contain newlines — safe to increment column directly
         $this->column += $count;
 
         return new Token(TokenType::NUMBER, substr($this->source, $start, $count), $line, $column);
@@ -565,7 +566,7 @@ final class Tokenizer
             return false;
         }
 
-        $char = $this->source[$this->position]; // direct access instead of peek()
+        $char = $this->source[$this->position];
 
         if ($char !== 'e' && $char !== 'E') {
             return false;
@@ -575,7 +576,7 @@ final class Tokenizer
             return false;
         }
 
-        $next = $this->source[$this->position + 1]; // direct access instead of peek(1)
+        $next = $this->source[$this->position + 1];
 
         if (ctype_digit($next)) {
             return true;
@@ -599,11 +600,16 @@ final class Tokenizer
         $value  = '';
 
         while ($this->position < $this->length) {
-            // Scan the plain ASCII identifier chars in a tight inner loop
             $scanStart = $this->position;
 
             while ($this->position < $this->length) {
                 $char = $this->source[$this->position];
+
+                if ($char >= "\x80") {
+                    $this->position += $this->utf8SequenceWidth();
+
+                    continue;
+                }
 
                 if (! ctype_alnum($char) && $char !== '_' && $char !== '-') {
                     break;
@@ -615,13 +621,11 @@ final class Tokenizer
             if ($this->position > $scanStart) {
                 $count = $this->position - $scanStart;
 
-                // Identifier chars never contain newlines — direct column update
                 $this->column += $count;
 
                 $value .= substr($this->source, $scanStart, $count);
             }
 
-            // Stop if no backslash escape follows
             if ($this->position >= $this->length || $this->source[$this->position] !== '\\') {
                 break;
             }
@@ -647,6 +651,20 @@ final class Tokenizer
         }
 
         return $this->normalizeIdentifierEscapedCodePoint(ord(substr($escapeResult, 1)));
+    }
+
+    private function utf8SequenceWidth(): int
+    {
+        $byte = ord($this->source[$this->position]);
+
+        $width = match (true) {
+            $byte >= 0xF0 => 4,
+            $byte >= 0xE0 => 3,
+            $byte >= 0xC2 => 2,
+            default       => 1,
+        };
+
+        return min($width, $this->length - $this->position);
     }
 
     private function parseEscapeSequence(): string
@@ -759,7 +777,6 @@ final class Tokenizer
 
         $count = $this->position - $start;
 
-        // CSS variable names/values never contain newlines in this context
         $this->column += $count;
 
         return new Token(TokenType::CSS_VARIABLE, substr($this->source, $start, $count), $line, $column);
@@ -840,7 +857,6 @@ final class Tokenizer
         }
 
         if ($count === 1) {
-            // Fast path for single-char advance (most common case via makeToken)
             if ($this->position < $this->length) {
                 if ($this->source[$this->position] === "\n") {
                     $this->line++;
@@ -855,7 +871,6 @@ final class Tokenizer
             return;
         }
 
-        // Bulk path: count newlines in the span with a single C-level call
         $end = min($this->position + $count, $this->length);
         $len = $end - $this->position;
 

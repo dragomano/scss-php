@@ -18,7 +18,7 @@ final class SassString extends AbstractSassValue
     public function toCss(): string
     {
         if (! $this->quoted) {
-            return $this->value;
+            return StringEscapeDecoder::encodeUnquotedContent($this->value);
         }
 
         $quote = $this->preferredQuote();

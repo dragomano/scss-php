@@ -93,6 +93,8 @@ final readonly class Text
 
     public function replaceInterpolations(string $value, Environment $env): string
     {
+        $value = StringEscapeDecoder::protectHashes($value);
+
         $result = '';
         $length = strlen($value);
         $index  = 0;
@@ -690,7 +692,9 @@ final readonly class Text
         }
 
         if (str_contains($expr, '#{')) {
-            $expr = $this->interpolateText($expr, $env);
+            $expr = $this->isInterpolatedStringTemplate($expr)
+                ? $this->interpolateText($expr, $env)
+                : $this->substituteNestedInterpolationsAsLiterals($expr, $env);
         }
 
         if ($expr[0] === '$') {
@@ -716,6 +720,105 @@ final readonly class Text
         $evaluated = $this->valueEvaluator->evaluate($valueNode, $env);
 
         return $this->formatInterpolationValue($evaluated, $env);
+    }
+
+    private function substituteNestedInterpolationsAsLiterals(string $expr, Environment $env): string
+    {
+        $length = strlen($expr);
+        $index  = 0;
+        $result = '';
+
+        while ($index < $length) {
+            $pos = strpos($expr, '#{', $index);
+
+            if ($pos === false) {
+                $result .= substr($expr, $index);
+
+                break;
+            }
+
+            $result .= substr($expr, $index, $pos - $index);
+
+            $start  = $pos + 2;
+            $cursor = $start;
+            $depth  = 1;
+
+            while ($cursor < $length && $depth > 0) {
+                if ($expr[$cursor] === '{') {
+                    $depth++;
+                } elseif ($expr[$cursor] === '}') {
+                    $depth--;
+                }
+
+                $cursor++;
+            }
+
+            if ($depth !== 0) {
+                $result .= substr($expr, $pos);
+
+                break;
+            }
+
+            $inner    = trim(substr($expr, $start, $cursor - $start - 1));
+            $index    = $cursor;
+            $resolved = $this->resolveInterpolationExpression($inner, $env);
+
+            $result .= '"' . StringEscapeDecoder::encodeQuotedContent($resolved, '"') . '"';
+        }
+
+        return $result;
+    }
+
+    private function isInterpolatedStringTemplate(string $expr): bool
+    {
+        $length = strlen($expr);
+
+        if ($length < 2) {
+            return false;
+        }
+
+        $quote = $expr[0];
+
+        if (($quote !== '"' && $quote !== "'") || $expr[$length - 1] !== $quote) {
+            return false;
+        }
+
+        $index = 1;
+
+        while ($index < $length - 1) {
+            $char = $expr[$index];
+
+            if ($char === '\\') {
+                $index += 2;
+
+                continue;
+            }
+
+            if ($char === '#' && ($expr[$index + 1] ?? '') === '{') {
+                $depth  = 1;
+                $index += 2;
+
+                while ($index < $length && $depth > 0) {
+                    if ($expr[$index] === '{') {
+                        $depth++;
+                    } elseif ($expr[$index] === '}') {
+                        $depth--;
+                    }
+
+                    $index++;
+                }
+
+                continue;
+            }
+
+            if ($char === $quote) {
+                return false;
+            }
+
+            $index++;
+        }
+
+        return true;
     }
 
     private function isSingleQuotedString(string $expr): bool
@@ -816,8 +919,7 @@ final readonly class Text
 
             if ($spaceCursor >= $length || $value[$spaceCursor] !== '+') {
                 $result .= $left;
-
-                $index = $cursor;
+                $index   = $cursor;
 
                 continue;
             }

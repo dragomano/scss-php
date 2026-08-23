@@ -19,11 +19,56 @@ use function substr;
  */
 final class StringEscapeDecoder
 {
+    public const PROTECTED_HASH = "\u{D800}";
+
+    public const PROTECTED_HASH_CODE_POINT = 0xD800;
+
     private const REPLACEMENT = "\u{FFFD}";
 
     private const REPLACEMENT_CODE_POINT = 0xFFFD;
 
     private const MAX_HEX_DIGITS = 6;
+
+    public static function protectHashes(string $text): string
+    {
+        $length = strlen($text);
+        $result = '';
+        $index  = 0;
+
+        while ($index < $length) {
+            $pos = strpos($text, '#', $index);
+
+            if ($pos === false) {
+                $result .= substr($text, $index);
+
+                break;
+            }
+
+            $backslashes = 0;
+
+            while (
+                $pos - $backslashes - 1 >= 0
+                && $text[$pos - $backslashes - 1] === '\\'
+            ) {
+                $backslashes++;
+            }
+
+            if ($backslashes % 2 === 1 && ($text[$pos + 1] ?? '') === '{') {
+                $result .= substr($text, $index, $pos - 1 - $index);
+                $result .= self::PROTECTED_HASH;
+
+                $index = $pos + 1;
+
+                continue;
+            }
+
+            $result .= substr($text, $index, $pos + 1 - $index);
+
+            $index = $pos + 1;
+        }
+
+        return $result;
+    }
 
     public static function decodeLiteral(string $raw): string
     {
@@ -69,22 +114,11 @@ final class StringEscapeDecoder
         return $result;
     }
 
-    /**
-     * Converts a raw hex escape body (1-6 hex digits) to UTF-8 bytes.
-     * Invalid code points (zero, surrogates, beyond U+10FFFF) become U+FFFD.
-     */
     public static function hexToUtf8(string $hex): string
     {
         return self::codePointToUtf8((int) hexdec($hex));
     }
 
-    /**
-     * Re-escapes decoded string content for emission inside quotes.
-     *
-     * Mirrors the reference serializer: backslashes and the active quote are
-     * doubled, control characters and private-use code points become short
-     * lowercase hex escapes, everything else is emitted verbatim.
-     */
     public static function encodeQuotedContent(string $decoded, string $quote): string
     {
         $length   = strlen($decoded);
@@ -96,6 +130,7 @@ final class StringEscapeDecoder
             [$codePoint, $width] = self::decodeCodePointAt($decoded, $index);
 
             $replacement = match (true) {
+                $codePoint === self::PROTECTED_HASH_CODE_POINT => null,
                 $codePoint === 0x0A => '\a',
                 $codePoint === 0x0D => '\d',
                 $codePoint === 0x0B => '\b',
@@ -111,8 +146,6 @@ final class StringEscapeDecoder
             } else {
                 $result .= $replacement;
 
-                // Escaped-character forms (\X) are unambiguous; only hex
-                // forms can swallow the following character.
                 if (
                     $codePoint !== 0x5C
                     && $codePoint !== $quoteOrd
@@ -120,6 +153,33 @@ final class StringEscapeDecoder
                 ) {
                     $result .= ' ';
                 }
+            }
+
+            $index += $width;
+        }
+
+        return $result;
+    }
+
+    public static function encodeUnquotedContent(string $decoded): string
+    {
+        $length = strlen($decoded);
+        $result = '';
+        $index  = 0;
+
+        while ($index < $length) {
+            [$codePoint, $width] = self::decodeCodePointAt($decoded, $index);
+
+            if ($codePoint === 0x0A) {
+                $result .= ' ';
+            } elseif (self::isPrivateUseCodePoint($codePoint)) {
+                $result .= '\\' . dechex($codePoint);
+
+                if (self::needsSeparatorAfter($decoded, $index + $width)) {
+                    $result .= ' ';
+                }
+            } else {
+                $result .= substr($decoded, $index, $width);
             }
 
             $index += $width;
@@ -373,10 +433,6 @@ final class StringEscapeDecoder
             || ($codePoint >= 0x100000 && $codePoint <= 0x10FFFD);
     }
 
-    /**
-     * A hex escape must be separated from a following character that would
-     * otherwise be parsed as part of the escape.
-     */
     private static function needsSeparatorAfter(string $value, int $nextIndex): bool
     {
         if ($nextIndex >= strlen($value)) {

@@ -7,6 +7,7 @@ namespace Bugo\SCSS;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StatementNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Utils\StringEscapeDecoder;
 use Bugo\SCSS\Values\ValueFactory;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -14,6 +15,7 @@ use Psr\Log\NullLogger;
 use function basename;
 use function file_put_contents;
 use function str_contains;
+use function str_replace;
 
 final readonly class Compiler implements CompilerInterface
 {
@@ -125,7 +127,13 @@ final readonly class Compiler implements CompilerInterface
 
     private function postProcess(string $compiled, string $source): string
     {
-        $optimized = $this->runtime->render()->optimize($compiled);
+        $optimized = str_replace(
+            StringEscapeDecoder::PROTECTED_HASH,
+            '#',
+            $compiled,
+        );
+
+        $optimized = $this->runtime->render()->optimize($optimized);
 
         if ($this->options->sourceMapFile !== null) {
             $sourceMap = $this->runtime->render()->buildSourceMap($optimized, $source);

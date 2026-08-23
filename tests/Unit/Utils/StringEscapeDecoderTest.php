@@ -69,6 +69,96 @@ describe('StringEscapeDecoder', function () {
         });
     });
 
+    describe('protectHashes()', function () {
+        it('replaces a backslash-protected hash with the sentinel', function () {
+            expect(StringEscapeDecoder::protectHashes('\#{x}'))
+                ->toBe(StringEscapeDecoder::PROTECTED_HASH . '{x}');
+        });
+
+        it('keeps live interpolation regions untouched', function () {
+            expect(StringEscapeDecoder::protectHashes('#{x}'))->toBe('#{x}');
+        });
+
+        it('treats an even backslash run as escaped backslash before a live region', function () {
+            $raw = str_repeat('\\', 2) . '#{x}';
+
+            expect(StringEscapeDecoder::protectHashes($raw))->toBe($raw);
+        });
+
+        it('protects a hash after an odd backslash run longer than one', function () {
+            $raw     = str_repeat('\\', 3) . '#{x}';
+            $escaped = str_repeat('\\', 2) . StringEscapeDecoder::PROTECTED_HASH;
+
+            expect(StringEscapeDecoder::protectHashes($raw))->toBe($escaped . '{x}');
+        });
+
+        it('leaves hashes without a following brace untouched', function () {
+            expect(StringEscapeDecoder::protectHashes('a\#b'))->toBe('a\#b');
+        });
+
+        it('is idempotent for text that already contains sentinels', function () {
+            $protected = StringEscapeDecoder::protectHashes('\#{x}');
+
+            expect(StringEscapeDecoder::protectHashes($protected))->toBe($protected);
+        });
+
+        it('protects every occurrence independently', function () {
+            $sentinel = StringEscapeDecoder::PROTECTED_HASH;
+
+            expect(StringEscapeDecoder::protectHashes('\#{a}\#{b}'))
+                ->toBe($sentinel . '{a}' . $sentinel . '{b}');
+        });
+    });
+
+    describe('encodeQuotedContent()', function () {
+        it('passes the protected hash through verbatim', function () {
+            expect(StringEscapeDecoder::encodeQuotedContent(StringEscapeDecoder::PROTECTED_HASH . 'x', '"'))
+                ->toBe(StringEscapeDecoder::PROTECTED_HASH . 'x');
+        });
+    });
+
+    describe('encodeUnquotedContent()', function () {
+        it('writes plain text verbatim', function () {
+            expect(StringEscapeDecoder::encodeUnquotedContent('q\\w'))->toBe('q\\w');
+        });
+
+        it('collapses newlines to spaces', function () {
+            expect(StringEscapeDecoder::encodeUnquotedContent("a\nb\n"))->toBe('a b ');
+        });
+
+        it('keeps other control characters verbatim', function () {
+            expect(StringEscapeDecoder::encodeUnquotedContent("a\tb\v c\rd\x7F"))
+                ->toBe("a\tb\v c\rd\x7F");
+        });
+
+        it('escapes BMP private-use code points as hex', function () {
+            expect(StringEscapeDecoder::encodeUnquotedContent("\u{E000}x"))->toBe('\\e000x');
+        });
+
+        it('separates hex escapes from a following hex digit', function () {
+            expect(StringEscapeDecoder::encodeUnquotedContent("\u{E000}1"))->toBe('\\e000 1');
+            expect(StringEscapeDecoder::encodeUnquotedContent("\u{100000}1"))->toBe('\\100000 1');
+        });
+
+        it('omits the separator when the next character is not a hex digit', function () {
+            expect(StringEscapeDecoder::encodeUnquotedContent("\u{E000}q"))->toBe('\\e000q');
+            expect(StringEscapeDecoder::encodeUnquotedContent("\u{F000}z"))->toBe('\\f000z');
+        });
+
+        it('escapes supplementary private-use code points', function () {
+            expect(StringEscapeDecoder::encodeUnquotedContent("\u{100000}q"))->toBe('\\100000q');
+        });
+
+        it('leaves non-private astral code points unescaped', function () {
+            expect(StringEscapeDecoder::encodeUnquotedContent("\u{1F600}"))->toBe("\u{1F600}");
+        });
+
+        it('passes the protected hash through verbatim', function () {
+            expect(StringEscapeDecoder::encodeUnquotedContent(StringEscapeDecoder::PROTECTED_HASH))
+                ->toBe(StringEscapeDecoder::PROTECTED_HASH);
+        });
+    });
+
     describe('hexToUtf8()', function () {
         it('encodes ASCII range', function () {
             expect(StringEscapeDecoder::hexToUtf8('41'))->toBe('A');
