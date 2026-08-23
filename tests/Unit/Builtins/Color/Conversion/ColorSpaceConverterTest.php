@@ -122,6 +122,44 @@ describe('ColorSpaceConverter', function () {
         }
     });
 
+    it('preserves all missing functional channels when converting to a generic space', function () {
+        $result = $this->interop->toSpace([
+            new FunctionNode('lab', [new ListNode([
+                new StringNode('none'),
+                new StringNode('none'),
+                new StringNode('none'),
+            ], 'space')]),
+            new StringNode('prophoto-rgb'),
+        ]);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('color')
+            ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($result->arguments[0]->items[1])->toBeInstanceOf(StringNode::class)
+            ->and($result->arguments[0]->items[1]->value)->toBe('none')
+            ->and($result->arguments[0]->items[2])->toBeInstanceOf(StringNode::class)
+            ->and($result->arguments[0]->items[2]->value)->toBe('none')
+            ->and($result->arguments[0]->items[3])->toBeInstanceOf(StringNode::class)
+            ->and($result->arguments[0]->items[3]->value)->toBe('none');
+    });
+
+    it('gamma-encodes ProPhoto RGB output channels', function () {
+        $result = $this->interop->toSpace([
+            new FunctionNode('color', [new ListNode([
+                new StringNode('xyz-d50'),
+                new NumberNode(0.5),
+                new NumberNode(0.5),
+                new NumberNode(0.5),
+            ], 'space')]),
+            new StringNode('prophoto-rgb'),
+        ]);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($result->arguments[0]->items[1])->toBeInstanceOf(NumberNode::class)
+            ->and($result->arguments[0]->items[1]->value)->toBeGreaterThan(0.5);
+    });
+
     it('converts native oklch with present channels to numeric lch lightness and hue', function () {
         $result = $this->interop->toSpace([
             new FunctionNode('oklch', [new ListNode([
@@ -181,6 +219,66 @@ describe('ColorSpaceConverter', function () {
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result->name)->toBe('color');
+    });
+
+    it('uses Dart Sass A98 RGB matrix for far out-of-range values', function () {
+        $color = new FunctionNode('color', [new ListNode([
+            new StringNode('a98-rgb'),
+            new NumberNode(-999999.0),
+            new NumberNode(0.0),
+            new NumberNode(0.0),
+        ])]);
+
+        $result = $this->interop->toSpace([$color, new StringNode('xyz')]);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->arguments[0])->toBeInstanceOf(ListNode::class);
+
+        /** @var FunctionNode $result */
+        /** @var ListNode $channels */
+        $channels = $result->arguments[0];
+
+        expect($channels->items[1])->toBeInstanceOf(NumberNode::class)
+            ->and($channels->items[3])->toBeInstanceOf(NumberNode::class);
+
+        /** @var NumberNode $x */
+        $x = $channels->items[1];
+        /** @var NumberNode $z */
+        $z = $channels->items[3];
+
+        expect($x->value)->toBeCloseTo(-9041452038524.758, 6)
+            ->and($z->value)->toBeCloseTo(-423818064305.84784, 6);
+    });
+
+    it('preserves unclamped legacy RGB values and missing channels in XYZ output', function () {
+        $outOfRange = new FunctionNode('rgb', [new ListNode([
+            new NumberNode(-50.0),
+            new NumberNode(100.0),
+            new NumberNode(400.0),
+        ], 'space')]);
+        $missingRed = new FunctionNode('rgb', [new ListNode([
+            new StringNode('none'),
+            new NumberNode(20.0),
+            new NumberNode(30.0),
+        ], 'space')]);
+
+        $xyz        = $this->interop->toSpace([$outOfRange, new StringNode('xyz')]);
+        $xyzMissing = $this->interop->toSpace([$missingRed, new StringNode('xyz')]);
+
+        expect($xyz)->toBeInstanceOf(FunctionNode::class)
+            ->and($xyzMissing)->toBeInstanceOf(FunctionNode::class);
+
+        /** @var FunctionNode $xyz */
+        /** @var ListNode $xyzChannels */
+        $xyzChannels = $xyz->arguments[0];
+        /** @var FunctionNode $xyzMissing */
+        /** @var ListNode $missingChannels */
+        $missingChannels = $xyzMissing->arguments[0];
+
+        expect($xyzChannels->items[1])->toBeInstanceOf(NumberNode::class)
+            ->and($xyzChannels->items[1]->value)->toBeCloseTo(0.5403326817)
+            ->and($missingChannels->items[1])->toBeInstanceOf(StringNode::class)
+            ->and($missingChannels->items[1]->value)->toBe('none');
     });
 
     it('converts colors to xyz-d50 and wide-gamut generic spaces', function () {
@@ -343,5 +441,94 @@ describe('ColorSpaceConverter', function () {
 
         expect($withMissingAlpha)->not->toBeNull()
             ->and($withMissingAlpha?->a)->toBe(0.0);
+    });
+
+    it('preserves negative unclamped lab channels when converting to hwb', function () {
+        $result = $this->interop->toSpace([
+            new FunctionNode('lab', [new ListNode([
+                new NumberNode(-50.0, '%'),
+                new NumberNode(-150.0),
+                new NumberNode(150.0),
+            ], 'space')]),
+            new StringNode('hwb'),
+        ]);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('hsl')
+            ->and($result->arguments[2])->toBeInstanceOf(NumberNode::class)
+            ->and($result->arguments[2]->value)->toBeLessThan(0.0);
+    });
+
+    it('preserves missing lch channel semantics when converting to hwb', function () {
+        $missingHue = $this->interop->toSpace([
+            new FunctionNode('lch', [new ListNode([
+                new NumberNode(10.0, '%'),
+                new NumberNode(20.0),
+                new StringNode('none'),
+            ], 'space')]),
+            new StringNode('hwb'),
+        ]);
+        $missingNonHue = $this->interop->toSpace([
+            new FunctionNode('oklch', [new ListNode([
+                new StringNode('none'),
+                new StringNode('none'),
+                new NumberNode(10.0, 'deg'),
+            ], 'space')]),
+            new StringNode('hwb'),
+        ]);
+
+        expect($missingHue)->toBeInstanceOf(FunctionNode::class)
+            ->and($missingHue->arguments[0])->toBeInstanceOf(NumberNode::class)
+            ->and($missingHue->arguments[0]->value)->toBe(0.0)
+            ->and($missingNonHue)->toBeInstanceOf(ColorNode::class)
+            ->and($missingNonHue->value)->toBe('red');
+    });
+
+    it('converts missing oklch channels directly to oklab coordinates', function () {
+        $result = $this->interop->toSpace([
+            new FunctionNode('oklch', [new ListNode([
+                new StringNode('none'),
+                new NumberNode(0.1),
+                new NumberNode(30.0, 'deg'),
+            ], 'space')]),
+            new StringNode('oklab'),
+        ]);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->arguments[0])->toBeInstanceOf(ListNode::class);
+
+        /** @var ListNode $channels */
+        $channels = $result->arguments[0];
+
+        expect($channels->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($channels->items[0]->value)->toBe('none')
+            ->and($channels->items[1])->toBeInstanceOf(NumberNode::class)
+            ->and($channels->items[1]->value)->toBeCloseTo(0.0866025404)
+            ->and($channels->items[2])->toBeInstanceOf(NumberNode::class)
+            ->and($channels->items[2]->value)->toBeCloseTo(0.05);
+    });
+
+    it('preserves missing lch lightness when converting to oklab', function () {
+        $result = $this->interop->toSpace([
+            new FunctionNode('lch', [new ListNode([
+                new StringNode('none'),
+                new NumberNode(20.0),
+                new NumberNode(30.0, 'deg'),
+            ], 'space')]),
+            new StringNode('oklab'),
+        ]);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->arguments[0])->toBeInstanceOf(ListNode::class);
+
+        /** @var ListNode $channels */
+        $channels = $result->arguments[0];
+
+        expect($channels->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($channels->items[0]->value)->toBe('none')
+            ->and($channels->items[1])->toBeInstanceOf(NumberNode::class)
+            ->and($channels->items[1]->value)->toBeCloseTo(0.4083922377)
+            ->and($channels->items[2])->toBeInstanceOf(NumberNode::class)
+            ->and($channels->items[2]->value)->toBeCloseTo(0.0807817404);
     });
 });
