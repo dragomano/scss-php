@@ -332,12 +332,21 @@ final readonly class ValueParser implements
         $pairs = [];
 
         $hasMapPairs = false;
+        $sawComma    = false;
 
         while (! $this->stream->isEof()) {
             $this->stream->skipWhitespace();
 
             if ($this->stream->consume(TokenType::RPAREN)) {
                 break;
+            }
+
+            if ($this->stream->is(TokenType::COMMA)) {
+                $sawComma = true;
+
+                $this->stream->advance();
+
+                continue;
             }
 
             $entry = $this->parseParenthesizedEntry();
@@ -363,6 +372,8 @@ final readonly class ValueParser implements
             $this->stream->skipWhitespace();
 
             if ($this->stream->is(TokenType::COMMA)) {
+                $sawComma = true;
+
                 $this->stream->advance();
 
                 continue;
@@ -377,6 +388,10 @@ final readonly class ValueParser implements
 
         if ($hasMapPairs) {
             return new MapNode($pairs);
+        }
+
+        if (count($items) === 1 && $sawComma) {
+            return new ListNode([$items[0]], 'comma', false, true);
         }
 
         if (count($items) === 1) {
@@ -400,7 +415,7 @@ final readonly class ValueParser implements
             }
 
             if (! $singleItem instanceof ListNode) {
-                return new ListNode([$singleItem], 'space', false, true);
+                return $singleItem;
             }
 
             $singleItem->parenthesized = true;

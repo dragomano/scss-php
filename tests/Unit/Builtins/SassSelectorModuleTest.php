@@ -5,10 +5,38 @@ declare(strict_types=1);
 use Bugo\SCSS\Builtins\SassSelectorModule;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\SassErrorException;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\StringNode;
+
+function renderSelectorValue(AstNode $node): string
+{
+    if ($node instanceof NullNode) {
+        return 'null';
+    }
+
+    if ($node instanceof StringNode) {
+        return $node->value;
+    }
+
+    /** @var ListNode $node */
+    return implode(', ', array_map(
+        static function (AstNode $complex): string {
+            if ($complex instanceof StringNode) {
+                return $complex->value;
+            }
+
+            /** @var ListNode $complex */
+            return implode(' ', array_map(
+                static fn(AstNode $part): string => $part->value,
+                $complex->items,
+            ));
+        },
+        $node->items,
+    ));
+}
 
 describe('SassSelectorModule', function () {
     beforeEach(function () {
@@ -42,21 +70,20 @@ describe('SassSelectorModule', function () {
     it('evaluates append', function () {
         $result = $this->module->call('append', [new StringNode('.btn'), new StringNode('.primary')], []);
 
-        expect($result->value)->toBe('.btn.primary');
+        expect(renderSelectorValue($result))->toBe('.btn.primary');
     });
 
-    it('requires arguments for append and replaces parent references', function () {
-        $result = $this->module->call('append', [new StringNode('.card'), new StringNode('&:hover')], []);
-
-        expect($result->value)->toBe('.card:hover')
-            ->and(fn() => $this->module->call('append', [], []))
-            ->toThrow(MissingFunctionArgumentsException::class);
+    it('requires arguments for append and rejects parent references', function () {
+        expect(fn() => $this->module->call('append', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class)
+            ->and(fn() => $this->module->call('append', [new StringNode('.card'), new StringNode('&:hover')], []))
+            ->toThrow(SassErrorException::class);
     });
 
     it('evaluates extend', function () {
         $result = $this->module->call('extend', [new StringNode('.button .icon'), new StringNode('.icon'), new StringNode('.glyph')], []);
 
-        expect($result->value)->toBe('.button .icon, .button .glyph');
+        expect(renderSelectorValue($result))->toBe('.button .icon, .button .glyph');
     });
 
     it('requires arguments for extend and rejects complex targets', function () {
@@ -77,7 +104,7 @@ describe('SassSelectorModule', function () {
             [],
         );
 
-        expect($result->value)->toBe(
+        expect(renderSelectorValue($result))->toBe(
             'p.info, .guide .info, .guide .content nav.sidebar, .content .guide nav.sidebar, main.content .info, main.content nav.sidebar',
         );
     });
@@ -100,7 +127,7 @@ describe('SassSelectorModule', function () {
     it('evaluates nest', function () {
         $result = $this->module->call('nest', [new StringNode('.card'), new StringNode('&:hover')], []);
 
-        expect($result->value)->toBe('.card:hover');
+        expect(renderSelectorValue($result))->toBe('.card:hover');
     });
 
     it('requires arguments for nest', function () {
@@ -111,43 +138,41 @@ describe('SassSelectorModule', function () {
     it('evaluates parse', function () {
         $result = $this->module->call('parse', [new StringNode('  .card   >  .title ')], []);
 
-        expect($result->value)->toBe('.card > .title');
+        expect(renderSelectorValue($result))->toBe('.card > .title');
     });
 
     it('evaluates replace', function () {
         $result = $this->module->call('replace', [new StringNode('.button .icon'), new StringNode('.icon'), new StringNode('.badge')], []);
 
-        expect($result->value)->toBe('.button .badge');
+        expect(renderSelectorValue($result))->toBe('.button .badge');
     });
 
-    it('falls back to plain replacement when structured replacement is unavailable', function () {
-        $result = $this->module->call(
+    it('rejects complex replacement targets', function () {
+        expect(fn() => $this->module->call(
             'replace',
             [new StringNode('.button > .icon'), new StringNode('> .icon'), new StringNode('> .badge')],
             [],
-        );
-
-        expect($result->value)->toBe('.button > .badge');
+        ))->toThrow(SassErrorException::class);
     });
 
-    it('falls back to plain extend replacement when structured replacement is unavailable', function () {
+    it('extends with a complex extender', function () {
         $result = $this->module->call(
             'extend',
             [new StringNode('.button .icon'), new StringNode('.icon'), new StringNode('> .badge')],
             [],
         );
 
-        expect($result->value)->toBe('.button .icon, .button > .badge');
+        expect(renderSelectorValue($result))->toBe('.button .icon, .button > .badge');
     });
 
-    it('keeps the selector unchanged when extend fallback does not find the target', function () {
+    it('keeps the selector unchanged when extend does not find the target', function () {
         $result = $this->module->call(
             'extend',
             [new StringNode('.button .label'), new StringNode('.icon'), new StringNode('> .badge')],
             [],
         );
 
-        expect($result->value)->toBe('.button .label');
+        expect(renderSelectorValue($result))->toBe('.button .label');
     });
 
     it('requires arguments for replace', function () {
@@ -169,38 +194,37 @@ describe('SassSelectorModule', function () {
         expect(fn() => $this->module->call('simple-selectors', [], []))
             ->toThrow(MissingFunctionArgumentsException::class)
             ->and(fn() => $this->module->call('simple-selectors', [new ListNode([])], []))
-            ->toThrow(MissingFunctionArgumentsException::class);
+            ->toThrow(SassErrorException::class);
     });
 
     it('evaluates unify', function () {
         $result = $this->module->call('unify', [new StringNode('.button'), new StringNode('.primary')], []);
 
-        expect($result->value)->toBe('.button.primary');
+        expect(renderSelectorValue($result))->toBe('.button.primary');
     });
 
-    it('requires two string selectors for unify and handles parent references', function () {
-        $withParent = $this->module->call('unify', [new StringNode('.button'), new StringNode('&:hover')], []);
-
-        expect($withParent->value)->toBe('.button:hover')
-            ->and(fn() => $this->module->call('unify', [new StringNode('.button')], []))
+    it('requires two string selectors for unify and rejects parent references', function () {
+        expect(fn() => $this->module->call('unify', [new StringNode('.button')], []))
             ->toThrow(MissingFunctionArgumentsException::class)
-            ->and(fn() => $this->module->call('unify', [new ListNode([]), new StringNode('.button')], []))
-            ->toThrow(MissingFunctionArgumentsException::class);
+            ->and($this->module->call('unify', [new ListNode([]), new StringNode('.button')], []))
+            ->toBeInstanceOf(NullNode::class)
+            ->and(fn() => $this->module->call('unify', [new StringNode('.button'), new StringNode('&:hover')], []))
+            ->toThrow(SassErrorException::class);
     });
 
     it('unifies complex selectors as intersection', function () {
         $result = $this->module->call('unify', [new StringNode('.warning a'), new StringNode('main a')], []);
 
-        expect($result->value)->toBe('.warning main a, main .warning a');
+        expect(renderSelectorValue($result))->toBe('.warning main a, main .warning a');
     });
 
-    it('returns null when unify cannot produce any compatible selector', function () {
+    it('unifies selectors with leading combinators and returns null when incompatible', function () {
+        $leading = $this->module->call('unify', [new StringNode('> .c'), new StringNode('.d')], []);
         $incompatible = $this->module->call('unify', [new StringNode('a'), new StringNode('b')], []);
-        $unsupported  = $this->module->call('unify', [new StringNode('> a'), new StringNode('.button')], []);
-        $empty        = $this->module->call('unify', [new StringNode(''), new StringNode('.button')], []);
+        $empty = $this->module->call('unify', [new StringNode(''), new StringNode('.button')], []);
 
-        expect($incompatible)->toBeInstanceOf(NullNode::class)
-            ->and($unsupported)->toBeInstanceOf(NullNode::class)
+        expect(renderSelectorValue($leading))->toBe('> .c.d')
+            ->and($incompatible)->toBeInstanceOf(NullNode::class)
             ->and($empty)->toBeInstanceOf(NullNode::class);
     });
 
@@ -211,20 +235,17 @@ describe('SassSelectorModule', function () {
             [],
         );
 
-        expect($result->value)->toBe('.button');
+        expect(renderSelectorValue($result))->toBe('.button');
     });
 
     it('prunes covered ancestor compounds while unifying selectors', function () {
         $result = $this->module->call('unify', [new StringNode('.foo .bar'), new StringNode('.foo .baz')], []);
 
-        expect($result->value)->toBe('.foo .bar.baz');
+        expect(renderSelectorValue($result))->toBe('.foo .bar.baz');
     });
 
-    it('keeps unsupported compounds intact in simple-selectors', function () {
-        $result = $this->module->call('simple-selectors', [new StringNode('.')], []);
-
-        expect($result)->toBeInstanceOf(ListNode::class)
-            ->and($result->items)->toHaveCount(1)
-            ->and($result->items[0]->value)->toBe('.');
+    it('rejects bogus compounds in simple-selectors', function () {
+        expect(fn() => $this->module->call('simple-selectors', [new StringNode('.')], []))
+            ->toThrow(SassErrorException::class);
     });
 });

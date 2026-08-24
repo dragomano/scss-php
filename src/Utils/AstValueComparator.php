@@ -54,7 +54,11 @@ final class AstValueComparator
 
         if ($left instanceof ListNode && $right instanceof ListNode) {
             if (
-                $left->separator !== $right->separator
+                (
+                    $left->separator !== $right->separator
+                    && count($left->items) > 1
+                    && count($right->items) > 1
+                )
                 || $left->bracketed !== $right->bracketed
                 || count($left->items) !== count($right->items)
             ) {

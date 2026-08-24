@@ -102,11 +102,16 @@ describe('AstValueComparator', function () {
             expect(AstValueComparator::equals($a, $b))->toBeFalse();
         });
 
-        it('compares lists with different separators as unequal', function () {
-            $a = new ListNode([new StringNode('a')], 'space');
-            $b = new ListNode([new StringNode('a')], 'comma');
+        it('ignores separators for single-element lists but not for multi-element ones', function () {
+            $singleSpace = new ListNode([new StringNode('a')], 'space');
+            $singleComma = new ListNode([new StringNode('a')], 'comma');
 
-            expect(AstValueComparator::equals($a, $b))->toBeFalse();
+            expect(AstValueComparator::equals($singleSpace, $singleComma))->toBeTrue();
+
+            $multiSpace = new ListNode([new StringNode('a'), new StringNode('b')], 'space');
+            $multiComma = new ListNode([new StringNode('a'), new StringNode('b')], 'comma');
+
+            expect(AstValueComparator::equals($multiSpace, $multiComma))->toBeFalse();
         });
 
         it('compares lists with different bracketed flag as unequal', function () {

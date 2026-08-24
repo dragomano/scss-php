@@ -63,8 +63,16 @@ final readonly class ListNodeStrategy implements EvaluationStrategyInterface
         );
 
         $evaluated = $items !== null
-            ? new ListNode($items, $node->separator, $node->bracketed)
+            ? new ListNode($items, $node->separator, $node->bracketed, $node->parenthesized, $node->isComputed)
             : $node;
+
+        if ($evaluated->isComputed) {
+            return $evaluated;
+        }
+
+        if (count($evaluated->items) === 1) {
+            return $evaluated;
+        }
 
         $logical = ($this->evaluateLogicalList)($evaluated, $env);
 

@@ -54,7 +54,11 @@ final readonly class StringConcatenationEvaluator
 
         foreach ($list->items as $index => $item) {
             if ($index % 2 === 1) {
-                if (! ($item instanceof StringNode) || ! in_array($item->value, ['+', '-'], true)) {
+                if (
+                    ! ($item instanceof StringNode)
+                    || $item->quoted
+                    || ! in_array($item->value, ['+', '-'], true)
+                ) {
                     return null;
                 }
             } else {

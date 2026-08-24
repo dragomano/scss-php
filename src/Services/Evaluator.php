@@ -451,6 +451,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         foreach ($list->items as $index => $item) {
             if (
                 $item instanceof StringNode
+                && ! $item->quoted
                 && in_array(trim($item->value), ['==', '!=', '>=', '<=', '>', '<'], true)
             ) {
                 $comparisonIndex = $index;

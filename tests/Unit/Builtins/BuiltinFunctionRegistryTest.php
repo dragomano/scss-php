@@ -152,9 +152,12 @@ describe('BuiltinFunctionRegistry', function () {
 
         $result = $registry->tryCall('selector.append', [new StringNode('.button'), new StringNode('.primary')]);
 
-        /** @var StringNode $result */
-        expect($result)->toBeInstanceOf(StringNode::class)
-            ->and($result->value)->toBe('.button.primary');
+        /** @var ListNode $result */
+        expect($result)->toBeInstanceOf(ListNode::class)
+            ->and($result->separator)->toBe('comma')
+            ->and($result->items)->toHaveCount(1)
+            ->and($result->items[0])->toBeInstanceOf(ListNode::class)
+            ->and($result->items[0]->items[0]->value)->toBe('.button.primary');
     });
 
     it('uses global display name with selector module suffix in argument errors', function () {

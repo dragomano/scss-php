@@ -18,11 +18,16 @@ use function array_values;
 use function count;
 use function ctype_alnum;
 use function ctype_alpha;
+use function end;
 use function implode;
 use function in_array;
 use function max;
+use function str_contains;
 use function str_starts_with;
 use function strlen;
+use function strpos;
+use function strtolower;
+use function substr;
 use function trim;
 
 /**
@@ -30,6 +35,12 @@ use function trim;
  */
 final readonly class SelectorTokenizer
 {
+    private const SUBSELECTOR_PSEUDO_NAMES = ['is', 'matches', 'where', 'any', 'nth-child', 'nth-last-child'];
+
+    private const SELECTOR_PSEUDO_ARGUMENT_NAMES = [
+        'not', 'is', 'matches', 'any', 'where', 'has', 'host', 'host-context', 'slotted', 'current',
+    ];
+
     /**
      * @return array<int, string>
      */
@@ -913,10 +924,117 @@ final readonly class SelectorTokenizer
         return array_values(array_unique($resolved));
     }
 
+    /**
+     * @param array<int, string> $complexes
+     * @return array<int, string>
+     */
+    public function replaceSelectorTargetInComplexes(array $complexes, string $target, string $source): array
+    {
+        $resolved = [];
+
+        foreach ($complexes as $complex) {
+            foreach ($this->replaceSelectorTargetInComplex($complex, $target, $source) as $variant) {
+                if (! in_array($variant, $resolved, true)) {
+                    $resolved[] = $variant;
+                }
+            }
+        }
+
+        return $resolved;
+    }
+
     public function isPseudoElementToken(string $token): bool
     {
         return str_starts_with($token, '::')
             || in_array($token, [':before', ':after', ':first-line', ':first-letter'], true);
+    }
+
+    public function textContainsParentSelector(string $text): bool
+    {
+        $length     = strlen($text);
+        $quote      = '';
+        $skipDepth  = 0;
+        $index      = 0;
+
+        while ($index < $length) {
+            $char = $text[$index];
+
+            if ($quote !== '') {
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                $index++;
+
+                continue;
+            }
+
+            if ($skipDepth > 0) {
+                if ($char === '(') {
+                    $skipDepth++;
+                } elseif ($char === ')') {
+                    $skipDepth--;
+                }
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '&') {
+                return true;
+            }
+
+            if ($char === ':') {
+                $nameStart = $index + 1;
+
+                if ($nameStart < $length && $text[$nameStart] === ':') {
+                    $nameStart++;
+                }
+
+                $nameEnd = $nameStart;
+
+                while (
+                    $nameEnd < $length
+                    && (ctype_alnum($text[$nameEnd])
+                        || $text[$nameEnd] === '-'
+                        || $text[$nameEnd] === '_')
+                ) {
+                    $nameEnd++;
+                }
+
+                $name = strtolower(substr($text, $nameStart, $nameEnd - $nameStart));
+
+                if (
+                    $nameEnd < $length
+                    && $text[$nameEnd] === '('
+                    && ! in_array($name, self::SELECTOR_PSEUDO_ARGUMENT_NAMES, true)
+                    && $name !== 'nth-child'
+                    && $name !== 'nth-last-child'
+                ) {
+                    $skipDepth = 1;
+                    $index     = $nameEnd + 1;
+
+                    continue;
+                }
+
+                $index = $nameEnd;
+
+                continue;
+            }
+
+            $index++;
+        }
+
+        return false;
     }
 
     /**
@@ -1025,7 +1143,7 @@ final readonly class SelectorTokenizer
         $flush = function () use (&$items, &$buffer): void {
             if ($buffer !== '') {
                 $items[] = $buffer;
-                $buffer = '';
+                $buffer  = '';
             }
         };
 
@@ -1043,7 +1161,7 @@ final readonly class SelectorTokenizer
             }
 
             if ($char === '"' || $char === "'") {
-                $quote = $char;
+                $quote   = $char;
                 $buffer .= $char;
 
                 continue;
@@ -1051,6 +1169,7 @@ final readonly class SelectorTokenizer
 
             if ($char === '[') {
                 $bracketDepth++;
+
                 $buffer .= $char;
 
                 continue;
@@ -1058,6 +1177,7 @@ final readonly class SelectorTokenizer
 
             if ($char === ']' && $bracketDepth > 0) {
                 $bracketDepth--;
+
                 $buffer .= $char;
 
                 continue;
@@ -1065,6 +1185,7 @@ final readonly class SelectorTokenizer
 
             if ($char === '(') {
                 $parenDepth++;
+
                 $buffer .= $char;
 
                 continue;
@@ -1072,6 +1193,7 @@ final readonly class SelectorTokenizer
 
             if ($char === ')' && $parenDepth > 0) {
                 $parenDepth--;
+
                 $buffer .= $char;
 
                 continue;
@@ -1104,21 +1226,35 @@ final readonly class SelectorTokenizer
 
         $components = [];
         $count      = count($items);
-        $leading    = '';
+        $leadCombs  = [];
+        $index      = 0;
 
-        if ($count > 0 && in_array($items[0], ['>', '+', '~'], true)) {
-            $leading = $items[0];
+        while ($index < $count && in_array($items[$index], ['>', '+', '~'], true)) {
+            $leadCombs[] = $items[$index];
+
+            $index++;
         }
 
-        for ($i = 0; $i < $count; $i++) {
-            if (in_array($items[$i], ['>', '+', '~'], true)) {
-                continue;
+        $leading = implode(' ', $leadCombs);
+
+        if ($index === $count && $leading !== '') {
+            return [['sel' => '', 'comb' => '', 'lead' => $leading]];
+        }
+
+        while ($index < $count) {
+            $sel = $items[$index];
+
+            $index++;
+
+            $combs = [];
+
+            while ($index < $count && in_array($items[$index], ['>', '+', '~'], true)) {
+                $combs[] = $items[$index];
+
+                $index++;
             }
 
-            $next = $i + 1 < $count ? $items[$i + 1] : '';
-            $comb = in_array($next, ['>', '+', '~'], true) ? $next : '';
-
-            $component = ['sel' => $items[$i], 'comb' => $comb];
+            $component = ['sel' => $sel, 'comb' => implode(' ', $combs)];
 
             if ($leading !== '' && $components === []) {
                 $component['lead'] = $leading;
@@ -1135,22 +1271,210 @@ final readonly class SelectorTokenizer
      */
     public function complexComponentsToString(array $components): string
     {
-        $result = '';
-        $count  = count($components);
+        $pieces = [];
 
         foreach ($components as $i => $component) {
-            if ($i === 0 && isset($component['lead']) && $component['lead'] !== '') {
-                $result .= $component['lead'] . ' ';
+            $lead = $component['lead'] ?? '';
+
+            if ($i === 0 && $lead !== '') {
+                foreach (explode(' ', $lead) as $piece) {
+                    if ($piece !== '') {
+                        $pieces[] = $piece;
+                    }
+                }
             }
 
-            $result .= $component['sel'];
+            if ($component['sel'] !== '') {
+                $pieces[] = $component['sel'];
+            }
 
-            if ($i < $count - 1) {
-                $result .= $component['comb'] === '' ? ' ' : ' ' . $component['comb'] . ' ';
+            if ($component['comb'] !== '') {
+                foreach (explode(' ', $component['comb']) as $piece) {
+                    if ($piece !== '') {
+                        $pieces[] = $piece;
+                    }
+                }
             }
         }
 
-        return $result;
+        return implode(' ', $pieces);
+    }
+
+    /**
+     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     */
+    public function parseSelectorList(string $selector): array
+    {
+        $complexes = [];
+
+        foreach ($this->splitAtTopLevel($selector, [','], true) as $part) {
+            $components = $this->parseComplexComponents($part);
+
+            if ($components !== []) {
+                $complexes[] = $components;
+            }
+        }
+
+        return $complexes;
+    }
+
+    /**
+     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $complexes
+     */
+    public function complexesToString(array $complexes): string
+    {
+        $parts = [];
+
+        foreach ($complexes as $components) {
+            $parts[] = $this->complexComponentsToString($components);
+        }
+
+        return implode(', ', $parts);
+    }
+
+    /**
+     * @param Complex $complex1
+     * @param Complex $complex2
+     */
+    public function complexesAreSuperselector(array $complex1, array $complex2): bool
+    {
+        if (($complex1[0]['lead'] ?? '') !== '' || ($complex2[0]['lead'] ?? '') !== '') {
+            return false;
+        }
+
+        return $this->complexIsSuperselector($complex1, $complex2, true);
+    }
+
+    /**
+     * @param array<int, Complex> $superComplexes
+     * @param array<int, Complex> $subComplexes
+     */
+    public function listsAreSuperselectors(array $superComplexes, array $subComplexes): bool
+    {
+        foreach ($subComplexes as $subComplex) {
+            $matched = false;
+
+            foreach ($superComplexes as $superComplex) {
+                if ($this->complexesAreSuperselector($superComplex, $subComplex)) {
+                    $matched = true;
+
+                    break;
+                }
+            }
+
+            if (! $matched) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param Complex $left
+     * @param Complex $right
+     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>|null
+     */
+    public function unifyComplexes(array $left, array $right): ?array
+    {
+        $leftLead  = $left[0]['lead'] ?? '';
+        $rightLead = $right[0]['lead'] ?? '';
+
+        if ($leftLead !== '' && $rightLead !== '' && $leftLead !== $rightLead) {
+            return null;
+        }
+
+        $lead      = $leftLead !== '' ? $leftLead : $rightLead;
+        $leftLast  = $left[count($left) - 1];
+        $rightLast = $right[count($right) - 1];
+        $trailing  = $leftLast['comb'];
+
+        if ($rightLast['comb'] !== '') {
+            if ($trailing !== '' && $trailing !== $rightLast['comb']) {
+                return null;
+            }
+
+            $trailing = $rightLast['comb'];
+        }
+
+        $unifiedBase = $this->unifyCompoundsStrict($leftLast['sel'], $rightLast['sel']);
+
+        if ($unifiedBase === null) {
+            return null;
+        }
+
+        $base         = [['sel' => $unifiedBase, 'comb' => $trailing]];
+        $withoutBases = [];
+
+        if (count($left) > 1) {
+            $withoutBases[] = array_slice($left, 0, -1);
+        }
+
+        if (count($right) > 1) {
+            $withoutBases[] = array_slice($right, 0, -1);
+        }
+
+        if ($withoutBases === []) {
+            $woven = [$base];
+        } else {
+            $lastPrefix = array_pop($withoutBases);
+            $lastPrefix = [...$lastPrefix, ...$base];
+
+            $woven = $this->weave([...$withoutBases, $lastPrefix]);
+        }
+
+        if ($lead === '') {
+            return $woven;
+        }
+
+        foreach ($woven as $index => $complex) {
+            if ($complex === []) {
+                continue;
+            }
+
+            $first         = $complex[0];
+            $woven[$index] = [
+                ['sel' => $first['sel'], 'comb' => $first['comb'], 'lead' => $lead],
+                ...array_slice($complex, 1),
+            ];
+        }
+
+        return $woven;
+    }
+
+    public function unifyCompoundsStrict(string $left, string $right): ?string
+    {
+        $result             = $this->tokenizeCompound($left);
+        $pseudoResult       = [];
+        $pseudoElementFound = false;
+
+        foreach ($this->tokenizeCompound($right) as $simple) {
+            if ($pseudoElementFound && $this->parsePseudoToken($simple) !== null) {
+                $unified = $this->strictUnifySimple($simple, $pseudoResult);
+
+                if ($unified === null) {
+                    return null;
+                }
+
+                $pseudoResult = $unified;
+
+                continue;
+            }
+
+            if ($this->isPseudoElementToken($simple)) {
+                $pseudoElementFound = true;
+            }
+
+            $unified = $this->strictUnifySimple($simple, $result);
+
+            if ($unified === null) {
+                return null;
+            }
+
+            $result = $unified;
+        }
+
+        return implode('', [...$result, ...$pseudoResult]);
     }
 
     /**
@@ -1323,6 +1647,158 @@ final readonly class SelectorTokenizer
         }
 
         return $result;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function replaceSelectorTargetInComplex(string $complex, string $target, string $source): array
+    {
+        if (
+            $this->hasUnsupportedTopLevelCombinator($complex)
+            || $this->hasUnsupportedTopLevelCombinator($target)
+            || $this->hasUnsupportedTopLevelCombinator($source)
+        ) {
+            return [$complex];
+        }
+
+        $targetTokens = $this->tokenizeCompound($target);
+
+        if ($targetTokens === []) {
+            return [$complex];
+        }
+
+        $compounds = $this->splitAtTopLevel($complex, [' ', '>', '+', '~']);
+
+        if ($compounds === []) {
+            return [$complex];
+        }
+
+        $resolved = [];
+
+        foreach ($this->splitAtTopLevel($source, [',']) as $sourcePart) {
+            foreach ($this->replaceSelectorTargetWithSource($compounds, $targetTokens, $target, $source, $sourcePart) as $variant) {
+                if (! in_array($variant, $resolved, true)) {
+                    $resolved[] = $variant;
+                }
+            }
+        }
+
+        if ($resolved === []) {
+            return [$complex];
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @param array<int, string> $compounds
+     * @param array<int, string> $targetTokens
+     * @return array<int, string>
+     */
+    private function replaceSelectorTargetWithSource(
+        array $compounds,
+        array $targetTokens,
+        string $target,
+        string $source,
+        string $sourcePart,
+    ): array {
+        $sourceCompounds      = $this->splitAtTopLevel($sourcePart, [' ', '>', '+', '~']);
+        $replacementSubject   = $sourceCompounds === [] ? '' : $sourceCompounds[count($sourceCompounds) - 1];
+        $replacementAncestors = $sourceCompounds === [] ? [] : array_slice($sourceCompounds, 0, -1);
+
+        $resolved = [];
+        $changed  = false;
+
+        for ($index = 0; $index < count($compounds); $index++) {
+            $remainingCompound = $this->removeTokensFromCompound($compounds[$index], $targetTokens);
+
+            $unifiedSubject = null;
+
+            if ($remainingCompound !== null) {
+                $unifiedSubject = $replacementAncestors === []
+                    ? $this->replaceTokensInCompound($compounds[$index], $targetTokens, $replacementSubject)
+                    : $this->unifyCompounds($replacementSubject, $remainingCompound);
+            } elseif ($replacementAncestors === []) {
+                $pseudoVariant = $this->replaceTargetInsidePseudoToken($compounds[$index], $target, $source);
+
+                if ($pseudoVariant !== null) {
+                    $unifiedSubject = $pseudoVariant;
+                }
+            }
+
+            if ($unifiedSubject === null) {
+                continue;
+            }
+
+            $changed = true;
+            $prefix  = array_slice($compounds, 0, $index);
+            $suffix  = array_slice($compounds, $index + 1);
+
+            $requiredAncestors = [];
+
+            foreach ($replacementAncestors as $ancestor) {
+                $covered = false;
+
+                foreach ($prefix as $prefixCompound) {
+                    if ($this->doesCompoundSatisfy($prefixCompound, $ancestor)) {
+                        $covered = true;
+
+                        break;
+                    }
+                }
+
+                if (! $covered) {
+                    $requiredAncestors[] = $ancestor;
+                }
+            }
+
+            foreach ($this->interleaveSequences($prefix, $requiredAncestors) as $prefixVariant) {
+                $candidate     = [...$prefixVariant, $unifiedSubject, ...$suffix];
+                $candidateText = implode(' ', $candidate);
+
+                if (! in_array($candidateText, $resolved, true)) {
+                    $resolved[] = $candidateText;
+                }
+            }
+        }
+
+        if (! $changed) {
+            return [implode(' ', $compounds)];
+        }
+
+        return $resolved;
+    }
+
+    private function replaceTargetInsidePseudoToken(string $token, string $target, string $source): ?string
+    {
+        $pseudo = $this->parsePseudoToken($token);
+
+        if ($pseudo === null || $pseudo['selector'] === null) {
+            return null;
+        }
+
+        $argumentComplexes = array_map(
+            fn(array $complex): string => $this->complexesToString([$complex]),
+            $this->parseSelectorList($pseudo['selector']),
+        );
+
+        $replaced = $this->replaceSelectorTargetInComplexes($argumentComplexes, $target, $source);
+
+        if ($replaced === [] || $replaced === $argumentComplexes) {
+            return null;
+        }
+
+        $newArgument = implode(', ', $replaced);
+        $loweredName = strtolower($pseudo['name']);
+
+        if ($loweredName === 'nth-child' || $loweredName === 'nth-last-child') {
+            $newArgument = $pseudo['argument'] . ' of ' . $newArgument;
+        }
+
+        $prefix = str_starts_with($token, '::') ? '::' : ':';
+
+        return $prefix . $pseudo['name'] . '(' . $newArgument . ')';
     }
 
     /**
@@ -1606,9 +2082,9 @@ final readonly class SelectorTokenizer
      */
     private function shouldNormalizePseudoOrder(array $tokens): bool
     {
-        $hasPseudoClass  = false;
+        $hasPseudoClass   = false;
         $hasPseudoElement = false;
-        $hasClassLike    = false;
+        $hasClassLike     = false;
 
         foreach ($tokens as $token) {
             if ($token[0] === ':') {
@@ -1776,7 +2252,6 @@ final readonly class SelectorTokenizer
                 array_unshift($result, [[$component1]]);
             } else {
                 $choices = [[$component1, $component2], [$component2, $component1]];
-
                 $unified = $this->unifyCompounds($component1['sel'], $component2['sel']);
 
                 if ($unified !== null) {
@@ -2030,7 +2505,7 @@ final readonly class SelectorTokenizer
      * @param array<int, array{sel: string, comb: string, lead?: string}> $complex1
      * @param array<int, array{sel: string, comb: string, lead?: string}> $complex2
      */
-    private function complexIsSuperselector(array $complex1, array $complex2): bool
+    private function complexIsSuperselector(array $complex1, array $complex2, bool $strictSemantics = false): bool
     {
         if ($complex1 === [] || $complex2 === []) {
             return false;
@@ -2047,6 +2522,7 @@ final readonly class SelectorTokenizer
         $i1   = 0;
         $i2   = 0;
         $prev = '';
+        $last = $complex2[count($complex2) - 1];
 
         while (true) {
             $remaining1 = count($complex1) - $i1;
@@ -2063,8 +2539,24 @@ final readonly class SelectorTokenizer
             $component1  = $complex1[$i1];
             $combinator1 = $component1['comb'];
 
+            if ($strictSemantics && str_contains($combinator1, ' ')) {
+                return false;
+            }
+
             if ($remaining1 === 1) {
-                $last = $complex2[count($complex2) - 1];
+                if ($strictSemantics) {
+                    for ($j = $i2; $j < count($complex2); $j++) {
+                        if (str_contains($complex2[$j]['comb'], ' ')) {
+                            return false;
+                        }
+                    }
+
+                    $parents = $this->compoundHasComplicatedSuperselectorSemantics($component1['sel'])
+                        ? array_slice($complex2, $i2, count($complex2) - 1 - $i2)
+                        : [];
+
+                    return $this->compoundIsSuperselector($component1['sel'], $last['sel'], $parents, true);
+                }
 
                 return $this->compoundIsSuperselector($component1['sel'], $last['sel'])
                     && $this->compatibleWithPreviousCombinator(
@@ -2078,7 +2570,25 @@ final readonly class SelectorTokenizer
             while (true) {
                 $component2 = $complex2[$end];
 
-                if ($this->compoundIsSuperselector($component1['sel'], $component2['sel'])) {
+                if ($strictSemantics && str_contains($component2['comb'], ' ')) {
+                    $end++;
+
+                    if ($end === count($complex2) - 1) {
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                if ($strictSemantics) {
+                    $parents = $this->compoundHasComplicatedSuperselectorSemantics($component1['sel'])
+                        ? array_slice($complex2, $i2, $end - $i2)
+                        : [];
+
+                    if ($this->compoundIsSuperselector($component1['sel'], $component2['sel'], $parents, true)) {
+                        break;
+                    }
+                } elseif ($this->compoundIsSuperselector($component1['sel'], $component2['sel'])) {
                     break;
                 }
 
@@ -2156,18 +2666,23 @@ final readonly class SelectorTokenizer
             || ($combinator1 === '~' && $combinator2 === '+');
     }
 
-    private function compoundIsSuperselector(string $general, string $specific): bool
+    /**
+     * @param string $general
+     * @param string $specific
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $parents
+     */
+    private function compoundIsSuperselector(string $general, string $specific, array $parents = [], bool $strictSemantics = false): bool
     {
-        return $this->doesCompoundSatisfy($specific, $general);
+        if (! $strictSemantics) {
+            return $this->doesCompoundSatisfy($specific, $general);
+        }
+
+        return $this->strictCompoundIsSuperselector($general, $specific, $parents);
     }
 
     /**
      * @param array<int, array{sel: string, comb: string, lead?: string}> $group1
      * @param array<int, array{sel: string, comb: string, lead?: string}> $group2
-     */
-    /**
-     * @param Complex $group1
-     * @param Complex $group2
      */
     private function mustUnify(array $group1, array $group2): bool
     {
@@ -2246,5 +2761,810 @@ final readonly class SelectorTokenizer
         }
 
         return $token;
+    }
+
+    /**
+     * @param string $general
+     * @param string $specific
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $parents
+     */
+    private function strictCompoundIsSuperselector(string $general, string $specific, array $parents): bool
+    {
+        $generalTokens        = $this->tokenizeCompound($general);
+        $specificTokens       = $this->tokenizeCompound($specific);
+        $generalElementIndex  = $this->findPseudoElementTokenIndex($generalTokens);
+        $specificElementIndex = $this->findPseudoElementTokenIndex($specificTokens);
+
+        if ($generalElementIndex !== null || $specificElementIndex !== null) {
+            if ($generalElementIndex === null || $specificElementIndex === null) {
+                return false;
+            }
+
+            return $this->strictSimpleIsSuperselector(
+                $generalTokens[$generalElementIndex],
+                $specificTokens[$specificElementIndex],
+            )
+                && $this->strictCompoundPartsAreSuperselector(
+                    array_slice($generalTokens, 0, $generalElementIndex),
+                    array_slice($specificTokens, 0, $specificElementIndex),
+                    $parents,
+                )
+                && $this->strictCompoundPartsAreSuperselector(
+                    array_slice($generalTokens, $generalElementIndex + 1),
+                    array_slice($specificTokens, $specificElementIndex + 1),
+                    $parents,
+                );
+        }
+
+        if (
+            ! $this->tokensHaveComplicatedSuperselectorSemantics($generalTokens)
+            && ! $this->tokensHaveComplicatedSuperselectorSemantics($specificTokens)
+        ) {
+            if (count($generalTokens) > count($specificTokens)) {
+                return false;
+            }
+
+            foreach ($generalTokens as $generalToken) {
+                $matched = false;
+
+                foreach ($specificTokens as $specificToken) {
+                    if ($this->strictSimpleIsSuperselector($generalToken, $specificToken)) {
+                        $matched = true;
+
+                        break;
+                    }
+                }
+
+                if (! $matched) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        foreach ($generalTokens as $generalToken) {
+            if ($this->tokenHasSelectorArgument($generalToken)) {
+                if (! $this->selectorPseudoIsSuperselector($generalToken, $specificTokens, $parents)) {
+                    return false;
+                }
+
+                continue;
+            }
+
+            $matched = false;
+
+            foreach ($specificTokens as $specificToken) {
+                if ($this->strictSimpleIsSuperselector($generalToken, $specificToken)) {
+                    $matched = true;
+
+                    break;
+                }
+            }
+
+            if (! $matched) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, string> $generalTokens
+     * @param array<int, string> $specificTokens
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $parents
+     */
+    private function strictCompoundPartsAreSuperselector(array $generalTokens, array $specificTokens, array $parents): bool
+    {
+        if ($generalTokens === []) {
+            return true;
+        }
+
+        return $this->strictCompoundIsSuperselector(
+            implode('', $generalTokens),
+            implode('', $specificTokens === [] ? ['*'] : $specificTokens),
+            $parents,
+        );
+    }
+
+    private function strictSimpleIsSuperselector(string $general, string $specific): bool
+    {
+        if ($general === $specific) {
+            return true;
+        }
+
+        $generalType = $this->parseTypeToken($general);
+
+        if ($generalType['element'] === '*') {
+            if ($generalType['namespace'] === null || $generalType['namespace'] === '*') {
+                return true;
+            }
+
+            if ($this->isUniversalTypeToken($specific) || $this->isTypeLikeToken($specific)) {
+                return $generalType['namespace'] === $this->parseTypeToken($specific)['namespace'];
+            }
+
+            return false;
+        }
+
+        if ($this->specificSubselectorPseudoCoversGeneral($specific, $general)) {
+            return true;
+        }
+
+        if ($this->isTypeLikeToken($general)) {
+            return $this->typeLikeIsSuperselector($general, $specific);
+        }
+
+        $generalPseudo = $this->parsePseudoToken($general);
+
+        if ($generalPseudo === null) {
+            return false;
+        }
+
+        $specificPseudo = $this->parsePseudoToken($specific);
+
+        if ($specificPseudo === null) {
+            return false;
+        }
+
+        if ($generalPseudo['selector'] === null) {
+            $equalNames = strtolower($generalPseudo['name']) === strtolower($specificPseudo['name'])
+                && $generalPseudo['isElement'] === $specificPseudo['isElement'];
+
+            return $equalNames && $generalPseudo['argument'] === $specificPseudo['argument'];
+        }
+
+        if ($specificPseudo['selector'] !== null && $generalPseudo['isElement'] && $specificPseudo['isElement']) {
+            $normalizedName = strtolower($generalPseudo['name']);
+
+            if ($normalizedName !== '' && $normalizedName[0] === '-') {
+                $secondDash = strpos($normalizedName, '-', 1);
+
+                if ($secondDash !== false && $secondDash > 1) {
+                    $normalizedName = substr($normalizedName, $secondDash + 1);
+                }
+            }
+
+            if ($normalizedName === 'slotted' && $specificPseudo['name'] === $generalPseudo['name']) {
+                return $this->listsAreSuperselectors(
+                    $this->parseSelectorList($generalPseudo['selector']),
+                    $this->parseSelectorList($specificPseudo['selector']),
+                );
+            }
+        }
+
+        return $this->selectorPseudoIsSuperselector($general, [$specific], []);
+    }
+
+    private function typeLikeIsSuperselector(string $general, string $specific): bool
+    {
+        if (! $this->isTypeLikeToken($specific)) {
+            return false;
+        }
+
+        $generalInfo  = $this->parseTypeToken($general);
+        $specificInfo = $this->parseTypeToken($specific);
+
+        return $generalInfo['element'] === $specificInfo['element']
+            && ($generalInfo['namespace'] === '*' || $generalInfo['namespace'] === $specificInfo['namespace']);
+    }
+
+    private function specificSubselectorPseudoCoversGeneral(string $specific, string $general): bool
+    {
+        $specificPseudo = $this->parsePseudoToken($specific);
+
+        if (
+            $specificPseudo === null
+            || $specificPseudo['isElement']
+            || $specificPseudo['selector'] === null
+            || ! in_array(strtolower($specificPseudo['name']), self::SUBSELECTOR_PSEUDO_NAMES, true)
+        ) {
+            return false;
+        }
+
+        foreach ($this->parseSelectorList($specificPseudo['selector']) as $complex) {
+            if ($complex === []) {
+                return false;
+            }
+
+            $lastSelector = $complex[count($complex) - 1]['sel'];
+            $covered      = false;
+
+            foreach ($this->tokenizeCompound($lastSelector) as $token) {
+                if ($this->strictSimpleIsSuperselector($general, $token)) {
+                    $covered = true;
+
+                    break;
+                }
+            }
+
+            if (! $covered) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param string              $generalToken
+     * @param array<int, string>  $specificTokens
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $parents
+     */
+    private function selectorPseudoIsSuperselector(string $generalToken, array $specificTokens, array $parents): bool
+    {
+        $generalPseudo = $this->parsePseudoToken($generalToken);
+
+        if ($generalPseudo === null) {
+            return false;
+        }
+
+        $rawName     = $generalPseudo['name'];
+        $loweredName = strtolower($rawName);
+
+        if ($loweredName !== '' && $loweredName[0] === '-') {
+            $secondDash = strpos($loweredName, '-', 1);
+
+            if ($secondDash !== false && $secondDash > 1) {
+                $loweredName = substr($loweredName, $secondDash + 1);
+            }
+        }
+
+        $normalizedName = $loweredName;
+        $generalText    = (string) $generalPseudo['selector'];
+
+        switch ($normalizedName) {
+            case 'is':
+            case 'matches':
+            case 'any':
+            case 'where':
+                $generalList = $this->parseSelectorList($generalText);
+
+                foreach ($this->selectorPseudoArgs($specificTokens, $rawName) as $specificList) {
+                    if ($this->listsAreSuperselectors($generalList, $specificList)) {
+                        return true;
+                    }
+                }
+
+                $target = [...$parents, ['sel' => implode('', $specificTokens), 'comb' => '']];
+
+                foreach ($generalList as $complex) {
+                    if (($complex[0]['lead'] ?? '') !== '') {
+                        continue;
+                    }
+
+                    if ($this->complexIsSuperselector($complex, $target, true)) {
+                        return true;
+                    }
+                }
+
+                return false;
+
+            case 'has':
+            case 'host':
+            case 'host-context':
+                $generalList = $this->parseSelectorList($generalText);
+
+                foreach ($this->selectorPseudoArgs($specificTokens, $rawName) as $specificList) {
+                    if ($this->listsAreSuperselectors($generalList, $specificList)) {
+                        return true;
+                    }
+                }
+
+                return false;
+
+            case 'slotted':
+                $generalList = $this->parseSelectorList($generalText);
+
+                foreach ($this->selectorPseudoArgs($specificTokens, $rawName, false) as $specificList) {
+                    if ($this->listsAreSuperselectors($generalList, $specificList)) {
+                        return true;
+                    }
+                }
+
+                return false;
+
+            case 'not':
+                return $this->notPseudoIsSuperselector($generalPseudo, $rawName, $specificTokens);
+
+            case 'current':
+                $generalCanonical = $this->canonicalizeSelectorText($generalText);
+
+                foreach ($this->selectorPseudoArgs($specificTokens, $rawName) as $specificList) {
+                    if ($this->canonicalizeSelectorText($this->complexesToString($specificList)) === $generalCanonical) {
+                        return true;
+                    }
+                }
+
+                return false;
+
+            case 'nth-child':
+            case 'nth-last-child':
+                $generalList = $this->parseSelectorList($generalText);
+
+                foreach ($specificTokens as $specificToken) {
+                    $specificPseudo = $this->parsePseudoToken($specificToken);
+
+                    if ($specificPseudo === null || $specificPseudo['name'] !== $rawName) {
+                        continue;
+                    }
+
+                    if ($specificPseudo['argument'] !== $generalPseudo['argument'] || $specificPseudo['selector'] === null) {
+                        continue;
+                    }
+
+                    if ($this->listsAreSuperselectors($generalList, $this->parseSelectorList($specificPseudo['selector']))) {
+                        return true;
+                    }
+                }
+
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * @param array{name: string, argument: string, selector: ?string, isElement: bool} $generalPseudo
+     * @param array<int, string> $specificTokens
+     */
+    private function notPseudoIsSuperselector(array $generalPseudo, string $rawName, array $specificTokens): bool
+    {
+        foreach ($this->parseSelectorList((string) $generalPseudo['selector']) as $complex) {
+            if (($complex[0]['lead'] ?? '') !== '') {
+                return false;
+            }
+
+            $negated = false;
+
+            foreach ($specificTokens as $specificToken) {
+                $specificPseudo = $this->parsePseudoToken($specificToken);
+
+                if ($specificPseudo === null && $this->isTypeLikeToken($specificToken)) {
+                    $typeInfo = $this->parseTypeToken($specificToken);
+
+                    if ($typeInfo['element'] === '*') {
+                        continue;
+                    }
+
+                    $lastComponent = end($complex);
+
+                    if ($lastComponent === false) {
+                        continue;
+                    }
+
+                    foreach ($this->tokenizeCompound($lastComponent['sel']) as $lastToken) {
+                        if (
+                            $this->isTypeLikeToken($lastToken)
+                            && $this->parsePseudoToken($lastToken) === null
+                            && $this->parseTypeToken($lastToken)['element'] !== '*'
+                            && $lastToken !== $specificToken
+                        ) {
+                            $negated = true;
+
+                            break;
+                        }
+                    }
+                } elseif ($specificToken !== '' && $specificToken[0] === '#') {
+                    $lastComponent = end($complex);
+
+                    if ($lastComponent === false) {
+                        continue;
+                    }
+
+                    foreach ($this->tokenizeCompound($lastComponent['sel']) as $lastToken) {
+                        if ($lastToken[0] === '#' && $lastToken !== $specificToken) {
+                            $negated = true;
+
+                            break;
+                        }
+                    }
+                } elseif ($specificPseudo !== null && $specificPseudo['selector'] !== null && $specificPseudo['name'] === $rawName) {
+                    $negated = $this->listsAreSuperselectors(
+                        $this->parseSelectorList($specificPseudo['selector']),
+                        [$complex],
+                    );
+                }
+
+                if ($negated) {
+                    break;
+                }
+            }
+
+            if (! $negated) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, string> $tokens
+     * @return array<int, array<int, Complex>>
+     */
+    private function selectorPseudoArgs(array $tokens, string $rawName, bool $isClass = true): array
+    {
+        $args = [];
+
+        foreach ($tokens as $token) {
+            $pseudo = $this->parsePseudoToken($token);
+
+            if ($pseudo === null || $pseudo['isElement'] === $isClass) {
+                continue;
+            }
+
+            if ($pseudo['name'] !== $rawName || $pseudo['selector'] === null) {
+                continue;
+            }
+
+            $args[] = $this->parseSelectorList($pseudo['selector']);
+        }
+
+        return $args;
+    }
+
+    /**
+     * @return array{name: string, argument: string, selector: ?string, isElement: bool}|null
+     */
+    private function parsePseudoToken(string $token): ?array
+    {
+        if ($token === '' || $token[0] !== ':') {
+            return null;
+        }
+
+        $body      = substr($token, 1);
+        $isElement = false;
+
+        if (str_starts_with($body, ':')) {
+            $isElement = true;
+            $body      = substr($body, 1);
+        }
+
+        $parenStart = strpos($body, '(');
+
+        if ($parenStart === false) {
+            return [
+                'name'      => $body,
+                'argument'  => '',
+                'selector'  => null,
+                'isElement' => $isElement || $this->isPseudoElementToken($token),
+            ];
+        }
+
+        $name     = substr($body, 0, $parenStart);
+        $argument = substr($body, $parenStart + 1, -1);
+        $lowered  = strtolower($name);
+
+        if ($lowered !== '' && $lowered[0] === '-') {
+            $secondDash = strpos($lowered, '-', 1);
+
+            if ($secondDash !== false && $secondDash > 1) {
+                $lowered = substr($lowered, $secondDash + 1);
+            }
+        }
+
+        [$nthPart, $ofSelector] = $this->splitNthOfSelector($lowered, $argument);
+
+        if ($ofSelector !== null) {
+            $selector = $ofSelector;
+        } elseif (in_array($lowered, self::SELECTOR_PSEUDO_ARGUMENT_NAMES, true)) {
+            $selector = trim($argument);
+        } else {
+            $selector = null;
+        }
+
+        return [
+            'name'      => $name,
+            'argument'  => $nthPart,
+            'selector'  => $selector,
+            'isElement' => $isElement || $this->isPseudoElementToken($token),
+        ];
+    }
+
+    /**
+     * @return array{string, ?string}
+     */
+    private function splitNthOfSelector(string $loweredName, string $argument): array
+    {
+        if ($loweredName !== 'nth-child' && $loweredName !== 'nth-last-child') {
+            return [$argument, null];
+        }
+
+        $length = strlen($argument);
+        $quote  = '';
+        $depth  = 0;
+        $word   = '';
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $argument[$i];
+
+            if ($quote !== '') {
+                $word .= $char;
+
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+                $word .= $char;
+
+                continue;
+            }
+
+            if ($char === '(' || $char === '[') {
+                $depth++;
+
+                $word .= $char;
+
+                continue;
+            }
+
+            if (($char === ')' || $char === ']') && $depth > 0) {
+                $depth--;
+
+                $word .= $char;
+
+                continue;
+            }
+
+            if ($depth > 0) {
+                $word .= $char;
+
+                continue;
+            }
+
+            if (in_array($char, [' ', "\t", "\n", "\r", "\f"], true)) {
+                if (strtolower($word) === 'of') {
+                    $before = rtrim(substr($argument, 0, $i - strlen($word)));
+                    $after  = ltrim(substr($argument, $i));
+
+                    return [$before, $after];
+                }
+
+                $word = '';
+
+                continue;
+            }
+
+            $word .= $char;
+        }
+
+        if (strtolower($word) === 'of') {
+            $before = rtrim(substr($argument, 0, $length - strlen($word)));
+
+            return [$before, ''];
+        }
+
+        return [trim($argument), null];
+    }
+
+    /**
+     * @param array<int, string> $tokens
+     */
+    private function tokensHaveComplicatedSuperselectorSemantics(array $tokens): bool
+    {
+        foreach ($tokens as $token) {
+            if ($this->tokenHasSelectorArgument($token)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function compoundHasComplicatedSuperselectorSemantics(string $compound): bool
+    {
+        return $this->tokensHaveComplicatedSuperselectorSemantics($this->tokenizeCompound($compound));
+    }
+
+    private function tokenHasSelectorArgument(string $token): bool
+    {
+        $pseudo = $this->parsePseudoToken($token);
+
+        if ($pseudo === null || $pseudo['selector'] === null) {
+            return false;
+        }
+
+        return $pseudo['selector'] !== '';
+    }
+
+    /**
+     * @param array<int, string> $tokens
+     */
+    private function findPseudoElementTokenIndex(array $tokens): ?int
+    {
+        foreach ($tokens as $index => $token) {
+            if ($this->isPseudoElementToken($token)) {
+                return $index;
+            }
+        }
+
+        return null;
+    }
+
+    private function isTypeLikeToken(string $token): bool
+    {
+        if ($token === '') {
+            return false;
+        }
+
+        return ! in_array($token[0], ['.', '#', '%', ':', '['], true);
+    }
+
+    /**
+     * @param string             $simple
+     * @param array<int, string> $compound
+     * @return array<int, string>|null
+     */
+    private function strictUnifySimple(string $simple, array $compound): ?array
+    {
+        if ($compound === []) {
+            return [$simple];
+        }
+
+        $first          = $compound[0];
+        $simplePseudo   = $this->parsePseudoToken($simple);
+        $firstPseudo    = $this->parsePseudoToken($first);
+        $simpleIsHost   = $simplePseudo !== null
+            && in_array(strtolower($simplePseudo['name']), ['host', 'host-context'], true);
+        $firstIsHostish = $firstPseudo !== null
+            && in_array(strtolower($firstPseudo['name']), ['host', 'host-context'], true);
+
+        if ($this->isUniversalTypeToken($simple)) {
+            if ($this->isUniversalTypeToken($first) || $this->isTypeLikeToken($first)) {
+                $unified = $this->unifyUniversalAndElement($simple, $first);
+
+                return $unified === null ? null : [$unified, ...array_slice($compound, 1)];
+            }
+
+            if ($firstIsHostish) {
+                return null;
+            }
+
+            $namespace = $this->parseTypeToken($simple)['namespace'];
+
+            if ($namespace === null || $namespace === '*') {
+                return $compound;
+            }
+
+            return [$simple, ...$compound];
+        }
+
+        if ($simplePseudo === null && $this->isTypeLikeToken($simple)) {
+            if ($this->isUniversalTypeToken($first) || $this->isTypeLikeToken($first)) {
+                $unified = $this->unifyUniversalAndElement($simple, $first);
+
+                return $unified === null ? null : [$unified, ...array_slice($compound, 1)];
+            }
+
+            return [$simple, ...$compound];
+        }
+
+        if ($simpleIsHost) {
+            foreach ($compound as $token) {
+                $tokenPseudo = $this->parsePseudoToken($token);
+
+                if ($tokenPseudo === null) {
+                    return null;
+                }
+
+                if (
+                    ! in_array(strtolower($tokenPseudo['name']), ['host', 'host-context'], true)
+                    && $tokenPseudo['selector'] === null
+                ) {
+                    return null;
+                }
+            }
+        } elseif (count($compound) === 1 && ($this->isUniversalTypeToken($first) || $firstIsHostish)) {
+            if ($this->isUniversalTypeToken($first)) {
+                $unified = $this->unifyUniversalAndElement($first, $simple);
+
+                return $unified === null ? null : [$unified];
+            }
+
+            return $this->strictUnifySimple($first, [$simple]);
+        }
+
+        if ($simple !== '' && $simple[0] === '#') {
+            foreach ($compound as $token) {
+                if ($token !== '' && $token[0] === '#' && $token !== $simple) {
+                    return null;
+                }
+            }
+        }
+
+        if (in_array($simple, $compound, true)) {
+            return $compound;
+        }
+
+        $result                = [];
+        $addedThis             = false;
+        $insertBeforeAnyPseudo = $simplePseudo === null;
+        $simpleIsElement       = $simplePseudo !== null && $this->isPseudoElementToken($simple);
+
+        if ($simpleIsElement) {
+            $simpleName = strtolower($simplePseudo['name']);
+
+            foreach ($compound as $token) {
+                if (! $this->isPseudoElementToken($token)) {
+                    continue;
+                }
+
+                $tokenPseudo = $this->parsePseudoToken($token);
+
+                if (
+                    $tokenPseudo === null
+                    || strtolower($tokenPseudo['name']) !== $simpleName
+                    || $tokenPseudo['argument'] !== $simplePseudo['argument']
+                ) {
+                    return null;
+                }
+
+                return $compound;
+            }
+        }
+
+        foreach ($compound as $token) {
+            $trigger = $insertBeforeAnyPseudo
+                ? $this->parsePseudoToken($token) !== null
+                : $this->isPseudoElementToken($token);
+
+            if ($trigger && ! $addedThis) {
+                if ($simpleIsElement) {
+                    return null;
+                }
+
+                $result[]  = $simple;
+                $addedThis = true;
+            }
+
+            $result[] = $token;
+        }
+
+        if (! $addedThis) {
+            $result[] = $simple;
+        }
+
+        return $result;
+    }
+
+    private function unifyUniversalAndElement(string $left, string $right): ?string
+    {
+        $leftInfo  = $this->parseTypeToken($left);
+        $rightInfo = $this->parseTypeToken($right);
+
+        if ($leftInfo['namespace'] === $rightInfo['namespace'] || $rightInfo['namespace'] === '*') {
+            $namespace = $leftInfo['namespace'];
+        } elseif ($leftInfo['namespace'] === '*') {
+            $namespace = $rightInfo['namespace'];
+        } else {
+            return null;
+        }
+
+        if ($leftInfo['element'] === $rightInfo['element'] || $rightInfo['element'] === '*') {
+            $element = $leftInfo['element'];
+        } elseif ($leftInfo['element'] === '*') {
+            $element = $rightInfo['element'];
+        } else {
+            return null;
+        }
+
+        if ($namespace === null) {
+            return $element;
+        }
+
+        return $namespace . '|' . $element;
+    }
+
+    private function canonicalizeSelectorText(string $text): string
+    {
+        return $this->complexesToString($this->parseSelectorList($text));
     }
 }
