@@ -575,7 +575,6 @@ describe('Compiler', function () {
               padding: 16px 0;
               width: 100%;
             }
-
             .reset-buttons:hover, .action-buttons:hover {
               border: 2px rgba(0, 0, 0, .5) solid;
             }

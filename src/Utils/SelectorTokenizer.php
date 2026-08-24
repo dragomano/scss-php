@@ -32,6 +32,8 @@ use function trim;
 
 /**
  * @phpstan-type Complex array<int, array{sel: string, comb: string, lead?: string}>
+ *
+ * @psalm-type Complex=array<int, array{sel: string, comb: string, lead?: string}>
  */
 final readonly class SelectorTokenizer
 {
@@ -109,6 +111,16 @@ final readonly class SelectorTokenizer
                 }
 
                 $tokens[] = $token;
+
+                continue;
+            }
+
+            if ($char === '\\') {
+                $token = $this->readIdentifier($compound, $index);
+
+                if ($token !== '') {
+                    $tokens[] = $token;
+                }
 
                 continue;
             }
@@ -231,6 +243,32 @@ final readonly class SelectorTokenizer
         }
 
         return implode('', $orderedTokens);
+    }
+
+    /**
+     * @template TChoice
+     *
+     * @param array<int, array<int, TChoice>> $choices
+     *
+     * @return list<list<TChoice>>
+     */
+    public function paths(array $choices): array
+    {
+        $paths = [[]];
+
+        foreach ($choices as $choice) {
+            $newPaths = [];
+
+            foreach ($choice as $option) {
+                foreach ($paths as $path) {
+                    $newPaths[] = [...$path, $option];
+                }
+            }
+
+            $paths = $newPaths;
+        }
+
+        return $paths;
     }
 
     public function unifyCompounds(string $left, string $right): ?string
@@ -604,6 +642,202 @@ final readonly class SelectorTokenizer
         }
 
         return $result;
+    }
+
+    public function canonicalizeSelectorEscapes(string $selector): string
+    {
+        if (! str_contains($selector, '\\')) {
+            return $selector;
+        }
+
+        $length  = strlen($selector);
+        $result  = '';
+        $index   = 0;
+        $inIdent = false;
+
+        while ($index < $length) {
+            $char = $selector[$index];
+
+            if ($char === '\\') {
+                [$decoded, $nextIndex] = $this->decodeSelectorEscape($selector, $index);
+
+                if ($decoded !== '') {
+                    $result .= $this->encodeCanonicalIdentifierChar($decoded, $inIdent);
+                }
+
+                $index   = $nextIndex;
+                $inIdent = true;
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $end = $this->skipVerbatimRegion($selector, $index, '[', ']');
+
+                $result .= substr($selector, $index, $end - $index);
+                $index   = $end;
+                $inIdent = false;
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $end = StringEscapeDecoder::skipQuotedChunk($selector, $index);
+
+                $result .= substr($selector, $index, $end - $index);
+                $index   = $end;
+                $inIdent = false;
+
+                continue;
+            }
+
+            if ($char === '#' && ($selector[$index + 1] ?? '') === '{') {
+                $end = StringEscapeDecoder::skipInterpolation($selector, $index + 1);
+
+                $result .= substr($selector, $index, $end - $index);
+                $index   = $end;
+                $inIdent = true;
+
+                continue;
+            }
+
+            $result .= $char;
+            $inIdent = $this->isIdentifierBodyChar($char);
+
+            $index++;
+        }
+
+        return $result;
+    }
+
+    private function isIdentifierBodyChar(string $char): bool
+    {
+        if (ord($char[0]) >= 0x80) {
+            return true;
+        }
+
+        return ctype_alnum($char) || $char === '-' || $char === '_' || $char === '\\';
+    }
+
+    /**
+     * @return array{0: string, 1: int}
+     */
+    private function decodeSelectorEscape(string $text, int $index): array
+    {
+        $length = strlen($text);
+
+        $index++;
+
+        if ($index >= $length) {
+            return ['\\', $index];
+        }
+
+        $char = $text[$index];
+
+        if ($char === "\n") {
+            return ['', $index + 1];
+        }
+
+        if ($char === "\r") {
+            $index++;
+
+            if (($text[$index] ?? '') === "\n") {
+                $index++;
+            }
+
+            return ['', $index];
+        }
+
+        if (ctype_xdigit($char)) {
+            $hex = '';
+
+            while ($index < $length && strlen($hex) < 6 && ctype_xdigit($text[$index])) {
+                $hex .= $text[$index];
+
+                $index++;
+            }
+
+            if ($index < $length && ($text[$index] === ' ' || $text[$index] === "\t")) {
+                $index++;
+            }
+
+            return [StringEscapeDecoder::hexToUtf8($hex), $index];
+        }
+
+        return [$char, $index + 1];
+    }
+
+    private function encodeCanonicalIdentifierChar(string $char, bool $insideIdentifier): string
+    {
+        $byte = ord($char[0]);
+
+        if ($byte >= 0x80) {
+            return $char;
+        }
+
+        if (ctype_digit($char) && ! $insideIdentifier) {
+            return '\\' . dechex($byte) . ' ';
+        }
+
+        if (
+            ($char >= 'a' && $char <= 'z')
+            || ($char >= 'A' && $char <= 'Z')
+            || $char === '-'
+            || $char === '_'
+            || ctype_digit($char)
+        ) {
+            return $char;
+        }
+
+        if ($byte >= 0x20 && $byte <= 0x7E) {
+            return '\\' . $char;
+        }
+
+        return '\\' . dechex($byte) . ' ';
+    }
+
+    private function skipVerbatimRegion(string $text, int $startIndex, string $open, string $close): int
+    {
+        $length = strlen($text);
+        $depth  = 0;
+        $quote  = '';
+        $index  = $startIndex;
+
+        while ($index < $length) {
+            $char = $text[$index];
+
+            if ($quote !== '') {
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === $open) {
+                $depth++;
+            } elseif ($char === $close) {
+                $depth--;
+
+                if ($depth === 0) {
+                    return $index + 1;
+                }
+            }
+
+            $index++;
+        }
+
+        return $length;
     }
 
     /**
@@ -1319,6 +1553,64 @@ final readonly class SelectorTokenizer
     }
 
     /**
+     * @return array{name: string, argument: string, selector: ?string, isElement: bool}|null
+     */
+    public function parsePseudoToken(string $token): ?array
+    {
+        if ($token === '' || $token[0] !== ':') {
+            return null;
+        }
+
+        $body      = substr($token, 1);
+        $isElement = false;
+
+        if (str_starts_with($body, ':')) {
+            $isElement = true;
+            $body      = substr($body, 1);
+        }
+
+        $parenStart = strpos($body, '(');
+
+        if ($parenStart === false) {
+            return [
+                'name'      => $body,
+                'argument'  => '',
+                'selector'  => null,
+                'isElement' => $isElement || $this->isPseudoElementToken($token),
+            ];
+        }
+
+        $name     = substr($body, 0, $parenStart);
+        $argument = substr($body, $parenStart + 1, -1);
+        $lowered  = strtolower($name);
+
+        if ($lowered !== '' && $lowered[0] === '-') {
+            $secondDash = strpos($lowered, '-', 1);
+
+            if ($secondDash !== false && $secondDash > 1) {
+                $lowered = substr($lowered, $secondDash + 1);
+            }
+        }
+
+        [$nthPart, $ofSelector] = $this->splitNthOfSelector($lowered, $argument);
+
+        if ($ofSelector !== null) {
+            $selector = $ofSelector;
+        } elseif (in_array($lowered, self::SELECTOR_PSEUDO_ARGUMENT_NAMES, true)) {
+            $selector = trim($argument);
+        } else {
+            $selector = null;
+        }
+
+        return [
+            'name'      => $name,
+            'argument'  => $nthPart,
+            'selector'  => $selector,
+            'isElement' => $isElement || $this->isPseudoElementToken($token),
+        ];
+    }
+
+    /**
      * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $complexes
      */
     public function complexesToString(array $complexes): string
@@ -1479,7 +1771,7 @@ final readonly class SelectorTokenizer
 
     /**
      * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $complexes
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     * @return list<array<int, array{sel: string, comb: string, lead?: string}>>
      */
     public function weave(array $complexes): array
     {
@@ -1644,6 +1936,18 @@ final readonly class SelectorTokenizer
             }
 
             $result[] = $components;
+        }
+
+        $baseLead = $base === [] ? '' : ($base[0]['lead'] ?? '');
+
+        if ($baseLead !== '') {
+            foreach ($result as &$complex) {
+                if ($complex !== [] && ($complex[0]['lead'] ?? '') === '') {
+                    $complex[0]['lead'] = $baseLead;
+                }
+            }
+
+            unset($complex);
         }
 
         return $result;
@@ -2000,13 +2304,70 @@ final readonly class SelectorTokenizer
         $length     = strlen($input);
         $identifier = '';
 
-        while ($index < $length && $this->isIdentifierChar($input[$index])) {
-            $identifier .= $input[$index];
+        while ($index < $length) {
+            $char = $input[$index];
 
-            $index++;
+            if ($this->isIdentifierChar($char)) {
+                $identifier .= $char;
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '\\') {
+                $escape = $this->readEscapeSequence($input, $index);
+
+                if ($escape === null) {
+                    break;
+                }
+
+                $identifier .= $escape;
+
+                continue;
+            }
+
+            break;
         }
 
         return $identifier;
+    }
+
+    private function readEscapeSequence(string $input, int &$index): ?string
+    {
+        $length = strlen($input);
+
+        if ($index + 1 >= $length) {
+            return null;
+        }
+
+        $next = $input[$index + 1];
+
+        if (! ctype_xdigit($next)) {
+            $escape = substr($input, $index, 2);
+
+            $index += 2;
+
+            return $escape;
+        }
+
+        $cursor = $index + 1;
+        $hex    = '';
+
+        while ($cursor < $length && strlen($hex) < 6 && ctype_xdigit($input[$cursor])) {
+            $hex .= $input[$cursor];
+
+            $cursor++;
+        }
+
+        if ($cursor < $length && ($input[$cursor] === ' ' || $input[$cursor] === "\t")) {
+            $cursor++;
+        }
+
+        $escape = substr($input, $index, $cursor - $index);
+        $index  = $cursor;
+
+        return $escape;
     }
 
     private function isIdentifierChar(string $char): bool
@@ -2458,29 +2819,6 @@ final readonly class SelectorTokenizer
         }
 
         return array_reverse($result);
-    }
-
-    /**
-     * @param array<int, array<int, Complex>> $choices
-     * @return array<int, array<int, Complex>>
-     */
-    private function paths(array $choices): array
-    {
-        $paths = [[]];
-
-        foreach ($choices as $choice) {
-            $newPaths = [];
-
-            foreach ($choice as $option) {
-                foreach ($paths as $path) {
-                    $newPaths[] = [...$path, $option];
-                }
-            }
-
-            $paths = $newPaths;
-        }
-
-        return $paths;
     }
 
     /**
@@ -3204,64 +3542,6 @@ final readonly class SelectorTokenizer
         }
 
         return $args;
-    }
-
-    /**
-     * @return array{name: string, argument: string, selector: ?string, isElement: bool}|null
-     */
-    private function parsePseudoToken(string $token): ?array
-    {
-        if ($token === '' || $token[0] !== ':') {
-            return null;
-        }
-
-        $body      = substr($token, 1);
-        $isElement = false;
-
-        if (str_starts_with($body, ':')) {
-            $isElement = true;
-            $body      = substr($body, 1);
-        }
-
-        $parenStart = strpos($body, '(');
-
-        if ($parenStart === false) {
-            return [
-                'name'      => $body,
-                'argument'  => '',
-                'selector'  => null,
-                'isElement' => $isElement || $this->isPseudoElementToken($token),
-            ];
-        }
-
-        $name     = substr($body, 0, $parenStart);
-        $argument = substr($body, $parenStart + 1, -1);
-        $lowered  = strtolower($name);
-
-        if ($lowered !== '' && $lowered[0] === '-') {
-            $secondDash = strpos($lowered, '-', 1);
-
-            if ($secondDash !== false && $secondDash > 1) {
-                $lowered = substr($lowered, $secondDash + 1);
-            }
-        }
-
-        [$nthPart, $ofSelector] = $this->splitNthOfSelector($lowered, $argument);
-
-        if ($ofSelector !== null) {
-            $selector = $ofSelector;
-        } elseif (in_array($lowered, self::SELECTOR_PSEUDO_ARGUMENT_NAMES, true)) {
-            $selector = trim($argument);
-        } else {
-            $selector = null;
-        }
-
-        return [
-            'name'      => $name,
-            'argument'  => $nthPart,
-            'selector'  => $selector,
-            'isElement' => $isElement || $this->isPseudoElementToken($token),
-        ];
     }
 
     /**

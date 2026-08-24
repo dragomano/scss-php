@@ -118,12 +118,8 @@ final readonly class Selector
         $combined = [];
 
         foreach ($outerParts as $outerPart) {
-            $outerPart = trim($outerPart);
-
             foreach ($innerParts as $innerPart) {
-                $innerPart = trim($innerPart);
-
-                $combined[] = $outerPart . ' and ' . $innerPart;
+                $combined[] = $this->mergeMediaPreludeParts(trim($outerPart), trim($innerPart));
             }
         }
 
@@ -894,6 +890,19 @@ final readonly class Selector
         $name = strtolower($node->name);
 
         return $name === 'container' || $name === 'media';
+    }
+
+    private function mergeMediaPreludeParts(string $outerPart, string $innerPart): string
+    {
+        if ($outerPart === '' || strtolower($outerPart) === 'all') {
+            return $innerPart;
+        }
+
+        if ($innerPart === '' || strtolower($innerPart) === 'all') {
+            return $outerPart;
+        }
+
+        return $outerPart . ' and ' . $innerPart;
     }
 
     private function normalizeAtRuleStackEntry(mixed $entry): ?AtRuleContextEntry

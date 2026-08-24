@@ -833,6 +833,8 @@ final class Tokenizer
             '*'     => $this->makeToken(TokenType::STAR, '*', 1),
             '%'     => $this->makeToken(TokenType::PERCENT, '%', 1),
             '~'     => $this->makeToken(TokenType::TILDE, '~', 1),
+            '|'     => $this->makeToken(TokenType::PIPE, '|', 1),
+            '^'     => $this->makeToken(TokenType::CARET, '^', 1),
             default => null,
         };
     }

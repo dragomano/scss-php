@@ -11,6 +11,7 @@ use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
+use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Utils\DeferredChunk;
 use Bugo\SCSS\Utils\RawChunk;
 use Tests\Support\RuntimeFactory;
@@ -35,7 +36,7 @@ describe('DeferredChunkManager', function () {
     it('adds a newline between multiple leading root chunks when building the rule result', function () {
         $result = $this->manager->buildRuleResult('', [new RawChunk('first'), new RawChunk('second')], []);
 
-        expect($result)->toBe("first\nsecond\n");
+        expect($result)->toBe("first\n" . Render::CONTINUATION_MARK . "second\n");
     });
 
     it('collects merged media chunks into leading root chunks when children were not rendered yet', function () {
@@ -160,11 +161,13 @@ describe('DeferredChunkManager', function () {
     });
 
     it('ignores empty @at-root chunks when collecting rule output', function () {
+        $leading  = [];
         $trailing = [];
 
-        $this->manager->collectRuleAtRootChunk($trailing, new AtRootNode(), $this->ctx);
+        $this->manager->collectRuleAtRootChunk($leading, $trailing, new AtRootNode(), $this->ctx);
 
-        expect($trailing)->toBe([]);
+        expect($leading)->toBe([])
+            ->and($trailing)->toBe([]);
     });
 
     it('appends escaped @at-root chunks to trailing root chunks when deferral is unavailable', function () {
@@ -172,6 +175,7 @@ describe('DeferredChunkManager', function () {
             AtRuleContextEntry::directive('media', 'screen'),
         ]);
 
+        $leading  = [];
         $trailing = [];
         $child    = new AtRootNode([
             new RuleNode('.outside', [
@@ -179,14 +183,15 @@ describe('DeferredChunkManager', function () {
             ]),
         ]);
 
-        $this->manager->collectRuleAtRootChunk($trailing, $child, $this->ctx);
+        $this->manager->collectRuleAtRootChunk($leading, $trailing, $child, $this->ctx);
 
         expect($trailing)->toHaveCount(1)
             ->and($trailing[0]->content())->toContain('.outside')
             ->and($trailing[0]->content())->toContain('color: red');
     });
 
-    it('collects non-escaped @at-root chunks into trailing root chunks', function () {
+    it('collects non-escaped @at-root chunks into leading root chunks while the rule has no output', function () {
+        $leading  = [];
         $trailing = [];
         $child    = new AtRootNode([
             new RuleNode('.outside', [
@@ -194,20 +199,23 @@ describe('DeferredChunkManager', function () {
             ]),
         ], 'without', ['all']);
 
-        $this->manager->collectRuleAtRootChunk($trailing, $child, $this->ctx);
+        $this->manager->collectRuleAtRootChunk($leading, $trailing, $child, $this->ctx);
 
-        expect($trailing)->toHaveCount(1)
-            ->and($trailing[0]->content())->toContain('.outside')
-            ->and($trailing[0]->content())->toContain('color: red');
+        expect($leading)->toHaveCount(1)
+            ->and($leading[0]->content())->toContain('.outside')
+            ->and($leading[0]->content())->toContain('color: red')
+            ->and($trailing)->toBe([]);
     });
 
     it('returns immediately when there are no deferred include root chunks to collect', function () {
         $existing = new RawChunk('existing');
+        $leading  = [];
         $trailing = [$existing];
 
-        $this->manager->collectDeferredIncludeRootChunks($trailing, 0);
+        $this->manager->collectDeferredIncludeRootChunks($leading, $trailing, 0);
 
-        expect($trailing)->toBe([$existing]);
+        expect($leading)->toBe([])
+            ->and($trailing)->toBe([$existing]);
     });
 
     it('moves deferred include root chunks into trailing root chunks when new chunks exist', function () {
@@ -217,11 +225,13 @@ describe('DeferredChunkManager', function () {
 
         $outputState->deferral->atRootStack[] = [$keep, $deferredChunk];
 
+        $leading  = [];
         $trailing = [];
 
-        $this->manager->collectDeferredIncludeRootChunks($trailing, 1);
+        $this->manager->collectDeferredIncludeRootChunks($leading, $trailing, 1);
 
         expect($trailing)->toBe([$deferredChunk])
+            ->and($leading)->toBe([])
             ->and($outputState->deferral->atRootStack[0])->toBe([$keep]);
     });
 
@@ -350,7 +360,7 @@ describe('DeferredChunkManager', function () {
         $this->manager->appendOutputChunk($output, $state->first, new RawChunk('first'));
         $this->manager->appendOutputChunk($output, $state->first, new RawChunk('second'));
 
-        expect($output)->toBe("first\nsecond")
+        expect($output)->toBe("first\n" . Render::CONTINUATION_MARK . 'second')
             ->and($state->first)->toBeFalse();
     });
 
@@ -496,8 +506,8 @@ describe('DeferredChunkManager', function () {
             $this->ctx,
         );
 
-        expect($output)->toContain(".host {\n  color: red;\n}\n}\n.outside")
-            ->and($output)->toContain(".outside {\n  color: blue;\n}\n.host .child")
+        expect($output)->toContain(".host {\n  color: red;\n}\n}\n" . Render::CONTINUATION_MARK . '.outside')
+            ->and($output)->toContain(".outside {\n  color: blue;\n}\n" . Render::CONTINUATION_MARK . '.host .child')
             ->and($trailingRootChunks)->toBe([])
             ->and($state->containsStandaloneNestedRuleChunks)->toBeTrue();
     });

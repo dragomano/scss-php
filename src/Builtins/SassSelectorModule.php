@@ -358,7 +358,7 @@ final class SassSelectorModule extends AbstractModule
         }
 
         return new ListNode(
-            array_map(fn(string $token): AstNode => new StringNode($token), $tokens),
+            array_map(fn(string $token): AstNode => new StringNode($token, isSelectorValue: true), $tokens),
             'comma',
         );
     }
@@ -521,20 +521,20 @@ final class SassSelectorModule extends AbstractModule
             if ($lead !== '') {
                 foreach (explode(' ', $lead) as $piece) {
                     if ($piece !== '') {
-                        $parts[] = new StringNode($piece);
+                        $parts[] = new StringNode($piece, isSelectorValue: true);
                     }
                 }
             }
 
             foreach ($components as $component) {
                 if ($component['sel'] !== '') {
-                    $parts[] = new StringNode($component['sel']);
+                    $parts[] = new StringNode($component['sel'], isSelectorValue: true);
                 }
 
                 if ($component['comb'] !== '') {
                     foreach (explode(' ', $component['comb']) as $piece) {
                         if ($piece !== '') {
-                            $parts[] = new StringNode($piece);
+                            $parts[] = new StringNode($piece, isSelectorValue: true);
                         }
                     }
                 }

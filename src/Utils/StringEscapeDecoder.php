@@ -188,6 +188,86 @@ final class StringEscapeDecoder
         return $result;
     }
 
+    /**
+     * @param int $openBraceIndex index of the '{' that opens the region
+     */
+    public static function skipInterpolation(string $text, int $openBraceIndex): int
+    {
+        $length = strlen($text);
+        $depth  = 1;
+        $index  = $openBraceIndex + 1;
+
+        while ($index < $length && $depth > 0) {
+            $char = $text[$index];
+
+            if ($char === '"' || $char === "'") {
+                $index = self::skipQuotedChunk($text, $index);
+
+                continue;
+            }
+
+            if ($char === '\\' && $index + 1 < $length) {
+                $index += 2;
+
+                continue;
+            }
+
+            if ($char === '#' && ($text[$index + 1] ?? '') === '{') {
+                $depth++;
+
+                $index += 2;
+
+                continue;
+            }
+
+            if ($char === '{') {
+                $depth++;
+            } elseif ($char === '}') {
+                $depth--;
+            }
+
+            $index++;
+        }
+
+        return $index;
+    }
+
+    /**
+     * @param int $startIndex index of the opening quote
+     */
+    public static function skipQuotedChunk(string $text, int $startIndex): int
+    {
+        $length = strlen($text);
+        $quote  = $text[$startIndex];
+        $index  = $startIndex + 1;
+
+        while ($index < $length) {
+            $char = $text[$index];
+
+            if ($char === '\\' && $index + 1 < $length) {
+                $index += 2;
+
+                continue;
+            }
+
+            if ($char === '#' && ($text[$index + 1] ?? '') === '{') {
+                $index = self::skipInterpolation($text, $index + 1);
+
+                continue;
+            }
+
+            $isClosing = $char === $quote;
+
+            $index++;
+
+            if ($isClosing) {
+                return $index;
+            }
+        }
+
+        return $index;
+    }
+
     private static function decodeEscapeAt(string $text, int &$index): string
     {
         $length = strlen($text);
@@ -269,85 +349,6 @@ final class StringEscapeDecoder
             . chr(0x80 | (($codePoint >> 12) & 0x3F))
             . chr(0x80 | (($codePoint >> 6) & 0x3F))
             . chr(0x80 | ($codePoint & 0x3F));
-    }
-
-    /**
-     * Returns the index right after the closing brace of a #{...} region.
-     *
-     * @param int $openBraceIndex index of the '{' that opens the region
-     */
-    private static function skipInterpolation(string $text, int $openBraceIndex): int
-    {
-        $length = strlen($text);
-        $depth  = 1;
-        $index  = $openBraceIndex + 1;
-
-        while ($index < $length && $depth > 0) {
-            $char = $text[$index];
-
-            if ($char === '"' || $char === "'") {
-                $index = self::skipQuotedChunk($text, $index);
-
-                continue;
-            }
-
-            if ($char === '\\' && $index + 1 < $length) {
-                $index += 2;
-
-                continue;
-            }
-
-            if ($char === '#' && ($text[$index + 1] ?? '') === '{') {
-                $depth++;
-
-                $index += 2;
-
-                continue;
-            }
-
-            if ($char === '{') {
-                $depth++;
-            } elseif ($char === '}') {
-                $depth--;
-            }
-
-            $index++;
-        }
-
-        return $index;
-    }
-
-    private static function skipQuotedChunk(string $text, int $startIndex): int
-    {
-        $length = strlen($text);
-        $quote  = $text[$startIndex];
-        $index  = $startIndex + 1;
-
-        while ($index < $length) {
-            $char = $text[$index];
-
-            if ($char === '\\' && $index + 1 < $length) {
-                $index += 2;
-
-                continue;
-            }
-
-            if ($char === '#' && ($text[$index + 1] ?? '') === '{') {
-                $index = self::skipInterpolation($text, $index + 1);
-
-                continue;
-            }
-
-            $isClosing = $char === $quote;
-
-            $index++;
-
-            if ($isClosing) {
-                return $index;
-            }
-        }
-
-        return $index;
     }
 
     /**

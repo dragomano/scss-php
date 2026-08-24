@@ -22,6 +22,7 @@ use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\DeferredChunk;
+use Bugo\SCSS\Utils\GroupStartChunk;
 use Bugo\SCSS\Utils\OutputChunk;
 use Bugo\SCSS\Utils\RawChunk;
 
@@ -53,16 +54,19 @@ final readonly class DeferredChunkManager
         array $leadingRootChunks,
         array $trailingRootChunks,
     ): string {
-        $segmentSeparator = $this->render->outputSeparator();
+        $continuation = "\n" . Render::CONTINUATION_MARK;
 
-        $result = '';
+        $result   = '';
+        $previous = null;
 
-        foreach ($leadingRootChunks as $index => $chunk) {
-            if ($index > 0) {
-                $this->render->appendChunk($result, "\n");
+        foreach ($leadingRootChunks as $chunk) {
+            if ($result !== '') {
+                $this->render->appendChunk($result, $this->separatorBetween($previous, $chunk));
             }
 
             $this->appendResolvedChunk($result, $chunk);
+
+            $previous = $chunk;
         }
 
         if ($output !== '') {
@@ -70,19 +74,23 @@ final readonly class DeferredChunkManager
 
             if ($ruleOutput !== '') {
                 if ($result !== '') {
-                    $result .= $segmentSeparator;
+                    $result .= $this->separatorBetween($previous, new RawChunk(''));
                 }
 
                 $result .= $ruleOutput;
+
+                $previous = null;
             }
         }
 
         foreach ($trailingRootChunks as $chunk) {
             if ($result !== '') {
-                $this->render->appendChunk($result, $segmentSeparator . "\n");
+                $this->render->appendChunk($result, $this->separatorBetween($previous, $chunk));
             }
 
             $this->appendResolvedChunk($result, $chunk);
+
+            $previous = $chunk;
         }
 
         if ($this->context->options()->style === Style::EXPANDED) {
@@ -188,10 +196,15 @@ final readonly class DeferredChunkManager
     }
 
     /**
+     * @param list<OutputChunk> $leadingRootChunks
      * @param list<OutputChunk> $trailingRootChunks
      */
-    public function collectRuleAtRootChunk(array &$trailingRootChunks, AtRootNode $child, TraversalContext $ctx): void
-    {
+    public function collectRuleAtRootChunk(
+        array &$leadingRootChunks,
+        array &$trailingRootChunks,
+        AtRootNode $child,
+        TraversalContext $ctx,
+    ): void {
         $preparedChunk = $this->prepareAtRootChunk($child, $ctx);
 
         if ($preparedChunk === null) {
@@ -208,14 +221,24 @@ final readonly class DeferredChunkManager
             return;
         }
 
+        if ($preparedChunk['deferredChunk']->isEarly) {
+            $leadingRootChunks[] = $preparedChunk['deferredChunk'];
+
+            return;
+        }
+
         $trailingRootChunks[] = $preparedChunk['deferredChunk'];
     }
 
     /**
+     * @param list<OutputChunk> $leadingRootChunks
      * @param list<OutputChunk> $trailingRootChunks
      */
-    public function collectDeferredIncludeRootChunks(array &$trailingRootChunks, int $deferredAtRootCount): void
-    {
+    public function collectDeferredIncludeRootChunks(
+        array &$leadingRootChunks,
+        array &$trailingRootChunks,
+        int $deferredAtRootCount,
+    ): void {
         $outputState      = $this->render->outputState();
         $atRootStackIndex = count($outputState->deferral->atRootStack) - 1;
 
@@ -236,6 +259,12 @@ final readonly class DeferredChunkManager
         $outputState->deferral->atRootStack[$atRootStackIndex] = $deferred;
 
         foreach ($newChunks as $chunk) {
+            if ($chunk instanceof GroupStartChunk && $chunk->isEarly) {
+                $leadingRootChunks[] = $chunk;
+
+                continue;
+            }
+
             $trailingRootChunks[] = $chunk;
         }
     }
@@ -369,7 +398,7 @@ final readonly class DeferredChunkManager
     public function appendOutputChunk(string &$output, bool &$first, OutputChunk $chunk): void
     {
         if (! $first) {
-            $this->render->appendChunk($output, "\n");
+            $this->render->appendChunk($output, "\n" . Render::CONTINUATION_MARK);
         }
 
         $this->appendResolvedChunk($output, $chunk);
@@ -455,6 +484,7 @@ final readonly class DeferredChunkManager
                 $this->render->appendChunk($output, $prefix . $formattedSelector . ' {', $node);
 
                 $hasRenderedChildren = true;
+                $this->render->outputState()->deferral->currentRuleHasOutput = true;
             }
 
             $this->render->appendChunk($output, "\n");
@@ -488,13 +518,9 @@ final readonly class DeferredChunkManager
             }
 
             if ($trailingRootChunks !== []) {
-                if ($output !== '') {
-                    $this->render->appendChunk($output, "\n");
-                }
-
-                foreach ($trailingRootChunks as $index => $rootChunk) {
-                    if ($index > 0) {
-                        $this->render->appendChunk($output, "\n");
+                foreach ($trailingRootChunks as $rootChunk) {
+                    if ($output !== '') {
+                        $this->render->appendChunk($output, "\n" . Render::CONTINUATION_MARK);
                     }
 
                     $this->appendResolvedChunk($output, $rootChunk);
@@ -504,10 +530,12 @@ final readonly class DeferredChunkManager
             }
 
             if ($output !== '') {
-                $this->render->appendChunk($output, "\n");
+                $this->render->appendChunk($output, "\n" . Render::CONTINUATION_MARK);
             }
 
             $this->appendResolvedChunk($output, $preparedChunk['deferredChunk']);
+
+            $this->render->outputState()->deferral->currentRuleHasOutput = true;
 
             $containsStandaloneNestedRuleChunks = true;
         }
@@ -580,7 +608,7 @@ final readonly class DeferredChunkManager
     /**
      * @return array{
      *     chunk:string,
-     *     deferredChunk:DeferredChunk,
+     *     deferredChunk:GroupStartChunk,
      *     escapeLevels:int,
      *     saved:array{0: int, 1: int, 2: int}
      * }|null
@@ -588,6 +616,7 @@ final readonly class DeferredChunkManager
     private function prepareAtRootChunk(AtRootNode $child, TraversalContext $ctx): ?array
     {
         $saved        = $this->render->savePosition();
+        $ruleWasEmpty = ! $this->render->outputState()->deferral->currentRuleHasOutput;
         $atRootResult = $this->selector->compileAtRootBody($child, $ctx->env);
         $chunk        = $atRootResult['chunk'];
 
@@ -599,7 +628,11 @@ final readonly class DeferredChunkManager
 
         return [
             'chunk'         => $chunk,
-            'deferredChunk' => $this->render->createDeferredChunk($chunk, $saved),
+            'deferredChunk' => new GroupStartChunk(
+                $this->render->createDeferredChunk($chunk, $saved),
+                fromInclude: true,
+                isEarly: $ruleWasEmpty,
+            ),
             'escapeLevels'  => $atRootResult['escapeLevels'],
             'saved'         => $saved,
         ];
@@ -737,5 +770,16 @@ final readonly class DeferredChunkManager
     public function appendResolvedChunk(string &$output, OutputChunk $chunk): void
     {
         $this->render->appendOutputChunk($output, $chunk);
+    }
+
+    private function separatorBetween(?OutputChunk $previous, OutputChunk $chunk): string
+    {
+        if ($previous instanceof GroupStartChunk && (
+            $chunk instanceof GroupStartChunk || $previous->fromInclude
+        )) {
+            return "\n";
+        }
+
+        return "\n" . Render::CONTINUATION_MARK;
     }
 }

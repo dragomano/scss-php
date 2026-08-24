@@ -35,6 +35,8 @@ enum TokenType: string
     case SLASH               = 'SLASH';
     case PERCENT             = 'PERCENT';
     case TILDE               = 'TILDE';
+    case PIPE                = 'PIPE';
+    case CARET               = 'CARET';
     case STRING              = 'STRING';
     case NUMBER              = 'NUMBER';
     case IDENTIFIER          = 'IDENTIFIER';

@@ -85,6 +85,10 @@ final class RenderSourceMapHelper
             return;
         }
 
+        if ((int) $originLine < 1) {
+            return;
+        }
+
         $mappings[] = new SourceMapMapping(
             new SourceMapPosition($generatedLine, $generatedColumn),
             new SourceMapPosition(

@@ -95,8 +95,9 @@ final readonly class BlockNodeHandler
 
         $outputState = $this->render->outputState();
 
-        $outputState->deferral->atRootStack[]   = [];
-        $outputState->deferral->bubblingStack[] = [];
+        $outputState->deferral->atRootStack[]        = [];
+        $outputState->deferral->bubblingStack[]      = [];
+        $outputState->deferral->currentRuleHasOutput = false;
 
         $ruleCtx = new RuleCompilationContext(
             node: $node,

@@ -15,6 +15,9 @@ final class ExtendsState
     /** @var array<string, array<string, true>> */
     public array $selectorContexts = [];
 
+    /** @var array<string, bool> */
+    public array $partLineBreaks = [];
+
     /**
      * @var array<int, array{
      *     type: 'rule',
@@ -55,6 +58,7 @@ final class ExtendsState
         $this->extendMap        = [];
         $this->pendingExtends   = [];
         $this->selectorContexts = [];
+        $this->partLineBreaks   = [];
         $this->events           = [];
         $this->ruleCount        = 0;
         $this->ruleStack        = [];

@@ -67,7 +67,6 @@ describe('Compiler', function () {
               color: red;
               font-weight: bold;
             }
-
             .card .title:hover {
               color: blue;
             }
@@ -97,7 +96,6 @@ describe('Compiler', function () {
             .card .title {
               color: red;
             }
-
             @media (min-width: 40rem) {
               .card .title {
                 color: blue;
@@ -126,12 +124,12 @@ describe('Compiler', function () {
             SCSS;
 
             $expected = /** @lang text */ <<<'CSS'
-            .card .title {
-              color: red;
-            }
-
             .utility {
               display: block;
+            }
+
+            .card .title {
+              color: red;
             }
             CSS;
 
@@ -150,7 +148,6 @@ describe('Compiler', function () {
             .card:hover {
               color: red;
             }
-
             .card.active, .card.selected {
               border: 1px solid #000;
             }
@@ -279,7 +276,6 @@ describe('Compiler', function () {
                 position: sticky;
               }
             }
-
             .banner {
               position: fixed;
             }
@@ -307,11 +303,9 @@ describe('Compiler', function () {
             .case {
               color: red;
             }
-
             .case--serious {
               font-weight: bold;
             }
-
             .case {
               font-weight: normal;
             }
@@ -337,11 +331,9 @@ describe('Compiler', function () {
             .case {
               color: red;
             }
-
             .case {
               color: blue;
             }
-
             .case {
               color: green;
             }
@@ -367,13 +359,11 @@ describe('Compiler', function () {
             .case {
               color: red;
             }
-
             @media (max-width: 768px) {
               .case {
                 color: blue;
               }
             }
-
             .case {
               color: green;
             }
@@ -415,7 +405,6 @@ describe('Compiler', function () {
                 a: b;
               }
             }
-
             @supports not (feature23: val4) {
               .test {
                 a: b;
@@ -513,7 +502,6 @@ describe('Compiler', function () {
             .parent {
               color: blue;
             }
-
             .outside {
               color: red;
             }
@@ -539,7 +527,6 @@ describe('Compiler', function () {
             .print-only {
               display: none;
             }
-
             @media print {
               .print-only {
                 display: block;
@@ -636,11 +623,9 @@ describe('Compiler', function () {
                 width: 8in;
               }
             }
-
             .page {
               color: #111;
             }
-
             .page {
               font-size: 1.2em;
             }
@@ -882,7 +867,6 @@ describe('Compiler', function () {
             .article:nth-last-child(-n+5) {
               grid-column: span 2;
             }
-
             .article:nth-last-child(2), .article:last-child {
               grid-column: span 3;
             }
@@ -950,7 +934,6 @@ describe('Compiler', function () {
               margin-top: .1em;
               margin-bottom: 0;
             }
-
             section #display_head span {
               margin: 0;
             }
@@ -996,7 +979,6 @@ describe('Compiler', function () {
                 a: b;
               }
             }
-
             @supports (display: grid) {
               bar {
                 a: b;

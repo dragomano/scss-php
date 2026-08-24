@@ -7,9 +7,13 @@ namespace Bugo\SCSS\Handlers\Rule;
 use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
+use Bugo\SCSS\States\OutputState;
+use Bugo\SCSS\Utils\GroupStartChunk;
 use Bugo\SCSS\Utils\OutputChunk;
 
 use function array_pop;
+use function array_values;
+use function count;
 
 final readonly class OutputFormattingStep implements CompilationStepInterface
 {
@@ -38,6 +42,8 @@ final readonly class OutputFormattingStep implements CompilationStepInterface
 
         $outputState = $this->render->outputState();
 
+        $depth = count($outputState->deferral->atRootStack);
+
         /** @var list<OutputChunk> $localTrailingRootChunks */
         $localTrailingRootChunks = array_pop($outputState->deferral->atRootStack);
 
@@ -49,7 +55,22 @@ final readonly class OutputFormattingStep implements CompilationStepInterface
         }
 
         foreach ($localTrailingRootChunks as $chunk) {
+            if ($chunk instanceof GroupStartChunk) {
+                if (! $chunk->isNested && $chunk->isEarly) {
+                    $ruleCtx->leadingRootChunks[] = $chunk;
+
+                    continue;
+                }
+            }
+
             $ruleCtx->trailingRootChunks[] = $chunk;
+        }
+
+        if ($depth > 1) {
+            $ruleCtx->trailingRootChunks = $this->hoistNestedGroupStarts(
+                $ruleCtx->trailingRootChunks,
+                $outputState,
+            );
         }
 
         return $this->chunks->buildRuleResult(
@@ -57,5 +78,32 @@ final readonly class OutputFormattingStep implements CompilationStepInterface
             $ruleCtx->leadingRootChunks,
             $ruleCtx->trailingRootChunks,
         );
+    }
+
+    /**
+     * @param list<OutputChunk> $chunks
+     * @return list<OutputChunk>
+     */
+    private function hoistNestedGroupStarts(array $chunks, OutputState $outputState): array
+    {
+        foreach ($chunks as $index => $chunk) {
+            if (! $chunk instanceof GroupStartChunk || $chunk->isNested) {
+                continue;
+            }
+
+            unset($chunks[$index]);
+
+            $parentIndex = count($outputState->deferral->atRootStack) - 1;
+
+            if ($parentIndex < 0) {
+                $chunks[$index] = new GroupStartChunk($chunk->inner(), true);
+
+                continue;
+            }
+
+            $outputState->deferral->atRootStack[$parentIndex][] = new GroupStartChunk($chunk->inner(), true);
+        }
+
+        return array_values($chunks);
     }
 }

@@ -17,6 +17,8 @@ final class DirectiveNode extends StatementNode
         public string $prelude = '',
         public array $body = [],
         public bool $hasBlock = false,
+        public int $line = 0,
+        public int $column = 0,
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

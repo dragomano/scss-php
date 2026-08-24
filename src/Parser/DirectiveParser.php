@@ -88,7 +88,7 @@ final readonly class DirectiveParser
             'for'       => $this->parseForDirective(),
             'while'     => $this->parseWhileDirective(),
             'supports'  => $this->parseSupportsDirective(),
-            default     => $this->parseGenericDirective($name),
+            default     => $this->parseGenericDirective($name, $atToken->line, $atToken->column),
         };
     }
 
@@ -411,7 +411,7 @@ final readonly class DirectiveParser
         return trim($condition);
     }
 
-    public function parseGenericDirective(string $name): AstNode
+    public function parseGenericDirective(string $name, int $line = 0, int $column = 0): AstNode
     {
         $prelude            = '';
         $parenDepth         = 0;
@@ -461,7 +461,7 @@ final readonly class DirectiveParser
         $prelude = trim($prelude);
 
         if ($this->stream->consume(TokenType::SEMICOLON)) {
-            return new DirectiveNode($name, $prelude, [], false);
+            return new DirectiveNode($name, $prelude, [], false, $line, $column);
         }
 
         if ($this->stream->consume(TokenType::LBRACE)) {
@@ -473,10 +473,10 @@ final readonly class DirectiveParser
 
             $this->stream->consume(TokenType::RBRACE);
 
-            return new DirectiveNode($name, $prelude, $body, true);
+            return new DirectiveNode($name, $prelude, $body, true, $line, $column);
         }
 
-        return new DirectiveNode($name, $prelude, [], false);
+        return new DirectiveNode($name, $prelude, [], false, $line, $column);
     }
 
     /**

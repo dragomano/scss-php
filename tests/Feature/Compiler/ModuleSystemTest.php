@@ -411,7 +411,6 @@ describe('Compiler', function () {
                 ul, ol {
                   text-align: left;
                 }
-
                 ul ul, ol ol {
                   padding-bottom: 0;
                   padding-left: 0;

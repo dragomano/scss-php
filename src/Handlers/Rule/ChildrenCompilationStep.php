@@ -39,7 +39,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
     public function execute(RuleCompilationContext $ruleCtx): ?string
     {
         $childCtx    = $ruleCtx->childCtx;
-        $selector    = $ruleCtx->selector;
+        $selector    = $ruleCtx->parentSelector !== '' ? $ruleCtx->parentSelector : $ruleCtx->selector;
         $scope       = $ruleCtx->outerCtx->env->getCurrentScope();
         $outputState = $this->render->outputState();
 
@@ -64,6 +64,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
 
             if ($child instanceof AtRootNode) {
                 $this->chunks->collectRuleAtRootChunk(
+                    $ruleCtx->leadingRootChunks,
                     $ruleCtx->trailingRootChunks,
                     $child,
                     $ruleCtx->outerCtx,
@@ -90,7 +91,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
 
                     if ($interleavedChunk !== null) {
                         if ($ruleCtx->output !== '') {
-                            $this->render->appendChunk($ruleCtx->output, $this->render->outputSeparator());
+                            $this->render->appendChunk($ruleCtx->output, "\n" . Render::CONTINUATION_MARK);
                         }
 
                         $this->chunks->appendResolvedChunk($ruleCtx->output, $interleavedChunk);
@@ -176,6 +177,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
 
             if ($child instanceof IncludeNode && $deferredAtRootCount !== null) {
                 $this->chunks->collectDeferredIncludeRootChunks(
+                    $ruleCtx->leadingRootChunks,
                     $ruleCtx->trailingRootChunks,
                     $deferredAtRootCount,
                 );
@@ -199,7 +201,11 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
         }
 
         if ($ruleCtx->output !== '') {
-            $this->render->appendChunk($ruleCtx->output, "\n");
+            $separator = $ruleCtx->containsStandaloneNestedRuleChunks
+                ? "\n" . Render::CONTINUATION_MARK
+                : "\n";
+
+            $this->render->appendChunk($ruleCtx->output, $separator);
         }
 
         $formattedSelector = str_replace("\n", "\n" . $ruleCtx->prefix, $ruleCtx->selector);
@@ -211,6 +217,8 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
         );
 
         $ruleCtx->hasRenderedChildren = true;
+
+        $this->render->outputState()->deferral->currentRuleHasOutput = true;
     }
 
     private function isInsideKeyframes(Scope $scope): bool

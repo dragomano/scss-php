@@ -180,7 +180,6 @@ describe('Compiler', function () {
             font-size: 40px;
           }
         }
-
         @media print {
           h1 {
             font-size: 40px;
@@ -268,7 +267,6 @@ describe('Compiler', function () {
         .button {
           width: 100%;
         }
-
         @media (min-width: 1024px) {
           .button {
             width: auto;
@@ -298,7 +296,6 @@ describe('Compiler', function () {
         .rule {
           border: 1px solid black;
         }
-
         @media (min-width: 600px) {
           .rule {
             color: red;
@@ -330,7 +327,6 @@ describe('Compiler', function () {
           background-color: red;
           border-radius: 3px;
         }
-
         .test:hover {
           background-color: blue;
         }
@@ -425,11 +421,9 @@ describe('Compiler', function () {
         .class-0 .light {
           color: #99ccff;
         }
-
         .class-0 .dark {
           color: #0066cc;
         }
-
         .class-0.nested-1 {
           color: red;
         }

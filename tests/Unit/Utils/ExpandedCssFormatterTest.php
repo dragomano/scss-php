@@ -123,13 +123,19 @@ describe('ExpandedCssFormatter', function () {
             expect($this->formatter->format($source))->toBe($source);
         });
 
-        it('keeps a single newline between a selector and its pseudo-class variant', function () {
+        it('adds a blank line between a rule and its pseudo-class variant', function () {
             $source = /** @lang text */ <<<'SCSS'
             .a { width: 1px; }
             .a:hover { width: 2px; }
             SCSS;
 
-            expect($this->formatter->format($source))->toBe($source);
+            $expected = /** @lang text */ <<<'CSS'
+            .a { width: 1px; }
+
+            .a:hover { width: 2px; }
+            CSS;
+
+            expect($this->formatter->format($source))->toBe($expected);
         });
 
         it('does not treat a pseudo-class variant as such when the selector is a list', function () {

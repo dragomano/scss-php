@@ -149,6 +149,8 @@ final class TokenStreamHelper
         $result       = '';
         $parenDepth   = 0;
         $bracketDepth = 0;
+        $interpDepth  = 0;
+        $previous     = null;
 
         while (! $stream->isEof()) {
             $token = $stream->current();
@@ -161,15 +163,38 @@ final class TokenStreamHelper
                 $bracketDepth++;
             } elseif ($token->type === TokenType::RBRACKET) {
                 $bracketDepth--;
+            } elseif (
+                $token->type === TokenType::LBRACE
+                && $previous !== null
+                && $previous->type === TokenType::HASH
+            ) {
+                $interpDepth++;
             }
 
-            if ($parenDepth === 0 && $bracketDepth === 0 && $shouldStop($token)) {
+            $isInterpolationClose = $token->type === TokenType::RBRACE && $interpDepth > 0;
+
+            if ($isInterpolationClose) {
+                $interpDepth--;
+            }
+
+            if (
+                ! $isInterpolationClose
+                && $parenDepth === 0
+                && $bracketDepth === 0
+                && $shouldStop($token)
+            ) {
                 break;
             }
 
-            $result .= $token->type === TokenType::WHITESPACE
-                ? ' '
-                : self::tokenToRawString($token->type, $token->value);
+            if ($token->type === TokenType::WHITESPACE) {
+                $result .= ' ';
+            } elseif ($token->type === TokenType::STRING) {
+                $result .= '"' . ($token->rawValue ?? $token->value) . '"';
+            } else {
+                $result .= self::tokenToRawString($token->type, $token->value);
+            }
+
+            $previous = $token;
 
             $stream->advance();
         }

@@ -18,6 +18,7 @@ use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\States\OutputState;
 use Bugo\SCSS\Utils\DeferredChunk;
+use Bugo\SCSS\Utils\GroupStartChunk;
 use Bugo\SCSS\Utils\OutputChunk;
 use Tests\Support\RuntimeFactory;
 
@@ -112,7 +113,7 @@ it('defers non-escaped @at-root chunks into the deferred root stack when a paren
     ]);
     $render->shouldReceive('createDeferredChunk')->once()->with('.outside { color: red; }', $savedPosition)
         ->andReturn($deferredChunk);
-    $render->shouldReceive('outputState')->once()->andReturn($outputState);
+    $render->shouldReceive('outputState')->twice()->andReturn($outputState);
     $render->shouldReceive('restorePosition')->once()->with($savedPosition);
     $render->shouldReceive('appendOutputChunk')->zeroOrMoreTimes()->withArgs(
         /**
@@ -127,8 +128,14 @@ it('defers non-escaped @at-root chunks into the deferred root stack when a paren
 
     $handler = new AtRuleNodeHandler($dispatcher, $evaluation, $render, $selector);
 
-    expect($handler->handleAtRoot(new AtRootNode(), $ctx))->toBe('')
-        ->and($outputState->deferral->atRootStack[0])->toBe([$deferredChunk]);
+    expect($handler->handleAtRoot(new AtRootNode(), $ctx))->toBe('');
+
+    /** @var list<OutputChunk> $stack */
+    $stack = $outputState->deferral->atRootStack[0];
+
+    expect($stack)->toHaveCount(1)
+        ->and($stack[0])->toBeInstanceOf(GroupStartChunk::class)
+        ->and($stack[0]->inner())->toBe($deferredChunk);
 
     Mockery::close();
 });
@@ -238,14 +245,7 @@ it('joins multiple outside chunks when a directive body renders only escaped con
         ]),
     ], true);
 
-    $expected = /** @lang text */ <<<'CSS'
-    .x {
-      color: red;
-    }
-    .y {
-      color: blue;
-    }
-    CSS;
+    $expected = ".x {\n  color: red;\n}\n" . Render::CONTINUATION_MARK . ".y {\n  color: blue;\n}";
 
     expect($runtime->atRule()->handleDirective($node, $ctx))->toEqualCss($expected);
 });

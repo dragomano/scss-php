@@ -19,6 +19,7 @@ use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
+use Bugo\SCSS\Utils\GroupStartChunk;
 use Bugo\SCSS\Utils\OutputChunk;
 use Bugo\SCSS\Utils\RawChunk;
 
@@ -42,9 +43,13 @@ final readonly class AtRuleNodeHandler
     public function handleAtRoot(AtRootNode $node, TraversalContext $ctx): string
     {
         $saved         = $this->render->savePosition();
+        $ruleWasEmpty  = ! $this->render->outputState()->deferral->currentRuleHasOutput;
         $atRootResult  = $this->selector->compileAtRootBody($node, $ctx->env);
         $chunk         = $atRootResult['chunk'];
-        $deferredChunk = $this->render->createDeferredChunk($chunk, $saved);
+        $deferredChunk = new GroupStartChunk(
+            $this->render->createDeferredChunk($chunk, $saved),
+            isEarly: $ruleWasEmpty,
+        );
 
         if ($chunk === '') {
             $this->render->restorePosition($saved);
@@ -165,7 +170,7 @@ final readonly class AtRuleNodeHandler
                 $outsideChunks = $this->selector->drainDeferredAtRuleEscapes();
 
                 $result    = '';
-                $separator = $this->render->outputSeparator();
+                $separator = "\n" . Render::CONTINUATION_MARK;
 
                 foreach ($orderedChunks as $index => $entry) {
                     if ($index > 0) {
@@ -243,7 +248,15 @@ final readonly class AtRuleNodeHandler
                     $this->render->appendChunk($output, $prefix . '@' . $node->name . $prelude . ' {', $node);
                 }
 
-                $this->render->appendChunk($output, "\n");
+                $collectMappings     = $this->render->collectSourceMappings();
+                $preCompileSaved     = null;
+                $lengthBeforeNewline = strlen($output);
+
+                if ($collectMappings) {
+                    $preCompileSaved = $this->render->savePosition();
+
+                    $this->render->appendChunk($output, "\n");
+                }
 
                 /** @var Visitable $child */
                 $compiled = $this->render->trimAndAdjustState(
@@ -255,9 +268,17 @@ final readonly class AtRuleNodeHandler
                         $this->render->restorePosition($parentSegmentSaved);
 
                         $output = '';
+                    } elseif ($preCompileSaved !== null) {
+                        $this->render->restorePosition($preCompileSaved);
+
+                        $output = substr($output, 0, $lengthBeforeNewline);
                     }
 
                     continue;
+                }
+
+                if (! $collectMappings) {
+                    $this->render->appendChunk($output, "\n");
                 }
 
                 $output .= $compiled;
@@ -297,7 +318,7 @@ final readonly class AtRuleNodeHandler
                 return '';
             }
 
-            $separator = $this->render->outputSeparator();
+            $separator = "\n" . Render::CONTINUATION_MARK;
             $result    = '';
 
             foreach ($outsideChunks as $index => $chunk) {
@@ -312,7 +333,7 @@ final readonly class AtRuleNodeHandler
         }
 
         $result    = '';
-        $separator = $this->render->outputSeparator();
+        $separator = "\n" . Render::CONTINUATION_MARK;
 
         foreach ($orderedChunks as $index => $entry) {
             if ($index > 0) {

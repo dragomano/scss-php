@@ -16,6 +16,7 @@ use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\Scope;
+use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Style;
 use Tests\Support\RuntimeFactory;
 
@@ -64,12 +65,11 @@ it('starts a new rule block after standalone nested rule output without source m
     .parent .child {
       color: red;
     }
-    .parent {
-      /*! keep */
-    }
     CSS;
 
-    expect($result)->toEqualCss($expected);
+    expect($result)->toBe(
+        $expected . "\n" . Render::CONTINUATION_MARK . ".parent {\n  /*! keep */\n}\n",
+    );
 });
 
 it('returns escaped at-root chunks when supports body has no direct content', function () {

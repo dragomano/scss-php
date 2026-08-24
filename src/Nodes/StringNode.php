@@ -13,6 +13,7 @@ final class StringNode extends AstNode implements Stringable
         public bool $quoted = false,
         public int $line = 0,
         public int $column = 0,
+        public bool $isSelectorValue = false,
     ) {}
 
     public function __toString(): string

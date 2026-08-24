@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Utils;
 
+use Bugo\SCSS\Services\Render;
+
 use function implode;
 use function max;
 use function str_contains;
-use function str_ends_with;
 use function str_starts_with;
 use function strlen;
 use function strpos;
 use function substr;
-use function substr_count;
 use function trim;
 
 final readonly class ExpandedCssFormatter
@@ -103,8 +103,10 @@ final readonly class ExpandedCssFormatter
         $result     = '';
 
         foreach ($statements as $index => $statement) {
+            $raw = $statement['raw'];
+
             if ($index === 0) {
-                $result .= $statement['raw'];
+                $result .= $raw;
 
                 continue;
             }
@@ -113,17 +115,15 @@ final readonly class ExpandedCssFormatter
             $gap       = substr($css, $previous['end'], $statement['start'] - $previous['end']);
             $separator = "\n\n";
 
-            if ($this->isCompactedAtRule($previous)) {
+            if (str_contains($gap, Render::CONTINUATION_MARK)) {
                 $separator = "\n";
             } elseif ($this->isInlineStatement($previous)) {
                 $separator = "\n";
-            } elseif (substr_count($gap, "\n") <= 1 && $this->isPseudoVariantOf($previous, $statement)) {
-                $separator = "\n";
-            } elseif ($this->isMergedMediaContinuation($previous, $statement)) {
+            } elseif ($this->isAtRuleStatement($previous)) {
                 $separator = "\n";
             }
 
-            $result .= $separator . $statement['raw'];
+            $result .= $separator . $raw;
         }
 
         return $result;
@@ -132,17 +132,9 @@ final readonly class ExpandedCssFormatter
     /**
      * @param array{type: string, header: string, body: string, raw: string, start: int, end: int, trailing: string} $statement
      */
-    private function isCompactedAtRule(array $statement): bool
+    private function isAtRuleStatement(array $statement): bool
     {
-        if ($statement['type'] !== 'rule') {
-            return false;
-        }
-
-        $header = trim($statement['header']);
-
-        return str_starts_with($header, '@font-face')
-            || str_starts_with($header, '@keyframes')
-            || str_ends_with($header, '-keyframes');
+        return str_starts_with(trim($statement['header']), '@');
     }
 
     /**
@@ -157,43 +149,6 @@ final readonly class ExpandedCssFormatter
         }
 
         return str_starts_with($raw, '@import');
-    }
-
-    /**
-     * @param array{type: string, header: string, body: string, raw: string, start: int, end: int, trailing: string} $previous
-     * @param array{type: string, header: string, body: string, raw: string, start: int, end: int, trailing: string} $statement
-     */
-    private function isMergedMediaContinuation(array $previous, array $statement): bool
-    {
-        $prevHeader = trim($previous['header']);
-        $nextHeader = trim($statement['header']);
-
-        if ($prevHeader === '' || $nextHeader === '' || ! str_starts_with($prevHeader, '@media')) {
-            return false;
-        }
-
-        return str_starts_with($nextHeader, $prevHeader . ' and ')
-            || str_starts_with($prevHeader, $nextHeader . ' and ');
-    }
-
-    /**
-     * @param array{type: string, header: string, body: string, raw: string, start: int, end: int, trailing: string} $previous
-     * @param array{type: string, header: string, body: string, raw: string, start: int, end: int, trailing: string} $statement
-     */
-    private function isPseudoVariantOf(array $previous, array $statement): bool
-    {
-        $prevHeader = trim($previous['header']);
-        $nextHeader = trim($statement['header']);
-
-        if ($prevHeader === '' || $nextHeader === '') {
-            return false;
-        }
-
-        if (str_contains($prevHeader, ',')) {
-            return false;
-        }
-
-        return str_starts_with($nextHeader, $prevHeader . ':');
     }
 
     /**
@@ -212,7 +167,7 @@ final readonly class ExpandedCssFormatter
             $next     = $end;
             $trailing = '';
 
-            while ($next < $length && ($css[$next] === "\n" || $css[$next] === "\r")) {
+            while ($next < $length && ($css[$next] === "\n" || $css[$next] === "\r" || $css[$next] === Render::CONTINUATION_MARK)) {
                 $trailing .= $css[$next];
 
                 $next++;

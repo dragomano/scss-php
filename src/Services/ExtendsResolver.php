@@ -30,16 +30,18 @@ use Bugo\SCSS\Utils\SelectorTokenizer;
 use function array_flip;
 use function array_keys;
 use function array_pop;
-use function array_push;
-use function array_search;
+use function array_reverse;
 use function array_slice;
 use function array_unique;
 use function array_unshift;
 use function array_values;
 use function count;
 use function ctype_alnum;
+use function explode;
 use function implode;
+use function in_array;
 use function is_numeric;
+use function max;
 use function str_contains;
 use function str_starts_with;
 use function strlen;
@@ -49,6 +51,35 @@ use function substr;
 use function trim;
 use function usort;
 
+/**
+ * @phpstan-import-type Complex from SelectorTokenizer
+ * @phpstan-type Extension array{extender: Complex, target: string, context: string, optional: bool, priority: int}
+ * @phpstan-type Extender array{selector: Complex, original: bool, context: string}
+ * @phpstan-type ExtensionMap array<string, array<string, Extension>>
+ * @phpstan-type ExtensionStore array{
+ *     selectors: array<string, array<int, true>>,
+ *     extensions: ExtensionMap,
+ *     byExtender: array<string, list<Extension>>,
+ *     contexts: array<int, string>,
+ *     sourceSpecificity: array<string, int>,
+ *     originals: array<string, true>,
+ *     boxes: array<int, array<int, Complex>>
+ * }
+ *
+ * @psalm-import-type Complex from SelectorTokenizer
+ * @psalm-type Extension=array{extender: Complex, target: string, context: string, optional: bool, priority: int}
+ * @psalm-type Extender=array{selector: Complex, original: bool, context: string}
+ * @psalm-type ExtensionMap=array<string, array<string, Extension>>
+ * @psalm-type ExtensionStore=array{
+ *     selectors: array<string, array<int, true>>,
+ *     extensions: ExtensionMap,
+ *     byExtender: array<string, list<Extension>>,
+ *     contexts: array<int, string>,
+ *     sourceSpecificity: array<string, int>,
+ *     originals: array<string, true>,
+ *     boxes: array<int, array<int, Complex>>
+ * }
+ */
 final readonly class ExtendsResolver
 {
     public function __construct(
@@ -149,211 +180,447 @@ final readonly class ExtendsResolver
     {
         $state = $this->ctx->outputState->extends;
 
-        /** @var array<string, array<int, array{source: string, priority: int}>> $extensionsByTarget */
-        $extensionsByTarget = [];
-
-        /** @var array<string, array<int, true>> $selectorsBySimple */
-        $selectorsBySimple = [];
-
-        /** @var array<string, true> $originals */
-        $originals = [];
-
-        /** @var array<string, int> $sourceSpecificity */
-        $sourceSpecificity = [];
+        /** @var ExtensionStore $store */
+        $store = [
+            'selectors'         => [],
+            'extensions'        => [],
+            'byExtender'        => [],
+            'contexts'          => [],
+            'sourceSpecificity' => [],
+            'originals'         => [],
+            'boxes'             => [],
+        ];
 
         /**
-         * @var array<int, array{
-         *     rawParts: array<int, string>,
-         *     selectors: array<int, string>,
-         *     originals: array<int, string>,
-         *     context: string
-         * }> $boxes
+         * @var array<int, array{rawParts: array<int, string>, originals: array<int, string>, context: string}> $boxMeta
          */
-        $boxes = [];
+        $boxMeta = [];
 
         foreach ($state->events as $event) {
             if ($event['type'] === 'rule') {
                 /** @var array{type: 'rule', boxId: int, rawParts: array<int, string>, resolvedParts: array<int, string>, context: string} $event */
-                $resolvedParts = $event['resolvedParts'];
-                $boxId         = $event['boxId'];
-
-                foreach ($resolvedParts as $part) {
-                    $originals[$part] = true;
-                }
-
-                if ($extensionsByTarget === []) {
-                    $selectors = $resolvedParts;
-                } else {
-                    $selectors = $this->extendList($resolvedParts, $extensionsByTarget);
-                }
-
-                $boxes[$boxId] = [
+                $boxMeta[$event['boxId']] = [
                     'rawParts'  => $event['rawParts'],
-                    'selectors' => $this->trimBoxSelectors($selectors, $originals, $sourceSpecificity),
-                    'originals' => $resolvedParts,
+                    'originals' => $event['resolvedParts'],
                     'context'   => $event['context'],
                 ];
 
-                foreach ($boxes[$boxId]['selectors'] as $complex) {
-                    foreach ($this->simpleSelectorsOf($complex) as $simple) {
-                        $selectorsBySimple[$simple][$boxId] = true;
+                $complexes = [];
+
+                foreach ($event['resolvedParts'] as $part) {
+                    foreach ($this->tokenizer->parseSelectorList($part) as $complex) {
+                        $complexes[] = $complex;
                     }
                 }
+
+                $this->addSelectorToStore($store, $event['boxId'], $complexes, $event['context']);
 
                 continue;
             }
 
             /** @var array{type: 'extend', boxId: int, target: string, context: string, optional: bool, priority: int} $event */
-            $target     = $event['target'];
-            $sourceBox  = $boxes[$event['boxId']]['selectors'] ?? [];
-            $newSources = [];
-
-            if (! $this->assertExtendTargetExists($target, $event['optional'])) {
+            if (! $this->assertExtendTargetExists($event['target'], $event['optional'])) {
                 continue;
             }
 
-            $this->assertExtendContextIsCompatible($target, $event['context']);
-
-            foreach ($sourceBox as $source) {
-                if ($source === $target) {
-                    continue;
-                }
-
-                $exists = false;
-
-                foreach ($extensionsByTarget[$target] ?? [] as $extension) {
-                    if ($extension['source'] === $source) {
-                        $exists = true;
-
-                        break;
-                    }
-                }
-
-                if ($exists) {
-                    continue;
-                }
-
-                $extensionsByTarget[$target][] = [
-                    'source'   => $source,
-                    'priority' => $event['priority'],
-                ];
-
-                foreach ($this->simpleSelectorsOf($source) as $simple) {
-                    $sourceSpecificity[$simple] ??= $this->selectorSpecificity($source);
-                }
-
-                $newSources[] = [
-                    'source'   => $source,
-                    'priority' => $event['priority'],
-                ];
-            }
-
-            if ($newSources === []) {
-                continue;
-            }
-
-            $snapshot = $extensionsByTarget;
-
-            foreach ($snapshot as $oldTarget => $existingExtensions) {
-                foreach ($existingExtensions as $existing) {
-                    if (! $this->complexContainsSimple($existing['source'], $target)) {
-                        continue;
-                    }
-
-                    $extendedExtenders = $this->extendList([$existing['source']], [$target => $newSources]);
-
-                    foreach (array_slice($extendedExtenders, 1) as $extended) {
-                        if (
-                            $extended === $existing['source']
-                            || $this->hasExtensionSource($extensionsByTarget[$oldTarget] ?? [], $extended)
-                        ) {
-                            continue;
-                        }
-
-                        $transitive = [
-                            'source'   => $extended,
-                            'priority' => $event['priority'],
-                        ];
-
-                        $extensionsByTarget[$oldTarget][] = $transitive;
-
-                        if ($oldTarget === $target) {
-                            $newSources[] = $transitive;
-                        }
-                    }
-                }
-            }
-
-            foreach (array_keys($selectorsBySimple[$target] ?? []) as $affectedBoxId) {
-                $box          = $boxes[$affectedBoxId];
-                $oldSelectors = $box['selectors'];
-                $newSelectors = $this->trimBoxSelectors(
-                    $this->extendList($oldSelectors, [$target => $newSources]),
-                    $originals,
-                    $sourceSpecificity,
-                );
-
-                if ($newSelectors === $oldSelectors) {
-                    continue;
-                }
-
-                foreach ($oldSelectors as $complex) {
-                    foreach ($this->simpleSelectorsOf($complex) as $simple) {
-                        unset($selectorsBySimple[$simple][$affectedBoxId]);
-                    }
-                }
-
-                $box['selectors']      = $newSelectors;
-                $boxes[$affectedBoxId] = $box;
-
-                foreach ($newSelectors as $complex) {
-                    foreach ($this->simpleSelectorsOf($complex) as $simple) {
-                        $selectorsBySimple[$simple][$affectedBoxId] = true;
-                    }
-                }
-            }
+            $this->addExtensionToStore(
+                $store,
+                $store['boxes'][$event['boxId']] ?? [],
+                $event['target'],
+                $event['optional'],
+                $event['context'],
+                $event['priority'],
+            );
         }
 
-        $state->boxes     = $boxes;
+        $state->boxes = [];
+
+        foreach ($boxMeta as $boxId => $meta) {
+            $selectors = [];
+
+            foreach ($store['boxes'][$boxId] ?? [] as $complex) {
+                $selectors[] = $this->complexKey($complex);
+            }
+
+            $state->boxes[$boxId] = [
+                'rawParts'  => $meta['rawParts'],
+                'selectors' => $selectors,
+                'originals' => $meta['originals'],
+                'context'   => $meta['context'],
+            ];
+        }
+
         $state->extendMap = [];
 
-        foreach ($extensionsByTarget as $target => $extensions) {
-            foreach ($extensions as $extension) {
-                $state->extendMap[$target][] = $extension;
+        foreach ($store['extensions'] as $target => $sources) {
+            foreach ($sources as $extension) {
+                $state->extendMap[$target][] = [
+                    'source'   => $this->complexKey($extension['extender']),
+                    'priority' => $extension['priority'],
+                ];
             }
         }
     }
 
     /**
-     * @param array<int, string> $selectors
-     * @param array<string, array<int, array{source: string, priority: int}>> $extensionsByTarget
-     * @return array<int, string>
+     * @param ExtensionStore $store
+     * @param array<int, Complex> $complexes
      */
-    private function extendList(array $selectors, array $extensionsByTarget): array
+    private function addSelectorToStore(array &$store, int $boxId, array $complexes, string $context): void
     {
-        $result = [];
+        $isInvisible = true;
 
-        foreach ($selectors as $complex) {
-            $result[] = $complex;
+        foreach ($complexes as $complex) {
+            if (! $this->isComplexInvisible($complex)) {
+                $isInvisible = false;
 
-            foreach ($extensionsByTarget as $target => $extensions) {
-                $variants = [];
+                break;
+            }
+        }
 
-                foreach ($extensions as $extension) {
-                    $source = $extension['source'];
+        if (! $isInvisible) {
+            foreach ($complexes as $complex) {
+                $store['originals'][$this->complexKey($complex)] = true;
+            }
+        }
 
-                    if ($source === $target) {
+        $extended = $store['extensions'] === []
+            ? $complexes
+            : ($this->extendComplexListInStore($store, $complexes, $store['extensions'], $context) ?? $complexes);
+
+        $store['boxes'][$boxId]    = $extended;
+        $store['contexts'][$boxId] = $context;
+
+        $this->registerBoxSelectors($store, $extended, $boxId);
+    }
+
+    /**
+     * @param ExtensionStore $store
+     * @param array<int, Complex> $complexes
+     */
+    private function registerBoxSelectors(array &$store, array $complexes, int $boxId): void
+    {
+        foreach ($complexes as $complex) {
+            foreach ($complex as $component) {
+                foreach ($this->tokenizer->tokenizeCompound($component['sel']) as $simple) {
+                    if ($simple === '') {
                         continue;
                     }
 
-                    foreach ($this->replaceExtendTargetInSelectorPart($complex, $target, $source) as $variant) {
-                        if ($variant !== '' && $variant !== $complex && ! in_array($variant, $variants, true)) {
-                            $variants[] = $variant;
+                    $store['selectors'][$simple][$boxId] = true;
+
+                    $pseudo = $this->tokenizer->parsePseudoToken($simple);
+
+                    if ($pseudo !== null && $pseudo['selector'] !== null) {
+                        $innerComplexes = $this->tokenizer->parseSelectorList($pseudo['selector']);
+                        $this->registerBoxSelectors($store, $innerComplexes, $boxId);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * @param ExtensionStore $store
+     * @param array<int, Complex> $extenderComplexes
+     */
+    private function addExtensionToStore(
+        array &$store,
+        array $extenderComplexes,
+        string $target,
+        bool $optional,
+        string $context,
+        int $priority,
+    ): void {
+        $selectorsForTarget = $store['selectors'][$target] ?? null;
+        $hadExistingExtensions = isset($store['byExtender'][$target]);
+
+        if (! isset($store['extensions'][$target])) {
+            $store['extensions'][$target] = [];
+        }
+
+        $sources = & $store['extensions'][$target];
+
+        /** @var array<string, Extension> $newExtensions */
+        $newExtensions = [];
+
+        foreach ($extenderComplexes as $extender) {
+            if ($this->isUselessComplex($extender)) {
+                continue;
+            }
+
+            $key = $this->complexKey($extender);
+
+            if (isset($sources[$key])) {
+                if (! $optional) {
+                    $sources[$key]['optional'] = false;
+                }
+
+                continue;
+            }
+
+            $extension = [
+                'extender' => $extender,
+                'target'   => $target,
+                'context'  => $context,
+                'optional' => $optional,
+                'priority' => $priority,
+            ];
+
+            $sources[$key] = $extension;
+
+            foreach ($this->simpleSelectorsRecursive($extender) as $simple) {
+                $store['byExtender'][$simple][] = $extension;
+
+                if (! isset($store['sourceSpecificity'][$simple])) {
+                    $store['sourceSpecificity'][$simple] = $this->structuralSpecificity($extender);
+                }
+            }
+
+            if ($selectorsForTarget !== null || $hadExistingExtensions) {
+                $newExtensions[$key] = $extension;
+            }
+        }
+
+        $existingExtensions = $store['byExtender'][$target] ?? [];
+
+        if ($newExtensions === []) {
+            return;
+        }
+
+        /** @var ExtensionMap $newExtensionsByTarget */
+        $newExtensionsByTarget = [$target => $newExtensions];
+
+        if ($existingExtensions !== []) {
+            foreach (
+                $this->extendExistingExtensionsInStore($store, $existingExtensions, $newExtensionsByTarget) as $additionalTarget => $map
+            ) {
+                foreach ($map as $key => $extension) {
+                    $newExtensionsByTarget[$additionalTarget][$key] = $extension;
+                }
+            }
+        }
+
+        if ($selectorsForTarget !== null) {
+            $this->extendExistingSelectorsInStore($store, array_keys($selectorsForTarget), $newExtensionsByTarget);
+        }
+    }
+
+    /**
+     * @param ExtensionStore $store
+     * @param list<Extension> $extensions
+     * @param ExtensionMap $newExtensions
+     * @return ExtensionMap
+     */
+    private function extendExistingExtensionsInStore(array &$store, array $extensions, array $newExtensions): array
+    {
+        /** @var ExtensionMap $additional */
+        $additional = [];
+
+        foreach ($extensions as $extension) {
+            $target = $extension['target'];
+
+            if (! isset($store['extensions'][$target])) {
+                continue;
+            }
+
+            $extendedExtender = $this->extendSingleComplex(
+                $store,
+                $extension['extender'],
+                $newExtensions,
+                $extension['context'],
+            );
+
+            if ($extendedExtender === null) {
+                continue;
+            }
+
+            $start = 0;
+
+            if ($this->complexKey($extendedExtender[0]) === $this->complexKey($extension['extender'])) {
+                $start = 1;
+            }
+
+            $count = count($extendedExtender);
+
+            for ($i = $start; $i < $count; $i++) {
+                $variant    = $extendedExtender[$i];
+                $variantKey = $this->complexKey($variant);
+
+                if ($variantKey === $this->complexKey($extension['extender'])) {
+                    continue;
+                }
+
+                $withExtender           = $extension;
+                $withExtender['extender'] = $variant;
+
+                if (isset($store['extensions'][$target][$variantKey])) {
+                    $store['extensions'][$target][$variantKey]['optional']
+                        = $store['extensions'][$target][$variantKey]['optional'] && $withExtender['optional'];
+
+                    continue;
+                }
+
+                $store['extensions'][$target][$variantKey] = $withExtender;
+
+                foreach ($variant as $component) {
+                    foreach ($this->tokenizer->tokenizeCompound($component['sel']) as $simple) {
+                        if ($simple === '') {
+                            continue;
                         }
+
+                        $store['byExtender'][$simple][] = $withExtender;
                     }
                 }
 
-                array_push($result, ...$variants);
+                if (isset($newExtensions[$target])) {
+                    $additional[$target][$variantKey] = $withExtender;
+                }
+            }
+        }
+
+        return $additional;
+    }
+
+    /**
+     * @param ExtensionStore $store
+     * @param list<int> $boxIds
+     * @param ExtensionMap $newExtensions
+     */
+    private function extendExistingSelectorsInStore(array &$store, array $boxIds, array $newExtensions): void
+    {
+        foreach ($boxIds as $boxId) {
+            $oldValue = $store['boxes'][$boxId] ?? [];
+            $context  = $store['contexts'][$boxId] ?? '';
+
+            $newValue = $this->extendComplexListInStore($store, $oldValue, $newExtensions, $context);
+
+            if ($newValue === null) {
+                continue;
+            }
+
+            $store['boxes'][$boxId] = $newValue;
+
+            $this->registerBoxSelectors($store, $newValue, $boxId);
+        }
+    }
+
+    /**
+     * @param ExtensionStore $store
+     * @param array<int, Complex> $list
+     * @param ExtensionMap $extensionsMap
+     * @return array<int, Complex>|null
+     */
+    private function extendComplexListInStore(array &$store, array $list, array $extensionsMap, string $context): ?array
+    {
+        $extended  = null;
+        $unchanged = [];
+
+        foreach ($list as $complex) {
+            $result = $this->extendSingleComplex($store, $complex, $extensionsMap, $context);
+
+            if ($result === null) {
+                if ($extended !== null) {
+                    $extended[] = $complex;
+                } else {
+                    $unchanged[] = $complex;
+                }
+
+                continue;
+            }
+
+            $extended ??= $unchanged;
+
+            foreach ($result as $item) {
+                $extended[] = $item;
+            }
+        }
+
+        if ($extended === null) {
+            return null;
+        }
+
+        return $this->trimExtendedComplexes(
+            $store,
+            $extended,
+            fn(array $complex): bool => isset($store['originals'][$this->complexKey($complex)]),
+        );
+    }
+
+    /**
+     * @param ExtensionStore $store
+     * @param Complex $complex
+     * @param ExtensionMap $extensionsMap
+     * @return array<int, Complex>|null
+     */
+    private function extendSingleComplex(array &$store, array $complex, array $extensionsMap, string $context): ?array
+    {
+        $lead = $complex[0]['lead'] ?? '';
+
+        if ($this->countCombinatorWords($lead) > 1) {
+            return null;
+        }
+
+        $isOriginal = isset($store['originals'][$this->complexKey($complex)]);
+
+        /** @var list<list<Complex>>|null $extendedNotExpanded */
+        $extendedNotExpanded = null;
+
+        $componentCount = count($complex);
+
+        for ($i = 0; $i < $componentCount; $i++) {
+            $component = $complex[$i];
+            $extended  = $this->extendCompoundComponent($store, $component, $extensionsMap, $context, $isOriginal);
+
+            if ($extended === null) {
+                if ($extendedNotExpanded !== null) {
+                    $extendedNotExpanded[] = [[[
+                        'sel'  => $component['sel'],
+                        'comb' => $component['comb'],
+                    ]]];
+                }
+            } elseif ($extendedNotExpanded !== null) {
+                $extendedNotExpanded[] = $extended;
+            } elseif ($i !== 0) {
+                $extendedNotExpanded = [[array_slice($complex, 0, $i)], $extended];
+            } elseif ($lead === '') {
+                $extendedNotExpanded = [$extended];
+            } else {
+                $filtered = [];
+
+                foreach ($extended as $newComplex) {
+                    if (! isset($newComplex[0])) {
+                        continue;
+                    }
+
+                    $newLead = $newComplex[0]['lead'] ?? '';
+
+                    if ($newLead === '' || $newLead === $lead) {
+                        $newComplex[0]['lead'] = $lead;
+                        $filtered[]            = $newComplex;
+                    }
+                }
+
+                $extendedNotExpanded = [$filtered];
+            }
+        }
+
+        if ($extendedNotExpanded === null) {
+            return null;
+        }
+
+        $result = [];
+        $first  = true;
+
+        foreach ($this->tokenizer->paths($extendedNotExpanded) as $path) {
+            foreach ($this->tokenizer->weave($path) as $output) {
+                if ($first && $isOriginal) {
+                    $store['originals'][$this->complexKey($output)] = true;
+                }
+
+                $first = false;
+
+                $result[] = $output;
             }
         }
 
@@ -361,171 +628,776 @@ final readonly class ExtendsResolver
     }
 
     /**
-     * @param array<int, string> $selectors
-     * @param array<string, true> $originals
-     * @param array<string, int> $sourceSpecificity
-     * @return array<int, string>
+     * @param ExtensionStore $store
+     * @param array{sel: string, comb: string, lead?: string} $component
+     * @param ExtensionMap $extensionsMap
+     * @return array<int, Complex>|null
      */
-    private function trimBoxSelectors(array $selectors, array $originals, array $sourceSpecificity): array
-    {
-        $protectedLookup = array_flip(array_keys($originals));
+    private function extendCompoundComponent(
+        array &$store,
+        array $component,
+        array $extensionsMap,
+        string $context,
+        bool $inOriginal,
+    ): ?array {
+        /** @var list<string>|null $targetsUsed */
+        $targetsUsed = null;
 
-        /** @var list<string> $result */
-        $result = [];
+        $simples = $this->tokenizer->tokenizeCompound($component['sel']);
 
-        for ($i = count($selectors) - 1; $i >= 0; $i--) {
-            /** @var string $complex */
-            $complex = $selectors[$i];
+        /** @var list<list<Extender>>|null $options */
+        $options = null;
 
-            if (isset($protectedLookup[$complex])) {
-                $duplicateIndex = array_search($complex, $result, true);
-
-                if ($duplicateIndex === false) {
-                    array_unshift($result, $complex);
-
-                    continue;
-                }
-
-                $slice = array_slice($result, 0, $duplicateIndex + 1);
-
-                /** @var non-empty-list<string> $slice */
-                $rotated = array_merge([$slice[count($slice) - 1]], array_slice($slice, 0, -1));
-                $result  = array_merge($rotated, array_slice($result, $duplicateIndex + 1));
-
+        foreach ($simples as $index => $simple) {
+            if ($simple === '') {
                 continue;
             }
 
-            if ($this->isSimpleCompound($complex)) {
-                $isRedundant = false;
+            $extended = $this->extendSimpleSelector($store, $simple, $extensionsMap, $context, $targetsUsed);
 
-                /** @var string $candidate */
-                foreach ($result as $candidate) {
-                    if ($candidate === $complex) {
-                        $isRedundant = true;
+            if ($extended === null) {
+                if ($options !== null) {
+                    $options[] = [$this->extenderForSimple($simple)];
+                }
+            } else {
+                if ($options === null) {
+                    $options = [];
 
-                        break;
+                    if ($index !== 0) {
+                        $options[] = [$this->extenderForCompound(array_slice($simples, 0, $index))];
                     }
                 }
 
-                if (! $isRedundant) {
-                    array_unshift($result, $complex);
+                foreach ($extended as $choiceGroup) {
+                    $options[] = $choiceGroup;
+                }
+            }
+        }
+
+        if ($options === null) {
+            return null;
+        }
+
+        if ($targetsUsed !== null && count($targetsUsed) !== count($extensionsMap)) {
+            return null;
+        }
+
+        if (count($options) === 1) {
+            /** @var list<Complex>|null $result */
+            $result = null;
+
+            foreach ($options[0] as $extender) {
+                $this->assertExtensionMediaContext($extender, $context);
+
+                $candidate = $this->withAdditionalCombinators($extender['selector'], $component['comb']);
+
+                if ($this->isUselessComplex($candidate)) {
+                    continue;
                 }
 
+                $result[] = $candidate;
+            }
+
+            return $result;
+        }
+
+        $paths     = $this->tokenizer->paths($options);
+        $firstPath = $paths[0];
+
+        $originalTokens = [];
+
+        foreach ($firstPath as $extender) {
+            $lastComponent = $extender['selector'][count($extender['selector']) - 1];
+
+            foreach ($this->tokenizer->tokenizeCompound($lastComponent['sel']) as $token) {
+                if ($token !== '') {
+                    $originalTokens[] = $token;
+                }
+            }
+        }
+
+        /** @var list<Complex> $result */
+        $result = [[[ 'sel' => implode('', $originalTokens), 'comb' => $component['comb'] ]]];
+
+        foreach (array_slice($paths, 1) as $path) {
+            $unified = $this->unifyExtenderPath($path, $context);
+
+            if ($unified === null) {
                 continue;
             }
 
-            $maxSpecificity = $this->maxSourceSpecificity($complex, $sourceSpecificity);
+            foreach ($unified as $unifiedComplex) {
+                $withCombinators = $this->withAdditionalCombinators($unifiedComplex, $component['comb']);
 
-            $isRedundant = false;
+                if (! $this->isUselessComplex($withCombinators)) {
+                    $result[] = $withCombinators;
+                }
+            }
+        }
 
-            /** @var string $candidate */
-            foreach ($result as $candidate) {
-                if (
-                    $this->selectorSpecificity($candidate) >= $maxSpecificity
-                    && $this->isSuperselectorOf($candidate, $complex)
-                ) {
-                    $isRedundant = true;
+        $originalKey = $this->complexKey($result[0]);
+
+        return $this->trimExtendedComplexes(
+            $store,
+            $result,
+            fn(array $complex): bool => $inOriginal && $this->complexKey($complex) === $originalKey,
+        );
+    }
+
+    /**
+     * @param list<Extender> $path
+     * @return array<int, Complex>|null
+     */
+    private function unifyExtenderPath(array $path, string $context): ?array
+    {
+        /** @var list<Complex> $toUnify */
+        $toUnify        = [];
+        $originalTokens = null;
+
+        foreach ($path as $extender) {
+            if ($extender['original']) {
+                $lastComponent = $extender['selector'][count($extender['selector']) - 1];
+
+                foreach ($this->tokenizer->tokenizeCompound($lastComponent['sel']) as $token) {
+                    if ($token !== '') {
+                        $originalTokens[] = $token;
+                    }
+                }
+            } else {
+                if ($this->isUselessComplex($extender['selector'])) {
+                    return null;
+                }
+
+                $toUnify[] = $extender['selector'];
+            }
+        }
+
+        if ($originalTokens !== null) {
+            array_unshift($toUnify, [['sel' => implode('', $originalTokens), 'comb' => '']]);
+        }
+
+        $complexes = $this->unifyComplexList($toUnify);
+
+        if ($complexes === null) {
+            return null;
+        }
+
+        foreach ($path as $extender) {
+            $this->assertExtensionMediaContext($extender, $context);
+        }
+
+        return $complexes;
+    }
+
+    /**
+     * @param list<Complex> $complexes
+     * @return list<Complex>|null
+     */
+    private function unifyComplexList(array $complexes): ?array
+    {
+        if (count($complexes) === 1) {
+            return $complexes;
+        }
+
+        $lead     = '';
+        $trailing = '';
+        $base     = null;
+
+        foreach ($complexes as $complex) {
+            if ($this->isUselessComplex($complex)) {
+                return null;
+            }
+
+            $complexLead = $complex[0]['lead'] ?? '';
+
+            if (count($complex) === 1 && $complexLead !== '') {
+                if ($lead === '') {
+                    $lead = $complexLead;
+                } elseif ($lead !== $complexLead) {
+                    return null;
+                }
+            }
+
+            $last            = $complex[count($complex) - 1];
+            $lastCombination = trim($last['comb']);
+
+            if ($lastCombination !== '' && $this->countCombinatorWords($lastCombination) === 1) {
+                if ($trailing === '') {
+                    $trailing = $lastCombination;
+                } elseif ($trailing !== $lastCombination) {
+                    return null;
+                }
+            }
+
+            $candidate = $base === null
+                ? $last['sel']
+                : $this->tokenizer->unifyCompoundsStrict($base, $last['sel']);
+
+            if ($candidate === null) {
+                return null;
+            }
+
+            $base = $candidate;
+        }
+
+        if ($base === null) {
+            return null;
+        }
+
+        $baseComplex = [['sel' => $base, 'comb' => $trailing]];
+
+        if ($lead !== '') {
+            $baseComplex[0]['lead'] = $lead;
+        }
+
+        /** @var list<Complex> $prefixes */
+        $prefixes = [];
+
+        foreach ($complexes as $complex) {
+            if (count($complex) > 1) {
+                $prefixes[] = array_slice($complex, 0, -1);
+            }
+        }
+
+        if ($prefixes === []) {
+            return [$baseComplex];
+        }
+
+        $lastPrefix   = array_pop($prefixes);
+        $lastPrefix[] = $baseComplex[0];
+
+        return $this->tokenizer->weave([...$prefixes, $lastPrefix]);
+    }
+
+    /**
+     * @param ExtensionStore $store
+     * @param string $simple
+     * @param ExtensionMap $extensionsMap
+     * @param list<string>|null $targetsUsed
+     * @return list<list<Extender>>|null
+     */
+    private function extendSimpleSelector(
+        array &$store,
+        string $simple,
+        array $extensionsMap,
+        string $context,
+        ?array &$targetsUsed,
+    ): ?array {
+        $pseudo = $this->tokenizer->parsePseudoToken($simple);
+
+        if ($pseudo !== null && $pseudo['selector'] !== null) {
+            $extendedPseudos = $this->extendPseudoSelector($store, $simple, $extensionsMap, $context);
+
+            if ($extendedPseudos !== null) {
+                $choices = [];
+
+                foreach ($extendedPseudos as $pseudoToken) {
+                    $choices[] = $this->withoutPseudoChoices($pseudoToken, $extensionsMap, $targetsUsed)
+                        ?? [$this->extenderForSimple($pseudoToken)];
+                }
+
+                return $choices;
+            }
+        }
+
+        $direct = $this->withoutPseudoChoices($simple, $extensionsMap, $targetsUsed);
+
+        return $direct === null ? null : [$direct];
+    }
+
+    /**
+     * @param string $simple
+     * @param array<string, array<string, Extension>> $extensionsMap
+     * @param list<string>|null $targetsUsed
+     * @return list<Extender>|null
+     */
+    private function withoutPseudoChoices(string $simple, array $extensionsMap, ?array &$targetsUsed): ?array
+    {
+        $extensionsForSimple = $extensionsMap[$simple] ?? null;
+
+        if ($extensionsForSimple === null) {
+            return null;
+        }
+
+        if ($targetsUsed !== null) {
+            $targetsUsed[] = $simple;
+        }
+
+        $choices = [$this->extenderForSimple($simple)];
+
+        foreach ($extensionsForSimple as $extension) {
+            $choices[] = [
+                'selector' => $extension['extender'],
+                'original' => false,
+                'context'  => $extension['context'],
+            ];
+        }
+
+        return $choices;
+    }
+
+    /**
+     * @param ExtensionStore $store
+     * @param ExtensionMap $extensionsMap
+     * @return list<string>|null
+     */
+    private function extendPseudoSelector(array &$store, string $token, array $extensionsMap, string $context): ?array
+    {
+        $pseudo = $this->tokenizer->parsePseudoToken($token);
+
+        if ($pseudo === null || $pseudo['selector'] === null) {
+            return null;
+        }
+
+        $inner = $this->tokenizer->parseSelectorList($pseudo['selector']);
+
+        $extendedInner = $this->extendComplexListInStore($store, $inner, $extensionsMap, $context);
+
+        if ($extendedInner === null) {
+            return null;
+        }
+
+        $name           = $pseudo['name'];
+        $normalizedName  = $this->normalizePseudoName($name);
+
+        $hadComplexOriginally = false;
+
+        foreach ($inner as $complex) {
+            if (count($complex) > 1) {
+                $hadComplexOriginally = true;
+
+                break;
+            }
+        }
+
+        $complexes = $extendedInner;
+
+        if ($normalizedName === 'not' && ! $hadComplexOriginally) {
+            $hasSingle = false;
+
+            foreach ($extendedInner as $complex) {
+                if (count($complex) === 1) {
+                    $hasSingle = true;
 
                     break;
                 }
             }
 
-            if (! $isRedundant) {
-                for ($j = 0; $j < $i; $j++) {
-                    /** @var string $candidate */
-                    $candidate = $selectors[$j];
+            if ($hasSingle) {
+                $kept = [];
 
+                foreach ($extendedInner as $complex) {
+                    if (count($complex) <= 1) {
+                        $kept[] = $complex;
+                    }
+                }
+
+                $complexes = $kept;
+            }
+        }
+
+        /** @var list<Complex> $expanded */
+        $expanded = [];
+
+        foreach ($complexes as $complex) {
+            $innerSimple = $this->singleSimpleOfComplex($complex);
+
+            if ($innerSimple === null) {
+                $expanded[] = $complex;
+
+                continue;
+            }
+
+            $innerPseudo = $this->tokenizer->parsePseudoToken($innerSimple);
+
+            if ($innerPseudo === null || $innerPseudo['selector'] === null) {
+                $expanded[] = $complex;
+
+                continue;
+            }
+
+            $innerNormalizedName = $this->normalizePseudoName($innerPseudo['name']);
+
+            $matched = match ($normalizedName) {
+                'not'            => in_array($innerNormalizedName, ['is', 'matches', 'where'], true),
+                'is',
+                'matches',
+                'where',
+                'any',
+                'current',
+                'nth-child',
+                'nth-last-child' => $innerPseudo['name'] === $name && $innerPseudo['argument'] === $pseudo['argument'],
+                'has',
+                'host',
+                'host-context',
+                'slotted'        => true,
+                default          => false,
+            };
+
+            if (! $matched) {
+                continue;
+            }
+
+            if (in_array($normalizedName, ['has', 'host', 'host-context', 'slotted'], true)) {
+                $expanded[] = $complex;
+
+                continue;
+            }
+
+            foreach ($this->tokenizer->parseSelectorList($innerPseudo['selector']) as $innerComplex) {
+                $expanded[] = $innerComplex;
+            }
+        }
+
+        if ($normalizedName === 'not' && count($inner) === 1) {
+            $tokens = [];
+
+            foreach ($expanded as $complex) {
+                $tokens[] = ':' . $name . '(' . $this->complexKey($complex) . ')';
+            }
+
+            return $tokens === [] ? null : $tokens;
+        }
+
+        $joined = [];
+
+        foreach ($expanded as $complex) {
+            $joined[] = $this->complexKey($complex);
+        }
+
+        $replaced = implode(', ', $joined);
+        $position = strrpos($token, $pseudo['selector']);
+
+        if ($position === false || $pseudo['selector'] === '') {
+            return [':' . $name . '(' . $replaced . ')'];
+        }
+
+        return [
+            substr($token, 0, $position)
+            . $replaced
+            . substr($token, $position + strlen($pseudo['selector'])),
+        ];
+    }
+
+    /**
+     * @param ExtensionStore $store
+     * @param list<Complex> $complexes
+     * @param callable(Complex): bool $isOriginal
+     * @return list<Complex>
+     */
+    private function trimExtendedComplexes(array $store, array $complexes, callable $isOriginal): array
+    {
+        if (count($complexes) > 100) {
+            return $complexes;
+        }
+
+        /** @var list<Complex> $result */
+        $result       = [];
+        $numOriginals = 0;
+
+        $reversed   = array_reverse($complexes);
+        $totalCount = count($complexes);
+
+        foreach ($reversed as $reverseIndex => $complex) {
+            $i = $totalCount - 1 - $reverseIndex;
+
+            if ($isOriginal($complex)) {
+                $duplicateIndex = -1;
+                $scanIndex      = 0;
+
+                foreach (array_slice($result, 0, $numOriginals) as $originalCandidate) {
+                    if ($this->complexKey($originalCandidate) === $this->complexKey($complex)) {
+                        $duplicateIndex = $scanIndex;
+
+                        break;
+                    }
+
+                    $scanIndex++;
+                }
+
+                if ($duplicateIndex >= 0) {
+                    $result = $this->rotateSlice($result, 0, $duplicateIndex + 1);
+
+                    continue;
+                }
+
+                $numOriginals++;
+                array_unshift($result, $complex);
+
+                continue;
+            }
+
+            $maxSpecificity = 0;
+
+            foreach ($complex as $component) {
+                $maxSpecificity = max(
+                    $maxSpecificity,
+                    $this->sourceSpecificityForCompound($store, $component['sel']),
+                );
+            }
+
+            $redundant = false;
+
+            foreach ($result as $candidate) {
+                if (
+                    $this->structuralSpecificity($candidate) >= $maxSpecificity
+                    && $this->tokenizer->complexesAreSuperselector($candidate, $complex)
+                ) {
+                    $redundant = true;
+
+                    break;
+                }
+            }
+
+            if (! $redundant) {
+                foreach (array_slice($complexes, 0, $i) as $earlierCandidate) {
                     if (
-                        $this->selectorSpecificity($candidate) >= $maxSpecificity
-                        && $this->isSuperselectorOf($candidate, $complex)
+                        $this->structuralSpecificity($earlierCandidate) >= $maxSpecificity
+                        && $this->tokenizer->complexesAreSuperselector($earlierCandidate, $complex)
                     ) {
-                        $isRedundant = true;
+                        $redundant = true;
 
                         break;
                     }
                 }
             }
 
-            if (! $isRedundant) {
+            if (! $redundant) {
                 array_unshift($result, $complex);
             }
         }
 
-        /** @var list<string> $result */
         return $result;
     }
 
     /**
-     * @param array<string, int> $sourceSpecificity
+     * @param list<Complex> $list
+     * @return list<Complex>
      */
-    private function maxSourceSpecificity(string $complex, array $sourceSpecificity): int
+    private function rotateSlice(array $list, int $start, int $end): array
     {
-        $max = 0;
+        $moved = $list[$end - 1];
 
-        foreach ($this->splitSelectorCompoundsByDescendant($complex) as $compound) {
-            foreach ($this->tokenizeSelectorCompound($compound) as $simple) {
-                if ($simple !== '') {
-                    $max = max($max, $sourceSpecificity[$simple] ?? 0);
-                }
+        return [
+            ...array_slice($list, 0, $start),
+            $moved,
+            ...array_slice($list, $start, $end - $start - 1),
+            ...array_slice($list, $end),
+        ];
+    }
+
+    /**
+     * @param Complex $complex
+     */
+    private function complexKey(array $complex): string
+    {
+        return $this->tokenizer->complexComponentsToString($complex);
+    }
+
+    /**
+     * @param Complex $complex
+     */
+    private function isUselessComplex(array $complex): bool
+    {
+        if ($this->countCombinatorWords($complex[0]['lead'] ?? '') > 1) {
+            return true;
+        }
+
+        foreach ($complex as $component) {
+            if ($this->countCombinatorWords($component['comb']) > 1) {
+                return true;
             }
         }
 
-        return $max;
+        return false;
     }
 
-    private function isSimpleCompound(string $selector): bool
+    private function countCombinatorWords(string $combinators): int
     {
-        return ! str_contains($selector, ' ')
-            && ! str_contains($selector, '>')
-            && ! str_contains($selector, '+')
-            && ! str_contains($selector, '~');
+        $count = 0;
+
+        foreach (explode(' ', $combinators) as $word) {
+            if ($word !== '') {
+                $count++;
+            }
+        }
+
+        return $count;
     }
 
-    private function selectorSpecificity(string $complex): int
+    /**
+     * @param Complex $complex
+     */
+    private function structuralSpecificity(array $complex): int
     {
-        $specificity = 0;
+        $specificity = ($complex[0]['lead'] ?? '') !== '' ? 1 : 0;
 
-        foreach ($this->splitSelectorCompoundsByDescendant($complex) as $compound) {
-            foreach ($this->tokenizeSelectorCompound($compound) as $simple) {
-                $specificity += $this->simpleSpecificity($simple);
+        foreach ($complex as $component) {
+            foreach ($this->tokenizer->tokenizeCompound($component['sel']) as $token) {
+                if ($token !== '') {
+                    $specificity += $this->simpleStructuralSpecificity($token);
+                }
             }
         }
 
         return $specificity;
     }
 
-    private function simpleSpecificity(string $simple): int
+    private function simpleStructuralSpecificity(string $token): int
     {
-        if ($simple === '' || $simple === '*' || $simple === '*|*' || $simple[0] === '%') {
+        $first = $token[0];
+
+        if ($first === '#') {
+            return 1000000;
+        }
+
+        if ($first === '.' || $first === '%' || $first === '[') {
+            return 1000;
+        }
+
+        if ($first === '*') {
             return 0;
         }
 
-        if ($simple[0] === '#') {
-            return 100;
+        if ($first === ':') {
+            return $this->pseudoStructuralSpecificity($token);
         }
 
-        if ($simple[0] === '.' || $simple[0] === '[') {
-            return 10;
-        }
-
-        if ($simple[0] === ':' && ($simple[1] ?? '') !== ':') {
-            return 10;
+        if (str_ends_with($token, '|*')) {
+            return 0;
         }
 
         return 1;
     }
 
+    private function pseudoStructuralSpecificity(string $token): int
+    {
+        $parsed = $this->tokenizer->parsePseudoToken($token);
+
+        if ($parsed === null || $parsed['isElement']) {
+            return 1;
+        }
+
+        if ($parsed['selector'] === null) {
+            return 1000;
+        }
+
+        $normalizedName = $this->normalizePseudoName($parsed['name']);
+
+        return match ($normalizedName) {
+            'where'          => 0,
+            'is',
+            'not',
+            'has',
+            'matches'        => $this->maxInnerStructuralSpecificity($parsed['selector']),
+            'nth-child',
+            'nth-last-child' => 1000 + $this->maxInnerStructuralSpecificity($parsed['selector']),
+            default          => 1000,
+        };
+    }
+
+    private function maxInnerStructuralSpecificity(string $selectorText): int
+    {
+        $max = 0;
+
+        foreach ($this->tokenizer->parseSelectorList($selectorText) as $complex) {
+            $max = max($max, $this->structuralSpecificity($complex));
+        }
+
+        return $max;
+    }
+
+    private function normalizePseudoName(string $name): string
+    {
+        $lowered = strtolower($name);
+
+        if ($lowered !== '' && $lowered[0] === '-') {
+            $secondDash = strpos($lowered, '-', 1);
+
+            if ($secondDash !== false && $secondDash > 1) {
+                $lowered = substr($lowered, $secondDash + 1);
+            }
+        }
+
+        return $lowered;
+    }
+
     /**
-     * @return array<int, string>
+     * @param ExtensionStore $store
      */
-    private function simpleSelectorsOf(string $complex): array
+    private function sourceSpecificityForCompound(array $store, string $compound): int
+    {
+        $specificity = 0;
+
+        foreach ($this->tokenizer->tokenizeCompound($compound) as $token) {
+            if ($token === '') {
+                continue;
+            }
+
+            $specificity = max($specificity, $store['sourceSpecificity'][$token] ?? 0);
+        }
+
+        return $specificity;
+    }
+
+    /**
+     * @param Complex $complex
+     * @return Complex
+     */
+    private function withAdditionalCombinators(array $complex, string $combinators): array
+    {
+        if ($complex === [] || $combinators === '') {
+            return $complex;
+        }
+
+        $out       = $complex;
+        $lastIndex = count($out) - 1;
+
+        $out[$lastIndex]['comb'] = $out[$lastIndex]['comb'] === ''
+            ? $combinators
+            : $out[$lastIndex]['comb'] . ' ' . $combinators;
+
+        return $out;
+    }
+
+    /**
+     * @param Complex $complex
+     */
+    private function isComplexInvisible(array $complex): bool
+    {
+        foreach ($this->simpleSelectorsRecursive($complex) as $simple) {
+            if ($simple !== '' && $simple[0] === '%') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param Complex $complex
+     * @return list<string>
+     */
+    private function simpleSelectorsRecursive(array $complex): array
     {
         $simples = [];
 
-        foreach ($this->splitSelectorCompoundsByDescendant($complex) as $compound) {
-            foreach ($this->tokenizeSelectorCompound($compound) as $simple) {
-                if ($simple !== '') {
-                    $simples[] = $simple;
+        foreach ($complex as $component) {
+            foreach ($this->tokenizer->tokenizeCompound($component['sel']) as $simple) {
+                if ($simple === '') {
+                    continue;
+                }
+
+                $simples[] = $simple;
+
+                $pseudo = $this->tokenizer->parsePseudoToken($simple);
+
+                if ($pseudo !== null && $pseudo['selector'] !== null) {
+                    foreach ($this->tokenizer->parseSelectorList($pseudo['selector']) as $innerComplex) {
+                        foreach ($this->simpleSelectorsRecursive($innerComplex) as $innerSimple) {
+                            $simples[] = $innerSimple;
+                        }
+                    }
                 }
             }
         }
@@ -534,28 +1406,66 @@ final readonly class ExtendsResolver
     }
 
     /**
-     * @param array<int, array{source: string, priority: int}> $extensions
+     * @param Complex $complex
      */
-    private function hasExtensionSource(array $extensions, string $source): bool
+    private function singleSimpleOfComplex(array $complex): ?string
     {
-        foreach ($extensions as $extension) {
-            if ($extension['source'] === $source) {
-                return true;
-            }
+        if (count($complex) !== 1 || ($complex[0]['lead'] ?? '') !== '') {
+            return null;
         }
 
-        return false;
+        $tokens = $this->tokenizer->tokenizeCompound($complex[0]['sel']);
+
+        return count($tokens) === 1 && $tokens[0] !== '' ? $tokens[0] : null;
     }
 
-    private function complexContainsSimple(string $complex, string $simple): bool
+    /**
+     * @return array{selector: Complex, original: bool, context: string}
+     */
+    private function extenderForSimple(string $simple): array
     {
-        return in_array($simple, $this->simpleSelectorsOf($complex), true);
+        return [
+            'selector' => [['sel' => $simple, 'comb' => '']],
+            'original' => true,
+            'context'  => '',
+        ];
+    }
+
+    /**
+     * @param list<string> $tokens
+     * @return array{selector: Complex, original: bool, context: string}
+     */
+    private function extenderForCompound(array $tokens): array
+    {
+        return [
+            'selector' => [['sel' => implode('', $tokens), 'comb' => '']],
+            'original' => true,
+            'context'  => '',
+        ];
+    }
+
+    /**
+     * @param array{selector: Complex, original: bool, context: string} $extender
+     */
+    private function assertExtensionMediaContext(array $extender, string $context): void
+    {
+        $extensionContext = $extender['context'];
+
+        if ($extensionContext === '' || $extensionContext === $context) {
+            return;
+        }
+
+        throw new SassErrorException('You may not @extend selectors across media queries.');
     }
 
     public function registerExtend(string $target, string $source, int $priority = 0): void
     {
-        $target = $this->tokenizer->normalizeSelectorAttributes(trim($target));
-        $source = $this->tokenizer->normalizeSelectorAttributes(trim($source));
+        $target = $this->tokenizer->canonicalizeSelectorEscapes(
+            $this->tokenizer->normalizeSelectorAttributes(trim($target)),
+        );
+        $source = $this->tokenizer->canonicalizeSelectorEscapes(
+            $this->tokenizer->normalizeSelectorAttributes(trim($source)),
+        );
 
         if ($target === '' || $source === '' || $target === $source) {
             return;
@@ -575,7 +1485,9 @@ final readonly class ExtendsResolver
      */
     public function extractSimpleExtendTargetSelectors(string $target): array
     {
-        $target = $this->tokenizer->normalizeSelectorAttributes(trim($target));
+        $target = $this->tokenizer->canonicalizeSelectorEscapes(
+            $this->tokenizer->normalizeSelectorAttributes(trim($target)),
+        );
 
         if ($target === '') {
             return [];
@@ -592,6 +1504,13 @@ final readonly class ExtendsResolver
 
     public function applyExtendsToSelector(string $selector): string
     {
+        $lineBreaks = array_merge(
+            $this->ctx->outputState->extends->partLineBreaks,
+            $this->collectLineBreakMap($selector),
+        );
+
+        $selector = $this->tokenizer->canonicalizeSelectorEscapes($selector);
+
         if (! $this->hasCollectedExtends() && ! str_contains($selector, '%')) {
             return $selector;
         }
@@ -602,8 +1521,17 @@ final readonly class ExtendsResolver
             $parts = $this->splitTopLevelSelectorList($selector);
 
             foreach ($state->boxes as $box) {
-                if ($box['rawParts'] === $parts) {
-                    return $this->renderBoxSelectors($box['selectors']);
+                if ($box['originals'] === $parts) {
+                    return $this->joinSelectorListWithLineBreaks(
+                        $this->renderBoxSelectors($box['selectors']),
+                        $lineBreaks,
+                    );
+                }
+            }
+
+            foreach ($state->boxes as $box) {
+                if (in_array($selector, $box['selectors'], true)) {
+                    return $selector;
                 }
             }
         }
@@ -638,13 +1566,65 @@ final readonly class ExtendsResolver
         $unique      = array_values(array_unique($result));
         $uniqueExact = array_values(array_unique($exact));
 
-        return implode(', ', $this->trimRedundantSelectors($unique, $uniqueExact));
+        return $this->joinSelectorListWithLineBreaks(
+            $this->trimRedundantSelectors($unique, $uniqueExact),
+            $lineBreaks,
+        );
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private function collectLineBreakMap(string $rawSelector): array
+    {
+        $map = [];
+
+        foreach ($this->tokenizer->splitAtTopLevel($rawSelector, [','], handleQuotes: true, trim: false) as $part) {
+            if (trim($part) === '') {
+                continue;
+            }
+
+            $leadingLength = strlen($part) - strlen(ltrim($part));
+
+            $canonical = $this->tokenizer->canonicalizeSelectorEscapes(trim($part));
+
+            if (! array_key_exists($canonical, $map)) {
+                $map[$canonical] = str_contains(substr($part, 0, $leadingLength), "\n");
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<int, string> $parts
+     * @param array<string, bool> $lineBreaks
+     */
+    private function joinSelectorListWithLineBreaks(array $parts, array $lineBreaks): string
+    {
+        if ($parts === []) {
+            return '';
+        }
+
+        $result        = $parts[0];
+        $previousBreak = $lineBreaks[$parts[0]] ?? false;
+
+        foreach (array_slice($parts, 1) as $part) {
+            $currentBreak = $lineBreaks[$part] ?? false;
+
+            $result .= ($previousBreak || $currentBreak ? ",\n" : ', ') . $part;
+
+            $previousBreak = $currentBreak;
+        }
+
+        return $result;
     }
 
     /**
      * @param array<int, string> $selectors
+     * @return array<int, string>
      */
-    private function renderBoxSelectors(array $selectors): string
+    private function renderBoxSelectors(array $selectors): array
     {
         $filtered = [];
 
@@ -656,7 +1636,7 @@ final readonly class ExtendsResolver
             $filtered[] = $selector;
         }
 
-        return implode(', ', array_values(array_unique($filtered)));
+        return array_values(array_unique($filtered));
     }
 
     /**
@@ -760,8 +1740,15 @@ final readonly class ExtendsResolver
                 : $this->combineNestedSelectorWithParent($selector, $parentSelector);
         }
 
+        $rawSelector = $this->tokenizer->canonicalizeSelectorEscapes($rawSelector);
+        $selector    = $this->tokenizer->canonicalizeSelectorEscapes($selector);
+
         $currentContext = $this->getCurrentExtendDirectiveContext($env);
         $outputState    = $this->ctx->outputState;
+
+        foreach ($this->collectLineBreakMap($selector) as $part => $hasBreak) {
+            $outputState->extends->partLineBreaks += [$part => $hasBreak];
+        }
 
         $rawParts = [];
 

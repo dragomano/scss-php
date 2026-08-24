@@ -375,7 +375,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         }
 
         if ($node instanceof StringNode) {
-            if ($node->value === '&') {
+            if ($node->value === '&' && ! $node->isSelectorValue) {
                 $selectorNode = $this->getCurrentParentSelector($env);
 
                 if ($selectorNode !== null) {

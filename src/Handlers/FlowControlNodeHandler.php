@@ -8,6 +8,7 @@ use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\EachNode;
+use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\ForNode;
 use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\NumberNode;
@@ -152,6 +153,10 @@ final readonly class FlowControlNodeHandler
         try {
             foreach ($body as $child) {
                 if ($this->evaluation->applyVariableDeclaration($child, $ctx->env)) {
+                    continue;
+                }
+
+                if ($child instanceof ExtendNode) {
                     continue;
                 }
 
