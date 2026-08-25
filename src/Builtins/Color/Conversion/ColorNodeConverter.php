@@ -38,7 +38,10 @@ use function trim;
 
 final readonly class ColorNodeConverter
 {
-    public function __construct(private ColorRuntime $runtime) {}
+    public function __construct(
+        private ColorRuntime $runtime,
+        private DartColorMath $dartMath = new DartColorMath(),
+    ) {}
 
     public function toRgb(AstNode $color): RgbColor
     {
@@ -574,17 +577,25 @@ final readonly class ColorNodeConverter
 
     public function serializeRgbFromAstSource(AstNode $source, RgbColor $byteRgb): AstNode
     {
-        $hasFractional = abs($byteRgb->rValue() - round($byteRgb->rValue())) > 0.0000001
-            || abs($byteRgb->gValue() - round($byteRgb->gValue())) > 0.0000001
-            || abs($byteRgb->bValue() - round($byteRgb->bValue())) > 0.0000001
+        $hasFractional = ! $this->dartMath->fuzzyIsInt($byteRgb->rValue())
+            || ! $this->dartMath->fuzzyIsInt($byteRgb->gValue())
+            || ! $this->dartMath->fuzzyIsInt($byteRgb->bValue())
             || abs($byteRgb->a - 1.0) > 0.0000001;
 
-        $inGamut = $byteRgb->rValue() >= 0 && $byteRgb->rValue() <= 255
-            && $byteRgb->gValue() >= 0 && $byteRgb->gValue() <= 255
-            && $byteRgb->bValue() >= 0 && $byteRgb->bValue() <= 255;
+        $inGamut = ($byteRgb->rValue() > 0.0 || $this->dartMath->fuzzyEquals($byteRgb->rValue(), 0.0))
+            && ($byteRgb->rValue() < 255.0 || $this->dartMath->fuzzyEquals($byteRgb->rValue(), 255.0))
+            && ($byteRgb->gValue() > 0.0 || $this->dartMath->fuzzyEquals($byteRgb->gValue(), 0.0))
+            && ($byteRgb->gValue() < 255.0 || $this->dartMath->fuzzyEquals($byteRgb->gValue(), 255.0))
+            && ($byteRgb->bValue() > 0.0 || $this->dartMath->fuzzyEquals($byteRgb->bValue(), 0.0))
+            && ($byteRgb->bValue() < 255.0 || $this->dartMath->fuzzyEquals($byteRgb->bValue(), 255.0));
 
         if (! $hasFractional && $inGamut) {
-            return $this->fromRgb($byteRgb);
+            return $this->fromRgb(new RgbColor(
+                r: round($byteRgb->rValue()),
+                g: round($byteRgb->gValue()),
+                b: round($byteRgb->bValue()),
+                a: $byteRgb->a,
+            ));
         }
 
         return $this->serializeAsFloatRgb(new RgbColor(
@@ -707,41 +718,7 @@ final readonly class ColorNodeConverter
     public function serializeAsUnclampedHsl(float $r, float $g, float $b, float $alpha, bool $round = false): FunctionNode
     {
         // Normalize 0-255 input to 0-1 range for HSL math
-        $r /= 255.0;
-        $g /= 255.0;
-        $b /= 255.0;
-
-        $max   = max($r, $g, $b);
-        $min   = min($r, $g, $b);
-        $delta = $max - $min;
-
-        $l = ($max + $min) / 2.0;
-
-        $denom = 1.0 - abs(2.0 * $l - 1.0);
-
-        if ($delta <= 0.0 || abs($denom) < 1e-10 || ($max > 0.0 && $delta / $max < 1e-10)) {
-            $h = 0.0;
-            $s = 0.0;
-        } else {
-            $s = $delta / $denom;
-
-            if ($max === $r) {
-                $h = 60.0 * (($g - $b) / $delta);
-
-                if ($g < $b) {
-                    $h += 360.0;
-                }
-            } elseif ($max === $g) {
-                $h = 60.0 * ((($b - $r) / $delta) + 2.0);
-            } else {
-                $h = 60.0 * ((($r - $g) / $delta) + 4.0);
-            }
-
-            if ($s < 0.0) {
-                $h += 180.0;
-                $s = abs($s);
-            }
-        }
+        [$h, $s, $l] = $this->dartMath->srgbToHsl($r / 255.0, $g / 255.0, $b / 255.0);
 
         $h = $this->runtime->spaceConverter->normalizeHue($h);
 
@@ -749,8 +726,8 @@ final readonly class ColorNodeConverter
 
         $arguments = [
             new NumberNode($round ? $trimFloat($h) : $h),
-            new NumberNode($round ? $trimFloat($s * 100.0) : $s * 100.0, '%'),
-            new NumberNode($round ? $trimFloat($l * 100.0) : $l * 100.0, '%'),
+            new NumberNode($round ? $trimFloat($s) : $s, '%'),
+            new NumberNode($round ? $trimFloat($l) : $l, '%'),
         ];
 
         if (abs($alpha - 1.0) >= 0.000001) {
@@ -806,18 +783,9 @@ final readonly class ColorNodeConverter
             || abs($blue - round($blue)) > 0.0000001;
 
         if ($hasNonInteger) {
-            $r = new NumberNode(
-                (float) $this->runtime->spaceConverter->trimFloat($red * 100.0 / 255.0, 10),
-                '%',
-            );
-            $g = new NumberNode(
-                (float) $this->runtime->spaceConverter->trimFloat($green * 100.0 / 255.0, 10),
-                '%',
-            );
-            $b = new NumberNode(
-                (float) $this->runtime->spaceConverter->trimFloat($blue * 100.0 / 255.0, 10),
-                '%',
-            );
+            $r = new NumberNode($red * 100.0 / 255.0, '%');
+            $g = new NumberNode($green * 100.0 / 255.0, '%');
+            $b = new NumberNode($blue * 100.0 / 255.0, '%');
         } else {
             $r = new NumberNode($red);
             $g = new NumberNode($green);

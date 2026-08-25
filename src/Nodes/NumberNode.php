@@ -28,6 +28,10 @@ final class NumberNode extends AstNode implements Stringable
             if (is_infinite($this->value)) {
                 return $this->value < 0 ? '-infinity' : 'infinity';
             }
+
+            if (floor($this->value) === $this->value && abs($this->value) < 1e21) {
+                return (string) (int) $this->value . ($this->unit ?? '');
+            }
         }
 
         return "$this->value" . ($this->unit ?? '');

@@ -10,7 +10,6 @@ use function abs;
 use function is_infinite;
 use function is_int;
 use function is_nan;
-use function round;
 use function rtrim;
 use function str_contains;
 use function str_repeat;
@@ -75,10 +74,10 @@ final class SassNumber extends AbstractSassValue
         }
 
         if (abs($value) < PHP_INT_MAX) {
-            $rounded = round($value);
+            $truncated = (int) $value;
 
-            if ($rounded == $value) {
-                return $this->compressLeadingZero((string) (int) $rounded);
+            if ((float) $truncated === $value) {
+                return $this->compressLeadingZero((string) $truncated);
             }
         }
 
