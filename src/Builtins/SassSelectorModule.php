@@ -203,14 +203,42 @@ final class SassSelectorModule extends AbstractModule
             }
         }
 
-        $result = [];
-        $parts  = $this->tokenizer->splitAtTopLevel($selector, [','], true);
+        $result         = [];
+        $variantsByPart = [];
+        $targets        = $this->tokenizer->splitAtTopLevel($target, [','], true);
+        $extenders      = $this->tokenizer->splitAtTopLevel($source, [','], true);
+        $parts          = $this->tokenizer->splitAtTopLevel($selector, [','], true);
 
-        foreach ($parts as $part) {
-            $result[] = $part;
+        foreach ($parts as $partIndex => $part) {
+            foreach ($this->tokenizer->extendSelectorPartByTargets($part, $targets, $extenders) as $extendedPart) {
+                if (! in_array($extendedPart, $variantsByPart[$partIndex] ?? [], true)) {
+                    $variantsByPart[$partIndex][] = $extendedPart;
+                }
+            }
+        }
 
-            foreach ($this->replaceExtendTargetInSelectorPart($part, $target, $source) as $extendedPart) {
-                $result[] = $extendedPart;
+        $allVariants = [];
+
+        foreach ($variantsByPart as $partVariants) {
+            foreach ($partVariants as $variant) {
+                $allVariants[] = $variant;
+            }
+        }
+
+        $survivors = array_flip($this->tokenizer->trimExtendedVariants($allVariants));
+
+        foreach ($parts as $partIndex => $part) {
+            $hasOutput = false;
+
+            foreach ($variantsByPart[$partIndex] ?? [] as $variant) {
+                if (isset($survivors[$variant])) {
+                    $result[] = $variant;
+                    $hasOutput = true;
+                }
+            }
+
+            if (! $hasOutput) {
+                $result[] = $this->tokenizer->normalizeExtendPart($part);
             }
         }
 
@@ -1176,60 +1204,6 @@ final class SassSelectorModule extends AbstractModule
         }
 
         return trim($result);
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function replaceExtendTargetInSelectorPart(string $part, string $target, string $source): array
-    {
-        $structured = $this->replaceExtendTargetInStructuredSelectorPart($part, $target, $source);
-
-        if ($structured !== null) {
-            return $structured;
-        }
-
-        if (! str_contains($part, $target)) {
-            return [];
-        }
-
-        return [$this->normalizeSelector(str_replace($target, $source, $part))];
-    }
-
-    /**
-     * @return array<int, string>|null
-     */
-    private function replaceExtendTargetInStructuredSelectorPart(string $part, string $target, string $source): ?array
-    {
-        if (
-            $this->hasUnsupportedTopLevelCombinator($part)
-            || $this->hasUnsupportedTopLevelCombinator($target)
-            || $this->hasUnsupportedTopLevelCombinator($source)
-        ) {
-            return null;
-        }
-
-        $targetTokens = $this->tokenizer->tokenizeCompound($this->singleTargetText($target));
-
-        if ($targetTokens === []) {
-            return null;
-        }
-
-        $partCompounds   = $this->tokenizer->splitAtTopLevel($part, [' ', '>', '+', '~']);
-        $sourceCompounds = $this->tokenizer->splitAtTopLevel($source, [' ', '>', '+', '~']);
-
-        return $this->tokenizer->replaceExtendTargetInStructuredSelector(
-            $partCompounds,
-            $targetTokens,
-            $sourceCompounds,
-        );
-    }
-
-    private function singleTargetText(string $target): string
-    {
-        $parts = $this->tokenizer->splitAtTopLevel($target, [','], true);
-
-        return $parts === [] ? '' : $parts[0];
     }
 
     private function hasUnsupportedTopLevelCombinator(string $selector): bool

@@ -76,7 +76,7 @@ describe('Sass Selector Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .selector-extend-order {
-              value: a.disabled, .link.disabled;
+              value: a.disabled, .disabled.link;
             }
             CSS;
 
@@ -213,7 +213,7 @@ describe('Sass Selector Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .selector-replace-order {
-              value: .link.disabled;
+              value: .disabled.link;
             }
             CSS;
 

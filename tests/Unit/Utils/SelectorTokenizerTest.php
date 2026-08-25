@@ -318,11 +318,6 @@ describe('SelectorTokenizer', function () {
         expect($this->tokenizer->replaceTokensInCompound('div.foo', ['.foo'], 'span'))->toBeNull();
     });
 
-    it('replaceExtendTargetInStructuredSelector() returns empty array when input is incomplete', function () {
-        expect($this->tokenizer->replaceExtendTargetInStructuredSelector([], ['.foo'], ['.bar']))->toBe([])
-            ->and($this->tokenizer->replaceExtendTargetInStructuredSelector(['div.foo'], ['.foo'], []))->toBe([]);
-    });
-
     it('splitAtTopLevel() splits by comma at top level', function () {
         $result = $this->tokenizer->splitAtTopLevel('a, b, c', [',']);
         expect($result)->toBe(['a', 'b', 'c']);
@@ -464,108 +459,6 @@ describe('SelectorTokenizer', function () {
 
         it('detects combinators after closing paren', function () {
             expect($this->tokenizer->hasUnsupportedTopLevelCombinator(':is(a) > b'))->toBeTrue();
-        });
-    });
-
-    describe('replaceExtendTargetInStructuredSelector() additional coverage', function () {
-        it('replaces target with single compound replacement without ancestors', function () {
-            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
-                ['.foo'],
-                ['.foo'],
-                ['.bar'],
-            );
-            expect($result)->toContain('.bar');
-        });
-
-        it('replaces target with multi-compound replacement adding ancestors', function () {
-            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
-                ['div', '.foo'],
-                ['.foo'],
-                ['span', '.bar'],
-            );
-            expect($result)->not->toBeEmpty();
-        });
-
-        it('skips compounds where target tokens are not found', function () {
-            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
-                ['div.foo', '.baz'],
-                ['.foo'],
-                ['.bar'],
-            );
-            expect($result)->not->toBeEmpty()
-                ->and(implode(' ', $result))->toContain('.bar');
-        });
-
-        it('deduplicates resolved selectors', function () {
-            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
-                ['.foo', '.foo'],
-                ['.foo'],
-                ['.bar'],
-            );
-            expect(count($result))->toBeLessThanOrEqual(2);
-        });
-
-        it('returns empty when replacementSubject cannot unify with remaining', function () {
-            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
-                ['div.foo'],
-                ['.foo'],
-                ['span', 'div'],
-            );
-            expect($result)->not->toBeEmpty();
-        });
-
-        it('skips compound when unifyCompounds returns null due to type conflict', function () {
-            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
-                ['span.foo'],
-                ['.foo'],
-                ['span', 'div'],
-            );
-            expect($result)->toBeEmpty();
-        });
-
-        it('covers ancestor check where prefix already satisfies ancestor', function () {
-            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
-                ['div', '.foo'],
-                ['.foo'],
-                ['div', '.bar'],
-            );
-            expect(implode(' ', $result))->toContain('.bar');
-        });
-
-        it('covers ancestor check where prefix does not satisfy ancestor', function () {
-            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
-                ['span', '.foo'],
-                ['.foo'],
-                ['div', '.bar'],
-            );
-            expect(implode(' ', $result))->toContain('div');
-        });
-
-        it('continues to next compound after one fails unification', function () {
-            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
-                ['span.foo'],
-                ['.foo'],
-                ['span', 'div'],
-            );
-            expect($result)->toBeEmpty();
-        });
-
-        it('marks ancestor as covered when prefix satisfies it', function () {
-            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
-                ['div', '.foo'],
-                ['.foo'],
-                ['div', '.bar'],
-            );
-            expect(implode(' ', $result))->toContain('.bar');
-        });
-
-        it('uses replaceTokensInCompound when no ancestors', function () {
-            $result = $this->tokenizer->replaceExtendTargetInStructuredSelector(
-                ['.foo'],
-                ['.foo'],
-                ['.bar'],
-            );
-            expect($result)->toContain('.bar');
         });
     });
 });
