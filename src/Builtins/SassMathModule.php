@@ -18,6 +18,7 @@ use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
+use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Utils\UnitConverter;
 
 use function abs;
@@ -33,6 +34,7 @@ use function fdiv;
 use function floor;
 use function get_debug_type;
 use function implode;
+use function is_finite;
 use function log;
 use function max;
 use function mt_getrandmax;
@@ -105,6 +107,36 @@ final class SassMathModule extends AbstractModule
         'unitless'   => 'is-unitless',
     ];
 
+    /**
+     * @var array<string, array<int, string>>
+     */
+    private const PARAMETER_NAMES = [
+        'abs'         => ['number'],
+        'acos'        => ['number'],
+        'asin'        => ['number'],
+        'atan'        => ['number'],
+        'atan2'       => ['y', 'x'],
+        'ceil'        => ['number'],
+        'clamp'       => ['min', 'number', 'max'],
+        'compatible'  => ['number1', 'number2'],
+        'cos'         => ['number'],
+        'div'         => ['number1', 'number2'],
+        'floor'       => ['number'],
+        'hypot'       => ['numbers'],
+        'is-unitless' => ['number'],
+        'log'         => ['number', 'base'],
+        'max'         => ['numbers'],
+        'min'         => ['numbers'],
+        'percentage'  => ['number'],
+        'pow'         => ['base', 'exponent'],
+        'random'      => ['limit'],
+        'round'       => ['number'],
+        'sin'         => ['number'],
+        'sqrt'        => ['number'],
+        'tan'         => ['number'],
+        'unit'        => ['number'],
+    ];
+
     public function getName(): string
     {
         return 'math';
@@ -143,6 +175,10 @@ final class SassMathModule extends AbstractModule
         $previousDisplayName = $this->beginBuiltinCall($name, $context);
 
         try {
+            if ($named !== []) {
+                $positional = $this->mergeNamedArguments($name, $positional, $named);
+            }
+
             return match ($name) {
                 'abs'         => $this->abs($positional, $context),
                 'acos'        => $this->acos($positional),
@@ -250,7 +286,9 @@ final class SassMathModule extends AbstractModule
 
         $this->warnAboutDeprecatedMathFunction($context, 'ceil', $positional);
 
-        return new NumberNode((int) ceil((float) $number->value), $number->unit);
+        $value = (float) $number->value;
+
+        return new NumberNode(is_nan($value) ? $value : (int) ceil($value), $number->unit);
     }
 
     /**
@@ -331,7 +369,7 @@ final class SassMathModule extends AbstractModule
                 return new NumberNode(fdiv(0.0, 0.0), $unit);
             }
 
-            return new NumberNode(fdiv($aFloat > 0.0 ? 1.0 : -1.0, 0.0), $unit);
+            return new NumberNode(fdiv($aFloat > 0.0 ? 1.0 : -1.0, $bFloat), $unit);
         }
 
         return new NumberNode($aFloat / $bFloat, $unit);
@@ -346,7 +384,9 @@ final class SassMathModule extends AbstractModule
 
         $this->warnAboutDeprecatedMathFunction($context, 'floor', $positional);
 
-        return new NumberNode((int) floor((float) $number->value), $number->unit);
+        $value = (float) $number->value;
+
+        return new NumberNode(is_nan($value) ? $value : (int) floor($value), $number->unit);
     }
 
     /**
@@ -464,7 +504,25 @@ final class SassMathModule extends AbstractModule
         $base     = $this->requireUnitlessNumber($positional, 0, 'math.pow');
         $exponent = $this->requireUnitlessNumber($positional, 1, 'math.pow');
 
+        if ($base === 0.0 && $exponent < 0.0) {
+            return new NumberNode($this->negativeZeroPower($base, $exponent));
+        }
+
         return new NumberNode($base ** $exponent);
+    }
+
+    private function negativeZeroPower(float $base, float $exponent): float
+    {
+        $isNegativeZero = fdiv(1.0, $base) < 0.0;
+        $isOddInteger   = is_finite($exponent)
+            && floor($exponent) === $exponent
+            && fmod($exponent, 2.0) !== 0.0;
+
+        if ($isNegativeZero && $isOddInteger) {
+            return fdiv(-1.0, 0.0);
+        }
+
+        return fdiv(1.0, 0.0);
     }
 
     /**
@@ -512,7 +570,9 @@ final class SassMathModule extends AbstractModule
 
         $this->warnAboutDeprecatedMathFunction($context, 'round', $positional);
 
-        return new NumberNode((int) round((float) $number->value), $number->unit);
+        $value = (float) $number->value;
+
+        return new NumberNode(is_nan($value) ? $value : (int) round($value), $number->unit);
     }
 
     /**
@@ -611,6 +671,30 @@ final class SassMathModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
+     * @return array<int, AstNode>
+     */
+    private function mergeNamedArguments(string $name, array $positional, array $named): array
+    {
+        $names = self::PARAMETER_NAMES[$name] ?? [];
+
+        foreach ($named as $key => $value) {
+            $index = array_search(NameNormalizer::normalize($key), $names, true);
+
+            if ($index === false || isset($positional[$index])) {
+                continue;
+            }
+
+            $positional[$index] = $value;
+        }
+
+        ksort($positional);
+
+        return $positional;
+    }
+
+    /**
+     * @param array<int, AstNode> $positional
      */
     private function requireNumber(array $positional, int $index, string $context): NumberNode
     {
@@ -627,6 +711,12 @@ final class SassMathModule extends AbstractModule
     private function ensureNumber(AstNode $value, string $context): NumberNode
     {
         if (! ($value instanceof NumberNode)) {
+            $constant = $this->constantNumber($value);
+
+            if ($constant !== null) {
+                return $constant;
+            }
+
             throw new InvalidArgumentTypeException(
                 $this->builtinErrorContext($context),
                 'number',
@@ -635,6 +725,22 @@ final class SassMathModule extends AbstractModule
         }
 
         return $value;
+    }
+
+    private function constantNumber(AstNode $value): ?NumberNode
+    {
+        if (! ($value instanceof StringNode) || $value->quoted) {
+            return null;
+        }
+
+        return match (strtolower(trim($value->value))) {
+            'pi'        => new NumberNode(M_PI),
+            'e'         => new NumberNode(M_E),
+            'infinity'  => new NumberNode(fdiv(1.0, 0.0)),
+            '-infinity' => new NumberNode(fdiv(-1.0, 0.0)),
+            'nan'       => new NumberNode(fdiv(0.0, 0.0)),
+            default     => null,
+        };
     }
 
     /**

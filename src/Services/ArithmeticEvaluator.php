@@ -17,7 +17,7 @@ use Bugo\SCSS\Values\SassNumber;
 use Closure;
 
 use function count;
-use function fmod;
+use function floor;
 use function is_infinite;
 use function trim;
 
@@ -144,8 +144,10 @@ final readonly class ArithmeticEvaluator
                 ]);
             }
 
+            $leftValue = (float) $left->value;
+
             return new NumberNode(
-                fmod((float) $left->value, $rightValue),
+                $leftValue - $rightValue * floor($leftValue / $rightValue),
                 $left->unit ?? $right->unit,
                 false,
             );

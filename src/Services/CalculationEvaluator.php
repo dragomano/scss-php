@@ -20,9 +20,12 @@ use Bugo\SCSS\Values\SassValue;
 
 use function ceil;
 use function count;
+use function exp;
 use function fdiv;
 use function floor;
+use function fmod;
 use function in_array;
+use function is_nan;
 use function round;
 use function sqrt;
 use function strtolower;
@@ -169,6 +172,20 @@ final readonly class CalculationEvaluator
 
         if ($lowerName === 'round') {
             return $this->simplifyRound($arguments);
+        }
+
+        if ($lowerName === 'sign' || $lowerName === 'exp') {
+            return count($arguments) === 1
+                ? ($lowerName === 'sign'
+                    ? $this->simplifySign($arguments[0])
+                    : $this->simplifyExp($arguments[0]))
+                : null;
+        }
+
+        if ($lowerName === 'mod' || $lowerName === 'rem') {
+            return count($arguments) === 2
+                ? $this->simplifyModuloRemainder($lowerName, $arguments[0], $arguments[1])
+                : null;
         }
 
         if ($lowerName === 'hypot') {
@@ -470,6 +487,79 @@ final readonly class CalculationEvaluator
         $result = sqrt($sum);
 
         return new NumberNode($result, $unit);
+    }
+
+    private function resolveNumberArgument(AstNode $argument): ?NumberNode
+    {
+        if ($argument instanceof NumberNode) {
+            return $argument;
+        }
+
+        return $this->resolveConstant($argument);
+    }
+
+    private function simplifySign(AstNode $argument): ?AstNode
+    {
+        $number = $this->resolveNumberArgument($argument);
+
+        if (! $number instanceof NumberNode) {
+            return null;
+        }
+
+        $value = (float) $number->value;
+
+        return new NumberNode(match (true) {
+            is_nan($value)          => fdiv(0.0, 0.0),
+            $value > 0.0            => 1.0,
+            $value < 0.0            => -1.0,
+            fdiv(1.0, $value) < 0.0 => -0.0,
+            default                 => 0.0,
+        });
+    }
+
+    private function simplifyExp(AstNode $argument): ?AstNode
+    {
+        $number = $this->resolveNumberArgument($argument);
+
+        if (! $number instanceof NumberNode) {
+            return null;
+        }
+
+        return new NumberNode(exp((float) $number->value));
+    }
+
+    private function simplifyModuloRemainder(string $name, AstNode $left, AstNode $right): ?AstNode
+    {
+        $x = $this->resolveNumberArgument($left);
+        $y = $this->resolveNumberArgument($right);
+
+        if (! $x instanceof NumberNode || ! $y instanceof NumberNode) {
+            return null;
+        }
+
+        $xUnit = $x->unit;
+        $yUnit = $y->unit;
+
+        if (($xUnit === null) !== ($yUnit === null)) {
+            return null;
+        }
+
+        if (! UnitConverter::compatible($xUnit, $yUnit)) {
+            return null;
+        }
+
+        $xValue = (float) $x->value;
+        $yValue = UnitConverter::convert((float) $y->value, $yUnit, $xUnit);
+
+        if ($yValue === 0.0) {
+            return new NumberNode(fdiv(0.0, 0.0), $xUnit);
+        }
+
+        $result = $name === 'mod'
+            ? $xValue - $yValue * floor($xValue / $yValue)
+            : fmod($xValue, $yValue);
+
+        return new NumberNode($result, $xUnit);
     }
 
     private function resolveConstant(AstNode $argument): ?NumberNode

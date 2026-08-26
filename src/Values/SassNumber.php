@@ -111,7 +111,7 @@ final class SassNumber extends AbstractSassValue
             return ($negative ? '-' : '') . '0.' . str_repeat('0', -$decimalIndex) . $digits;
         }
 
-        return $digits . str_repeat('0', $decimalIndex - strlen($digits));
+        return ($negative ? '-' : '') . $digits . str_repeat('0', $decimalIndex - strlen($digits));
     }
 
     private function roundDecimalString(string $text): string

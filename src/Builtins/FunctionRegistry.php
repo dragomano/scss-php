@@ -97,6 +97,8 @@ final class FunctionRegistry
      */
     public function tryCall(string $name, array $arguments, ?BuiltinCallContext $context = null): ?AstNode
     {
+        $name = strtolower($name);
+
         [$positional, $named] = $this->splitArguments($arguments);
 
         $callContext = $this->withBuiltinDisplayName($context, $name);

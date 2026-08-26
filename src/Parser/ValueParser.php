@@ -18,10 +18,12 @@ use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 
+use function abs;
 use function count;
 use function ctype_digit;
 use function in_array;
 use function str_contains;
+use function str_starts_with;
 use function strlen;
 use function strtolower;
 use function substr;
@@ -33,6 +35,8 @@ final readonly class ValueParser implements
     ModuleDirectiveContextInterface,
     RuleParserValueContextInterface
 {
+    private const MAX_SAFE_INTEGER = 9007199254740991;
+
     private FunctionCallParser $functions;
 
     public function __construct(
@@ -312,7 +316,15 @@ final readonly class ValueParser implements
         } elseif (str_contains($numberPart, '.') || str_contains($numberPart, 'e') || str_contains($numberPart, 'E')) {
             $number = (float) $numberPart;
         } else {
-            $number = (int) $numberPart;
+            $intValue = (int) $numberPart;
+
+            if ($intValue != $numberPart || abs((float) $intValue) > self::MAX_SAFE_INTEGER) {
+                $number = (float) $numberPart;
+            } elseif ($intValue === 0 && str_starts_with($numberPart, '-')) {
+                $number = -0.0;
+            } else {
+                $number = $intValue;
+            }
         }
 
         return new NumberNode($number, $unit);
