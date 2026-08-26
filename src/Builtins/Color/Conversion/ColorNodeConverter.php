@@ -697,12 +697,17 @@ final readonly class ColorNodeConverter
         ], $alpha);
     }
 
-    public function buildHslFunctionNode(float $hue, float $saturation, float $lightness, float $alpha): FunctionNode
-    {
+    public function buildHslFunctionNode(
+        float $hue,
+        float $saturation,
+        float $lightness,
+        float $alpha,
+        bool $isLiteral = false,
+    ): FunctionNode {
         $arguments = [
-            new NumberNode($this->runtime->spaceConverter->normalizeHue($hue)),
-            new NumberNode($saturation, '%'),
-            new NumberNode($lightness, '%'),
+            new NumberNode($this->runtime->spaceConverter->normalizeHue($hue), null, $isLiteral),
+            new NumberNode($saturation, '%', $isLiteral),
+            new NumberNode($lightness, '%', $isLiteral),
         ];
 
         if (abs($alpha - 1.0) >= 0.000001) {
@@ -725,9 +730,9 @@ final readonly class ColorNodeConverter
         $trimFloat = fn(float $value): float => (float) $this->runtime->spaceConverter->trimFloat($value, 10);
 
         $arguments = [
-            new NumberNode($round ? $trimFloat($h) : $h),
-            new NumberNode($round ? $trimFloat($s) : $s, '%'),
-            new NumberNode($round ? $trimFloat($l) : $l, '%'),
+            new NumberNode($round ? $trimFloat($h) : $h, null, false),
+            new NumberNode($round ? $trimFloat($s) : $s, '%', false),
+            new NumberNode($round ? $trimFloat($l) : $l, '%', false),
         ];
 
         if (abs($alpha - 1.0) >= 0.000001) {
@@ -825,9 +830,6 @@ final readonly class ColorNodeConverter
     }
 
     /**
-     * Builds the modern space-separated form with `none` for missing channels,
-     * e.g. `rgb(none 255 127 / 0.4)`.
-     *
      * @param array{0: ?float, 1: ?float, 2: ?float} $channels null = missing channel
      */
     public function buildModernRgbFunctionNode(array $channels, ?float $alpha): FunctionNode
@@ -842,9 +844,6 @@ final readonly class ColorNodeConverter
     }
 
     /**
-     * Builds the modern space-separated HSL form with `deg` hue units and
-     * `none` for missing channels, e.g. `hsl(180deg none 50% / none)`.
-     *
      * @param array{0: ?float, 1: ?float, 2: ?float} $channels null = missing channel
      */
     public function buildModernHslFunctionNode(array $channels, ?float $alpha): FunctionNode

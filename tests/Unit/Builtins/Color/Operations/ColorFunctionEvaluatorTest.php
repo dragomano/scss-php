@@ -43,7 +43,7 @@ describe('ColorFunctionEvaluator', function () {
             ->and($adjustedAlpha->name)->toBe('oklch');
     });
 
-    it('falls back to adjust-color when percent adjustment cannot be handled as a legacy shortcut', function () {
+    it('applies whiteness adjustments to legacy colors through an hwb round trip', function () {
         $result = $this->evaluator->adjustColorChannelByPercent(
             [new ColorNode('#112233'), new NumberNode(10, '%')],
             'whiteness',
@@ -51,8 +51,8 @@ describe('ColorFunctionEvaluator', function () {
             'whiteness',
         );
 
-        expect($result)->toBeInstanceOf(ColorNode::class)
-            ->and($result->value)->toBe('#112233');
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('rgb');
     });
 
     it('grayscales non-srgb colors through float rgb serialization', function () {
@@ -103,7 +103,7 @@ describe('ColorFunctionEvaluator', function () {
         ]);
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
-            ->and($result->name)->toBe('rgb');
+            ->and($result->name)->toBe('color');
     });
 
     it('changes native lab colors through the public changeColor api', function () {
@@ -134,8 +134,8 @@ describe('ColorFunctionEvaluator', function () {
         ]);
 
         expect($floatRgb)->toBeInstanceOf(FunctionNode::class)
-            ->and($floatRgb->name)->toBe('rgb')
-            ->and($legacyRgb)->toBeInstanceOf(ColorNode::class);
+            ->and($floatRgb->name)->toBe('color')
+            ->and($legacyRgb)->toBeInstanceOf(FunctionNode::class);
     });
 
     it('adjusts lab modifications for legacy colors through public adjustColor calls', function () {
@@ -146,7 +146,8 @@ describe('ColorFunctionEvaluator', function () {
             'lightness' => new NumberNode(10, '%'),
         ]);
 
-        expect($result)->toBeInstanceOf(ColorNode::class);
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('rgb');
     });
 
     it('emits zero scale suggestions when no alpha range remains', function () {
@@ -314,11 +315,7 @@ describe('ColorFunctionEvaluator', function () {
         ]);
 
         expect($fallback)->toBeInstanceOf(FunctionNode::class)
-            ->and($fallback->name)->toBe('color')
-            ->and($fallback->arguments[0])->toBeInstanceOf(ListNode::class)
-            ->and($fallback->arguments[0]->items[1])->toBeInstanceOf(NumberNode::class)
-            ->and($fallback->arguments[0]->items[2])->toBeInstanceOf(NumberNode::class)
-            ->and($fallback->arguments[0]->items[3])->toBeInstanceOf(NumberNode::class)
+            ->and($fallback->name)->toBe('rgb')
             ->and($percentChannel)->toBeInstanceOf(FunctionNode::class)
             ->and($percentChannel->arguments[0])->toBeInstanceOf(ListNode::class)
             ->and($percentChannel->arguments[0]->items[1])->toBeInstanceOf(NumberNode::class)

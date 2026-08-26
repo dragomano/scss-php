@@ -2,16 +2,9 @@
 
 declare(strict_types=1);
 
-use Bugo\Iris\Converters\ModelConverter;
-use Bugo\Iris\Converters\SpaceConverter;
-use Bugo\Iris\LiteralParser;
-use Bugo\Iris\Serializers\LiteralSerializer;
-use Bugo\Iris\SpaceRouter;
 use Bugo\Iris\Spaces\RgbColor;
-use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
-use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
+use Bugo\SCSS\Builtins\Color\ColorModuleFactory;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
-use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
 use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\ColorNode;
@@ -22,21 +15,14 @@ use Bugo\SCSS\Nodes\StringNode;
 
 describe('ColorSpaceConverter', function () {
     beforeEach(function () {
-        $runtime = new ColorRuntime(
-            context: new ColorModuleContext(
-                errorCtx: static fn(string $name): string => $name,
-                isGlobalBuiltinCall: static fn(): bool => false,
-                warn: static function (): void {},
-            ),
-            spaceConverter: new SpaceConverter(),
-            spaceRouter: new SpaceRouter(),
-            modelConverter: new ModelConverter(),
-            literalParser: new LiteralParser(),
-            literalSerializer: new LiteralSerializer(),
+        $context = new ColorModuleContext(
+            errorCtx: static fn(string $name): string => $name,
+            isGlobalBuiltinCall: static fn(): bool => false,
+            warn: static function (): void {},
         );
-        $converter = new ColorNodeConverter($runtime);
+        $services = (new ColorModuleFactory())->create($context);
 
-        $this->interop = new ColorSpaceConverter($runtime, $converter);
+        $this->interop = $services->spaceConverter;
     });
 
     it('detects semantic missing lightness channels', function () {
@@ -302,16 +288,16 @@ describe('ColorSpaceConverter', function () {
             ->and($rec2020->arguments[0]->items[0]->value)->toBe('rec2020');
     });
 
-    it('rejects unknown gamut mapping methods and unsupported target spaces', function () {
+    it('rejects unknown gamut mapping methods and no-ops unbounded target spaces', function () {
         expect(fn() => $this->interop->toGamut([
             new ColorNode('#036'),
             new StringNode('rgb'),
             new StringNode('weird'),
-        ], []))->toThrow(UnsupportedColorValueException::class, 'Unknown gamut mapping method: weird')
-            ->and(fn() => $this->interop->toGamut([
+        ], []))->toThrow(UnsupportedColorValueException::class, 'Unknown gamut mapping method "weird"')
+            ->and($this->interop->toGamut([
                 new ColorNode('#036'),
-                new StringNode('display-p3'),
-            ], []))->toThrow(UnsupportedColorSpaceException::class);
+                new StringNode('oklch'),
+            ], []))->toBeInstanceOf(ColorNode::class);
     });
 
     it('clips out-of-gamut srgb colors in to-gamut', function () {
@@ -328,7 +314,7 @@ describe('ColorSpaceConverter', function () {
             new StringNode('clip'),
         ], []);
 
-        expect($result)->toBeInstanceOf(ColorNode::class)
+        expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result)->not->toBe($color);
     });
 
@@ -346,21 +332,8 @@ describe('ColorSpaceConverter', function () {
             new StringNode('local-minde'),
         ], []);
 
-        expect($result)->toBeInstanceOf(ColorNode::class)
+        expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result)->not->toBe($color);
-    });
-
-    it('serializes rgb colors for original spaces', function () {
-        $rgb = new RgbColor(300.0, 20.0, 10.0, 0.5);
-
-        $srgb      = $this->interop->serializeRgbForOriginalSpace('srgb', $rgb);
-        $lab       = $this->interop->serializeRgbForOriginalSpace('lab', $rgb);
-        $displayP3 = $this->interop->serializeRgbForOriginalSpace('display-p3', $rgb);
-
-        expect($srgb)->toBeInstanceOf(ColorNode::class)
-            ->and($lab)->toBeInstanceOf(FunctionNode::class)
-            ->and($lab->name)->toBe('lab')
-            ->and($displayP3)->toBeInstanceOf(ColorNode::class);
     });
 
     it('converts lch colors to oklch while preserving missing-channel semantics', function () {

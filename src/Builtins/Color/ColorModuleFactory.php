@@ -6,6 +6,7 @@ namespace Bugo\SCSS\Builtins\Color;
 
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
+use Bugo\SCSS\Builtins\Color\Conversion\DartColorMath;
 use Bugo\SCSS\Builtins\Color\Operations\ColorChannelInspector;
 use Bugo\SCSS\Builtins\Color\Operations\ColorConstructorEvaluator;
 use Bugo\SCSS\Builtins\Color\Operations\ColorFunctionEvaluator;
@@ -31,22 +32,25 @@ final class ColorModuleFactory
         );
 
         $converter        = new ColorNodeConverter($runtime);
-        $spaceConverter   = new ColorSpaceConverter($runtime, $converter);
+        $dartMath         = new DartColorMath();
+        $spaceConverter   = new ColorSpaceConverter($runtime, $converter, dartMath: $dartMath);
         $channelInspector = new ColorChannelInspector($runtime, $converter, $spaceConverter);
+
+        $functions = new ColorFunctionEvaluator(
+            $runtime,
+            $components->legacyManipulator,
+            $converter,
+            $spaceConverter,
+            new LegacyColorMath($components->spaceConverter),
+            $dartMath,
+        );
+
+        $spaceConverter->functionEvaluator = $functions;
 
         return new ColorModuleServices(
             spaceConverter: $spaceConverter,
             channelInspector: $channelInspector,
-            functions: new ColorFunctionEvaluator(
-                $runtime,
-                $components->legacyManipulator,
-                $components->perceptualManipulator,
-                $components->srgbManipulator,
-                $components->mixResolver,
-                $converter,
-                $spaceConverter,
-                new LegacyColorMath($components->spaceConverter),
-            ),
+            functions: $functions,
             constructors: new ColorConstructorEvaluator(
                 $runtime->argumentParser,
                 $converter,

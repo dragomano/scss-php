@@ -325,8 +325,8 @@ final readonly class DartColorMath
     ];
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
-     * @return array{0: float|null, 1: float|null, 2: float|null}
+     * @param array<int, float|null> $channels
+     * @return array<int, float|null>
      */
     public function convert(string $from, string $to, array $channels): array
     {
@@ -361,7 +361,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float, 1: float, 2: float}
      */
     public function convertNumeric(string $from, string $to, array $channels): array
@@ -410,7 +410,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     public function srgbToLinearSrgb(array $channels): array
@@ -425,7 +425,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     public function linearSrgbToSrgb(array $channels): array
@@ -530,7 +530,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function hwbConvert(string $to, array $channels): array
@@ -555,7 +555,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function scaleRgbLegacyChannels(array $channels): array
@@ -570,7 +570,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function fromSrgb(string $to, array $channels): array
@@ -591,7 +591,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function srgbLinearConvert(string $to, array $channels): array
@@ -604,7 +604,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function displayP3LinearConvert(string $to, array $channels): array
@@ -617,7 +617,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function displayP3Convert(string $to, array $channels): array
@@ -630,7 +630,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function convertLinear(string $from, string $to, array $channels): array
@@ -670,7 +670,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function xyzD50Convert(string $to, array $channels): array
@@ -696,7 +696,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function labConvert(string $to, array $channels): array
@@ -711,7 +711,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function lchConvert(string $to, array $channels): array
@@ -727,7 +727,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function oklabConvert(string $to, array $channels): array
@@ -751,7 +751,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function oklchConvert(string $to, array $channels): array
@@ -779,7 +779,7 @@ final readonly class DartColorMath
     private function labToNonLab(string $to, ?float $lightness, float $a, float $b): array
     {
         $lValue = $lightness ?? 0.0;
-        $f1 = ($lValue + 16.0) / 116.0;
+        $f1     = ($lValue + 16.0) / 116.0;
 
         return $this->xyzD50Convert($to, [
             $this->convertFToXorZ($a / 500.0 + $f1) * self::D50[0],
@@ -791,7 +791,7 @@ final readonly class DartColorMath
     }
 
     /**
-     * @param array{0: float|null, 1: float|null, 2: float|null} $channels
+     * @param array<int, float|null> $channels
      * @return array{0: float|null, 1: float|null, 2: float|null}
      */
     private function lmsConvert(string $to, array $channels): array

@@ -54,7 +54,7 @@ final readonly class ColorArgumentParser
             throw MissingFunctionArgumentsException::required($this->context->errorCtx($context), 'color');
         }
 
-        $value = $positional[$index];
+        $value = $this->unwrapOutOfGamutColorMix($positional[$index]);
 
         if ($value instanceof FunctionNode && ! $this->isColorFunction($value->name)) {
             throw new MissingFunctionArgumentsException($this->context->errorCtx($context), 'color arguments');
@@ -145,8 +145,6 @@ final readonly class ColorArgumentParser
     }
 
     /**
-     * Resolves a single color constructor argument into channel nodes and an alpha node.
-     *
      * @param list<string> $channelNames
      * @throws DeferToCssFunctionException when the input must be emitted verbatim
      * @throws InvalidColorChannelsException when the input is structurally invalid
@@ -264,8 +262,6 @@ final readonly class ColorArgumentParser
     }
 
     /**
-     * Splits a top-level slash-separated pair or a trailing `x/y` component into components and alpha.
-     *
      * @return array{components: AstNode, alpha: AstNode|null}|null null when ambiguous
      */
     public function parseChannelList(AstNode $input): ?array
@@ -346,10 +342,6 @@ final readonly class ColorArgumentParser
             && str_starts_with(strtolower(trim($node->value)), 'var(--');
     }
 
-    /**
-     * Accepts numbers with any unit (unknown units are ignored with only a
-     * deprecation warning in dart-sass), unlike the strict `asPercentage`.
-     */
     public function asLenientPercentage(?AstNode $value, string $context): float
     {
         $value = $this->unwrapCalcNumber($value) ?? $value;
@@ -710,5 +702,32 @@ final readonly class ColorArgumentParser
         $value = str_contains($numberPart, '.') ? (float) $numberPart : (int) $numberPart;
 
         return new NumberNode($value, $unitPart === '' ? null : $unitPart);
+    }
+
+    private function unwrapOutOfGamutColorMix(AstNode $node): AstNode
+    {
+        if (! ($node instanceof FunctionNode) || strtolower($node->name) !== 'color-mix') {
+            return $node;
+        }
+
+        $arguments = $node->arguments;
+
+        if (
+            count($arguments) !== 3
+            || ! ($arguments[0] instanceof ListNode)
+            || ! ($arguments[1] instanceof ListNode)
+            || count($arguments[0]->items) !== 2
+            || count($arguments[1]->items) !== 2
+            || ! ($arguments[0]->items[0] instanceof StringNode)
+            || strtolower($arguments[0]->items[0]->value) !== 'in'
+            || ! ($arguments[1]->items[0] instanceof FunctionNode)
+            || ! ($arguments[1]->items[1] instanceof NumberNode)
+            || (float) $arguments[1]->items[1]->value !== 100.0
+            || ! ($arguments[2] instanceof StringNode)
+        ) {
+            return $node;
+        }
+
+        return $arguments[1]->items[0];
     }
 }

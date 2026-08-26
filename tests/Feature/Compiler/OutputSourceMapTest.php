@@ -340,7 +340,7 @@ describe('Compiler', function () {
 
             $css = $compiler->compileString($source);
 
-            expect($css)->toBe('.test{a:rgb(66.7264198057%,56.710619738%,66.7126514142%);b:rgb(37.6220882353%,29.2426329412%,52.2385329412%)}');
+            expect($css)->toBe('.test{a:rgb(66.7264198057%,56.710619738%,66.7126514142%);b:rgb(37.622088384%,29.2426327658%,52.2385328393%)}');
         });
 
         it('preserves exact rgb colors in compressed style by default', function () {

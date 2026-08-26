@@ -10,6 +10,8 @@ use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
@@ -17,6 +19,7 @@ use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\NameHelper;
+use Bugo\SCSS\Values\AstValueInspector;
 
 use function count;
 use function implode;
@@ -127,6 +130,82 @@ final readonly class FunctionCallEvaluator
         }
     }
 
+    private function isFinalSerializedColorResult(FunctionNode $node): bool
+    {
+        $name = strtolower($node->name);
+
+        if ($name === 'hsl' || $name === 'hsla') {
+            foreach ($node->arguments as $argument) {
+                if ($argument instanceof ListNode) {
+                    foreach ($argument->items as $item) {
+                        if ($item instanceof StringNode && AstValueInspector::isNoneKeyword($item)) {
+                            return true;
+                        }
+                    }
+
+                    continue;
+                }
+
+                if ($argument instanceof NumberNode && ! $argument->isLiteral) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($name !== 'rgb' && $name !== 'rgba') {
+            return false;
+        }
+
+        $hasPercentage = false;
+        $hasMissing    = false;
+
+        foreach ($node->arguments as $argument) {
+            if ($argument instanceof ListNode) {
+                foreach ($argument->items as $item) {
+                    if ($item instanceof StringNode) {
+                        if (AstValueInspector::isNoneKeyword($item)) {
+                            $hasMissing = true;
+                        }
+
+                        continue;
+                    }
+
+                    if (! ($item instanceof NumberNode)) {
+                        return false;
+                    }
+
+                    if ($item->unit === '%') {
+                        $hasPercentage = true;
+                    }
+                }
+
+                continue;
+            }
+
+            if ($argument instanceof StringNode) {
+                if (AstValueInspector::isNoneKeyword($argument)) {
+                    $hasMissing = true;
+
+                    continue;
+                }
+
+                return false;
+            }
+
+            if (! $argument instanceof NumberNode) {
+                return false;
+            }
+
+            if ($argument->unit === '%') {
+                $hasPercentage = true;
+            }
+        }
+
+        return $hasPercentage || $hasMissing;
+    }
+
     private function evaluateBuiltinOrCssFunction(FunctionNode $node, Environment $env): AstNode
     {
         $isModernIf = strtolower($node->name) === 'if' && $node->modernSyntax;
@@ -196,7 +275,11 @@ final readonly class FunctionCallEvaluator
 
         if ($resolved !== null) {
             if ($resolved instanceof FunctionNode && $resolved->name !== $node->name) {
-                return $this->valueEvaluator->evaluate($resolved, $env);
+                if (! $this->isFinalSerializedColorResult($resolved)) {
+                    return $this->valueEvaluator->evaluate($resolved, $env);
+                }
+
+                return $resolved;
             }
 
             return $resolved;
