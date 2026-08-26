@@ -79,7 +79,7 @@ final readonly class StringConcatenationEvaluator
         }
 
         $result = '';
-        $quoted = false;
+        $quoted = null;
 
         foreach ($list->items as $index => $item) {
             if ($index % 2 === 1) {
@@ -92,14 +92,14 @@ final readonly class StringConcatenationEvaluator
             }
 
             if ($item instanceof StringNode) {
-                $quoted  = $quoted || $item->quoted;
+                $quoted ??= $item->quoted;
                 $result .= $item->value;
             } else {
                 $result .= $this->valueFormatter->format($item, $env);
             }
         }
 
-        return new StringNode($result, $quoted);
+        return new StringNode($result, $quoted ?? false);
     }
 
     private function collapseNumberWithUnitSuffix(ListNode $list): ?AstNode

@@ -692,9 +692,11 @@ final readonly class Text
         }
 
         if (str_contains($expr, '#{')) {
-            $expr = $this->isInterpolatedStringTemplate($expr)
-                ? $this->interpolateText($expr, $env)
-                : $this->substituteNestedInterpolationsAsLiterals($expr, $env);
+            if ($this->isInterpolatedStringTemplate($expr)) {
+                return $this->interpolateQuotedTemplate($expr, $env);
+            }
+
+            $expr = $this->substituteNestedInterpolationsAsLiterals($expr, $env);
         }
 
         if ($expr[0] === '$') {
@@ -720,6 +722,55 @@ final readonly class Text
         $evaluated = $this->valueEvaluator->evaluate($valueNode, $env);
 
         return $this->formatInterpolationValue($evaluated, $env);
+    }
+
+    private function interpolateQuotedTemplate(string $expr, Environment $env): string
+    {
+        $length      = strlen($expr);
+        $result      = '';
+        $staticStart = 1;
+        $index       = 1;
+
+        while ($index < $length - 1) {
+            if ($expr[$index] === '\\' && $index + 1 < $length) {
+                $index += 2;
+
+                continue;
+            }
+
+            if ($expr[$index] !== '#' || ($expr[$index + 1] ?? '') !== '{') {
+                $index++;
+
+                continue;
+            }
+
+            $cursor = $index + 2;
+            $depth  = 1;
+
+            while ($cursor < $length && $depth > 0) {
+                if ($expr[$cursor] === '{') {
+                    $depth++;
+                } elseif ($expr[$cursor] === '}') {
+                    $depth--;
+                }
+
+                $cursor++;
+            }
+
+            if ($depth !== 0) {
+                break;
+            }
+
+            $result .= StringEscapeDecoder::decodeLiteral(substr($expr, $staticStart, $index - $staticStart));
+            $result .= $this->resolveInterpolationExpression(trim(substr($expr, $index + 2, $cursor - $index - 3)), $env);
+
+            $index       = $cursor;
+            $staticStart = $cursor;
+        }
+
+        $result .= StringEscapeDecoder::decodeLiteral(substr($expr, $staticStart, $length - 1 - $staticStart));
+
+        return $result;
     }
 
     private function substituteNestedInterpolationsAsLiterals(string $expr, Environment $env): string
