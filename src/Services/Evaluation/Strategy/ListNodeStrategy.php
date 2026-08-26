@@ -45,6 +45,7 @@ final readonly class ListNodeStrategy implements EvaluationStrategyInterface
             function (AstNode $item) use ($env, $options): AstNode {
                 if ($item instanceof ListNode
                     && $item->separator === 'space'
+                    && ! $item->bracketed
                     && count($item->items) === 3
                 ) {
                     [$itemFirst, $itemMid, $itemLast] = $item->items;

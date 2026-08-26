@@ -89,15 +89,16 @@ final readonly class UserFunctionExecutor
         array $resolvedPositional,
         array $resolvedNamed,
         Scope $scope,
+        Environment $env,
     ): void {
         $this->parameterBinder->bind(
             $parameters,
             $resolvedPositional,
             $resolvedNamed,
             $scope,
-            static function (string $name, ?AstNode $defaultValue) use ($scope): void {
+            function (string $name, ?AstNode $defaultValue) use ($scope, $env): void {
                 if ($defaultValue !== null) {
-                    $scope->setVariableLocal($name, $defaultValue);
+                    $scope->setVariableLocal($name, $this->slashDivisionValueEvaluator->evaluate($defaultValue, $env));
                 }
             },
         );

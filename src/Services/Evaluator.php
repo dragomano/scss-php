@@ -157,7 +157,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
 
         foreach ($items as $item) {
             if ($item instanceof ListNode && $item->separator === 'space' && $this->containsSlashToken($item)) {
-                return $this->evaluateValueWithSlashDivision($item, $env);
+                return $this->evaluateValueWithSlashDivision($value, $env);
             }
         }
 
@@ -529,8 +529,9 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         array $resolvedPositional,
         array $resolvedNamed,
         Scope $scope,
+        Environment $env,
     ): void {
-        $this->userFunction->bindParametersToCurrentScope($parameters, $resolvedPositional, $resolvedNamed, $scope);
+        $this->userFunction->bindParametersToCurrentScope($parameters, $resolvedPositional, $resolvedNamed, $scope, $env);
     }
 
     /**
@@ -610,6 +611,18 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return $value;
     }
 
+    private function createSlashDivisionValueEvaluator(): AstValueEvaluatorInterface
+    {
+        return new class ($this) implements AstValueEvaluatorInterface {
+            public function __construct(private readonly Evaluator $evaluator) {}
+
+            public function evaluate(AstNode $node, Environment $env): AstNode
+            {
+                return $this->evaluator->evaluateValueWithSlashDivision($node, $env);
+            }
+        };
+    }
+
     private function createStringConcatenationEvaluator(): StringConcatenationEvaluator
     {
         return new StringConcatenationEvaluator($this);
@@ -623,14 +636,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             $this,
             $this->variableDeclarationApplier,
             $this->eachLoopBinder,
-            new class ($this) implements AstValueEvaluatorInterface {
-                public function __construct(private readonly Evaluator $evaluator) {}
-
-                public function evaluate(AstNode $node, Environment $env): AstNode
-                {
-                    return $this->evaluator->evaluateValueWithSlashDivision($node, $env);
-                }
-            },
+            $this->createSlashDivisionValueEvaluator(),
             $this->diagnosticHandler,
             new LoopIterator(),
         );
@@ -649,14 +655,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
     {
         return new VariableDeclarationApplier(
             $this->moduleVariableAssigner,
-            new class ($this) implements AstValueEvaluatorInterface {
-                public function __construct(private readonly Evaluator $evaluator) {}
-
-                public function evaluate(AstNode $node, Environment $env): AstNode
-                {
-                    return $this->evaluator->evaluateValueWithSlashDivision($node, $env);
-                }
-            },
+            $this->createSlashDivisionValueEvaluator(),
         );
     }
 
@@ -670,7 +669,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return new ConditionalEvaluator(
             $this->condition,
             $this->text,
-            $this,
+            $this->createSlashDivisionValueEvaluator(),
             $this,
             new ComparisonListEvaluator($this),
             $this->ctx->valueFactory,
@@ -680,7 +679,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
     private function createCssArgumentEvaluator(): CssArgumentEvaluator
     {
         return new CssArgumentEvaluator(
-            $this,
+            $this->createSlashDivisionValueEvaluator(),
             new CalculationArgumentNormalizer($this),
         );
     }
@@ -690,7 +689,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return new CallArgumentResolver(
             $this->parser,
             $this->cssArgument,
-            $this,
+            $this->createSlashDivisionValueEvaluator(),
         );
     }
 

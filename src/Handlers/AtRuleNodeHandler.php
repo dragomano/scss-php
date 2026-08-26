@@ -444,6 +444,7 @@ final readonly class AtRuleNodeHandler
                 $resolvedPositional,
                 $resolvedNamed,
                 $childScope,
+                $ctx->env,
             );
         }
 

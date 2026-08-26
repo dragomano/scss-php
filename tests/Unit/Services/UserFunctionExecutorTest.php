@@ -254,7 +254,8 @@ describe('UserFunctionExecutor', function () {
     });
 
     it('builds rest argument lists using only unmatched named arguments', function () {
-        $scope = (new Environment())->getCurrentScope();
+        $env   = new Environment();
+        $scope = $env->getCurrentScope();
 
         $this->executor->bindParametersToCurrentScope(
             [
@@ -267,6 +268,7 @@ describe('UserFunctionExecutor', function () {
                 'extra' => new StringNode('named-extra'),
             ],
             $scope,
+            $env,
         );
 
         $rest = $scope->getAstVariable('rest');

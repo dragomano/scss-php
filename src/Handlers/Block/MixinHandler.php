@@ -215,6 +215,7 @@ final readonly class MixinHandler
                 $resolvedPositional,
                 $resolvedNamed,
                 $executionScope,
+                $ctx->env,
             );
 
             $first = true;
