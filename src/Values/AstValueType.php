@@ -9,6 +9,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
@@ -49,6 +50,10 @@ enum AstValueType: string
 
         if ($node instanceof MapNode) {
             return self::Map;
+        }
+
+        if ($node instanceof FunctionRefNode) {
+            return self::Function;
         }
 
         if ($node instanceof FunctionNode) {

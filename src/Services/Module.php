@@ -128,12 +128,7 @@ final readonly class Module
                 return;
             }
 
-            $variables = $this->ctx->functionRegistry->moduleVariablesByAlias($alias) ?? [];
-
-            if ($variables === []) {
-                return;
-            }
-
+            $variables   = $this->ctx->functionRegistry->moduleVariablesByAlias($alias) ?? [];
             $moduleScope = new Scope();
 
             foreach ($variables as $name => $value) {
@@ -147,8 +142,7 @@ final readonly class Module
         }
 
         $namespace = $node->namespace ?? $this->deriveNamespaceFromUsePath($node->path);
-
-        $loaded = $state->getByNamespace($namespace);
+        $loaded    = $state->getByNamespace($namespace);
 
         if ($node->configuration === [] && $loaded !== null) {
             $env->getCurrentScope()->addModule($namespace, $loaded->scope);
@@ -165,8 +159,7 @@ final readonly class Module
 
         $this->loader->addPath(dirname($file['path']));
 
-        $moduleId = $file['path'];
-
+        $moduleId   = $file['path'];
         $loadedById = $state->getById($moduleId);
 
         if ($node->configuration === [] && $loadedById !== null) {
@@ -178,15 +171,30 @@ final readonly class Module
             return;
         }
 
+        if ($node->configuration === []) {
+            $forwardKey = $this->forwardCacheKey($node->path, [], $env);
+
+            if (isset($state->forwardedModules[$forwardKey])) {
+                $moduleData = $state->forwardedModules[$forwardKey];
+
+                $state->addByNamespace($namespace, new LoadedModule($moduleId, $moduleData['scope'], $moduleData['css']));
+
+                $state->emittedUseCss[$moduleId] = true;
+
+                $env->getCurrentScope()->addModule($namespace, $moduleData['scope']);
+                $env->getGlobalScope()->addModule($namespace, $moduleData['scope']);
+
+                return;
+            }
+        }
+
         if (isset($state->loadingFiles[$moduleId])) {
             throw ModuleResolutionException::circularDependency($moduleId);
         }
 
-        $syntax = Syntax::fromPath($file['path'], $file['content']);
-
+        $syntax       = Syntax::fromPath($file['path'], $file['content']);
         $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
-
-        $moduleAst = $this->parser->parse($moduleSource);
+        $moduleAst    = $this->parser->parse($moduleSource);
 
         if ($node->configuration !== []) {
             $defaultVars = $this->collectDefaultVariableNames($moduleAst);
@@ -347,12 +355,10 @@ final readonly class Module
 
         $this->loader->addPath(dirname($file['path']));
 
-        $syntax = Syntax::fromPath($file['path'], $file['content']);
-
+        $syntax       = Syntax::fromPath($file['path'], $file['content']);
         $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
-
-        $moduleAst = $this->parser->parse($moduleSource);
-        $moduleEnv = new Environment();
+        $moduleAst    = $this->parser->parse($moduleSource);
+        $moduleEnv    = new Environment();
 
         foreach ($initialVariables as $name => $value) {
             $moduleEnv->getCurrentScope()->setVariableLocal($name, $value);

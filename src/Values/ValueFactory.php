@@ -10,6 +10,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
@@ -53,6 +54,10 @@ final readonly class ValueFactory
 
         if ($node instanceof StringNode) {
             return new SassString($node->value, $node->quoted);
+        }
+
+        if ($node instanceof FunctionRefNode) {
+            return new SassFunctionRef($this->callableDisplayName($node->name));
         }
 
         if ($node instanceof ListNode || $node instanceof ArgumentListNode) {

@@ -13,6 +13,7 @@ use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\ElseIfNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
@@ -234,8 +235,9 @@ describe('SassMetaModule', function () {
 
         $fn = $this->module->call('get-function', [new StringNode('length')], ['module' => new StringNode('list')], $this->context);
 
-        expect($fn)->toBeInstanceOf(StringNode::class)
-            ->and($fn->value)->toContain('length');
+        expect($fn)->toBeInstanceOf(FunctionRefNode::class)
+            ->and($fn->module)->toBe('list')
+            ->and($fn->name)->toBe('length');
     });
 
     it('evaluates get-function for user functions and throws when missing', function () {
@@ -243,7 +245,7 @@ describe('SassMetaModule', function () {
 
         $userFunction = $this->module->call('get-function', [new StringNode('custom-fn')], [], $this->context);
 
-        expect($userFunction)->toBeInstanceOf(FunctionNode::class)
+        expect($userFunction)->toBeInstanceOf(FunctionRefNode::class)
             ->and($userFunction->name)->toBe('custom-fn')
             ->and(fn() => $this->module->call('get-function', [new StringNode('missing-fn')], [], $this->context))
             ->toThrow(ModuleResolutionException::class)

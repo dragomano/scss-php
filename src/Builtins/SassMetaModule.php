@@ -16,6 +16,7 @@ use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\EachNode;
 use Bugo\SCSS\Nodes\ForNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
@@ -32,7 +33,6 @@ use Bugo\SCSS\Runtime\VariableDefinition;
 use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Values\AstValueType;
-use Bugo\SCSS\Values\SassFunctionRef;
 use LogicException;
 
 use function array_slice;
@@ -217,13 +217,26 @@ final class SassMetaModule extends AbstractModule
             );
         }
 
+        $original      = $positional[0];
+        $qualifiedName = $name;
+
+        if ($original instanceof FunctionRefNode && $original->module !== null) {
+            $qualifiedName = $original->module . '.' . $name;
+        }
+
         $registry = $context->registry;
-        $result   = $registry->tryCall($name, array_slice($positional, 1), $context);
+        $result   = $registry->tryCall($qualifiedName, array_slice($positional, 1), $context);
 
         if ($result === null) {
-            $original         = $positional[0] instanceof FunctionNode ? $positional[0] : null;
-            $capturedScope    = $original?->capturedScope;
-            $lockedDefinition = $original?->lockedDefinition;
+            $capturedScope    = null;
+            $lockedDefinition = null;
+
+            if ($original instanceof FunctionRefNode) {
+                $lockedDefinition = $original->lockedDefinition;
+            } elseif ($original instanceof FunctionNode) {
+                $capturedScope    = $original->capturedScope;
+                $lockedDefinition = $original->lockedDefinition;
+            }
 
             return new FunctionNode(
                 $name,
@@ -314,10 +327,20 @@ final class SassMetaModule extends AbstractModule
         $scope  = $this->scopeFromContext($context);
 
         if ($module !== null) {
-            $hasBuiltin = $context?->registry?->hasFunction($name, $module) === true;
-            $hasUser    = $scope->getModule($module)?->hasFunction($name) ?? false;
+            $hasBuiltin  = $context?->registry?->hasFunction($name, $module) === true;
+            $moduleScope = $scope->getModule($module);
 
-            if (! $hasBuiltin && ! $hasUser) {
+            if ($moduleScope !== null && $moduleScope->hasFunction($name)) {
+                if (! $hasBuiltin) {
+                    $lockedDefinition = $moduleScope->findFunction($name)?->definition;
+
+                    return new FunctionRefNode($name, $module, $lockedDefinition, $moduleScope);
+                }
+
+                return new FunctionRefNode($name, $module);
+            }
+
+            if (! $hasBuiltin) {
                 throw ModuleResolutionException::callableNotFound(
                     $this->builtinErrorContext('meta.get-function'),
                     $name,
@@ -325,9 +348,7 @@ final class SassMetaModule extends AbstractModule
                 );
             }
 
-            $reference = new SassFunctionRef($module . '.' . $name);
-
-            return new StringNode($reference->name());
+            return new FunctionRefNode($name, module: $module);
         }
 
         $hasBuiltin = $context?->registry?->hasFunction($name) === true;
@@ -343,12 +364,10 @@ final class SassMetaModule extends AbstractModule
         if ($hasUser && ! $hasBuiltin) {
             $lockedDefinition = $scope->findFunction($name)?->definition;
 
-            return new FunctionNode($name, capturedScope: $scope, lockedDefinition: $lockedDefinition);
+            return new FunctionRefNode($name, lockedDefinition: $lockedDefinition, capturedScope: $scope);
         }
 
-        $reference = new SassFunctionRef($name);
-
-        return new StringNode($reference->name());
+        return new FunctionRefNode($name);
     }
 
     /**
@@ -743,6 +762,10 @@ final class SassMetaModule extends AbstractModule
 
     private function functionNameFromValue(AstNode $value): ?string
     {
+        if ($value instanceof FunctionRefNode) {
+            return $value->name;
+        }
+
         if ($value instanceof FunctionNode) {
             return $value->name;
         }

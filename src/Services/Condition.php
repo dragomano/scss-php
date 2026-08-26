@@ -10,6 +10,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NullNode;
@@ -347,6 +348,10 @@ final readonly class Condition
             return $this->areMapsEqual($left, $right, $env);
         }
 
+        if ($left instanceof FunctionRefNode && $right instanceof FunctionRefNode) {
+            return $this->areFunctionRefsEqual($left, $right);
+        }
+
         if ($left instanceof FunctionNode && $right instanceof FunctionNode) {
             return $this->areFunctionsEqual($left, $right);
         }
@@ -438,6 +443,19 @@ final readonly class Condition
     private function areFunctionsEqual(FunctionNode $left, FunctionNode $right): bool
     {
         return $left === $right;
+    }
+
+    private function areFunctionRefsEqual(FunctionRefNode $left, FunctionRefNode $right): bool
+    {
+        if ($left->lockedDefinition !== null && $right->lockedDefinition !== null) {
+            return $left->lockedDefinition === $right->lockedDefinition;
+        }
+
+        if ($left->lockedDefinition === null && $right->lockedDefinition === null) {
+            return $left->name === $right->name && $left->module === $right->module;
+        }
+
+        return false;
     }
 
     private function compareNumbers(NumberNode $left, string $operator, NumberNode $right): bool
