@@ -10,6 +10,7 @@ use Bugo\Iris\Spaces\OklabColor;
 use Bugo\Iris\Spaces\OklchColor;
 use Bugo\Iris\Spaces\RgbColor;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
+use Bugo\SCSS\Builtins\Color\Conversion\DartColorMath;
 use Bugo\SCSS\Builtins\Color\Support\ColorArgumentParser;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
@@ -19,11 +20,13 @@ use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 
 use function count;
 use function in_array;
+use function is_finite;
 use function is_nan;
 use function max;
 use function round;
@@ -54,6 +57,7 @@ final readonly class ColorConstructorEvaluator
         private ColorArgumentParser $parser,
         private ColorNodeConverter $converter,
         private ColorModuleContext $context,
+        private DartColorMath $colorMath = new DartColorMath(),
     ) {}
 
     /**
@@ -277,14 +281,90 @@ final readonly class ColorConstructorEvaluator
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    public function hwbFunction(array $positional): AstNode
+    public function hwbFunction(array $positional, array $named = []): AstNode
     {
+        if (isset($named['channels']) && $positional === []) {
+            $positional[] = $named['channels'];
+        } else {
+            $positional = $this->mergeNamedChannelArguments(
+                $positional,
+                $named,
+                ['hue', 'whiteness', 'blackness', 'alpha'],
+            );
+        }
+
+        $firstPositional = $positional[0] ?? null;
+
+        if ($firstPositional instanceof ListNode && $firstPositional->separator === 'slash') {
+            $channelList = $this->parser->parseChannelList($firstPositional);
+
+            if ($channelList !== null && $channelList['components'] instanceof ListNode) {
+                $positional = [
+                    ...$channelList['components']->items,
+                    new StringNode('/'),
+                    ...($channelList['alpha'] === null ? [] : [$channelList['alpha']]),
+                ];
+            }
+        }
+
         $arguments = $this->parser->parseFunctionalColorArguments($positional, 'hwb', 3);
-        $hue       = $this->parser->normalizeHue($this->parser->asNumber($arguments[0], 'hwb'));
+
+        if (isset($arguments[3]) && $this->parser->isMissingChannelNode($arguments[3])) {
+            return new FunctionNode('hwb', [new ListNode([
+                $arguments[0] instanceof NumberNode && $arguments[0]->value == 0
+                    ? new StringNode('0.0deg')
+                    : $arguments[0],
+                $arguments[1],
+                $arguments[2],
+                new StringNode('/'),
+                $arguments[3],
+            ], 'space')]);
+        }
+
+        $hue = $this->parser->isMissingChannelNode($arguments[0])
+            ? 0.0
+            : $this->parser->normalizeHue($this->parser->asHueAngle($arguments[0], 'hwb'));
+
+        if (
+            $this->parser->isMissingChannelNode($arguments[0])
+            || $this->parser->isMissingChannelNode($arguments[1])
+            || $this->parser->isMissingChannelNode($arguments[2])
+        ) {
+            $channels = [
+                new StringNode('0.0deg'),
+                $arguments[1],
+                $arguments[2],
+            ];
+
+            if (isset($arguments[3])) {
+                $channels[] = new StringNode('/');
+                $channels[] = $arguments[3];
+            }
+
+            return new FunctionNode('hwb', [new ListNode($channels, 'space')]);
+        }
+
         $whiteness = $this->parser->asPercentage($arguments[1], 'hwb');
         $blackness = $this->parser->asPercentage($arguments[2], 'hwb');
         $alpha     = $this->parser->parseAlphaOrDefault($arguments, 3, 'hwb');
+
+        if (! is_finite($hue)) {
+            return new FunctionNode('hsla', [
+                new NumberNode(0),
+                new NumberNode(0, '%'),
+                new NumberNode($whiteness, '%'),
+                new NumberNode($alpha),
+            ]);
+        }
+
+        if (! is_finite($whiteness) || ! is_finite($blackness)) {
+            $nan           = new StringNode('calc(NaN)');
+            $nanPercentage = new StringNode('calc(NaN * 1%)');
+
+            return new FunctionNode('hsla', [$nan, $nanPercentage, $nanPercentage, new NumberNode($alpha)]);
+        }
 
         $sum = $whiteness + $blackness;
         if ($sum > 100.0) {
@@ -292,11 +372,27 @@ final readonly class ColorConstructorEvaluator
             $blackness = ($blackness / $sum) * 100.0;
         }
 
-        return $this->converter->buildFunctionalColorNode('hwb', [
-            new NumberNode($hue),
-            new NumberNode($whiteness, '%'),
-            new NumberNode($blackness, '%'),
-        ], $alpha);
+        [$red, $green, $blue] = $this->colorMath->hwbToSrgb($hue, $whiteness, $blackness);
+
+        $red   *= 255.0;
+        $green *= 255.0;
+        $blue  *= 255.0;
+
+        if (abs($alpha - 1.0) < 0.0000001
+            && abs($red - round($red)) < 0.0000001
+            && abs($green - round($green)) < 0.0000001
+            && abs($blue - round($blue)) < 0.0000001
+        ) {
+            return $this->converter->fromRgb(new RgbColor($red, $green, $blue, $alpha));
+        }
+
+        return $this->converter->serializeAsUnclampedHsl(
+            $red,
+            $green,
+            $blue,
+            $alpha,
+            true,
+        );
     }
 
     /**

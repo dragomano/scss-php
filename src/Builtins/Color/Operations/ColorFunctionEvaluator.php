@@ -171,12 +171,182 @@ final readonly class ColorFunctionEvaluator
             ),
         );
 
-        $weight = $this->runtime->argumentParser->asPercentage(
-            $named['weight'] ?? ($positional[1] ?? new NumberNode(100)),
-            'invert',
-        );
+        $weightNode = $named['weight'] ?? ($positional[1] ?? new NumberNode(100));
 
-        $p   = $this->runtime->argumentParser->clamp($weight / 100.0, 1.0);
+        $weight = $weightNode instanceof NumberNode && $weightNode->unit !== '%'
+            ? (float) $weightNode->value
+            : $this->runtime->argumentParser->asPercentage($weightNode, 'invert');
+
+        $p = $this->runtime->argumentParser->clamp($weight / 100.0, 1.0);
+
+        if (isset($named['space'])) {
+            $nativeSpace = $this->normalizeSpaceName($this->converter->detectNativeColorSpace($color));
+
+            if ($space === 'hwb' && $nativeSpace === 'rgb') {
+                [$channels, $alpha] = $this->colorChannelsInSpace($color, 'hwb');
+
+                $inverted = [
+                    $channels[0] === null ? null : $channels[0] + 180.0,
+                    $channels[2],
+                    $channels[1],
+                ];
+
+                foreach ($channels as $index => $channel) {
+                    if ($channel !== null && $inverted[$index] !== null) {
+                        $inverted[$index] = $channel * (1.0 - $p) + $inverted[$index] * $p;
+                    }
+                }
+
+                $inverted = $this->dartConvert('hwb', 'rgb', $inverted);
+
+                return $this->serializeModifiedColor($color, 'rgb', $inverted, $alpha);
+            }
+
+            if ($space !== $nativeSpace && in_array($space, [
+                'a98-rgb',
+                'display-p3',
+                'lab',
+                'lch',
+                'oklab',
+                'oklch',
+                'prophoto-rgb',
+                'rec2020',
+                'xyz',
+            ], true)) {
+                [$channels, $alpha] = $this->colorChannelsInSpace($color, $space);
+
+                $inverted = match ($space) {
+                    'lch' => [
+                        $channels[0] === null ? null : 100.0 - $channels[0],
+                        $channels[1],
+                        $channels[2] === null ? null : $this->runtime->spaceConverter->normalizeHue($channels[2] + 180.0),
+                    ],
+                    'oklch' => [
+                        $channels[0] === null ? null : 1.0 - $channels[0],
+                        $channels[1],
+                        $channels[2] === null ? null : $this->runtime->spaceConverter->normalizeHue($channels[2] + 180.0),
+                    ],
+                    'lab' => [
+                        $channels[0] === null ? 100.0 : 100.0 - $channels[0],
+                        $channels[1] === null ? 0.0 : -$channels[1],
+                        $channels[2] === null ? 0.0 : -$channels[2],
+                    ],
+                    'oklab' => [
+                        $channels[0] === null ? 1.0 : 1.0 - $channels[0],
+                        $channels[1] === null ? 0.0 : -$channels[1],
+                        $channels[2] === null ? 0.0 : -$channels[2],
+                    ],
+                    default => array_map(
+                        static fn(?float $channel): float => 1.0 - ($channel ?? 0.0),
+                        $channels,
+                    ),
+                };
+
+                foreach ($channels as $index => $channel) {
+                    if ($channel !== null && $inverted[$index] !== null) {
+                        $inverted[$index] = $channel * (1.0 - $p) + $inverted[$index] * $p;
+                    }
+                }
+
+                $converted = $this->dartConvert($space, $nativeSpace, $inverted);
+
+                if ($nativeSpace === 'lch' && $color instanceof FunctionNode) {
+                    $native       = $this->nativeChannels($color, $nativeSpace);
+                    $nativeChroma = $native['channels'][1] ?? null;
+
+                    if ($nativeChroma !== null
+                        && $this->dartMath->fuzzyEquals($nativeChroma, 0.0)
+                    ) {
+                        $converted[2] = null;
+                    }
+                }
+
+                if ($nativeSpace === 'rgb') {
+                    return $this->converter->buildRgbFunctionNode(
+                        red: $converted[0] ?? 0.0,
+                        green: $converted[1] ?? 0.0,
+                        blue: $converted[2] ?? 0.0,
+                        alpha: $alpha ?? 1.0,
+                    );
+                }
+
+                return $this->serializeModifiedColor($color, $nativeSpace, $converted, $alpha);
+            }
+
+            if ($space === $nativeSpace) {
+                $native   = $this->nativeChannels($color, $nativeSpace);
+                $channels = $native['channels'];
+
+                if ($nativeSpace === 'hsl' && $channels[0] === null && $color instanceof FunctionNode) {
+                    [$rawChannels] = $this->converter->extractRawChannelsPublic($color);
+
+                    $rawHue = $rawChannels[0] ?? null;
+
+                    if ($rawHue instanceof NumberNode) {
+                        $channels[0] = $this->channelValueFromNode($rawHue, 'hue');
+                    }
+                }
+
+                if (($nativeSpace === 'lch' || $nativeSpace === 'oklch')
+                    && $channels[2] === null
+                    && $color instanceof FunctionNode
+                ) {
+                    [$rawChannels] = $this->converter->extractRawChannelsPublic($color);
+
+                    $rawHue = $rawChannels[2] ?? null;
+
+                    if ($rawHue instanceof NumberNode) {
+                        $channels[2] = $this->channelValueFromNode($rawHue, 'hue');
+                    }
+                }
+
+                $inverted = match ($nativeSpace) {
+                    'hsl' => [
+                        $channels[0] === null ? null : $channels[0] + 180.0,
+                        $channels[1],
+                        $channels[2] === null ? null : 100.0 - $channels[2],
+                    ],
+                    'hwb' => [
+                        $channels[0] === null ? null : $channels[0] + 180.0,
+                        $channels[2],
+                        $channels[1],
+                    ],
+                    'lab' => [
+                        $channels[0] === null ? null : 100.0 - $channels[0],
+                        $channels[1] === null ? null : -$channels[1],
+                        $channels[2] === null ? null : -$channels[2],
+                    ],
+                    'lch' => [
+                        $channels[0] === null ? null : 100.0 - $channels[0],
+                        $channels[1],
+                        $channels[2] === null ? null : $channels[2] + 180.0,
+                    ],
+                    'oklab' => [
+                        $channels[0] === null ? null : 1.0 - $channels[0],
+                        $channels[1] === null ? null : -$channels[1],
+                        $channels[2] === null ? null : -$channels[2],
+                    ],
+                    'oklch' => [
+                        $channels[0] === null ? null : 1.0 - $channels[0],
+                        $channels[1],
+                        $channels[2] === null ? null : $channels[2] + 180.0,
+                    ],
+                    default => array_map(
+                        static fn(?float $channel): ?float => $channel === null ? null : 1.0 - $channel,
+                        $channels,
+                    ),
+                };
+
+                foreach ($channels as $index => $channel) {
+                    if ($channel !== null && $inverted[$index] !== null) {
+                        $inverted[$index] = $channel * (1.0 - $p) + $inverted[$index] * $p;
+                    }
+                }
+
+                return $this->serializeModifiedColor($color, $nativeSpace, $inverted, $native['alpha']);
+            }
+        }
+
         $rgb = $this->converter->toRgb($color);
 
         if ($space !== 'rgb' && $space !== 'srgb') {
@@ -195,6 +365,20 @@ final readonly class ColorFunctionEvaluator
         }
 
         $invertedRgb = $this->legacy->invert($rgb, $p);
+
+        if ($space === 'rgb'
+            && ! $this->converter->isLegacyColor($color)
+            && $this->normalizeSpaceName($this->converter->detectNativeColorSpace($color)) === 'lch'
+        ) {
+            $lch = $this->runtime->spaceConverter->rgbToLch($invertedRgb);
+
+            return $this->buildOutOfRangeFunctionalNode(
+                'lch',
+                [$lch->l, $lch->c, $lch->h],
+                $invertedRgb->a,
+            );
+        }
+
         $legacyHsl   = $this->extractLegacyHsl($color);
 
         if ($legacyHsl !== null && $legacyHsl['origin'] !== 'rgb') {
@@ -330,7 +514,7 @@ final readonly class ColorFunctionEvaluator
             case 'hwb':
                 if ($c0 === null || $c1 === null || $c2 === null || $alpha === null) {
                     return $this->converter->buildFunctionalColorNode('hwb', [
-                        $c0 === null ? new StringNode('none') : new NumberNode($this->runtime->spaceConverter->normalizeHue($c0), 'deg'),
+                        $c0 === null ? new StringNode('none') : ($c0 == 0.0 ? new StringNode('0deg') : new NumberNode($this->runtime->spaceConverter->normalizeHue($c0), 'deg')),
                         $c1 === null ? new StringNode('none') : new NumberNode($c1, '%'),
                         $c2 === null ? new StringNode('none') : new NumberNode($c2, '%'),
                     ], min($alpha ?? 1.0, 1.0));
@@ -932,6 +1116,9 @@ final readonly class ColorFunctionEvaluator
 
     /**
      * @return array{channels: list<float|null>, alpha: float|null}
+     */
+    /**
+     * @return array{channels: array{0: float|null, 1: float|null, 2: float|null}, alpha: float|null}
      */
     private function nativeChannels(AstNode $color, string $nativeSpace): array
     {

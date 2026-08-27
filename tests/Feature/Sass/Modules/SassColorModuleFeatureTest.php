@@ -1350,12 +1350,12 @@ describe('Sass Color Module Feature', function () {
         });
 
         describe('hwb()', function () {
-            it('preserves functional notation', function () {
+            it('converts to hex', function () {
                 $css = $this->compiler->compileString('.a { color: hwb(210 0% 60%); }');
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: hwb(210 0% 60%);
+                  color: #003366;
                 }
                 CSS;
 
@@ -1367,7 +1367,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: hwb(210 50% 50%);
+                  color: hsl(0, 0%, 50%);
                 }
                 CSS;
 
@@ -1379,7 +1379,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: hwb(210 0% 60% / .5);
+                  color: hsla(210, 100%, 20%, .5);
                 }
                 CSS;
 

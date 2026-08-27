@@ -159,6 +159,14 @@ final class SassColorModule extends AbstractModule
             unset($named['degrees']);
         }
 
+        foreach (['color', 'channel'] as $index => $argument) {
+            if (! isset($positional[$index]) && isset($named[$argument])) {
+                $positional[$index] = $named[$argument];
+
+                unset($named[$argument]);
+            }
+        }
+
         try {
             return match ($name) {
                 'adjust-hue'             => $this->functions->adjustHue($positional, $context),
@@ -183,7 +191,7 @@ final class SassColorModule extends AbstractModule
                 'grayscale'              => $this->functions->grayscale($positional),
                 'hsl'                    => $this->constructors->hslFunction($positional, $named),
                 'hsla'                   => $this->constructors->hslaFunction($positional, $named),
-                'hwb'                    => $this->constructors->hwbFunction($positional),
+                'hwb'                    => $this->constructors->hwbFunction($positional, $named),
                 'ie-hex-str'             => $this->constructors->ieHexStr($positional),
                 'invert'                 => $this->functions->invert($positional, $named),
                 'is-in-gamut'            => $this->channelInspector->isInGamut($positional),

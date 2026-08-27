@@ -338,6 +338,12 @@ final readonly class CssArgumentEvaluator
     public function compressNamedColorsForOutput(AstNode $value): AstNode
     {
         return AstValueTransformer::map($value, function (AstNode $node): AstNode {
+            if ($node instanceof ColorNode) {
+                $hex = $this->resolveNamedColorHex($node->value);
+
+                return $hex === null ? $node : new ColorNode($hex);
+            }
+
             if (! $node instanceof StringNode) {
                 return $node;
             }

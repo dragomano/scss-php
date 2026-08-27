@@ -215,7 +215,7 @@ describe('ColorChannelReader', function () {
             new StringNode('oklch'),
         ], []);
 
-        expect($hsl->value)->toBeTrue()
+        expect($hsl->value)->toBeFalse()
             ->and($hwb->value)->toBeTrue()
             ->and($lch->value)->toBeTrue()
             ->and($oklch->value)->toBeTrue();

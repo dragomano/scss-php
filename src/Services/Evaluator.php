@@ -404,6 +404,8 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         }
 
         if ($node instanceof FunctionNode) {
+            $node = $this->preserveHwbZeroHueUnit($node);
+
             if ($this->options->style === Style::COMPRESSED) {
                 $compressedColor = $this->hexColorConverter->tryConvert($node);
 
@@ -551,6 +553,51 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
     public function normalizeBubblingNodeForSelector(StatementNode $node, string $selector): StatementNode
     {
         return $this->selector->normalizeBubblingNodeForSelector($node, $selector);
+    }
+
+    private function preserveHwbZeroHueUnit(FunctionNode $node): FunctionNode
+    {
+        if (strtolower($node->name) !== 'hwb' || count($node->arguments) !== 1) {
+            return $node;
+        }
+
+        $argument = $node->arguments[0];
+
+        if (! $argument instanceof ListNode || ! isset($argument->items[0])) {
+            return $node;
+        }
+
+        $hue = $argument->items[0];
+
+        if (! $hue instanceof NumberNode || $hue->unit !== null || $hue->value != 0) {
+            return $node;
+        }
+
+        $hasMissingChannel = false;
+
+        foreach ($argument->items as $item) {
+            if ($item instanceof StringNode && strtolower(trim($item->value)) === 'none') {
+                $hasMissingChannel = true;
+
+                break;
+            }
+        }
+
+        if (! $hasMissingChannel) {
+            return $node;
+        }
+
+        $items    = $argument->items;
+        $items[0] = new NumberNode(0, 'deg');
+
+        return new FunctionNode(
+            $node->name,
+            [new ListNode($items, $argument->separator, $argument->bracketed)],
+            $node->line,
+            $node->modernSyntax,
+            $node->capturedScope,
+            $node->lockedDefinition,
+        );
     }
 
     private function getCurrentParentSelector(Environment $env): ?StringNode

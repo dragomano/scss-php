@@ -215,6 +215,15 @@ final readonly class FunctionCallEvaluator
         } else {
             $arguments = $this->callArguments->expandCallArguments($node->arguments, $env);
             $arguments = $this->calculation->normalizeArguments($node->name, $arguments);
+
+            if (
+                in_array(strtolower($node->name), ['channel', 'color.channel'], true)
+                && isset($node->arguments[0])
+                && $node->arguments[0] instanceof FunctionNode
+                && strtolower($node->arguments[0]->name) === 'hwb'
+            ) {
+                $arguments[0] = $node->arguments[0];
+            }
         }
 
         if (strtolower($node->name) === 'if' && count($arguments) >= 2 && ! $node->modernSyntax) {
