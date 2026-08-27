@@ -24,6 +24,9 @@ final class Scope
     /** @var array<string, Scope> */
     private array $modules = [];
 
+    /** @var array<string, AstNode> */
+    private array $incomingConfiguration = [];
+
     private ?Scope $globalScope = null;
 
     private bool $insideCssFunctionBody = false;
@@ -46,6 +49,18 @@ final class Scope
     public function isInsideCssFunctionBody(): bool
     {
         return $this->insideCssFunctionBody;
+    }
+
+    /** @param array<string, AstNode> $configuration */
+    public function setIncomingConfiguration(array $configuration): void
+    {
+        $this->incomingConfiguration = $configuration;
+    }
+
+    /** @return array<string, AstNode> */
+    public function getIncomingConfiguration(): array
+    {
+        return $this->incomingConfiguration;
     }
 
     public function getGlobalScope(): Scope

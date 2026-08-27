@@ -14,6 +14,7 @@ use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
@@ -208,11 +209,18 @@ final readonly class Module
 
         $moduleEnv = new Environment();
 
+        $incomingConfig = [];
+
         foreach ($node->configuration as $name => $valueNode) {
-            $moduleEnv->getCurrentScope()->setVariable(
-                $name,
-                $this->evaluation->evaluateValue($valueNode, $env),
-            );
+            $value = $this->evaluation->evaluateValue($valueNode, $env);
+
+            $moduleEnv->getCurrentScope()->setVariable($name, $value);
+
+            $incomingConfig[$name] = $value;
+        }
+
+        if ($incomingConfig !== []) {
+            $moduleEnv->getCurrentScope()->setIncomingConfiguration($incomingConfig);
         }
 
         $state->loadingFiles[$moduleId] = true;
@@ -261,6 +269,18 @@ final readonly class Module
 
         $resolvedConfiguration = $this->resolveForwardConfiguration($node, $env);
 
+        $incomingConfig = $this->collectIncomingConfiguration($env);
+
+        if ($incomingConfig !== []) {
+            $prefixedIncoming = $this->stripPrefixFromConfiguration($incomingConfig, $node->prefix);
+
+            foreach ($prefixedIncoming as $name => $value) {
+                if (! isset($resolvedConfiguration[$name])) {
+                    $resolvedConfiguration[$name] = $value;
+                }
+            }
+        }
+
         if ($this->importEvaluationDepth() > 0) {
             $resolvedConfiguration = $this->resolveImportForwardConfiguration($node, $env, $resolvedConfiguration);
         }
@@ -269,7 +289,16 @@ final readonly class Module
         $state      = $this->state();
 
         if (! isset($state->forwardedModules[$forwardKey])) {
-            $state->forwardedModules[$forwardKey] = $this->loadAndEvaluateModule($path, $resolvedConfiguration);
+            $moduleData = $this->loadAndEvaluateModule($path, $resolvedConfiguration);
+
+            $state->forwardedModules[$forwardKey] = $moduleData;
+
+            $namespace = $this->deriveNamespaceFromUsePath($path);
+            $moduleId  = $this->loader->load($path)['path'];
+
+            if (! $state->hasNamespace($namespace)) {
+                $state->addByNamespace($namespace, new LoadedModule($moduleId, $moduleData['scope'], $moduleData['css']));
+            }
         }
 
         $moduleData = $state->forwardedModules[$forwardKey];
@@ -367,6 +396,8 @@ final readonly class Module
         foreach ($configuration as $name => $value) {
             $moduleEnv->getCurrentScope()->setVariable($name, $value);
         }
+
+        $moduleEnv->getCurrentScope()->setIncomingConfiguration($configuration);
 
         if ($fromImport) {
             $resolvedPath = $file['path'];
@@ -476,7 +507,7 @@ final readonly class Module
             $isDefault    = $entry['default'];
             $currentValue = $isDefault ? $env->getCurrentScope()->getAstVariable($name) : null;
 
-            if ($currentValue !== null) {
+            if ($currentValue !== null && ! $currentValue instanceof NullNode) {
                 $resolved[$name] = $currentValue;
 
                 continue;
@@ -649,6 +680,47 @@ final readonly class Module
         return $visibility === 'show' ? $contains : ! $contains;
     }
 
+    /** @return array<string, AstNode> */
+    private function collectIncomingConfiguration(Environment $env): array
+    {
+        $scope = $env->getCurrentScope();
+
+        while ($scope !== null) {
+            $config = $scope->getIncomingConfiguration();
+
+            if ($config !== []) {
+                return $config;
+            }
+
+            $scope = $scope->getParent();
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, AstNode> $configuration
+     * @return array<string, AstNode>
+     */
+    private function stripPrefixFromConfiguration(array $configuration, ?string $prefix): array
+    {
+        if ($prefix === null || $prefix === '') {
+            return $configuration;
+        }
+
+        $stripped = [];
+
+        foreach ($configuration as $name => $value) {
+            if (str_starts_with($name, $prefix)) {
+                $stripped[substr($name, strlen($prefix))] = $value;
+            } else {
+                $stripped[$name] = $value;
+            }
+        }
+
+        return $stripped;
+    }
+
     private function isCssImportRaw(string $raw): bool
     {
         $lower = strtolower($raw);
@@ -680,8 +752,12 @@ final readonly class Module
     }
 
     /** @return array<string, true> */
-    private function collectDefaultVariableNames(RootNode $ast): array
+    private function collectDefaultVariableNames(RootNode $ast, int $depth = 0): array
     {
+        if ($depth > 10) {
+            return [];
+        }
+
         $defaults = [];
 
         foreach ($ast->children as $node) {
@@ -695,9 +771,32 @@ final readonly class Module
                         $defaults[NameNormalizer::normalize($name)] = true;
                     }
                 }
+
+                if ($node->configuration === []) {
+                    $forwardedDefaults = $this->collectDefaultVariableNamesFromForward($node, $depth + 1);
+                    $defaults          = array_merge($defaults, $forwardedDefaults);
+                }
             }
         }
 
         return $defaults;
+    }
+
+    /** @return array<string, true> */
+    private function collectDefaultVariableNamesFromForward(ForwardNode $node, int $depth): array
+    {
+        try {
+            $file = $this->loader->load($node->path);
+
+            $this->loader->addPath(dirname($file['path']));
+
+            $syntax       = Syntax::fromPath($file['path'], $file['content']);
+            $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
+            $moduleAst    = $this->parser->parse($moduleSource);
+
+            return $this->collectDefaultVariableNames($moduleAst, $depth);
+        } catch (\Throwable) {
+            return [];
+        }
     }
 }
