@@ -12,6 +12,7 @@ use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DiagnosticNode;
 use Bugo\SCSS\Nodes\ExtendNode;
+use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\ReturnNode;
@@ -45,7 +46,8 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
 
         foreach ($ruleCtx->node->children as $child) {
             if (
-                $child instanceof VariableDeclarationNode
+                $child instanceof ImportNode
+                || $child instanceof VariableDeclarationNode
                 || $child instanceof ModuleVarDeclarationNode
                 || $child instanceof DiagnosticNode
             ) {

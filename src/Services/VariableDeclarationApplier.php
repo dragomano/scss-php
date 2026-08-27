@@ -31,6 +31,14 @@ final readonly class VariableDeclarationApplier implements VariableDeclarationAp
                     return true;
                 }
 
+                $origin = $currentScope->findImportedVariableOrigin($node->name);
+
+                if ($origin !== null) {
+                    $origin['scope']->setVariableLocal($origin['name'], $evaluatedValue, $node->default);
+
+                    return true;
+                }
+
                 $currentScope->setVariable(
                     $node->name,
                     $evaluatedValue,

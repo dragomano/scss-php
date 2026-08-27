@@ -39,7 +39,18 @@ final readonly class ModuleNodeHandler
 
         $moduleState->emittedForwardCss[$forwardKey] = true;
 
-        return $moduleState->forwardedModules[$forwardKey]['css'];
+        $css = $moduleState->forwardedModules[$forwardKey]['css'];
+
+        if ($css !== '') {
+            $namespace = $this->module->deriveNamespaceFromUsePath($node->path);
+            $loaded    = $moduleState->getByNamespace($namespace);
+
+            if ($loaded !== null) {
+                $moduleState->emittedModuleCss[$loaded->id] = true;
+            }
+        }
+
+        return $css;
     }
 
     public function handleImport(ImportNode $node, TraversalContext $ctx): string
@@ -87,7 +98,7 @@ final readonly class ModuleNodeHandler
                 $this->module->extractAstVariables($ctx->env->getCurrentScope()->getVariables()),
             );
 
-            $this->module->mergeScopeExports($data['scope'], $ctx->env->getCurrentScope());
+            $this->module->mergeScopeExports($data['scope'], $ctx->env->getCurrentScope(), trackImportedVariables: true);
 
             $css = $data['css'];
 
@@ -150,11 +161,12 @@ final readonly class ModuleNodeHandler
             return '';
         }
 
-        if (isset($moduleState->emittedUseCss[$loaded->id])) {
+        if (isset($moduleState->emittedUseCss[$loaded->id]) || isset($moduleState->emittedModuleCss[$loaded->id])) {
             return '';
         }
 
         $moduleState->emittedUseCss[$loaded->id] = true;
+        $moduleState->emittedModuleCss[$loaded->id] = true;
 
         return $loaded->css;
     }

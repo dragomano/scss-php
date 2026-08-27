@@ -24,6 +24,15 @@ final class Scope
     /** @var array<string, Scope> */
     private array $modules = [];
 
+    /** @var array<string, true> */
+    private array $importedMembers = [];
+
+    /** @var array<string, array{scope: Scope, name: string}> */
+    private array $importedVariables = [];
+
+    /** @var array<string, array{scope: Scope, name: string}> */
+    private array $forwardedVariables = [];
+
     /** @var array<string, AstNode> */
     private array $incomingConfiguration = [];
 
@@ -300,6 +309,53 @@ final class Scope
     public function getModule(string $namespace): ?Scope
     {
         return $this->modules[$namespace] ?? $this->parent?->getModule($namespace);
+    }
+
+    public function markImportedMember(string $name): void
+    {
+        $this->importedMembers[NameNormalizer::normalize($name)] = true;
+    }
+
+    public function isImportedMember(string $name): bool
+    {
+        return array_key_exists(NameNormalizer::normalize($name), $this->importedMembers);
+    }
+
+    public function trackImportedVariable(string $name, Scope $originScope, string $originName): void
+    {
+        $this->importedVariables[NameNormalizer::normalize($name)] = ['scope' => $originScope, 'name' => $originName];
+    }
+
+    /** @return array{scope: Scope, name: string}|null */
+    public function findImportedVariableOrigin(string $name): ?array
+    {
+        $normalized = NameNormalizer::normalize($name);
+        $scope      = $this;
+
+        do {
+            $origin = $scope->importedVariables[$normalized] ?? null;
+
+            if ($origin !== null) {
+                return $origin;
+            }
+
+            $scope = $scope->parent;
+        } while ($scope !== null);
+
+        return null;
+    }
+
+    public function trackForwardedVariable(string $name, Scope $originScope, string $originName): void
+    {
+        $this->forwardedVariables[NameNormalizer::normalize($name)] = ['scope' => $originScope, 'name' => $originName];
+    }
+
+    /** @return array{scope: Scope, name: string}|null */
+    public function findForwardedVariableOrigin(string $name): ?array
+    {
+        $normalized = NameNormalizer::normalize($name);
+
+        return $this->forwardedVariables[$normalized] ?? null;
     }
 
     private function findScopeForVariable(string $name): ?Scope

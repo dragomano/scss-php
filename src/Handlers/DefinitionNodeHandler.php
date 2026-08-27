@@ -68,13 +68,37 @@ final readonly class DefinitionNodeHandler
 
     public function handleVariableDeclaration(VariableDeclarationNode $node, TraversalContext $ctx): string
     {
-        $ctx->env->getCurrentScope()->setVariable(
+        $scope = $ctx->env->getCurrentScope();
+
+        $scope->setVariable(
             $node->name,
             $this->evaluation->evaluateValueWithSlashDivision($node->value, $ctx->env),
             $node->global,
             $node->default,
             $node->line,
         );
+
+        $origin = $scope->findImportedVariableOrigin($node->name);
+
+        if ($origin !== null) {
+            /** @psalm-var mixed $value */
+            $value       = $scope->getVariable($node->name);
+            $originScope = $origin['scope'];
+            $originName  = $origin['name'];
+
+            while (true) {
+                $originScope->setVariableLocal($originName, $value);
+
+                $forwarded = $originScope->findForwardedVariableOrigin($originName);
+
+                if ($forwarded === null) {
+                    break;
+                }
+
+                $originScope = $forwarded['scope'];
+                $originName  = $forwarded['name'];
+            }
+        }
 
         return '';
     }

@@ -25,6 +25,7 @@ use Bugo\SCSS\States\LoadedModule;
 use Bugo\SCSS\States\ModuleState;
 use Bugo\SCSS\Syntax;
 use Bugo\SCSS\Utils\NameNormalizer;
+use Throwable;
 
 use function array_key_exists;
 use function array_keys;
@@ -81,9 +82,28 @@ final readonly class Module
             throw UndefinedSymbolException::variableInModule($node->module, $node->name);
         }
 
-        $value = $evaluateValue ? $this->evaluation->evaluateValue($node->value, $env) : $node->value;
+        $value  = $evaluateValue ? $this->evaluation->evaluateValue($node->value, $env) : $node->value;
+        $origin = $moduleScope->findForwardedVariableOrigin($node->name);
 
-        $moduleScope->setVariableLocal($node->name, $value, $node->default);
+        if ($origin !== null) {
+            $originScope = $origin['scope'];
+            $originName  = $origin['name'];
+
+            while (true) {
+                $originScope->setVariableLocal($originName, $value, $node->default);
+
+                $forwarded = $originScope->findForwardedVariableOrigin($originName);
+
+                if ($forwarded === null) {
+                    break;
+                }
+
+                $originScope = $forwarded['scope'];
+                $originName  = $forwarded['name'];
+            }
+        } else {
+            $moduleScope->setVariableLocal($node->name, $value, $node->default);
+        }
     }
 
     public function state(): ModuleState
@@ -239,15 +259,39 @@ final readonly class Module
                     continue;
                 }
 
+                if ($moduleEnv->getCurrentScope()->isImportedMember($name)) {
+                    continue;
+                }
+
                 $env->getCurrentScope()->setVariableLocal($name, $moduleEnv->getCurrentScope()->getVariable($name));
+                $env->getCurrentScope()->markImportedMember($name);
+                $env->getCurrentScope()->trackImportedVariable($name, $moduleEnv->getCurrentScope(), $name);
             }
 
             foreach ($moduleEnv->getCurrentScope()->getMixins() as $name => $mixin) {
+                if (NameNormalizer::isPrivate($name)) {
+                    continue;
+                }
+
+                if ($moduleEnv->getCurrentScope()->isImportedMember($name)) {
+                    continue;
+                }
+
                 $env->getCurrentScope()->setMixin($name, $mixin);
+                $env->getCurrentScope()->markImportedMember($name);
             }
 
             foreach ($moduleEnv->getCurrentScope()->getFunctions() as $name => $function) {
+                if (NameNormalizer::isPrivate($name)) {
+                    continue;
+                }
+
+                if ($moduleEnv->getCurrentScope()->isImportedMember($name)) {
+                    continue;
+                }
+
                 $env->getCurrentScope()->setFunction($name, $function);
+                $env->getCurrentScope()->markImportedMember($name);
             }
 
             return;
@@ -265,7 +309,8 @@ final readonly class Module
 
     public function handleForward(ForwardNode $node, Environment $env): string
     {
-        $path = $node->path;
+        $path  = $node->path;
+        $state = $this->state();
 
         $resolvedConfiguration = $this->resolveForwardConfiguration($node, $env);
 
@@ -283,10 +328,22 @@ final readonly class Module
 
         if ($this->importEvaluationDepth() > 0) {
             $resolvedConfiguration = $this->resolveImportForwardConfiguration($node, $env, $resolvedConfiguration);
+
+            $prefix = $node->prefix ?? '';
+
+            if ($prefix === '' && $resolvedConfiguration === []) {
+                $defaultKey = $this->forwardCacheKey($path, [], $env);
+
+                if (! isset($state->forwardedModules[$defaultKey])) {
+                    $resolvedConfiguration = array_filter(
+                        $env->getCurrentScope()->getVariables(),
+                        static fn(mixed $value): bool => $value instanceof AstNode,
+                    );
+                }
+            }
         }
 
         $forwardKey = $this->forwardCacheKey($path, $resolvedConfiguration, $env);
-        $state      = $this->state();
 
         if (! isset($state->forwardedModules[$forwardKey])) {
             $moduleData = $this->loadAndEvaluateModule($path, $resolvedConfiguration);
@@ -588,19 +645,35 @@ final readonly class Module
         ?string $prefix = null,
         ?string $visibility = null,
         array $members = [],
+        bool $trackImportedVariables = false,
     ): void {
         $normalizedMembers = $this->normalizeForwardMembers($members);
 
         foreach (array_keys($from->getVariables()) as $name) {
-            if (! $this->shouldForwardMember($name, true, $visibility, $normalizedMembers)) {
+            if (! $this->shouldForwardMember($name, true, $visibility, $normalizedMembers, $prefix)) {
                 continue;
             }
 
-            $to->setVariableLocal($this->prefixExportName($name, $prefix), $from->getVariable($name));
+            if ($from->isImportedMember($name)) {
+                continue;
+            }
+
+            $exportedName = $this->prefixExportName($name, $prefix);
+
+            $to->setVariableLocal($exportedName, $from->getVariable($name));
+            $to->trackForwardedVariable($exportedName, $from, $name);
+
+            if ($trackImportedVariables) {
+                $to->trackImportedVariable($exportedName, $from, $name);
+            }
         }
 
         foreach ($from->getMixins() as $name => $mixin) {
-            if (! $this->shouldForwardMember($name, false, $visibility, $normalizedMembers)) {
+            if (! $this->shouldForwardMember($name, false, $visibility, $normalizedMembers, $prefix)) {
+                continue;
+            }
+
+            if ($from->isImportedMember($name)) {
                 continue;
             }
 
@@ -611,7 +684,11 @@ final readonly class Module
         }
 
         foreach ($from->getFunctions() as $name => $function) {
-            if (! $this->shouldForwardMember($name, false, $visibility, $normalizedMembers)) {
+            if (! $this->shouldForwardMember($name, false, $visibility, $normalizedMembers, $prefix)) {
+                continue;
+            }
+
+            if ($from->isImportedMember($name)) {
                 continue;
             }
 
@@ -668,12 +745,14 @@ final readonly class Module
         bool $isVariable,
         ?string $visibility,
         array $members,
+        ?string $prefix = null,
     ): bool {
         if ($visibility !== 'show' && $visibility !== 'hide') {
             return true;
         }
 
-        $normalizedName = NameNormalizer::normalize($name);
+        $effectiveName  = $this->prefixExportName($name, $prefix);
+        $normalizedName = NameNormalizer::normalize($effectiveName);
         $set            = $isVariable ? $members['variables'] : $members['others'];
         $contains       = in_array($normalizedName, $set, true);
 
@@ -795,7 +874,7 @@ final readonly class Module
             $moduleAst    = $this->parser->parse($moduleSource);
 
             return $this->collectDefaultVariableNames($moduleAst, $depth);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return [];
         }
     }
