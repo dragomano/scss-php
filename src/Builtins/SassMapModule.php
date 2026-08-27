@@ -72,9 +72,9 @@ final class SassMapModule extends AbstractModule
 
         try {
             return match ($name) {
-                'deep-merge'  => $this->deepMerge($positional),
+                'deep-merge'  => $this->deepMerge($positional, $named),
                 'deep-remove' => $this->deepRemove($positional),
-                'get'         => $this->get($positional, $context),
+                'get'         => $this->get($positional, $named, $context),
                 'has-key'     => $this->hasKey($positional, $context),
                 'keys'        => $this->keys($positional, $context),
                 'merge'       => $this->merge($positional, $context),
@@ -90,10 +90,14 @@ final class SassMapModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    private function deepMerge(array $positional): AstNode
+    private function deepMerge(array $positional, array $named): AstNode
     {
-        if (count($positional) < 2) {
+        $map1 = $positional[0] ?? $named['map1'] ?? null;
+        $map2 = $positional[1] ?? $named['map2'] ?? null;
+
+        if ($map1 === null || $map2 === null) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('map.deep-merge'),
                 'two map arguments',
@@ -101,8 +105,8 @@ final class SassMapModule extends AbstractModule
         }
 
         return $this->deepMergeMaps(
-            $this->asMap($positional[0], 'map.deep-merge'),
-            $this->asMap($positional[1], 'map.deep-merge'),
+            $this->asMap($map1, 'map.deep-merge'),
+            $this->asMap($map2, 'map.deep-merge'),
         );
     }
 
@@ -126,10 +130,13 @@ final class SassMapModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    private function get(array $positional, ?BuiltinCallContext $context): AstNode
+    private function get(array $positional, array $named, ?BuiltinCallContext $context): AstNode
     {
-        if (count($positional) < 2) {
+        $map = $positional[0] ?? $named['map'] ?? null;
+
+        if ($map === null) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('map.get'),
                 'map and key arguments',
@@ -138,11 +145,25 @@ final class SassMapModule extends AbstractModule
 
         $this->warnAboutDeprecatedMapFunction($context, 'get', $positional);
 
-        $current = $this->asMap($positional[0], 'map.get');
-        $keys    = array_slice($positional, 1, -1);
-        $lastKey = $positional[count($positional) - 1];
+        $current = $this->asMap($map, 'map.get');
+        $allKeys = array_slice($positional, 1);
 
-        foreach ($keys as $key) {
+        if ($allKeys === []) {
+            $keyArg = $named['key'] ?? null;
+
+            if ($keyArg === null) {
+                throw new MissingFunctionArgumentsException(
+                    $this->builtinErrorContext('map.get'),
+                    'map and key arguments',
+                );
+            }
+
+            $allKeys = [$keyArg];
+        }
+
+        $lastKey = array_pop($allKeys);
+
+        foreach ($allKeys as $key) {
             $value = $this->findByKey($current, $key);
 
             if ($value === null) {
@@ -173,7 +194,7 @@ final class SassMapModule extends AbstractModule
 
         $this->warnAboutDeprecatedMapFunction($context, 'has-key', $positional);
 
-        $value = $this->get($positional, null);
+        $value = $this->get($positional, [], null);
 
         return $this->boolNode(! ($value instanceof NullNode));
     }

@@ -103,8 +103,8 @@ final class SassMetaModule extends AbstractModule
         try {
             return match ($name) {
                 'accepts-content'        => $this->acceptsContent($positional, $named, $context),
-                'calc-args'              => $this->calcArgs($positional),
-                'calc-name'              => $this->calcName($positional),
+                'calc-args'              => $this->calcArgs($positional, $named),
+                'calc-name'              => $this->calcName($positional, $named),
                 'call'                   => $this->callFunction($positional, $context),
                 'content-exists'         => $this->contentExists($context),
                 'feature-exists'         => $this->featureExists($positional, $context),
@@ -113,7 +113,7 @@ final class SassMetaModule extends AbstractModule
                 'get-mixin'              => $this->getMixin($positional, $named, $context),
                 'global-variable-exists' => $this->globalVariableExists($positional, $named, $context),
                 'inspect'                => $this->inspect($positional),
-                'keywords'               => $this->keywords($positional),
+                'keywords'               => $this->keywords($positional, $named),
                 'mixin-exists'           => $this->mixinExists($positional, $named, $context),
                 'module-functions'       => $this->moduleFunctions($positional, $context),
                 'module-mixins'          => $this->moduleMixins($positional, $context),
@@ -168,32 +168,38 @@ final class SassMetaModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    private function calcArgs(array $positional): AstNode
+    private function calcArgs(array $positional, array $named): AstNode
     {
-        if (count($positional) < 1 || ! ($positional[0] instanceof FunctionNode)) {
+        $calc = $positional[0] ?? $named['calc'] ?? null;
+
+        if (! ($calc instanceof FunctionNode)) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.calc-args'),
                 'a calculation function value',
             );
         }
 
-        return new ListNode($positional[0]->arguments, 'comma');
+        return new ListNode($calc->arguments, 'comma');
     }
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    private function calcName(array $positional): AstNode
+    private function calcName(array $positional, array $named): AstNode
     {
-        if (count($positional) < 1 || ! ($positional[0] instanceof FunctionNode)) {
+        $calc = $positional[0] ?? $named['calc'] ?? null;
+
+        if (! ($calc instanceof FunctionNode)) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.calc-name'),
                 'a calculation function value',
             );
         }
 
-        return new StringNode($positional[0]->name);
+        return new StringNode($calc->name);
     }
 
     /**
@@ -450,17 +456,18 @@ final class SassMetaModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    private function keywords(array $positional): AstNode
+    private function keywords(array $positional, array $named): AstNode
     {
-        if (count($positional) < 1) {
+        $value = $positional[0] ?? $named['args'] ?? null;
+
+        if ($value === null) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.keywords'),
                 'an argument list value',
             );
         }
-
-        $value = $positional[0];
 
         if ($value instanceof ArgumentListNode) {
             $pairs = [];

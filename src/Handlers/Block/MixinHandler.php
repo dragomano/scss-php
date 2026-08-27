@@ -93,7 +93,7 @@ final readonly class MixinHandler
     {
         [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
 
-        $first = $resolvedPositional[0] ?? null;
+        $first = $resolvedPositional[0] ?? $resolvedNamed['mixin'] ?? null;
 
         if ((! ($first instanceof StringNode) && ! ($first instanceof MixinRefNode))) {
             return '';
@@ -114,11 +114,18 @@ final readonly class MixinHandler
             return '';
         }
 
+        $restPositional = $first instanceof MixinRefNode
+            ? array_slice($resolvedPositional, 1)
+            : $resolvedPositional;
+
+        $restNamed = $resolvedNamed;
+        unset($restNamed['mixin']);
+
         return $this->compileMixin(
             $mixin,
             $moduleScopeForInclude,
-            array_slice($resolvedPositional, 1),
-            $resolvedNamed,
+            $restPositional,
+            $restNamed,
             $node->contentBlock,
             $node->contentArguments,
             $ctx,
@@ -133,10 +140,24 @@ final readonly class MixinHandler
             return '';
         }
 
-        $css = $this->module->loadAndEvaluateModule(
+        $configuration = $this->metaLoadCssConfiguration($resolvedNamed['with'] ?? null);
+
+        $result = $this->module->loadAndEvaluateModule(
             $resolvedPositional[0]->value,
-            $this->metaLoadCssConfiguration($resolvedNamed['with'] ?? null),
-        )['css'];
+            $configuration,
+        );
+
+        $path = $resolvedPositional[0]->value;
+        $css  = $result['css'];
+
+        if ($configuration !== []) {
+            $state     = $this->module->state();
+            $namespace = $this->module->deriveNamespaceFromUsePath($path);
+
+            if (! $state->hasNamespace($namespace)) {
+                $state->registerModule($namespace, $path, $result['scope'], $css);
+            }
+        }
 
         if ($css === '') {
             return '';
