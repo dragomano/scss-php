@@ -22,6 +22,7 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
@@ -33,9 +34,12 @@ use Bugo\SCSS\Runtime\VariableDefinition;
 use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Values\AstValueType;
+use Bugo\SCSS\Values\SassCalculation;
 use LogicException;
 
+use function array_diff;
 use function array_slice;
+use function array_values;
 use function count;
 use function get_debug_type;
 use function implode;
@@ -89,7 +93,10 @@ final class SassMetaModule extends AbstractModule
 
     public function getGlobalAliases(): array
     {
-        return $this->globalAliases(self::FUNCTIONS);
+        return $this->globalAliases(array_values(array_diff(
+            self::FUNCTIONS,
+            ['calc-args', 'calc-name'],
+        )));
     }
 
     /**
@@ -181,7 +188,19 @@ final class SassMetaModule extends AbstractModule
             );
         }
 
-        return new ListNode($calc->arguments, 'comma');
+        $args = [];
+
+        foreach ($calc->arguments as $argument) {
+            if ($argument instanceof NumberNode) {
+                $args[] = $argument;
+            } elseif ($argument instanceof FunctionNode && SassCalculation::isCalculationFunctionName($argument->name)) {
+                $args[] = $argument;
+            } else {
+                $args[] = new StringNode($this->formatValue($argument), false);
+            }
+        }
+
+        return new ListNode($args, 'comma');
     }
 
     /**
@@ -199,7 +218,7 @@ final class SassMetaModule extends AbstractModule
             );
         }
 
-        return new StringNode($calc->name);
+        return new StringNode($calc->name, true);
     }
 
     /**

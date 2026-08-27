@@ -134,7 +134,7 @@ describe('Sass Meta Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .meta-calc-name {
-              value: calc;
+              value: "calc";
             }
             CSS;
 
@@ -790,7 +790,7 @@ describe('Sass Meta Module Feature', function () {
         });
 
         describe('calc-args()', function () {
-            it('returns arguments of calc expression', function () {
+            it('returns as-is when called as global function (function does not exist globally)', function () {
                 $scss = <<<'SCSS'
                 .meta-global-calc-args { value: calc-args(calc(100% - 10px)); }
                 SCSS;
@@ -799,7 +799,7 @@ describe('Sass Meta Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .meta-global-calc-args {
-                  value: 100% - 10px;
+                  value: calc-args(calc(100% - 10px));
                 }
                 CSS;
 
@@ -808,7 +808,7 @@ describe('Sass Meta Module Feature', function () {
         });
 
         describe('calc-name()', function () {
-            it('returns function name of calc expression', function () {
+            it('returns as-is when called as global function (function does not exist globally)', function () {
                 $scss = <<<'SCSS'
                 .meta-global-calc-name { value: calc-name(calc(100% - 10px)); }
                 SCSS;
@@ -817,7 +817,7 @@ describe('Sass Meta Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .meta-global-calc-name {
-                  value: calc;
+                  value: calc-name(calc(100% - 10px));
                 }
                 CSS;
 

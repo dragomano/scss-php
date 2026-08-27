@@ -81,7 +81,9 @@ final readonly class CallableParameterBinder
         $names = [];
 
         foreach ($parameters as $parameter) {
-            $names[$parameter->name] = true;
+            if (! $parameter->rest) {
+                $names[$parameter->name] = true;
+            }
         }
 
         return $names;

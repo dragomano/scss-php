@@ -62,8 +62,6 @@ describe('SassMetaModule', function () {
                 'inspect',
                 'type-of',
                 'keywords',
-                'calc-name',
-                'calc-args',
                 'global-variable-exists',
                 'variable-exists',
                 'function-exists',
@@ -79,9 +77,11 @@ describe('SassMetaModule', function () {
             ]);
     });
 
-    it('does not expose apply or load-css as global aliases', function () {
+    it('does not expose apply, load-css, calc-args or calc-name as global aliases', function () {
         expect($this->module->getGlobalAliases())->not->toHaveKey('apply')
-            ->and($this->module->getGlobalAliases())->not->toHaveKey('load-css');
+            ->and($this->module->getGlobalAliases())->not->toHaveKey('load-css')
+            ->and($this->module->getGlobalAliases())->not->toHaveKey('calc-args')
+            ->and($this->module->getGlobalAliases())->not->toHaveKey('calc-name');
     });
 
     it('evaluates accepts-content false without a mixin reference', function () {
