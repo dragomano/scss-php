@@ -68,7 +68,7 @@ final class Tokenizer
             }
         }
 
-        $tokens[] = new Token(TokenType::EOF, '', $this->line, $this->column);
+        $tokens[] = new Token(TokenType::EOF, '', $this->line, $this->column, $this->position);
 
         $this->source = '';
         $this->length = 0;
@@ -209,13 +209,14 @@ final class Tokenizer
 
         $this->advance($len);
 
-        return new Token(TokenType::WHITESPACE, substr($this->source, $start, $len), $line, $column);
+        return new Token(TokenType::WHITESPACE, substr($this->source, $start, $len), $line, $column, $start);
     }
 
     private function tokenizeSingleLineComment(): Token
     {
         $line   = $this->line;
         $column = $this->column;
+        $start  = $this->position;
 
         $this->advance(2); // skip //
 
@@ -231,13 +232,14 @@ final class Tokenizer
         $this->column  += $len;
         $this->position = $end;
 
-        return new Token(TokenType::COMMENT_SILENT, $value, $line, $column);
+        return new Token(TokenType::COMMENT_SILENT, $value, $line, $column, $start);
     }
 
     private function tokenizeMultiLineComment(): Token
     {
         $line   = $this->line;
         $column = $this->column;
+        $start  = $this->position;
 
         $this->advance(2); // skip /*
 
@@ -262,13 +264,14 @@ final class Tokenizer
 
         $type = $isPreserved ? TokenType::COMMENT_PRESERVED : TokenType::COMMENT_LOUD;
 
-        return new Token($type, $value, $line, $column);
+        return new Token($type, $value, $line, $column, $start);
     }
 
     private function tokenizeHashOrColor(): Token
     {
-        $line   = $this->line;
-        $column = $this->column;
+        $line       = $this->line;
+        $column     = $this->column;
+        $tokenStart = $this->position;
 
         $this->advance(); // skip #
 
@@ -284,7 +287,7 @@ final class Tokenizer
 
             $this->column += $count;
 
-            return new Token(TokenType::HASH, substr($this->source, $start, $count), $line, $column);
+            return new Token(TokenType::HASH, substr($this->source, $start, $count), $line, $column, $tokenStart);
         }
 
         // Fall back to alnum/underscore/hyphen (e.g. #foo, #my-id)
@@ -302,13 +305,14 @@ final class Tokenizer
 
         $this->column += $count;
 
-        return new Token(TokenType::HASH, substr($this->source, $start, $count), $line, $column);
+        return new Token(TokenType::HASH, substr($this->source, $start, $count), $line, $column, $tokenStart);
     }
 
     private function tokenizeUnicodeRange(): Token
     {
         $line   = $this->line;
         $column = $this->column;
+        $start  = $this->position;
         $value  = $this->source[$this->position];
 
         $this->advance();
@@ -323,13 +327,14 @@ final class Tokenizer
             $this->advance();
         }
 
-        return new Token(TokenType::IDENTIFIER, $value, $line, $column);
+        return new Token(TokenType::IDENTIFIER, $value, $line, $column, $start);
     }
 
     private function tokenizeString(): Token
     {
         $line   = $this->line;
         $column = $this->column;
+        $start  = $this->position;
         $quote  = $this->source[$this->position];
         $mask   = '\\' . $quote . '#';
 
@@ -411,7 +416,7 @@ final class Tokenizer
 
         $rawValue = substr($this->source, $rawStart, ($rawEnd ?? $this->length) - $rawStart);
 
-        return new Token(TokenType::STRING, $value, $line, $column, 0, $rawValue);
+        return new Token(TokenType::STRING, $value, $line, $column, $start, $rawValue);
     }
 
     private function readRawInterpolation(): string
@@ -557,7 +562,7 @@ final class Tokenizer
 
         $this->column += $count;
 
-        return new Token(TokenType::NUMBER, substr($this->source, $start, $count), $line, $column);
+        return new Token(TokenType::NUMBER, substr($this->source, $start, $count), $line, $column, $start);
     }
 
     private function isExponentStart(): bool
@@ -597,6 +602,7 @@ final class Tokenizer
     {
         $line   = $this->line;
         $column = $this->column;
+        $start  = $this->position;
         $value  = '';
 
         while ($this->position < $this->length) {
@@ -635,7 +641,7 @@ final class Tokenizer
             $value .= $normalizedEscape;
         }
 
-        return new Token(TokenType::IDENTIFIER, $value, $line, $column);
+        return new Token(TokenType::IDENTIFIER, $value, $line, $column, $start);
     }
 
     private function tokenizeIdentifierEscape(): string
@@ -768,7 +774,7 @@ final class Tokenizer
         while ($this->position < $this->length) {
             $char = $this->source[$this->position];
 
-            if ($char === ')' || $char === ',' || $char === ';' || $char === '}' || ctype_space($char)) {
+            if ($char === ')' || $char === '(' || $char === '[' || $char === ']' || $char === ',' || $char === ';' || $char === '}' || $char === '{' || $char === '#' || ctype_space($char)) {
                 break;
             }
 
@@ -779,7 +785,7 @@ final class Tokenizer
 
         $this->column += $count;
 
-        return new Token(TokenType::CSS_VARIABLE, substr($this->source, $start, $count), $line, $column);
+        return new Token(TokenType::CSS_VARIABLE, substr($this->source, $start, $count), $line, $column, $start);
     }
 
     private function makeToken(TokenType $type, string $value, int $length): Token

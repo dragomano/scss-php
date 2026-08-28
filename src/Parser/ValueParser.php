@@ -22,9 +22,12 @@ use function abs;
 use function count;
 use function ctype_digit;
 use function in_array;
+use function max;
 use function str_contains;
 use function str_starts_with;
 use function strlen;
+use function strpbrk;
+use function strrpos;
 use function strtolower;
 use function substr;
 use function trim;
@@ -600,48 +603,77 @@ final readonly class ValueParser implements
 
     public function parseCustomPropertyValue(): string
     {
-        $buffer             = '';
+        $source = $this->stream->getSource();
+        $start  = $this->stream->current()->start;
+
         $parenDepth         = 0;
         $bracketDepth       = 0;
+        $braceDepth         = 0;
         $interpolationDepth = 0;
+        $stop               = null;
 
         while (! $this->stream->isEof()) {
             $token = $this->stream->current();
 
-            if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
+            if ($token->type === TokenType::HASH && $this->stream->peek()->type === TokenType::LBRACE) {
+                $interpolationDepth++;
+
+                $this->stream->advance(2);
+
                 continue;
             }
 
-            if ($interpolationDepth === 0) {
-                TokenStreamHelper::updateNestingDepth($token, $parenDepth, $bracketDepth);
-
-                if (
-                    $parenDepth === 0
-                    && $bracketDepth === 0
-                    && in_array($token->type, [TokenType::SEMICOLON, TokenType::RBRACE], true)
-                ) {
-                    break;
-                }
-            }
-
-            if (in_array($token->type, [
-                TokenType::COMMENT_LOUD,
-                TokenType::COMMENT_PRESERVED,
-                TokenType::COMMENT_SILENT,
-            ], true)) {
-                $buffer .= TokenStreamHelper::wrapComment($token) ?? '';
+            if ($interpolationDepth > 0 && $token->type === TokenType::RBRACE) {
+                $interpolationDepth--;
 
                 $this->stream->advance();
 
                 continue;
             }
 
-            TokenStreamHelper::appendTokenToBuffer($buffer, $token, true);
+            if ($interpolationDepth === 0) {
+                if ($token->type === TokenType::LPAREN) {
+                    $parenDepth++;
+                } elseif ($token->type === TokenType::RPAREN) {
+                    $parenDepth = max(0, $parenDepth - 1);
+                } elseif ($token->type === TokenType::LBRACKET) {
+                    $bracketDepth++;
+                } elseif ($token->type === TokenType::RBRACKET) {
+                    $bracketDepth = max(0, $bracketDepth - 1);
+                } elseif ($token->type === TokenType::LBRACE) {
+                    $braceDepth++;
+                } elseif ($token->type === TokenType::RBRACE) {
+                    if ($braceDepth === 0) {
+                        $stop = $token;
+
+                        break;
+                    }
+
+                    $braceDepth--;
+                } elseif ($token->type === TokenType::SEMICOLON
+                    && $parenDepth === 0
+                    && $bracketDepth === 0
+                    && $braceDepth === 0
+                ) {
+                    $stop = $token;
+
+                    break;
+                }
+            }
 
             $this->stream->advance();
         }
 
-        return trim($buffer);
+        if ($stop === null) {
+            $raw = substr($source, $start);
+        } else {
+            $raw = substr($source, $start, $stop->start - $start);
+        }
+
+        $atEnd = $stop === null
+            || ($stop->type === TokenType::SEMICOLON && substr($source, $stop->start, 1) !== ';');
+
+        return $this->normalizeCustomPropertyRaw($raw, $atEnd);
     }
 
     public function consumeIdentifier(): string
@@ -668,6 +700,89 @@ final readonly class ValueParser implements
     private function parseValueOrEmptyList(array $stopTokens): AstNode
     {
         return $this->parseValueUntil($stopTokens) ?? new ListNode([], 'comma');
+    }
+
+    private function normalizeCustomPropertyRaw(string $value, bool $atEnd): string
+    {
+        $result = '';
+        $length = strlen($value);
+        $index  = 0;
+
+        while ($index < $length) {
+            $char = $value[$index];
+
+            if (in_array($char, [' ', "\t", "\r", "\n"], true)) {
+                $runEnd = $index + 1;
+
+                while ($runEnd < $length && in_array($value[$runEnd], [' ', "\t", "\r", "\n"], true)) {
+                    $runEnd++;
+                }
+
+                $run = substr($value, $index, $runEnd - $index);
+
+                if ($runEnd === $length) {
+                    $result .= $run;
+
+                    break;
+                }
+
+                if (strpbrk($run, "\r\n") === false) {
+                    $result .= ' ';
+                } else {
+                    $lastNewline = max((int) strrpos($run, "\n"), (int) strrpos($run, "\r"));
+
+                    $result .= "\n" . substr($run, $lastNewline + 1);
+                }
+
+                $index = $runEnd;
+
+                continue;
+            }
+
+            $result .= $char;
+
+            $index++;
+        }
+
+        return $this->collapseCustomPropertyTrailingWhitespace($result, $atEnd);
+    }
+
+    private function collapseCustomPropertyTrailingWhitespace(string $value, bool $atEnd): string
+    {
+        $length = strlen($value);
+        $end    = $length;
+
+        while ($end > 0 && in_array($value[$end - 1], [' ', "\t", "\r", "\n"], true)) {
+            $end--;
+        }
+
+        if ($end === $length) {
+            return $value;
+        }
+
+        $content  = substr($value, 0, $end);
+        $lastLine = strrpos($content, "\n");
+        $lastLine = $lastLine === false ? $content : substr($content, $lastLine + 1);
+
+        if (str_contains($lastLine, '//')) {
+            return $content;
+        }
+
+        if ($atEnd) {
+            return $content;
+        }
+
+        $trailing = substr($value, $end);
+
+        if (strpbrk($trailing, "\r\n") !== false) {
+            return $content . ' ';
+        }
+
+        if (strlen($trailing) === 1) {
+            return $content . $trailing;
+        }
+
+        return $content . ' ';
     }
 
     private function parseParenthesizedEntry(): ?AstNode

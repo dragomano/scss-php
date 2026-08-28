@@ -1093,8 +1093,8 @@ describe('Compiler', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             :root {
-              --bg-image: url("../images/background.jpg");
-              --icon-check: url("data:image/svg+xml;utf8,<svg>...</svg>");
+              --bg-image: url('../images/background.jpg');
+              --icon-check: url('data:image/svg+xml;utf8,<svg>...</svg>');
             }
 
             .using-css-vars {
@@ -1184,7 +1184,7 @@ describe('Compiler', function () {
             SCSS;
 
             $expected = /** @lang text */ <<<'CSS'
-            @function --double() {
+            @function --double($x) {
               result: $x * 2;
             }
             CSS;

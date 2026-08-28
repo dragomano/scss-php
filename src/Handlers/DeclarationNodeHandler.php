@@ -29,6 +29,7 @@ use function implode;
 use function in_array;
 use function is_array;
 use function str_contains;
+use function str_ends_with;
 use function strlen;
 use function strtolower;
 
@@ -127,6 +128,18 @@ final readonly class DeclarationNodeHandler
         }
 
         $important = $node->important ? ' !important' : '';
+
+        if (str_starts_with($property, '--') && $node->value instanceof StringNode) {
+            $value = $node->value->value;
+
+            if (str_contains($value, '#{')) {
+                $value = $this->text->interpolateText($value, $ctx->env);
+            }
+
+            $semicolon = str_ends_with($value, ';') ? '' : ';';
+
+            return $prefix . $property . ':' . $value . $important . $semicolon;
+        }
 
         if ($valueOrigin !== null) {
             $this->render->addPendingValueMapping(

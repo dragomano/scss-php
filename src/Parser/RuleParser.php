@@ -250,7 +250,6 @@ final class RuleParser
     public function parseDeclarationFromProperty(string $property, int $line = 1, int $column = 1): DeclarationNode
     {
         $this->stream->advance();
-        $this->stream->skipWhitespace();
 
         if (str_starts_with(trim($property), '--')) {
             $value = new StringNode($this->valueContext->parseCustomPropertyValue());
@@ -483,17 +482,21 @@ final class RuleParser
         $inlineValue = trim(substr($tokenValue, $colonPosition + 1));
 
         $this->stream->advance();
-        $this->stream->skipWhitespace();
 
         $tailValue = $this->valueContext->parseCustomPropertyValue();
-        $separator = $inlineValue !== '' && $tailValue !== '' ? ' ' : '';
-        $value     = $inlineValue . $separator . $tailValue;
+        $separator = $inlineValue !== '' && $tailValue !== ''
+            && ! str_starts_with($tailValue, ' ')
+            && ! str_starts_with($tailValue, "\t")
+            && $tailValue[0] !== '('
+            ? ' '
+            : '';
 
+        $value     = $inlineValue . $separator . $tailValue;
         $modifiers = $this->valueContext->parseValueModifiers();
 
         $this->consumeSemicolon();
 
-        return new DeclarationNode($property, new StringNode(trim($value)), $line, $column, $modifiers['important']);
+        return new DeclarationNode($property, new StringNode($value), $line, $column, $modifiers['important']);
     }
 
     private function consumeIdentifier(): string

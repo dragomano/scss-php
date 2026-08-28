@@ -24,6 +24,7 @@ use Bugo\SCSS\Values\AstValueInspector;
 use function count;
 use function implode;
 use function in_array;
+use function str_contains;
 use function strtolower;
 
 final readonly class FunctionCallEvaluator
@@ -303,6 +304,10 @@ final readonly class FunctionCallEvaluator
         $cssName = NameHelper::hasNamespace($node->name)
             ? NameHelper::splitNamespacedName($node->name)['member']
             : $node->name;
+
+        if (str_contains($node->name, ':')) {
+            $cssName = $node->name;
+        }
 
         $fallback = new FunctionNode(
             $cssName,

@@ -50,7 +50,7 @@ describe('Compiler', function () {
           --srgb: color(srgb 0.1 0.2 0.3);
           --srgb-linear: color(srgb-linear 0.1 0.2 0.3);
           --display-p3: color(display-p3 0.1 0.2 0.3);
-          --display-p3-linear: color(display-p3-linear 0.1 0.2 0.3);
+          --display-p3-linear:color(display-p3-linear 0.1 0.2 0.3);
           --a98-rgb: color(a98-rgb 0.1 0.2 0.3);
           --prophoto-rgb: color(prophoto-rgb 0.1 0.2 0.3);
           --rec2020: color(rec2020 0.1 0.2 0.3);
