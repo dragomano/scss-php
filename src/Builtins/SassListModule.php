@@ -23,6 +23,7 @@ use Bugo\SCSS\Values\AstValueSuggestionDescriber;
 use function abs;
 use function array_map;
 use function array_merge;
+use function array_slice;
 use function count;
 use function get_debug_type;
 use function implode;
@@ -61,6 +62,22 @@ final class SassListModule extends AbstractModule
         'list-slash'     => 'slash',
     ];
 
+    /**
+     * @var array<string, array<int, string>>
+     */
+    private const PARAMETER_NAMES = [
+        'append'       => ['list', 'val', 'separator', 'bracketed'],
+        'index'        => ['list', 'value'],
+        'is-bracketed' => ['list'],
+        'join'         => ['list1', 'list2', 'separator', 'bracketed'],
+        'length'       => ['list'],
+        'nth'          => ['list', 'n'],
+        'separator'    => ['list'],
+        'set-nth'      => ['list', 'n', 'value'],
+        'slash'        => ['elements'],
+        'zip'          => ['lists'],
+    ];
+
     public function getName(): string
     {
         return 'list';
@@ -85,6 +102,10 @@ final class SassListModule extends AbstractModule
         $previousDisplayName = $this->beginBuiltinCall($name, $context);
 
         try {
+            if ($named !== []) {
+                $positional = $this->mergeNamedArguments($positional, $named, self::PARAMETER_NAMES[$name] ?? []);
+            }
+
             return match ($name) {
                 'append'       => $this->append($positional, $named, $context),
                 'index'        => $this->index($positional, $context),
@@ -412,7 +433,7 @@ final class SassListModule extends AbstractModule
      */
     private function appendSuggestionArguments(array $positional, array $named): array
     {
-        $arguments = $this->describeArguments($positional);
+        $arguments = $this->describeArguments(array_slice($positional, 0, 2));
 
         if (isset($named['separator'])) {
             $arguments[] = '$separator: ' . $this->describeValue($named['separator']);
@@ -428,7 +449,7 @@ final class SassListModule extends AbstractModule
      */
     private function joinSuggestionArguments(array $positional, array $named): array
     {
-        $arguments = $this->describeArguments($positional);
+        $arguments = $this->describeArguments(array_slice($positional, 0, 2));
 
         if (isset($named['separator'])) {
             $arguments[] = '$separator: ' . $this->describeValue($named['separator']);

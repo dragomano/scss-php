@@ -22,6 +22,7 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -81,6 +82,30 @@ final class SassMetaModule extends AbstractModule
         'load-css',
     ];
 
+    /**
+     * @var array<string, array<int, string>>
+     */
+    private const PARAMETER_NAMES = [
+        'accepts-content'        => ['mixin'],
+        'calc-args'              => ['calc'],
+        'calc-name'              => ['calc'],
+        'call'                   => ['function'],
+        'content-exists'         => [],
+        'feature-exists'         => ['feature'],
+        'function-exists'        => ['name', 'module'],
+        'get-function'           => ['name', 'css', 'module'],
+        'get-mixin'              => ['name', 'module'],
+        'global-variable-exists' => ['name', 'module'],
+        'inspect'                => ['value'],
+        'keywords'               => ['args'],
+        'mixin-exists'           => ['name', 'module'],
+        'module-functions'       => ['module'],
+        'module-mixins'          => ['module'],
+        'module-variables'       => ['module'],
+        'type-of'                => ['value'],
+        'variable-exists'        => ['name'],
+    ];
+
     public function getName(): string
     {
         return 'meta';
@@ -108,11 +133,15 @@ final class SassMetaModule extends AbstractModule
         $previousDisplayName = $this->beginBuiltinCall($name, $context);
 
         try {
+            if ($named !== []) {
+                $positional = $this->mergeNamedArguments($positional, $named, self::PARAMETER_NAMES[$name] ?? []);
+            }
+
             return match ($name) {
                 'accepts-content'        => $this->acceptsContent($positional, $named, $context),
                 'calc-args'              => $this->calcArgs($positional, $named),
                 'calc-name'              => $this->calcName($positional, $named),
-                'call'                   => $this->callFunction($positional, $context),
+                'call'                   => $this->callFunction($positional, $named, $context),
                 'content-exists'         => $this->contentExists($context),
                 'feature-exists'         => $this->featureExists($positional, $context),
                 'function-exists'        => $this->functionExists($positional, $named, $context),
@@ -223,9 +252,16 @@ final class SassMetaModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    private function callFunction(array $positional, ?BuiltinCallContext $context): AstNode
+    private function callFunction(array $positional, array $named, ?BuiltinCallContext $context): AstNode
     {
+        if (! isset($positional[0]) && isset($named['function'])) {
+            $positional[0] = $named['function'];
+
+            unset($named['function']);
+        }
+
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.call'),
@@ -249,8 +285,14 @@ final class SassMetaModule extends AbstractModule
             $qualifiedName = $original->module . '.' . $name;
         }
 
+        $arguments = array_slice($positional, 1);
+
+        foreach ($named as $argumentName => $value) {
+            $arguments[] = new NamedArgumentNode($argumentName, $value);
+        }
+
         $registry = $context->registry;
-        $result   = $registry->tryCall($qualifiedName, array_slice($positional, 1), $context);
+        $result   = $registry->tryCall($qualifiedName, $arguments, $context);
 
         if ($result === null) {
             $capturedScope    = null;
@@ -265,7 +307,7 @@ final class SassMetaModule extends AbstractModule
 
             return new FunctionNode(
                 $name,
-                array_slice($positional, 1),
+                $arguments,
                 capturedScope: $capturedScope,
                 lockedDefinition: $lockedDefinition,
             );

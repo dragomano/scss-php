@@ -142,9 +142,20 @@ final readonly class ColorFunctionEvaluator
         return $this->applyColorOperation($positional, $named, 'change-color', 'change');
     }
 
-    /** @param array<int, AstNode> $positional */
-    public function same(array $positional): BooleanNode
+    /**
+     * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
+     */
+    public function same(array $positional, array $named = []): BooleanNode
     {
+        if (! isset($positional[0]) && isset($named['color1'])) {
+            $positional[0] = $named['color1'];
+        }
+
+        if (! isset($positional[1]) && isset($named['color2'])) {
+            $positional[1] = $named['color2'];
+        }
+
         $left  = $this->converter->toRgb($this->runtime->argumentParser->requireColor($positional, 0, 'same'));
         $right = $this->converter->toRgb($this->runtime->argumentParser->requireColor($positional, 1, 'same'));
 
@@ -457,6 +468,10 @@ final readonly class ColorFunctionEvaluator
         bool $allowCssDefer = false,
         ?BuiltinCallContext $callContext = null,
     ): AstNode {
+        if ($allowCssDefer && ! isset($positional[0]) && isset($positional[1])) {
+            return new FunctionNode($context, [$positional[1]]);
+        }
+
         $color = $allowCssDefer
             ? $this->runtime->argumentParser->requireColorOrDefer($positional, $context)
             : $this->runtime->argumentParser->requireColor($positional, 0, $context);

@@ -47,6 +47,21 @@ final class SassMapModule extends AbstractModule
         'map-values'  => 'values',
     ];
 
+    /**
+     * @var array<string, array<int, string>>
+     */
+    private const PARAMETER_NAMES = [
+        'deep-merge'  => ['map1', 'map2'],
+        'deep-remove' => ['map', 'key'],
+        'get'         => ['map', 'key'],
+        'has-key'     => ['map', 'key'],
+        'keys'        => ['map'],
+        'merge'       => ['map1', 'map2'],
+        'remove'      => ['map', 'key'],
+        'set'         => ['map', 'key', 'value'],
+        'values'      => ['map'],
+    ];
+
     public function getName(): string
     {
         return 'map';
@@ -71,6 +86,10 @@ final class SassMapModule extends AbstractModule
         $previousDisplayName = $this->beginBuiltinCall($name, $context);
 
         try {
+            if ($named !== []) {
+                $positional = $this->mergeNamedArguments($positional, $named, self::PARAMETER_NAMES[$name] ?? []);
+            }
+
             return match ($name) {
                 'deep-merge'  => $this->deepMerge($positional, $named),
                 'deep-remove' => $this->deepRemove($positional),

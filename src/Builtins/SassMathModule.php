@@ -18,7 +18,6 @@ use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
-use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Utils\UnitConverter;
 
 use function abs;
@@ -176,7 +175,7 @@ final class SassMathModule extends AbstractModule
 
         try {
             if ($named !== []) {
-                $positional = $this->mergeNamedArguments($name, $positional, $named);
+                $positional = $this->mergeNamedArguments($positional, $named, self::PARAMETER_NAMES[$name] ?? []);
             }
 
             return match ($name) {
@@ -667,30 +666,6 @@ final class SassMathModule extends AbstractModule
 
             throw $sassThrowable;
         }
-    }
-
-    /**
-     * @param array<int, AstNode> $positional
-     * @param array<string, AstNode> $named
-     * @return array<int, AstNode>
-     */
-    private function mergeNamedArguments(string $name, array $positional, array $named): array
-    {
-        $names = self::PARAMETER_NAMES[$name] ?? [];
-
-        foreach ($named as $key => $value) {
-            $index = array_search(NameNormalizer::normalize($key), $names, true);
-
-            if ($index === false || isset($positional[$index])) {
-                continue;
-            }
-
-            $positional[$index] = $value;
-        }
-
-        ksort($positional);
-
-        return $positional;
     }
 
     /**

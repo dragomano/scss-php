@@ -10,12 +10,15 @@ use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
+use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Values\AstValueDescriber;
 use Bugo\SCSS\Values\ValueFactory;
 
 use function array_combine;
 use function array_map;
 use function array_merge;
+use function array_search;
+use function ksort;
 use function str_contains;
 use function strtolower;
 
@@ -178,6 +181,29 @@ abstract class AbstractModule implements ModuleInterface
 
             $positional[] = $argument;
         }
+
+        return $positional;
+    }
+
+    /**
+     * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
+     * @param array<int, string> $parameterNames
+     * @return array<int, AstNode>
+     */
+    protected function mergeNamedArguments(array $positional, array $named, array $parameterNames): array
+    {
+        foreach ($named as $key => $value) {
+            $index = array_search(NameNormalizer::normalize($key), $parameterNames, true);
+
+            if ($index === false || isset($positional[$index])) {
+                continue;
+            }
+
+            $positional[$index] = $value;
+        }
+
+        ksort($positional);
 
         return $positional;
     }

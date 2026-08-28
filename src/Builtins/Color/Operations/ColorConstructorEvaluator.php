@@ -116,7 +116,7 @@ final readonly class ColorConstructorEvaluator
             return $this->colorFromChannels('hsla', $input);
         }
 
-        $arguments = $this->parser->parseFunctionalColorArguments($positional, 'hsla', 4);
+        $arguments = $this->parser->parseFunctionalColorArguments($positional, 'hsla', 3);
 
         return $this->buildHslColorFromNodes(
             [$arguments[0], $arguments[1], $arguments[2]],
@@ -136,6 +136,12 @@ final readonly class ColorConstructorEvaluator
                 $this->parser->callRef('rgba') . ' should be emitted as a CSS function.',
             );
         }
+
+        $positional = $this->mergeNamedChannelArguments(
+            $positional,
+            $named,
+            [...self::RGB_CHANNEL_NAMES, 'alpha'],
+        );
 
         if (isset($named['red'], $named['green'], $named['blue'])) {
             return $this->converter->buildRgbFunctionNode(
@@ -219,6 +225,12 @@ final readonly class ColorConstructorEvaluator
      */
     public function rgbFunction(array $positional, array $named = []): AstNode
     {
+        $positional = $this->mergeNamedChannelArguments(
+            $positional,
+            $named,
+            [...self::RGB_CHANNEL_NAMES, 'alpha'],
+        );
+
         if (isset($named['red'], $named['green'], $named['blue'])) {
             return $this->converter->buildRgbFunctionNode(
                 $this->parser->asByte($named['red'], 'rgb'),

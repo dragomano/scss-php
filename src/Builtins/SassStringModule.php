@@ -55,6 +55,22 @@ final class SassStringModule extends AbstractModule
         'str-slice'  => 'slice',
     ];
 
+    /**
+     * @var array<string, array<int, string>>
+     */
+    private const PARAMETER_NAMES = [
+        'index'         => ['string', 'substring'],
+        'insert'        => ['string', 'insert', 'index'],
+        'length'        => ['string'],
+        'quote'         => ['string'],
+        'slice'         => ['string', 'start-at', 'end-at'],
+        'split'         => ['string', 'separator', 'limit'],
+        'to-lower-case' => ['string'],
+        'to-upper-case' => ['string'],
+        'unique-id'     => [],
+        'unquote'       => ['string'],
+    ];
+
     private int $uniqueId = 0;
 
     public function getName(): string
@@ -81,6 +97,10 @@ final class SassStringModule extends AbstractModule
         $previousDisplayName = $this->beginBuiltinCall($name, $context);
 
         try {
+            if ($named !== []) {
+                $positional = $this->mergeNamedArguments($positional, $named, self::PARAMETER_NAMES[$name] ?? []);
+            }
+
             return match ($name) {
                 'index'         => $this->index($positional, $context),
                 'insert'        => $this->insert($positional, $context),

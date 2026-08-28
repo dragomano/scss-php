@@ -210,7 +210,7 @@ final class SassColorModule extends AbstractModule
                 'fade-out'               => $this->legacyAlphaAdjustment($name, $positional, $context),
                 'rgb'                    => $this->constructors->rgbFunction($positional, $named),
                 'rgba'                   => $this->constructors->rgbaFunction($positional, $named),
-                'same'                   => $this->functions->same($positional),
+                'same'                   => $this->functions->same($positional, $named),
                 'scale', 'scale-color'   => $this->functions->scaleColor($positional, $named),
                 'space'                  => $this->channelInspector->space($positional),
                 'to-gamut'               => $this->spaceConverter->toGamut($positional, $named),
