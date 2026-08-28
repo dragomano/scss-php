@@ -178,11 +178,20 @@ final readonly class SassNormalizer implements SourceNormalizer
                 continue;
             }
 
-            if (str_starts_with($trimmed, '=')) {
+            if ($trimmed === '=' && $this->nextIndentedLineHasContent($lines, $index, $level, $indentSize)) {
+                $result[] = $this->indent($level, $indentSize) . '@mixin ' . ltrim($lines[$index + 1]) . ' {';
+
+                $stack[] = ['level' => $level];
+                $index++;
+
+                continue;
+            }
+
+            if ($this->isMixinDefinitionLine($trimmed)) {
                 $result[] = $this->indent($level, $indentSize) . '@mixin ' . substr($trimmed, 1) . ' {';
 
                 $stack[] = ['level' => $level];
-            } elseif (str_starts_with($trimmed, '+')) {
+            } elseif ($this->isMixinIncludeLine($trimmed)) {
                 $result[] = $this->indent($level, $indentSize) . '@include ' . substr($trimmed, 1) . ';';
             } elseif ($this->isSingleLineDirective($trimmed)) {
                 $endsWithSemicolon = str_ends_with(rtrim($trimmed), ';');
@@ -193,7 +202,19 @@ final readonly class SassNormalizer implements SourceNormalizer
 
                 $stack[] = ['level' => $level];
             } elseif ($this->isBlockHeader($trimmed)) {
-                $result[] = $this->indent($level, $indentSize) . $this->ensureBlockHeaderHasOpeningBrace($trimmed);
+                $header = $this->ensureBlockHeaderHasOpeningBrace($trimmed);
+
+                if ($trimmed === '@include') {
+                    $nextLine    = $lines[$index + 1] ?? '';
+                    $nextTrimmed = ltrim($nextLine);
+
+                    if ($nextTrimmed !== '' && $this->lineLevel($nextLine, $indentSize) > $level) {
+                        $header = '@include ' . $nextTrimmed . '{';
+                        $index++;
+                    }
+                }
+
+                $result[] = $this->indent($level, $indentSize) . $header;
 
                 $stack[] = ['level' => $level];
             } else {
@@ -478,7 +499,11 @@ final readonly class SassNormalizer implements SourceNormalizer
     ): array {
         $candidate = rtrim($trimmed);
 
-        if (! str_contains($candidate, ':') || $this->bracketBalance($candidate) <= 0) {
+        if ($this->bracketBalance($candidate) <= 0) {
+            return [$trimmed, $index];
+        }
+
+        if (! str_contains($candidate, ':') && str_starts_with($candidate, '@')) {
             return [$trimmed, $index];
         }
 
@@ -498,9 +523,11 @@ final readonly class SassNormalizer implements SourceNormalizer
     ): array {
         $header = rtrim($trimmed);
 
-        if (! in_array($header, self::DIRECTIVE_HEADER_KEYWORDS, true)) {
+        if (! $this->isDirectiveHeaderCandidate($header)) {
             return [$trimmed, $index];
         }
+
+        $consumed = false;
 
         $max = count($lines);
 
@@ -509,17 +536,24 @@ final readonly class SassNormalizer implements SourceNormalizer
             $nextTrimmed = ltrim($nextLine);
 
             if ($nextTrimmed === '') {
+                if ($consumed) {
+                    break;
+                }
+
                 throw InvalidSyntaxException::incompleteDirectiveHeader($index + 1, $header);
             }
 
             $leadingSpaces = strlen($nextLine) - strlen($nextTrimmed);
             $nextLevel     = intdiv($leadingSpaces, $indentSize);
 
-            if ($nextLevel <= $level || ! $this->looksLikeDirectiveHeaderContinuation($nextTrimmed)) {
+            $isPlainTail = $this->headerEndsWithIn($header) && ! str_contains($nextTrimmed, ':');
+
+            if ($nextLevel <= $level || ! ($this->looksLikeDirectiveHeaderContinuation($nextTrimmed) || $isPlainTail)) {
                 break;
             }
 
             $header .= ' ' . $nextTrimmed;
+            $consumed = true;
             $index++;
         }
 
@@ -599,7 +633,10 @@ final readonly class SassNormalizer implements SourceNormalizer
         int $indentSize,
     ): array {
         $depth = $this->bracketBalance($merged);
-        $max   = count($lines);
+
+        $selectorLike = ! str_contains($merged, ':') && ! str_contains($merged, '@');
+
+        $max = count($lines);
 
         while ($depth > 0 && $index + 1 < $max) {
             $nextLine    = rtrim($lines[$index + 1], "\r\n");
@@ -612,7 +649,7 @@ final readonly class SassNormalizer implements SourceNormalizer
             $leadingSpaces = strlen($nextLine) - strlen($nextTrimmed);
             $nextLevel     = intdiv($leadingSpaces, $indentSize);
 
-            if ($nextLevel <= $level) {
+            if (! $selectorLike && $nextLevel <= $level) {
                 break;
             }
 
@@ -626,7 +663,7 @@ final readonly class SassNormalizer implements SourceNormalizer
 
     private function looksLikeDirectiveHeaderContinuation(string $line): bool
     {
-        if (str_starts_with($line, '$') || ctype_digit($line[0])) {
+        if (str_starts_with($line, '$') || ctype_digit($line[0]) || str_starts_with($line, ',')) {
             return true;
         }
 
@@ -637,6 +674,103 @@ final readonly class SassNormalizer implements SourceNormalizer
         }
 
         return false;
+    }
+
+    private function isDirectiveHeaderCandidate(string $header): bool
+    {
+        if (in_array($header, self::DIRECTIVE_HEADER_KEYWORDS, true)) {
+            return true;
+        }
+
+        if ($this->startsWithAtKeyword($header, ['for'])) {
+            return ! $this->isCompleteForHeader($header);
+        }
+
+        if ($this->startsWithAtKeyword($header, ['each'])) {
+            return ! $this->isCompleteEachHeader($header);
+        }
+
+        return false;
+    }
+
+    private function isCompleteForHeader(string $header): bool
+    {
+        $trimmed = rtrim($this->stripTrailingComment($header));
+        $pos     = strrpos($trimmed, ' ');
+        $last    = $pos === false ? $trimmed : substr($trimmed, $pos + 1);
+
+        if (! ctype_digit($last[0] ?? '')) {
+            return false;
+        }
+
+        return str_contains($trimmed, 'from')
+            && (str_contains($trimmed, 'through') || str_contains($trimmed, ' to'));
+    }
+
+    private function stripTrailingComment(string $line): string
+    {
+        $trimmed = rtrim($line);
+
+        $silentPos = strpos($trimmed, '//');
+
+        if ($silentPos !== false) {
+            return rtrim(substr($trimmed, 0, $silentPos));
+        }
+
+        if (! str_ends_with($trimmed, '*/')) {
+            return $trimmed;
+        }
+
+        $loudStart = strrpos($trimmed, '/*');
+
+        return $loudStart === false ? $trimmed : rtrim(substr($trimmed, 0, $loudStart));
+    }
+
+    private function isCompleteEachHeader(string $header): bool
+    {
+        $trimmed = rtrim($header);
+
+        return str_contains($trimmed, 'in')
+            && ! str_ends_with($trimmed, 'in')
+            && ! str_ends_with($trimmed, 'in,');
+    }
+
+    private function headerEndsWithIn(string $header): bool
+    {
+        $trimmed = rtrim($header);
+
+        return $trimmed === 'in' || str_ends_with($trimmed, ' in');
+    }
+
+    private function isMixinDefinitionLine(string $line): bool
+    {
+        $second = $line[1] ?? '';
+
+        return $line !== '' && $line[0] === '=' && $second !== '' && $second !== ' ' && $second !== "\t";
+    }
+
+    private function isMixinIncludeLine(string $line): bool
+    {
+        $second = $line[1] ?? '';
+
+        return $line !== '' && $line[0] === '+' && $second !== '' && $second !== ' ' && $second !== "\t";
+    }
+
+    private function lineLevel(string $line, int $indentSize): int
+    {
+        $trimmed = ltrim($line);
+
+        return intdiv(strlen($line) - strlen($trimmed), $indentSize);
+    }
+
+    /**
+     * @param array<int, string> $lines
+     */
+    private function nextIndentedLineHasContent(array $lines, int $index, int $level, int $indentSize): bool
+    {
+        $nextLine = $lines[$index + 1] ?? '';
+
+        return ltrim($nextLine) !== '' && $this->lineLevel($nextLine, $indentSize) > $level;
     }
 
     private function parenthesisBalance(string $line): int
