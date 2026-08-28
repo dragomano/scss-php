@@ -165,11 +165,11 @@ describe('Selector', function () {
             expect($result)->toBe(".a {\n  color: red;\n}");
         });
 
-        it('keeps last value when property repeated with different values', function () {
+        it('keeps both values when property repeated with different values', function () {
             $result = $this->selector->optimizeRuleBlock(".a {\n  color: red;\n  color: blue;\n}");
 
-            expect($result)->toContain('color: blue')
-                ->and($result)->not->toContain('color: red');
+            expect($result)->toContain('color: red')
+                ->and($result)->toContain('color: blue');
         });
 
         it('leaves block unchanged when no duplicates', function () {

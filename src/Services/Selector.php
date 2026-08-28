@@ -577,7 +577,7 @@ final readonly class Selector
 
     public function optimizeRuleBlock(string $ruleBlock): string
     {
-        return $this->optimizer->optimizeRuleBlock($ruleBlock);
+        return $this->optimizer->optimizeRuleBlock($ruleBlock, $this->options->style === Style::COMPRESSED);
     }
 
     public function optimizeAdjacentSiblingRuleBlocks(string $block): string

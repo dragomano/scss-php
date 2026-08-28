@@ -306,7 +306,7 @@ describe('Compiler', function () {
         expect($this->compiler->compileString($source))->toEqualCss($expected);
     });
 
-    it('keeps only the last duplicate declaration after @include without extra blank lines', function () {
+    it('keeps a caller-overriding declaration alongside the mixin-created one', function () {
         $source = <<<'SCSS'
         @mixin button-style($color) {
           background-color: $color;
@@ -325,10 +325,37 @@ describe('Compiler', function () {
         $expected = /** @lang text */ <<<'CSS'
         .test {
           background-color: red;
+          border-radius: 7px;
           border-radius: 3px;
         }
         .test:hover {
           background-color: blue;
+        }
+        CSS;
+
+        $css = $this->compiler->compileString($source);
+
+        expect($css)->toEqualCss($expected);
+    });
+
+    it('keeps each repeated @include of the same mixin within a rule', function () {
+        $source = <<<'SCSS'
+        @mixin m($x) {
+          a: $x;
+        }
+
+        div {
+          @include m(1);
+          color: red;
+          @include m(2);
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        div {
+          a: 1;
+          color: red;
+          a: 2;
         }
         CSS;
 
