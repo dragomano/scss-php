@@ -53,6 +53,17 @@ final readonly class ColorFunctionArgumentList
                 continue;
             }
 
+            if ($item instanceof ListNode && ! $item->bracketed && count($item->items) === 3) {
+                $triple = $item->items;
+
+                if ($triple[1] instanceof StringNode && $triple[1]->value === '/') {
+                    $channels[]    = $triple[0];
+                    $separatorSeen = true;
+
+                    continue;
+                }
+            }
+
             $channels[] = $item;
         }
 

@@ -40,6 +40,7 @@ final readonly class FunctionCallEvaluator
         private DiagnosticDirectiveHandlerInterface $diagnosticHandler,
         private AstValueEvaluatorInterface $valueEvaluator,
         private AstValueFormatterInterface $valueFormatter,
+        private AstValueEvaluatorInterface $slashDivisionValueEvaluator,
     ) {}
 
     public function evaluate(FunctionNode $node, Environment $env): AstNode
@@ -284,6 +285,10 @@ final readonly class FunctionCallEvaluator
         $resolved = $this->ctx->functionRegistry->tryCall($node->name, $arguments, $context);
 
         if ($resolved !== null) {
+            if ($this->isSlashTriple($resolved)) {
+                return $this->slashDivisionValueEvaluator->evaluate($resolved, $env);
+            }
+
             if ($resolved instanceof FunctionNode && $resolved->name !== $node->name) {
                 if (! $this->isFinalSerializedColorResult($resolved)) {
                     return $this->valueEvaluator->evaluate($resolved, $env);
@@ -323,5 +328,19 @@ final readonly class FunctionCallEvaluator
         }
 
         return $fallback;
+    }
+
+    private function isSlashTriple(AstNode $node): bool
+    {
+        if (! $node instanceof ListNode || $node->separator !== 'space' || count($node->items) !== 3) {
+            return false;
+        }
+
+        [$first, $mid, $last] = $node->items;
+
+        return $first instanceof NumberNode
+            && $mid instanceof StringNode
+            && $mid->value === '/'
+            && $last instanceof NumberNode;
     }
 }

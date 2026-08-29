@@ -14,6 +14,7 @@ use Bugo\SCSS\Services\Evaluation\EvaluationStrategyInterface;
 use Closure;
 
 use function count;
+use function in_array;
 
 final readonly class ListNodeStrategy implements EvaluationStrategyInterface
 {
@@ -40,8 +41,9 @@ final readonly class ListNodeStrategy implements EvaluationStrategyInterface
     public function evaluate(AstNode $node, Environment $env, EvaluationOptions $options): AstNode
     {
         /** @var ListNode $node */
-        $items = self::lazilyEvaluateItems(
-            $node->items,
+        $sourceItems = $this->foldSlashTriples($node);
+        $items       = self::lazilyEvaluateItems(
+            $sourceItems,
             function (AstNode $item) use ($env, $options): AstNode {
                 if ($item instanceof ListNode
                     && $item->separator === 'space'
@@ -63,9 +65,15 @@ final readonly class ListNodeStrategy implements EvaluationStrategyInterface
             },
         );
 
-        $evaluated = $items !== null
-            ? new ListNode($items, $node->separator, $node->bracketed, $node->parenthesized, $node->isComputed)
-            : $node;
+        $evaluatedItems = $items ?? $sourceItems;
+
+        $evaluated = new ListNode(
+            $evaluatedItems,
+            $node->separator,
+            $node->bracketed,
+            $node->parenthesized,
+            $node->isComputed,
+        );
 
         if ($evaluated->isComputed) {
             return $evaluated;
@@ -92,5 +100,50 @@ final readonly class ListNodeStrategy implements EvaluationStrategyInterface
         $concatenation = ($this->evaluateStringConcatenationList)($evaluated, $env);
 
         return $concatenation ?? $evaluated;
+    }
+
+    /**
+     * @return array<int, AstNode>
+     */
+    private function foldSlashTriples(ListNode $node): array
+    {
+        if ($node->separator !== 'space' || $node->bracketed || $node->isComputed || count($node->items) <= 3) {
+            return $node->items;
+        }
+
+        $items = $node->items;
+        $count = count($items);
+
+        $result = [];
+
+        for ($i = 0; $i < $count; $i++) {
+            $current = $items[$i];
+
+            if (
+                $i + 2 < $count
+                && $current instanceof NumberNode
+                && $items[$i + 1] instanceof StringNode
+                && $items[$i + 1]->value === '/'
+                && $items[$i + 2] instanceof NumberNode
+                && ($i === 0 || ! $this->isSlashLikeOperator($items[$i - 1]))
+                && ($i + 3 >= $count || ! $this->isSlashLikeOperator($items[$i + 3]))
+            ) {
+                $result[] = new ListNode([$current, $items[$i + 1], $items[$i + 2]], 'space');
+
+                $i += 2;
+
+                continue;
+            }
+
+            $result[] = $current;
+        }
+
+        return $result;
+    }
+
+    private function isSlashLikeOperator(AstNode $node): bool
+    {
+        return $node instanceof StringNode
+            && in_array($node->value, ['+', '-', '*', '%', '/'], true);
     }
 }

@@ -139,6 +139,18 @@ final readonly class ColorArgumentParser
                     array_slice($arguments, $i + 1),
                 );
             }
+
+            if ($argument instanceof ListNode && ! $argument->bracketed && count($argument->items) === 3) {
+                $triple = $argument->items;
+
+                if ($triple[1] instanceof StringNode && $triple[1]->value === '/') {
+                    return array_merge(
+                        array_slice($arguments, 0, $i),
+                        [$triple[0], $triple[2]],
+                        array_slice($arguments, $i + 1),
+                    );
+                }
+            }
         }
 
         return $arguments;
@@ -289,6 +301,24 @@ final readonly class ColorArgumentParser
             }
 
             $last = $input->items === [] ? null : $input->items[count($input->items) - 1];
+
+            if ($last instanceof ListNode && count($last->items) === 3 && ! $last->bracketed) {
+                $triple = $last->items;
+
+                if (
+                    $triple[1] instanceof StringNode
+                    && ! $triple[1]->quoted
+                    && trim($triple[1]->value) === '/'
+                ) {
+                    $items   = array_slice($input->items, 0, -1);
+                    $items[] = $triple[0];
+
+                    return [
+                        'components' => new ListNode($items, 'space'),
+                        'alpha'      => $triple[2],
+                    ];
+                }
+            }
 
             if ($last instanceof StringNode && ! $last->quoted) {
                 $slashPosition = strpos($last->value, '/');

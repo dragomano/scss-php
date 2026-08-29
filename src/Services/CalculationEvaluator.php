@@ -371,10 +371,35 @@ final readonly class CalculationEvaluator
     private function formatListItem(AstNode $item, string $parentSeparator, Environment $env): string
     {
         if ($parentSeparator === 'space' && $item instanceof ListNode && ! $item->bracketed) {
+            if ($this->isSlashTriple($item)) {
+                return $this->formatSlashTriple($item, $env);
+            }
+
             return '(' . $this->formatListValue($item->items, $item->separator, false, $env) . ')';
         }
 
         return $this->valueFormatter->format($item, $env);
+    }
+
+    private function isSlashTriple(ListNode $node): bool
+    {
+        if ($node->separator !== 'space' || count($node->items) !== 3) {
+            return false;
+        }
+
+        [$first, $mid, $last] = $node->items;
+
+        return $first instanceof NumberNode
+            && $mid instanceof StringNode
+            && $mid->value === '/'
+            && $last instanceof NumberNode;
+    }
+
+    private function formatSlashTriple(ListNode $node, Environment $env): string
+    {
+        return $this->valueFormatter->format($node->items[0], $env)
+            . '/'
+            . $this->valueFormatter->format($node->items[2], $env);
     }
 
     /**

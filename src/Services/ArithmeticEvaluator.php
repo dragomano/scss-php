@@ -201,6 +201,35 @@ final readonly class ArithmeticEvaluator
     /**
      * @param array<int, AstNode> $items
      */
+    private function isSimpleSlashChain(array $items): bool
+    {
+        $count = count($items);
+
+        if ($count < 3 || $count % 2 === 0) {
+            return false;
+        }
+
+        for ($i = 0; $i < $count; $i++) {
+            $item = $items[$i];
+
+            if ($i % 2 === 0) {
+                if (! $item instanceof NumberNode
+                    || ! $this->isSimpleSlashOperand($item)
+                    || $item->unit !== null
+                ) {
+                    return false;
+                }
+            } elseif (! $item instanceof StringNode || $item->value !== '/') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     */
     private function evaluateStrictList(array $items, bool $bracketed, bool $insideCalc = false): ?AstNode
     {
         $first = $items[0] ?? null;
@@ -217,6 +246,10 @@ final readonly class ArithmeticEvaluator
             && $last instanceof NumberNode
             && $this->isSimpleSlashOperand($last)
         ) {
+            return null;
+        }
+
+        if (! $bracketed && ! $insideCalc && $this->isSimpleSlashChain($items)) {
             return null;
         }
 

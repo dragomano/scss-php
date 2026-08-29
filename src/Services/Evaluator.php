@@ -765,6 +765,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             $this->diagnosticHandler,
             $this,
             $this,
+            $this->createSlashDivisionValueEvaluator(),
         );
     }
 

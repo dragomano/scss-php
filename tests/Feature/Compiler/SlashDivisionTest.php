@@ -141,7 +141,7 @@ describe('Slash-separated values vs division', function () {
 
             $this->compiler->compileString($source);
 
-            expect($this->logger->records[0]['message'])->toContain('bold 15px / 30px sans-serif');
+            expect($this->logger->records[0]['message'])->toContain('bold 15px/30px sans-serif');
         });
 
         it('preserves spaced slash in grid-row-like list in @debug', function () {
