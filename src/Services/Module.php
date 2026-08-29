@@ -13,6 +13,7 @@ use Bugo\SCSS\LoaderInterface;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ForwardNode;
+use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\RootNode;
@@ -856,6 +857,23 @@ final readonly class Module
                     $defaults          = array_merge($defaults, $forwardedDefaults);
                 }
             }
+
+            if ($node instanceof ImportNode) {
+                foreach ($node->imports as $import) {
+                    $resolved = $this->resolveImport($import);
+
+                    if ($resolved['type'] !== 'sass') {
+                        continue;
+                    }
+
+                    /** @var array{type: 'sass', path: string} $resolved */
+                    $importedDefaults = $this->collectDefaultVariableNamesFromImport(
+                        $resolved['path'],
+                        $depth + 1,
+                    );
+                    $defaults = array_merge($defaults, $importedDefaults);
+                }
+            }
         }
 
         return $defaults;
@@ -866,6 +884,24 @@ final readonly class Module
     {
         try {
             $file = $this->loader->load($node->path);
+
+            $this->loader->addPath(dirname($file['path']));
+
+            $syntax       = Syntax::fromPath($file['path'], $file['content']);
+            $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
+            $moduleAst    = $this->parser->parse($moduleSource);
+
+            return $this->collectDefaultVariableNames($moduleAst, $depth);
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /** @return array<string, true> */
+    private function collectDefaultVariableNamesFromImport(string $path, int $depth): array
+    {
+        try {
+            $file = $this->loader->load($path, true);
 
             $this->loader->addPath(dirname($file['path']));
 
