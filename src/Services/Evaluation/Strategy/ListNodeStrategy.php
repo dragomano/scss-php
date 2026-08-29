@@ -119,11 +119,13 @@ final readonly class ListNodeStrategy implements EvaluationStrategyInterface
         for ($i = 0; $i < $count; $i++) {
             $current = $items[$i];
 
+            $operator = $items[$i + 1] ?? null;
+
             if (
                 $i + 2 < $count
                 && $current instanceof NumberNode
-                && $items[$i + 1] instanceof StringNode
-                && $items[$i + 1]->value === '/'
+                && $operator instanceof StringNode
+                && $operator->value === '/'
                 && $items[$i + 2] instanceof NumberNode
                 && ($i === 0 || ! $this->isSlashLikeOperator($items[$i - 1]))
                 && ($i + 3 >= $count || ! $this->isSlashLikeOperator($items[$i + 3]))

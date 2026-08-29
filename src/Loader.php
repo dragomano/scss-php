@@ -160,12 +160,16 @@ final class Loader implements LoaderInterface
             if ($fromImport && ($ext === '.scss' || $ext === '.sass')) {
                 $candidates[] = $dir . '_' . $name . '.import' . $ext;
                 $candidates[] = $dir . $name . '.import' . $ext;
-                $candidates[] = $dir . $name . DIRECTORY_SEPARATOR . '_index.import' . $ext;
-                $candidates[] = $dir . $name . DIRECTORY_SEPARATOR . 'index.import' . $ext;
             }
 
             $candidates[] = $dir . '_' . $name . $ext;
             $candidates[] = $dir . $name . $ext;
+
+            if ($fromImport && ($ext === '.scss' || $ext === '.sass')) {
+                $candidates[] = $dir . $name . DIRECTORY_SEPARATOR . '_index.import' . $ext;
+                $candidates[] = $dir . $name . DIRECTORY_SEPARATOR . 'index.import' . $ext;
+            }
+
             $candidates[] = $dir . $name . DIRECTORY_SEPARATOR . '_index' . $ext;
             $candidates[] = $dir . $name . DIRECTORY_SEPARATOR . 'index' . $ext;
         }

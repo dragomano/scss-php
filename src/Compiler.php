@@ -49,6 +49,8 @@ final readonly class Compiler implements CompilerInterface
         $syntax ??= Syntax::SCSS;
 
         try {
+            $this->ctx->outputState->hoistCssImports = true;
+
             $source      = $this->normalizeSource($source, $syntax);
             $ast         = $this->parse($source);
             $environment = $this->buildEnvironment($ast, str_contains($source, '@extend'));
@@ -127,6 +129,13 @@ final readonly class Compiler implements CompilerInterface
 
     private function postProcess(string $compiled, string $source): string
     {
+        $cssImports = $this->ctx->outputState->cssImports;
+
+        if ($cssImports !== []) {
+            $compiled = implode("\n", $cssImports)
+                . ($compiled !== '' ? "\n" . $compiled : '');
+        }
+
         $optimized = str_replace(
             StringEscapeDecoder::PROTECTED_HASH,
             '#',

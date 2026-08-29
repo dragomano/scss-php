@@ -346,6 +346,16 @@ final readonly class Module
 
         $forwardKey = $this->forwardCacheKey($path, $resolvedConfiguration, $env);
 
+        if ($resolvedConfiguration === [] && ! isset($state->forwardedModules[$forwardKey])) {
+            foreach (array_keys($state->forwardedModules) as $cachedKey) {
+                if (str_starts_with($cachedKey, $path . "\0")) {
+                    $forwardKey = $cachedKey;
+
+                    break;
+                }
+            }
+        }
+
         if (! isset($state->forwardedModules[$forwardKey])) {
             $moduleData = $this->loadAndEvaluateModule($path, $resolvedConfiguration);
 
@@ -354,7 +364,7 @@ final readonly class Module
             $namespace = $this->deriveNamespaceFromUsePath($path);
             $moduleId  = $this->loader->load($path)['path'];
 
-            if (! $state->hasNamespace($namespace)) {
+            if ($node->configuration !== [] || ! $state->hasNamespace($namespace)) {
                 $state->addByNamespace($namespace, new LoadedModule($moduleId, $moduleData['scope'], $moduleData['css']));
             }
         }
@@ -852,10 +862,8 @@ final readonly class Module
                     }
                 }
 
-                if ($node->configuration === []) {
-                    $forwardedDefaults = $this->collectDefaultVariableNamesFromForward($node, $depth + 1);
-                    $defaults          = array_merge($defaults, $forwardedDefaults);
-                }
+                $forwardedDefaults = $this->collectDefaultVariableNamesFromForward($node, $depth + 1);
+                $defaults          = array_merge($defaults, $forwardedDefaults);
             }
 
             if ($node instanceof ImportNode) {

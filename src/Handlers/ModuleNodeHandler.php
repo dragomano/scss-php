@@ -73,6 +73,12 @@ final readonly class ModuleNodeHandler
 
                 $line = '@import ' . $rawImport . ';';
 
+                if ($outputState->hoistCssImports && $ctx->indent === 0) {
+                    $outputState->cssImports[] = $line;
+
+                    continue;
+                }
+
                 if ($output !== '' && ! $endsWithNewline) {
                     $output .= "\n";
                 }
