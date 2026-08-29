@@ -165,6 +165,10 @@ final readonly class CalculationEvaluator
                 if ($collapsed instanceof NumberNode) {
                     return $collapsed;
                 }
+
+                if ($collapsed instanceof ListNode && $this->listChanged($resolved, $collapsed)) {
+                    return new FunctionNode('calc', [$collapsed]);
+                }
             }
 
             return null;
@@ -620,6 +624,21 @@ final readonly class CalculationEvaluator
         );
 
         return $simplified instanceof NumberNode ? $simplified : null;
+    }
+
+    private function listChanged(ListNode $original, ListNode $updated): bool
+    {
+        if (count($original->items) !== count($updated->items)) {
+            return true;
+        }
+
+        foreach ($original->items as $index => $item) {
+            if ($item !== ($updated->items[$index] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function resolveConstantsInList(ListNode $list): ListNode

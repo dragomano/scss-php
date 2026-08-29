@@ -16,6 +16,7 @@ final class NumberNode extends AstNode implements Stringable
         public float|int $value,
         public ?string $unit = null,
         public bool $isLiteral = true,
+        public bool $parenthesized = false,
     ) {}
 
     public function __toString(): string

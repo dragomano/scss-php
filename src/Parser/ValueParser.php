@@ -430,6 +430,10 @@ final readonly class ValueParser implements
             }
 
             if (! $singleItem instanceof ListNode) {
+                if ($singleItem instanceof NumberNode) {
+                    $singleItem->parenthesized = true;
+                }
+
                 return $singleItem;
             }
 

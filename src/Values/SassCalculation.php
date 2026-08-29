@@ -10,6 +10,7 @@ use function count;
 use function implode;
 use function in_array;
 use function is_string;
+use function str_replace;
 use function strtolower;
 
 final class SassCalculation extends AbstractSassValue
@@ -82,7 +83,14 @@ final class SassCalculation extends AbstractSassValue
             return $this->name . '(' . $this->formatSpaceSeparated($parts) . ')';
         }
 
-        return $this->name . '(' . implode(', ', $parts) . ')';
+        $joined = implode(', ', $parts);
+
+        if (strtolower($this->name) === 'calc') {
+            $joined = str_replace(' + -', ' - ', $joined);
+            $joined = str_replace(' - -', ' + ', $joined);
+        }
+
+        return $this->name . '(' . $joined . ')';
     }
 
     /**

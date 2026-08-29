@@ -533,7 +533,7 @@ describe('Sass Math Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .math-unit {
-              value: px;
+              value: "px";
             }
             CSS;
 
@@ -1085,7 +1085,7 @@ describe('Sass Math Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .math-global-unit {
-                  value: px;
+                  value: "px";
                 }
                 CSS;
 

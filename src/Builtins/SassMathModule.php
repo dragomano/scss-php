@@ -615,7 +615,36 @@ final class SassMathModule extends AbstractModule
 
         $this->warnAboutDeprecatedMathFunction($context, 'unit', $positional);
 
-        return new StringNode($number->unit ?? '');
+        return new StringNode($this->formatUnitString($number->unit), true);
+    }
+
+    private function formatUnitString(?string $unit): string
+    {
+        if ($unit === null || $unit === '') {
+            return '';
+        }
+
+        [$numerator, $denominator] = UnitConverter::parseParts($unit);
+
+        $numeratorString = implode('*', $numerator);
+
+        if ($denominator === []) {
+            return $numeratorString;
+        }
+
+        if ($numerator === []) {
+            $denominatorString = implode('*', $denominator);
+
+            return count($denominator) === 1
+                ? $denominatorString . '^-1'
+                : '(' . $denominatorString . ')^-1';
+        }
+
+        $denominatorString = count($denominator) === 1
+            ? $denominator[0]
+            : '(' . implode('*', $denominator) . ')';
+
+        return $numeratorString . '/' . $denominatorString;
     }
 
     /**
