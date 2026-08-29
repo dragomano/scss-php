@@ -636,7 +636,7 @@ final class Tokenizer
                 break;
             }
 
-            $normalizedEscape = $this->tokenizeIdentifierEscape();
+            $normalizedEscape = $this->tokenizeIdentifierEscape($value === '');
 
             $value .= $normalizedEscape;
         }
@@ -644,7 +644,7 @@ final class Tokenizer
         return new Token(TokenType::IDENTIFIER, $value, $line, $column, $start);
     }
 
-    private function tokenizeIdentifierEscape(): string
+    private function tokenizeIdentifierEscape(bool $isFirst): string
     {
         $escapeResult = $this->parseEscapeSequence();
 
@@ -653,7 +653,13 @@ final class Tokenizer
         }
 
         if (ctype_xdigit($escapeResult[0] ?? '')) {
-            return $this->normalizeIdentifierEscapedCodePoint((int) hexdec($escapeResult));
+            $codePoint = (int) hexdec($escapeResult);
+
+            if ($isFirst && $codePoint >= 0x30 && $codePoint <= 0x39) {
+                return '\\' . strtolower(dechex($codePoint)) . ' ';
+            }
+
+            return $this->normalizeIdentifierEscapedCodePoint($codePoint);
         }
 
         return $this->normalizeIdentifierEscapedCodePoint(ord(substr($escapeResult, 1)));

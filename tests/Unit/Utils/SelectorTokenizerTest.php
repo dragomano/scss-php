@@ -118,8 +118,8 @@ describe('SelectorTokenizer', function () {
         expect($this->tokenizer->hasBogusTopLevelCombinatorSequence('div > + span'))->toBeTrue();
     });
 
-    it('hasBogusTopLevelCombinatorSequence() ignores nested combinator sequences', function () {
-        expect($this->tokenizer->hasBogusTopLevelCombinatorSequence(':is(div > + span) a'))->toBeFalse();
+    it('hasBogusTopLevelCombinatorSequence() detects nested combinator sequences', function () {
+        expect($this->tokenizer->hasBogusTopLevelCombinatorSequence(':is(div > + span) a'))->toBeTrue();
     });
 
     it('hasBogusTopLevelCombinatorSequence() ignores quoted attribute content and still detects top-level repeats', function () {

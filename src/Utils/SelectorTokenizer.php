@@ -434,7 +434,7 @@ final readonly class SelectorTokenizer
             public bool $lastTokenWasCombinator = false;
         };
 
-        return $this->inspectTopLevelCombinators(
+        if ($this->inspectTopLevelCombinators(
             $selector,
             static function (string $char) use ($state): bool {
                 if (in_array($char, ['>', '+', '~'], true)) {
@@ -453,7 +453,11 @@ final readonly class SelectorTokenizer
 
                 return false;
             },
-        );
+        )) {
+            return true;
+        }
+
+        return $this->hasConsecutiveCombinatorsInParentheses($selector);
     }
 
     public function hasAdjacentCompoundSelectors(string $selector): bool
@@ -614,6 +618,43 @@ final readonly class SelectorTokenizer
         return false;
     }
 
+    public function hasBogusSelectorPseudoCombinator(string $selector): bool
+    {
+        foreach ([':is(', ':matches(', ':where(', ':not('] as $pseudo) {
+            $offset = 0;
+
+            while (($start = strpos(strtolower($selector), $pseudo, $offset)) !== false) {
+                $end = $start + strlen($pseudo);
+                $close = strpos($selector, ')', $end);
+
+                if ($close === false) {
+                    break;
+                }
+
+                $argument = trim(substr($selector, $end, $close - $end));
+
+                if (
+                    str_starts_with($argument, '>')
+                    || str_starts_with($argument, '+')
+                    || str_starts_with($argument, '~')
+                    || $this->hasConsecutiveCombinatorsInParentheses($argument)
+                ) {
+                    return true;
+                }
+
+                $argument = rtrim($argument);
+
+                if (str_ends_with($argument, '>') || str_ends_with($argument, '+') || str_ends_with($argument, '~')) {
+                    return true;
+                }
+
+                $offset = $close + 1;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * @param array<int, string> $left
      * @param array<int, string> $right
@@ -730,136 +771,6 @@ final readonly class SelectorTokenizer
         }
 
         return $result;
-    }
-
-    private function isIdentifierBodyChar(string $char): bool
-    {
-        if (ord($char[0]) >= 0x80) {
-            return true;
-        }
-
-        return ctype_alnum($char) || $char === '-' || $char === '_' || $char === '\\';
-    }
-
-    /**
-     * @return array{0: string, 1: int}
-     */
-    private function decodeSelectorEscape(string $text, int $index): array
-    {
-        $length = strlen($text);
-
-        $index++;
-
-        if ($index >= $length) {
-            return ['\\', $index];
-        }
-
-        $char = $text[$index];
-
-        if ($char === "\n") {
-            return ['', $index + 1];
-        }
-
-        if ($char === "\r") {
-            $index++;
-
-            if (($text[$index] ?? '') === "\n") {
-                $index++;
-            }
-
-            return ['', $index];
-        }
-
-        if (ctype_xdigit($char)) {
-            $hex = '';
-
-            while ($index < $length && strlen($hex) < 6 && ctype_xdigit($text[$index])) {
-                $hex .= $text[$index];
-
-                $index++;
-            }
-
-            if ($index < $length && ($text[$index] === ' ' || $text[$index] === "\t")) {
-                $index++;
-            }
-
-            return [StringEscapeDecoder::hexToUtf8($hex), $index];
-        }
-
-        return [$char, $index + 1];
-    }
-
-    private function encodeCanonicalIdentifierChar(string $char, bool $insideIdentifier): string
-    {
-        $byte = ord($char[0]);
-
-        if ($byte >= 0x80) {
-            return $char;
-        }
-
-        if (ctype_digit($char) && ! $insideIdentifier) {
-            return '\\' . dechex($byte) . ' ';
-        }
-
-        if (
-            ($char >= 'a' && $char <= 'z')
-            || ($char >= 'A' && $char <= 'Z')
-            || $char === '-'
-            || $char === '_'
-            || ctype_digit($char)
-        ) {
-            return $char;
-        }
-
-        if ($byte >= 0x20 && $byte <= 0x7E) {
-            return '\\' . $char;
-        }
-
-        return '\\' . dechex($byte) . ' ';
-    }
-
-    private function skipVerbatimRegion(string $text, int $startIndex, string $open, string $close): int
-    {
-        $length = strlen($text);
-        $depth  = 0;
-        $quote  = '';
-        $index  = $startIndex;
-
-        while ($index < $length) {
-            $char = $text[$index];
-
-            if ($quote !== '') {
-                if ($char === $quote) {
-                    $quote = '';
-                }
-
-                $index++;
-
-                continue;
-            }
-
-            if ($char === '"' || $char === "'") {
-                $quote = $char;
-
-                $index++;
-
-                continue;
-            }
-
-            if ($char === $open) {
-                $depth++;
-            } elseif ($char === $close) {
-                $depth--;
-
-                if ($depth === 0) {
-                    return $index + 1;
-                }
-            }
-
-            $index++;
-        }
-
-        return $length;
     }
 
     /**
@@ -1081,845 +992,6 @@ final readonly class SelectorTokenizer
         }
 
         return array_values($trimmed);
-    }
-
-    /**
-     * @param array<int, string> $targets single-compound target selectors
-     * @param array<int, string>|null $allExtenders  all extenders being applied
-     * @return array<int, string>
-     */
-    private function extendSelectorPartByExtender(
-        string $part,
-        array $targets,
-        string $extender,
-        bool $allowGuard = true,
-        ?array $allExtenders = null,
-        bool $skipPseudo = false,
-    ): array {
-        $extenderComplexes = $this->parseSelectorList($extender);
-
-        if ($extenderComplexes === []) {
-            return [];
-        }
-
-        $extenderLead = $extenderComplexes[0][0]['lead'] ?? '';
-
-        $isCombinatorOnly = true;
-
-        foreach ($extenderComplexes[0] as $component) {
-            if ($component['sel'] !== '') {
-                $isCombinatorOnly = false;
-
-                break;
-            }
-        }
-
-        if ($isCombinatorOnly) {
-            $results = $this->extendByCombinatorOnlyExtender($part, $targets, $extenderComplexes);
-
-            if ($results !== []) {
-                $normalized = $this->normalizeExtendPart($part);
-
-                if (! in_array($normalized, $results, true)) {
-                    array_unshift($results, $normalized);
-                }
-            }
-
-            return $results;
-        }
-
-        if ($this->hasBogusTopLevelCombinatorSequence($extender)) {
-            return [];
-        }
-
-        $guardedTargets   = [];
-        $unguardedTargets = [];
-
-        foreach ($targets as $target) {
-            $targetComplexes = $this->parseSelectorList($target);
-
-            if ($targetComplexes === [] || count($targetComplexes[0]) !== 1) {
-                continue;
-            }
-
-            $targetComponent = $targetComplexes[0][0];
-
-            if (
-                $targetComponent['sel'] === ''
-                || $targetComponent['comb'] !== ''
-                || ($targetComponent['lead'] ?? '') !== ''
-            ) {
-                continue;
-            }
-
-            $tokens = $this->tokenizeCompound($this->normalizeCompoundPseudoTokens($targetComponent['sel']));
-
-            if ($tokens === []) {
-                continue;
-            }
-
-            if (! $allowGuard || ! $this->complexesAreSuperselector($targetComplexes[0], $extenderComplexes[0])) {
-                $guardedTargets[] = $tokens;
-            }
-
-            $unguardedTargets[] = $tokens;
-        }
-
-        $partComponents = $this->parseComplexComponents($part);
-
-        if ($partComponents === []) {
-            return [];
-        }
-
-        $partLead = $partComponents[0]['lead'] ?? '';
-
-        if ($partLead !== '' && $extenderLead !== '' && $partLead !== $extenderLead) {
-            return [];
-        }
-
-        $lead              = $partLead !== '' ? $partLead : $extenderLead;
-        $lastExtenderIndex = count($extenderComplexes[0]) - 1;
-        $extenderSubject   = $extenderComplexes[0][$lastExtenderIndex]['sel'];
-        $extenderTrailing  = $extenderComplexes[0][$lastExtenderIndex]['comb'];
-        $extenderAncestors = array_slice($extenderComplexes[0], 0, -1);
-
-        if ($extenderLead !== '' && in_array($extenderLead, ['>', '+', '~'], true)) {
-            array_unshift($extenderAncestors, ['sel' => '', 'comb' => $extenderLead]);
-
-            if ($lead === $extenderLead) {
-                $lead = '';
-            }
-        }
-
-        if ($extenderSubject === '') {
-            return [];
-        }
-
-        $extenders        = $allExtenders ?? [$extender];
-        $results          = [];
-        $hasPseudoChanges = false;
-
-        foreach ($partComponents as $index => $component) {
-            $compoundSel = $this->normalizeCompoundPseudoTokens($component['sel']);
-            $remainders  = [$compoundSel];
-
-            foreach ($guardedTargets as $targetTokens) {
-                foreach ($remainders as $remainder) {
-                    $next = $this->removeTokensFromCompound($remainder, $targetTokens);
-
-                    if ($next !== null && ! in_array($next, $remainders, true)) {
-                        $remainders[] = $next;
-                    }
-                }
-            }
-
-            foreach (array_slice($remainders, 1) as $remainder) {
-                foreach (
-                    $this->buildExtensionVariants(
-                        $partComponents,
-                        $index,
-                        $remainder,
-                        '',
-                        $extenderSubject,
-                        $extenderTrailing,
-                        $extenderAncestors,
-                        $lead,
-                    ) as $variant
-                ) {
-                    if (! in_array($variant, $results, true)) {
-                        $results[] = $variant;
-                    }
-                }
-            }
-
-            if ($unguardedTargets !== [] && ! $skipPseudo) {
-                foreach (
-                    $this->extendCompoundPseudoArguments(
-                        $partComponents,
-                        $index,
-                        $unguardedTargets,
-                        $targets,
-                        $extenders,
-                        $lead,
-                    ) as $pseudoVariant
-                ) {
-                    $hasPseudoChanges = true;
-
-                    if (! in_array($pseudoVariant, $results, true)) {
-                        $results[] = $pseudoVariant;
-                    }
-                }
-            }
-        }
-
-        if ($allowGuard && ! $hasPseudoChanges && ! $skipPseudo) {
-            $normalized = $this->normalizeExtendPart($part);
-
-            if (! in_array($normalized, $results, true)) {
-                array_unshift($results, $normalized);
-            }
-        }
-
-        return $results;
-    }
-
-    /**
-     * @param Complex $partComponents
-     * @param Complex $extenderAncestors
-     * @return array<int, string>
-     */
-    private function buildExtensionVariants(
-        array $partComponents,
-        int $index,
-        string $remainder,
-        string $replacementCompound,
-        string $extenderSubject,
-        string $extenderTrailing,
-        array $extenderAncestors,
-        string $lead,
-    ): array {
-        if ($replacementCompound === '') {
-            $base = $remainder === ''
-                ? $extenderSubject
-                : $this->unifyCompoundsStrict($remainder, $extenderSubject);
-
-            if ($base === null || $base === '') {
-                return [];
-            }
-        } else {
-            $base = $replacementCompound;
-        }
-
-        $trailingCombinator = $this->mergeExtendCombinators($partComponents[$index]['comb'], $extenderTrailing);
-
-        if ($trailingCombinator === null) {
-            return [];
-        }
-
-        $prefix        = array_slice($partComponents, 0, $index);
-        $suffix        = array_slice($partComponents, $index + 1);
-        $baseComponent = ['sel' => $base, 'comb' => $trailingCombinator];
-
-        $variants = [];
-
-        foreach ($this->weavePrefixWithAncestors($prefix, $extenderAncestors) as $body) {
-            $assembled = [...$body, $baseComponent, ...$suffix];
-
-            if ($lead !== '') {
-                $assembled[0] = ['sel' => $assembled[0]['sel'], 'comb' => $assembled[0]['comb'], 'lead' => $lead];
-            }
-
-            $variants[] = $this->complexComponentsToString($assembled);
-        }
-
-        return $variants;
-    }
-
-    /**
-     * @param Complex $partComponents
-     * @param array<int, array<int, string>> $unguardedTargets target token sets
-     * @param array<int, string> $targets raw target strings
-     * @param array<int, string> $extenders
-     * @return array<int, string>
-     */
-    private function extendCompoundPseudoArguments(
-        array $partComponents,
-        int $index,
-        array $unguardedTargets,
-        array $targets,
-        array $extenders,
-        string $lead,
-    ): array {
-        $compoundTokens = $this->tokenizeCompound($partComponents[$index]['sel']);
-        $variants       = [];
-
-        foreach ($compoundTokens as $tokenIndex => $token) {
-            $pseudo = $this->parsePseudoToken($token);
-
-            if ($pseudo === null || $pseudo['selector'] === null) {
-                continue;
-            }
-
-            $baseName = $this->pseudoBaseName($pseudo['name']);
-
-            if ($baseName === self::NOT_PSEUDO_BASE_NAME) {
-                $replacement = $this->extendedNotPseudoToken($pseudo, $targets, $extenders, $compoundTokens, $tokenIndex);
-
-                if ($replacement === null) {
-                    continue;
-                }
-
-                $modifiedCompounds = [$replacement];
-            } elseif (
-                in_array($baseName, self::FLATTENABLE_PSEUDO_BASE_NAMES, true)
-                || in_array($baseName, self::PLAIN_INSERT_PSEUDO_BASE_NAMES, true)
-                || in_array($baseName, self::NTH_OF_PSEUDO_BASE_NAMES, true)
-            ) {
-                $replacement = $this->extendedSelectorPseudoToken($pseudo, $baseName, $unguardedTargets, $extenders);
-
-                if ($replacement === null) {
-                    continue;
-                }
-
-                $tokensCopy           = $compoundTokens;
-                $tokensCopy[$tokenIndex] = $replacement;
-                $modifiedCompounds    = [implode('', $tokensCopy)];
-            } else {
-                continue;
-            }
-
-            foreach ($modifiedCompounds as $modifiedCompound) {
-                foreach (
-                    $this->buildExtensionVariants(
-                        $partComponents,
-                        $index,
-                        '',
-                        $modifiedCompound,
-                        '',
-                        '',
-                        [],
-                        $lead,
-                    ) as $variant
-                ) {
-                    if (! in_array($variant, $variants, true)) {
-                        $variants[] = $variant;
-                    }
-                }
-            }
-        }
-
-        return $variants;
-    }
-
-    /**
-     * @param array{name: string, argument: string, selector: ?string, isElement: bool} $pseudo
-     * @param array<int, array<int, string>> $targetTokenSets
-     * @param array<int, string> $extenders
-     */
-    private function extendedSelectorPseudoToken(
-        array $pseudo,
-        string $baseName,
-        array $targetTokenSets,
-        array $extenders,
-    ): ?string {
-        $argComplexes = $this->parseSelectorList((string) $pseudo['selector']);
-
-        if ($argComplexes === []) {
-            return null;
-        }
-
-        $isNthOf   = in_array($baseName, self::NTH_OF_PSEUDO_BASE_NAMES, true);
-        $normalizedPrefix = $this->normalizeAnB($pseudo['argument']);
-        $inserted  = [];
-
-        foreach ($extenders as $extender) {
-            $extenderComplexes = $this->parseSelectorList($extender);
-
-            if ($extenderComplexes === []) {
-                continue;
-            }
-
-            $first = $extenderComplexes[0];
-
-            if ($this->isFamilySinglePseudoComplex($first, self::NTH_OF_PSEUDO_BASE_NAMES)) {
-                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]['sel'])[0]);
-
-                if (
-                    $nestedPseudo === null
-                    || $this->pseudoBaseName($nestedPseudo['name']) !== $baseName
-                    || $this->normalizeAnB($nestedPseudo['argument']) !== $normalizedPrefix
-                    || $nestedPseudo['selector'] === null
-                ) {
-                    continue;
-                }
-
-                foreach ($this->parseSelectorList($nestedPseudo['selector']) as $inner) {
-                    $inserted[] = $inner;
-                }
-
-                continue;
-            }
-
-            if (! $isNthOf && $this->isFamilySinglePseudoComplex($first, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
-                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]['sel'])[0]);
-
-                if ($nestedPseudo !== null && $nestedPseudo['selector'] !== null) {
-                    if (strtolower($nestedPseudo['name']) === strtolower($pseudo['name'])) {
-                        foreach ($this->parseSelectorList($nestedPseudo['selector']) as $inner) {
-                            $inserted[] = $inner;
-                        }
-
-                        continue;
-                    }
-
-                    continue;
-                }
-            }
-
-            if ($this->complexContainsNot($first)) {
-                continue;
-            }
-
-            foreach ($extenderComplexes as $complex) {
-                $inserted[] = $complex;
-            }
-        }
-
-        if ($inserted === []) {
-            return null;
-        }
-
-        $newList  = [];
-        $extended = false;
-
-        foreach ($argComplexes as $complex) {
-            if ($this->isFamilySinglePseudoComplex($complex, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
-                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($complex[0]['sel'])[0]);
-                $inner = $nestedPseudo !== null && $nestedPseudo['selector'] !== null
-                    ? $this->parseSelectorList($nestedPseudo['selector'])
-                    : [];
-
-                if ($inner !== [] && $this->anyComplexMatchesTarget($inner, $targetTokenSets)) {
-                    foreach ([...$inner, ...$inserted] as $piece) {
-                        $newList[] = $piece;
-                    }
-
-                    $extended = true;
-
-                    continue;
-                }
-
-                $newList[] = $complex;
-
-                continue;
-            }
-
-            $newList[] = $complex;
-
-            if ($this->complexMatchesAnyTarget($complex, $targetTokenSets)) {
-                foreach ($inserted as $piece) {
-                    $newList[] = $piece;
-                }
-
-                $extended = true;
-            }
-        }
-
-        if (! $extended) {
-            return null;
-        }
-
-        $argument = $isNthOf
-            ? $normalizedPrefix . ' of ' . $this->complexesToString($newList)
-            : $this->complexesToString($newList);
-
-        return ($pseudo['isElement'] ? '::' : ':') . $pseudo['name'] . '(' . $argument . ')';
-    }
-
-    /**
-     * @param array{name: string, argument: string, selector: ?string, isElement: bool} $pseudo
-     * @param array<int, string> $targets
-     * @param array<int, string> $extenders
-     * @param array<int, string> $compoundTokens
-     * @return string|null new token text replacing the original one
-     */
-    private function extendedNotPseudoToken(
-        array $pseudo,
-        array $targets,
-        array $extenders,
-        array $compoundTokens,
-        int $tokenIndex,
-    ): ?string {
-        $argComplexes = $this->parseSelectorList((string) $pseudo['selector']);
-
-        if ($argComplexes === []) {
-            return null;
-        }
-
-        if (count($argComplexes) > 1) {
-            return $this->extendedNotPseudoInList($pseudo, $argComplexes, $targets, $extenders);
-        }
-
-        $extras = $this->notSiblingTokens($argComplexes[0], $targets, $extenders);
-
-        if ($extras === []) {
-            return null;
-        }
-
-        $tokensCopy             = $compoundTokens;
-        $tokensCopy[$tokenIndex] .= implode('', $extras);
-
-        return implode('', $tokensCopy);
-    }
-
-    /**
-     * @param array{name: string, argument: string, selector: ?string, isElement: bool} $pseudo
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>>  $argComplexes
-     * @param array<int, string> $targets
-     * @param array<int, string> $extenders
-     */
-    private function extendedNotPseudoInList(
-        array $pseudo,
-        array $argComplexes,
-        array $targets,
-        array $extenders,
-    ): ?string {
-        $targetTokenSets = [];
-        $targetStrings   = [];
-
-        foreach ($targets as $target) {
-            $targetComplexes = $this->parseSelectorList($target);
-
-            if ($targetComplexes === [] || count($targetComplexes[0]) !== 1) {
-                continue;
-            }
-
-            $component = $targetComplexes[0][0];
-
-            if ($component['sel'] === '' || $component['comb'] !== '' || ($component['lead'] ?? '') !== '') {
-                continue;
-            }
-
-            $tokens = $this->tokenizeCompound($this->normalizeCompoundPseudoTokens($component['sel']));
-
-            if ($tokens !== []) {
-                $targetTokenSets[] = $tokens;
-                $targetStrings[]   = $target;
-            }
-        }
-
-        $inserted = $this->notInsertableComplexes($extenders);
-
-        if ($inserted === []) {
-            return null;
-        }
-
-        $newList = [];
-
-        foreach ($argComplexes as $complex) {
-            $newList[] = $complex;
-
-            if ($this->complexMatchesAnyTarget($complex, $targetTokenSets)) {
-                foreach ($inserted as $piece) {
-                    $newList[] = $piece;
-                }
-            }
-        }
-
-        if ($newList === $argComplexes) {
-            return null;
-        }
-
-        return ($pseudo['isElement'] ? '::' : ':') . $pseudo['name'] . '(' . $this->complexesToString($newList) . ')';
-    }
-
-    /**
-     * @param Complex $argComplex
-     * @param array<int, string> $targets
-     * @param array<int, string> $extenders
-     * @return array<int, string>
-     */
-    private function notSiblingTokens(array $argComplex, array $targets, array $extenders): array
-    {
-        $argText = $this->complexComponentsToString($argComplex);
-        $extras  = [];
-
-        foreach ($extenders as $extender) {
-            $extenderComplexes = $this->parseSelectorList($extender);
-
-            if ($extenderComplexes === []) {
-                continue;
-            }
-
-            $first = $extenderComplexes[0];
-
-            if ($this->isFamilySinglePseudoComplex($first, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
-                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]['sel'])[0]);
-
-                if ($nestedPseudo !== null && $nestedPseudo['selector'] !== null) {
-                    foreach ($this->parseSelectorList($nestedPseudo['selector']) as $inner) {
-                        $extras[] = ':not(' . $this->complexComponentsToString($inner) . ')';
-                    }
-
-                    continue;
-                }
-            }
-
-            if ($this->complexContainsNot($first)) {
-                continue;
-            }
-
-            foreach (
-                $this->extendSelectorPartByTargets($argText, $targets, [$extender], false) as $variant
-            ) {
-                $extras[] = ':not(' . $variant . ')';
-            }
-        }
-
-        return array_values(array_unique($extras));
-    }
-
-    /**
-     * @param array<int, string> $extenders
-     * @return array<int, Complex>
-     */
-    private function notInsertableComplexes(array $extenders): array
-    {
-        $inserted = [];
-
-        foreach ($extenders as $extender) {
-            $extenderComplexes = $this->parseSelectorList($extender);
-
-            if ($extenderComplexes === []) {
-                continue;
-            }
-
-            $first = $extenderComplexes[0];
-
-            if ($this->isFamilySinglePseudoComplex($first, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
-                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]['sel'])[0]);
-
-                if ($nestedPseudo !== null && $nestedPseudo['selector'] !== null) {
-                    foreach ($this->parseSelectorList($nestedPseudo['selector']) as $inner) {
-                        $inserted[] = $inner;
-                    }
-
-                    continue;
-                }
-            }
-
-            if ($this->complexContainsNot($first)) {
-                continue;
-            }
-
-            foreach ($extenderComplexes as $complex) {
-                $inserted[] = $complex;
-            }
-        }
-
-        return $inserted;
-    }
-
-    /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $complexes
-     * @param array<int, array<int, string>> $targetTokenSets
-     */
-    private function anyComplexMatchesTarget(array $complexes, array $targetTokenSets): bool
-    {
-        foreach ($complexes as $complex) {
-            if ($this->complexMatchesAnyTarget($complex, $targetTokenSets)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
-     * @param array<int, array<int, string>> $targetTokenSets
-     */
-    private function complexMatchesAnyTarget(array $components, array $targetTokenSets): bool
-    {
-        if ($targetTokenSets === []) {
-            return false;
-        }
-
-        foreach ($components as $component) {
-            foreach ($targetTokenSets as $tokens) {
-                if ($this->removeTokensFromCompound($component['sel'], $tokens) !== null) {
-                    return true;
-                }
-            }
-
-            foreach ($this->tokenizeCompound($component['sel']) as $token) {
-                $pseudo = $this->parsePseudoToken($token);
-
-                if ($pseudo === null || $pseudo['selector'] === null) {
-                    continue;
-                }
-
-                if ($this->anyComplexMatchesTarget($this->parseSelectorList($pseudo['selector']), $targetTokenSets)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
-     * @param array<int, string> $baseNames
-     */
-    private function isFamilySinglePseudoComplex(array $components, array $baseNames): bool
-    {
-        if (count($components) !== 1 || $components[0]['comb'] !== '') {
-            return false;
-        }
-
-        $tokens = $this->tokenizeCompound($components[0]['sel']);
-
-        if (count($tokens) !== 1) {
-            return false;
-        }
-
-        $pseudo = $this->parsePseudoToken($tokens[0]);
-
-        return $pseudo !== null
-            && $pseudo['selector'] !== null
-            && in_array($this->pseudoBaseName($pseudo['name']), $baseNames, true);
-    }
-
-    /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
-     */
-    private function complexContainsNot(array $components): bool
-    {
-        foreach ($components as $component) {
-            foreach ($this->tokenizeCompound($component['sel']) as $token) {
-                $pseudo = $this->parsePseudoToken($token);
-
-                if ($pseudo !== null && $this->pseudoBaseName($pseudo['name']) === self::NOT_PSEUDO_BASE_NAME) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private function pseudoBaseName(string $name): string
-    {
-        $lowered = strtolower($name);
-
-        if ($lowered !== '' && $lowered[0] === '-') {
-            $secondDash = strpos($lowered, '-', 1);
-
-            if ($secondDash !== false && $secondDash > 1) {
-                $lowered = substr($lowered, $secondDash + 1);
-            }
-        }
-
-        return $lowered;
-    }
-
-    private function normalizeAnB(string $prefix): string
-    {
-        $result = '';
-
-        $length = strlen($prefix);
-
-        for ($i = 0; $i < $length; $i++) {
-            if ($prefix[$i] !== ' ') {
-                $result .= $prefix[$i];
-            }
-        }
-
-        return $result;
-    }
-
-    private function normalizeCompoundPseudoTokens(string $compound): string
-    {
-        $tokens       = $this->tokenizeCompound($compound);
-        $changedToken = false;
-
-        foreach ($tokens as $index => $token) {
-            $pseudo = $this->parsePseudoToken($token);
-
-            if ($pseudo === null || $pseudo['selector'] === null) {
-                continue;
-            }
-
-            if (! in_array($this->pseudoBaseName($pseudo['name']), self::NTH_OF_PSEUDO_BASE_NAMES, true)) {
-                continue;
-            }
-
-            $ofPart = trim($pseudo['selector']);
-
-            if ($ofPart === '') {
-                continue;
-            }
-
-            $parts = [];
-
-            foreach ($this->splitAtTopLevel($ofPart, [','], true) as $piece) {
-                $parts[] = $piece;
-            }
-
-            $tokens[$index] = ($pseudo['isElement'] ? '::' : ':')
-                . $pseudo['name'] . '(' . $this->normalizeAnB($pseudo['argument'])
-                . ' of ' . implode(', ', $parts) . ')';
-            $changedToken   = true;
-        }
-
-        return $changedToken ? implode('', $tokens) : $compound;
-    }
-
-    /**
-     * @param array<int, string> $targets
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $extenderComplexes
-     * @return array<int, string>
-     */
-    private function extendByCombinatorOnlyExtender(string $part, array $targets, array $extenderComplexes): array
-    {
-        $partComponents = $this->parseComplexComponents($part);
-
-        if ($partComponents === []) {
-            return [];
-        }
-
-        foreach ($targets as $target) {
-            $targetComplexes = $this->parseSelectorList($target);
-
-            if ($targetComplexes === [] || count($targetComplexes[0]) !== 1) {
-                continue;
-            }
-
-            $tokens = $this->tokenizeCompound($targetComplexes[0][0]['sel']);
-
-            if ($tokens === []) {
-                continue;
-            }
-
-            foreach ($partComponents as $component) {
-                if ($this->removeTokensFromCompound($component['sel'], $tokens) === '') {
-                    return [$this->complexComponentsToString($extenderComplexes[0])];
-                }
-            }
-        }
-
-        return [];
-    }
-
-    /**
-     * @param Complex $prefix
-     * @param Complex $ancestors
-     * @return array<int, Complex>
-     */
-    private function weavePrefixWithAncestors(array $prefix, array $ancestors): array
-    {
-        if ($ancestors === []) {
-            return [$prefix];
-        }
-
-        /** @var array{sel: string, comb: string} $sentinel */
-        $sentinel = ['sel' => "\0extender-base", 'comb' => ''];
-
-        return $this->weaveParents($prefix, [...$ancestors, $sentinel]) ?? [];
-    }
-
-    private function mergeExtendCombinators(string $left, string $right): ?string
-    {
-        if ($left === '') {
-            return $right;
-        }
-
-        if ($right === '') {
-            return $left;
-        }
-
-        return $left === $right ? $left : null;
     }
 
     /**
@@ -2178,8 +1250,12 @@ final readonly class SelectorTokenizer
      * @param array<int, string> $splitChars
      * @return array<int, string>
      */
-    public function splitAtTopLevel(string $selector, array $splitChars, bool $handleQuotes = false, bool $trim = true): array
-    {
+    public function splitAtTopLevel(
+        string $selector,
+        array $splitChars,
+        bool $handleQuotes = false,
+        bool $trim = true,
+    ): array {
         $result       = [];
         $buffer       = '';
         $parenDepth   = 0;
@@ -3263,9 +2339,893 @@ final readonly class SelectorTokenizer
         return $escape;
     }
 
+    /**
+     * @param array<int, string> $targets single-compound target selectors
+     * @param array<int, string>|null $allExtenders  all extenders being applied
+     * @return array<int, string>
+     */
+    private function extendSelectorPartByExtender(
+        string $part,
+        array $targets,
+        string $extender,
+        bool $allowGuard = true,
+        ?array $allExtenders = null,
+        bool $skipPseudo = false,
+    ): array {
+        $extenderComplexes = $this->parseSelectorList($extender);
+
+        if ($extenderComplexes === []) {
+            return [];
+        }
+
+        $extenderLead = $extenderComplexes[0][0]['lead'] ?? '';
+
+        $isCombinatorOnly = true;
+
+        foreach ($extenderComplexes[0] as $component) {
+            if ($component['sel'] !== '') {
+                $isCombinatorOnly = false;
+
+                break;
+            }
+        }
+
+        if ($isCombinatorOnly) {
+            $results = $this->extendByCombinatorOnlyExtender($part, $targets, $extenderComplexes);
+
+            if ($results !== []) {
+                $normalized = $this->normalizeExtendPart($part);
+
+                if (! in_array($normalized, $results, true)) {
+                    array_unshift($results, $normalized);
+                }
+            }
+
+            return $results;
+        }
+
+        if ($this->hasBogusTopLevelCombinatorSequence($extender)) {
+            return [];
+        }
+
+        $guardedTargets   = [];
+        $unguardedTargets = [];
+
+        foreach ($targets as $target) {
+            $targetComplexes = $this->parseSelectorList($target);
+
+            if ($targetComplexes === [] || count($targetComplexes[0]) !== 1) {
+                continue;
+            }
+
+            $targetComponent = $targetComplexes[0][0];
+
+            if (
+                $targetComponent['sel'] === ''
+                || $targetComponent['comb'] !== ''
+                || ($targetComponent['lead'] ?? '') !== ''
+            ) {
+                continue;
+            }
+
+            $tokens = $this->tokenizeCompound($this->normalizeCompoundPseudoTokens($targetComponent['sel']));
+
+            if ($tokens === []) {
+                continue;
+            }
+
+            if (! $allowGuard || ! $this->complexesAreSuperselector($targetComplexes[0], $extenderComplexes[0])) {
+                $guardedTargets[] = $tokens;
+            }
+
+            $unguardedTargets[] = $tokens;
+        }
+
+        $partComponents = $this->parseComplexComponents($part);
+
+        if ($partComponents === []) {
+            return [];
+        }
+
+        $partLead = $partComponents[0]['lead'] ?? '';
+
+        if ($partLead !== '' && $extenderLead !== '' && $partLead !== $extenderLead) {
+            return [];
+        }
+
+        $lead              = $partLead !== '' ? $partLead : $extenderLead;
+        $lastExtenderIndex = count($extenderComplexes[0]) - 1;
+        $extenderSubject   = $extenderComplexes[0][$lastExtenderIndex]['sel'];
+        $extenderTrailing  = $extenderComplexes[0][$lastExtenderIndex]['comb'];
+        $extenderAncestors = array_slice($extenderComplexes[0], 0, -1);
+
+        if ($extenderLead !== '' && in_array($extenderLead, ['>', '+', '~'], true)) {
+            array_unshift($extenderAncestors, ['sel' => '', 'comb' => $extenderLead]);
+
+            if ($lead === $extenderLead) {
+                $lead = '';
+            }
+        }
+
+        if ($extenderSubject === '') {
+            return [];
+        }
+
+        $extenders        = $allExtenders ?? [$extender];
+        $results          = [];
+        $hasPseudoChanges = false;
+
+        foreach ($partComponents as $index => $component) {
+            $compoundSel = $this->normalizeCompoundPseudoTokens($component['sel']);
+            $remainders  = [$compoundSel];
+
+            foreach ($guardedTargets as $targetTokens) {
+                foreach ($remainders as $remainder) {
+                    $next = $this->removeTokensFromCompound($remainder, $targetTokens);
+
+                    if ($next !== null && ! in_array($next, $remainders, true)) {
+                        $remainders[] = $next;
+                    }
+                }
+            }
+
+            foreach (array_slice($remainders, 1) as $remainder) {
+                foreach (
+                    $this->buildExtensionVariants(
+                        $partComponents,
+                        $index,
+                        $remainder,
+                        '',
+                        $extenderSubject,
+                        $extenderTrailing,
+                        $extenderAncestors,
+                        $lead,
+                    ) as $variant
+                ) {
+                    if (! in_array($variant, $results, true)) {
+                        $results[] = $variant;
+                    }
+                }
+            }
+
+            if ($unguardedTargets !== [] && ! $skipPseudo) {
+                foreach (
+                    $this->extendCompoundPseudoArguments(
+                        $partComponents,
+                        $index,
+                        $unguardedTargets,
+                        $targets,
+                        $extenders,
+                        $lead,
+                    ) as $pseudoVariant
+                ) {
+                    $hasPseudoChanges = true;
+
+                    if (! in_array($pseudoVariant, $results, true)) {
+                        $results[] = $pseudoVariant;
+                    }
+                }
+            }
+        }
+
+        if ($allowGuard && ! $hasPseudoChanges && ! $skipPseudo) {
+            $normalized = $this->normalizeExtendPart($part);
+
+            if (! in_array($normalized, $results, true)) {
+                array_unshift($results, $normalized);
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * @param Complex $partComponents
+     * @param Complex $extenderAncestors
+     * @return array<int, string>
+     */
+    private function buildExtensionVariants(
+        array $partComponents,
+        int $index,
+        string $remainder,
+        string $replacementCompound,
+        string $extenderSubject,
+        string $extenderTrailing,
+        array $extenderAncestors,
+        string $lead,
+    ): array {
+        if ($replacementCompound === '') {
+            $base = $remainder === ''
+                ? $extenderSubject
+                : $this->unifyCompoundsStrict($remainder, $extenderSubject);
+
+            if ($base === null || $base === '') {
+                return [];
+            }
+        } else {
+            $base = $replacementCompound;
+        }
+
+        $trailingCombinator = $this->mergeExtendCombinators($partComponents[$index]['comb'], $extenderTrailing);
+
+        if ($trailingCombinator === null) {
+            return [];
+        }
+
+        $prefix        = array_slice($partComponents, 0, $index);
+        $suffix        = array_slice($partComponents, $index + 1);
+        $baseComponent = ['sel' => $base, 'comb' => $trailingCombinator];
+
+        $variants = [];
+
+        foreach ($this->weavePrefixWithAncestors($prefix, $extenderAncestors) as $body) {
+            $assembled = [...$body, $baseComponent, ...$suffix];
+
+            if ($lead !== '') {
+                $assembled[0] = ['sel' => $assembled[0]['sel'], 'comb' => $assembled[0]['comb'], 'lead' => $lead];
+            }
+
+            $variants[] = $this->complexComponentsToString($assembled);
+        }
+
+        return $variants;
+    }
+
+    /**
+     * @param Complex $partComponents
+     * @param array<int, array<int, string>> $unguardedTargets target token sets
+     * @param array<int, string> $targets raw target strings
+     * @param array<int, string> $extenders
+     * @return array<int, string>
+     */
+    private function extendCompoundPseudoArguments(
+        array $partComponents,
+        int $index,
+        array $unguardedTargets,
+        array $targets,
+        array $extenders,
+        string $lead,
+    ): array {
+        $compoundTokens = $this->tokenizeCompound($partComponents[$index]['sel']);
+        $variants       = [];
+
+        foreach ($compoundTokens as $tokenIndex => $token) {
+            $pseudo = $this->parsePseudoToken($token);
+
+            if ($pseudo === null || $pseudo['selector'] === null) {
+                continue;
+            }
+
+            $baseName = $this->pseudoBaseName($pseudo['name']);
+
+            if ($baseName === self::NOT_PSEUDO_BASE_NAME) {
+                $replacement = $this->extendedNotPseudoToken($pseudo, $targets, $extenders, $compoundTokens, $tokenIndex);
+
+                if ($replacement === null) {
+                    continue;
+                }
+
+                $modifiedCompounds = [$replacement];
+            } elseif (
+                in_array($baseName, self::FLATTENABLE_PSEUDO_BASE_NAMES, true)
+                || in_array($baseName, self::PLAIN_INSERT_PSEUDO_BASE_NAMES, true)
+                || in_array($baseName, self::NTH_OF_PSEUDO_BASE_NAMES, true)
+            ) {
+                $replacement = $this->extendedSelectorPseudoToken($pseudo, $baseName, $unguardedTargets, $extenders);
+
+                if ($replacement === null) {
+                    continue;
+                }
+
+                $tokensCopy           = $compoundTokens;
+                $tokensCopy[$tokenIndex] = $replacement;
+                $modifiedCompounds    = [implode('', $tokensCopy)];
+            } else {
+                continue;
+            }
+
+            foreach ($modifiedCompounds as $modifiedCompound) {
+                foreach (
+                    $this->buildExtensionVariants(
+                        $partComponents,
+                        $index,
+                        '',
+                        $modifiedCompound,
+                        '',
+                        '',
+                        [],
+                        $lead,
+                    ) as $variant
+                ) {
+                    if (! in_array($variant, $variants, true)) {
+                        $variants[] = $variant;
+                    }
+                }
+            }
+        }
+
+        return $variants;
+    }
+
+    /**
+     * @param array{name: string, argument: string, selector: ?string, isElement: bool} $pseudo
+     * @param array<int, array<int, string>> $targetTokenSets
+     * @param array<int, string> $extenders
+     */
+    private function extendedSelectorPseudoToken(
+        array $pseudo,
+        string $baseName,
+        array $targetTokenSets,
+        array $extenders,
+    ): ?string {
+        $argComplexes = $this->parseSelectorList((string) $pseudo['selector']);
+
+        if ($argComplexes === []) {
+            return null;
+        }
+
+        $isNthOf   = in_array($baseName, self::NTH_OF_PSEUDO_BASE_NAMES, true);
+        $normalizedPrefix = $this->normalizeAnB($pseudo['argument']);
+        $inserted  = [];
+
+        foreach ($extenders as $extender) {
+            $extenderComplexes = $this->parseSelectorList($extender);
+
+            if ($extenderComplexes === []) {
+                continue;
+            }
+
+            $first = $extenderComplexes[0];
+
+            if ($this->isFamilySinglePseudoComplex($first, self::NTH_OF_PSEUDO_BASE_NAMES)) {
+                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]['sel'])[0]);
+
+                if (
+                    $nestedPseudo === null
+                    || $this->pseudoBaseName($nestedPseudo['name']) !== $baseName
+                    || $this->normalizeAnB($nestedPseudo['argument']) !== $normalizedPrefix
+                    || $nestedPseudo['selector'] === null
+                ) {
+                    continue;
+                }
+
+                foreach ($this->parseSelectorList($nestedPseudo['selector']) as $inner) {
+                    $inserted[] = $inner;
+                }
+
+                continue;
+            }
+
+            if (! $isNthOf && $this->isFamilySinglePseudoComplex($first, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
+                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]['sel'])[0]);
+
+                if ($nestedPseudo !== null && $nestedPseudo['selector'] !== null) {
+                    if (strtolower($nestedPseudo['name']) === strtolower($pseudo['name'])) {
+                        foreach ($this->parseSelectorList($nestedPseudo['selector']) as $inner) {
+                            $inserted[] = $inner;
+                        }
+
+                        continue;
+                    }
+
+                    continue;
+                }
+            }
+
+            if ($this->complexContainsNot($first)) {
+                continue;
+            }
+
+            foreach ($extenderComplexes as $complex) {
+                $inserted[] = $complex;
+            }
+        }
+
+        if ($inserted === []) {
+            return null;
+        }
+
+        $newList  = [];
+        $extended = false;
+
+        foreach ($argComplexes as $complex) {
+            if ($this->isFamilySinglePseudoComplex($complex, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
+                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($complex[0]['sel'])[0]);
+                $inner = $nestedPseudo !== null && $nestedPseudo['selector'] !== null
+                    ? $this->parseSelectorList($nestedPseudo['selector'])
+                    : [];
+
+                if ($inner !== [] && $this->anyComplexMatchesTarget($inner, $targetTokenSets)) {
+                    foreach ([...$inner, ...$inserted] as $piece) {
+                        $newList[] = $piece;
+                    }
+
+                    $extended = true;
+
+                    continue;
+                }
+
+                $newList[] = $complex;
+
+                continue;
+            }
+
+            $newList[] = $complex;
+
+            if ($this->complexMatchesAnyTarget($complex, $targetTokenSets)) {
+                foreach ($inserted as $piece) {
+                    $newList[] = $piece;
+                }
+
+                $extended = true;
+            }
+        }
+
+        if (! $extended) {
+            return null;
+        }
+
+        $argument = $isNthOf
+            ? $normalizedPrefix . ' of ' . $this->complexesToString($newList)
+            : $this->complexesToString($newList);
+
+        return ($pseudo['isElement'] ? '::' : ':') . $pseudo['name'] . '(' . $argument . ')';
+    }
+
+    /**
+     * @param array{name: string, argument: string, selector: ?string, isElement: bool} $pseudo
+     * @param array<int, string> $targets
+     * @param array<int, string> $extenders
+     * @param array<int, string> $compoundTokens
+     * @return string|null new token text replacing the original one
+     */
+    private function extendedNotPseudoToken(
+        array $pseudo,
+        array $targets,
+        array $extenders,
+        array $compoundTokens,
+        int $tokenIndex,
+    ): ?string {
+        $argComplexes = $this->parseSelectorList((string) $pseudo['selector']);
+
+        if ($argComplexes === []) {
+            return null;
+        }
+
+        if (count($argComplexes) > 1) {
+            return $this->extendedNotPseudoInList($pseudo, $argComplexes, $targets, $extenders);
+        }
+
+        $extras = $this->notSiblingTokens($argComplexes[0], $targets, $extenders);
+
+        if ($extras === []) {
+            return null;
+        }
+
+        $tokensCopy             = $compoundTokens;
+        $tokensCopy[$tokenIndex] .= implode('', $extras);
+
+        return implode('', $tokensCopy);
+    }
+
+    /**
+     * @param array{name: string, argument: string, selector: ?string, isElement: bool} $pseudo
+     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>>  $argComplexes
+     * @param array<int, string> $targets
+     * @param array<int, string> $extenders
+     */
+    private function extendedNotPseudoInList(
+        array $pseudo,
+        array $argComplexes,
+        array $targets,
+        array $extenders,
+    ): ?string {
+        $targetTokenSets = [];
+        $targetStrings   = [];
+
+        foreach ($targets as $target) {
+            $targetComplexes = $this->parseSelectorList($target);
+
+            if ($targetComplexes === [] || count($targetComplexes[0]) !== 1) {
+                continue;
+            }
+
+            $component = $targetComplexes[0][0];
+
+            if ($component['sel'] === '' || $component['comb'] !== '' || ($component['lead'] ?? '') !== '') {
+                continue;
+            }
+
+            $tokens = $this->tokenizeCompound($this->normalizeCompoundPseudoTokens($component['sel']));
+
+            if ($tokens !== []) {
+                $targetTokenSets[] = $tokens;
+                $targetStrings[]   = $target;
+            }
+        }
+
+        $inserted = $this->notInsertableComplexes($extenders);
+
+        if ($inserted === []) {
+            return null;
+        }
+
+        $newList = [];
+
+        foreach ($argComplexes as $complex) {
+            $newList[] = $complex;
+
+            if ($this->complexMatchesAnyTarget($complex, $targetTokenSets)) {
+                foreach ($inserted as $piece) {
+                    $newList[] = $piece;
+                }
+            }
+        }
+
+        if ($newList === $argComplexes) {
+            return null;
+        }
+
+        return ($pseudo['isElement'] ? '::' : ':') . $pseudo['name'] . '(' . $this->complexesToString($newList) . ')';
+    }
+
+    /**
+     * @param Complex $argComplex
+     * @param array<int, string> $targets
+     * @param array<int, string> $extenders
+     * @return array<int, string>
+     */
+    private function notSiblingTokens(array $argComplex, array $targets, array $extenders): array
+    {
+        $argText = $this->complexComponentsToString($argComplex);
+        $extras  = [];
+
+        foreach ($extenders as $extender) {
+            $extenderComplexes = $this->parseSelectorList($extender);
+
+            if ($extenderComplexes === []) {
+                continue;
+            }
+
+            $first = $extenderComplexes[0];
+
+            if ($this->isFamilySinglePseudoComplex($first, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
+                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]['sel'])[0]);
+
+                if ($nestedPseudo !== null && $nestedPseudo['selector'] !== null) {
+                    foreach ($this->parseSelectorList($nestedPseudo['selector']) as $inner) {
+                        $extras[] = ':not(' . $this->complexComponentsToString($inner) . ')';
+                    }
+
+                    continue;
+                }
+            }
+
+            if ($this->complexContainsNot($first)) {
+                continue;
+            }
+
+            foreach (
+                $this->extendSelectorPartByTargets($argText, $targets, [$extender], false) as $variant
+            ) {
+                $extras[] = ':not(' . $variant . ')';
+            }
+        }
+
+        return array_values(array_unique($extras));
+    }
+
+    /**
+     * @param array<int, string> $extenders
+     * @return array<int, Complex>
+     */
+    private function notInsertableComplexes(array $extenders): array
+    {
+        $inserted = [];
+
+        foreach ($extenders as $extender) {
+            $extenderComplexes = $this->parseSelectorList($extender);
+
+            if ($extenderComplexes === []) {
+                continue;
+            }
+
+            $first = $extenderComplexes[0];
+
+            if ($this->isFamilySinglePseudoComplex($first, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
+                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]['sel'])[0]);
+
+                if ($nestedPseudo !== null && $nestedPseudo['selector'] !== null) {
+                    foreach ($this->parseSelectorList($nestedPseudo['selector']) as $inner) {
+                        $inserted[] = $inner;
+                    }
+
+                    continue;
+                }
+            }
+
+            if ($this->complexContainsNot($first)) {
+                continue;
+            }
+
+            foreach ($extenderComplexes as $complex) {
+                $inserted[] = $complex;
+            }
+        }
+
+        return $inserted;
+    }
+
+    /**
+     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $complexes
+     * @param array<int, array<int, string>> $targetTokenSets
+     */
+    private function anyComplexMatchesTarget(array $complexes, array $targetTokenSets): bool
+    {
+        foreach ($complexes as $complex) {
+            if ($this->complexMatchesAnyTarget($complex, $targetTokenSets)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
+     * @param array<int, array<int, string>> $targetTokenSets
+     */
+    private function complexMatchesAnyTarget(array $components, array $targetTokenSets): bool
+    {
+        if ($targetTokenSets === []) {
+            return false;
+        }
+
+        foreach ($components as $component) {
+            foreach ($targetTokenSets as $tokens) {
+                if ($this->removeTokensFromCompound($component['sel'], $tokens) !== null) {
+                    return true;
+                }
+            }
+
+            foreach ($this->tokenizeCompound($component['sel']) as $token) {
+                $pseudo = $this->parsePseudoToken($token);
+
+                if ($pseudo === null || $pseudo['selector'] === null) {
+                    continue;
+                }
+
+                if ($this->anyComplexMatchesTarget($this->parseSelectorList($pseudo['selector']), $targetTokenSets)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
+     * @param array<int, string> $baseNames
+     */
+    private function isFamilySinglePseudoComplex(array $components, array $baseNames): bool
+    {
+        if (count($components) !== 1 || $components[0]['comb'] !== '') {
+            return false;
+        }
+
+        $tokens = $this->tokenizeCompound($components[0]['sel']);
+
+        if (count($tokens) !== 1) {
+            return false;
+        }
+
+        $pseudo = $this->parsePseudoToken($tokens[0]);
+
+        return $pseudo !== null
+            && $pseudo['selector'] !== null
+            && in_array($this->pseudoBaseName($pseudo['name']), $baseNames, true);
+    }
+
+    /**
+     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
+     */
+    private function complexContainsNot(array $components): bool
+    {
+        foreach ($components as $component) {
+            foreach ($this->tokenizeCompound($component['sel']) as $token) {
+                $pseudo = $this->parsePseudoToken($token);
+
+                if ($pseudo !== null && $this->pseudoBaseName($pseudo['name']) === self::NOT_PSEUDO_BASE_NAME) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function pseudoBaseName(string $name): string
+    {
+        $lowered = strtolower($name);
+
+        if ($lowered !== '' && $lowered[0] === '-') {
+            $secondDash = strpos($lowered, '-', 1);
+
+            if ($secondDash !== false && $secondDash > 1) {
+                $lowered = substr($lowered, $secondDash + 1);
+            }
+        }
+
+        return $lowered;
+    }
+
+    private function normalizeAnB(string $prefix): string
+    {
+        $result = '';
+
+        $length = strlen($prefix);
+
+        for ($i = 0; $i < $length; $i++) {
+            if ($prefix[$i] !== ' ') {
+                $result .= $prefix[$i];
+            }
+        }
+
+        return $result;
+    }
+
+    private function normalizeCompoundPseudoTokens(string $compound): string
+    {
+        $tokens       = $this->tokenizeCompound($compound);
+        $changedToken = false;
+
+        foreach ($tokens as $index => $token) {
+            $pseudo = $this->parsePseudoToken($token);
+
+            if ($pseudo === null || $pseudo['selector'] === null) {
+                continue;
+            }
+
+            if (! in_array($this->pseudoBaseName($pseudo['name']), self::NTH_OF_PSEUDO_BASE_NAMES, true)) {
+                continue;
+            }
+
+            $ofPart = trim($pseudo['selector']);
+
+            if ($ofPart === '') {
+                continue;
+            }
+
+            $parts = [];
+
+            foreach ($this->splitAtTopLevel($ofPart, [','], true) as $piece) {
+                $parts[] = $piece;
+            }
+
+            $tokens[$index] = ($pseudo['isElement'] ? '::' : ':')
+                . $pseudo['name'] . '(' . $this->normalizeAnB($pseudo['argument'])
+                . ' of ' . implode(', ', $parts) . ')';
+            $changedToken   = true;
+        }
+
+        return $changedToken ? implode('', $tokens) : $compound;
+    }
+
+    /**
+     * @param array<int, string> $targets
+     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $extenderComplexes
+     * @return array<int, string>
+     */
+    private function extendByCombinatorOnlyExtender(string $part, array $targets, array $extenderComplexes): array
+    {
+        $partComponents = $this->parseComplexComponents($part);
+
+        if ($partComponents === []) {
+            return [];
+        }
+
+        foreach ($targets as $target) {
+            $targetComplexes = $this->parseSelectorList($target);
+
+            if ($targetComplexes === [] || count($targetComplexes[0]) !== 1) {
+                continue;
+            }
+
+            $tokens = $this->tokenizeCompound($targetComplexes[0][0]['sel']);
+
+            if ($tokens === []) {
+                continue;
+            }
+
+            foreach ($partComponents as $component) {
+                if ($this->removeTokensFromCompound($component['sel'], $tokens) === '') {
+                    return [$this->complexComponentsToString($extenderComplexes[0])];
+                }
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param Complex $prefix
+     * @param Complex $ancestors
+     * @return array<int, Complex>
+     */
+    private function weavePrefixWithAncestors(array $prefix, array $ancestors): array
+    {
+        if ($ancestors === []) {
+            return [$prefix];
+        }
+
+        /** @var array{sel: string, comb: string} $sentinel */
+        $sentinel = ['sel' => "\0extender-base", 'comb' => ''];
+
+        return $this->weaveParents($prefix, [...$ancestors, $sentinel]) ?? [];
+    }
+
+    private function mergeExtendCombinators(string $left, string $right): ?string
+    {
+        if ($left === '') {
+            return $right;
+        }
+
+        if ($right === '') {
+            return $left;
+        }
+
+        return $left === $right ? $left : null;
+    }
+
     private function isIdentifierChar(string $char): bool
     {
         return $char !== '' && (ctype_alnum($char) || $char === '-' || $char === '_');
+    }
+
+    private function hasConsecutiveCombinatorsInParentheses(string $selector): bool
+    {
+        $depth = 0;
+        $lastTokenWasCombinator = false;
+        $length = strlen($selector);
+
+        for ($index = 0; $index < $length; $index++) {
+            $char = $selector[$index];
+
+            if ($char === '(') {
+                $depth++;
+                $lastTokenWasCombinator = false;
+
+                continue;
+            }
+
+            if ($char === ')') {
+                $depth = max(0, $depth - 1);
+                $lastTokenWasCombinator = false;
+
+                continue;
+            }
+
+            if ($depth === 0) {
+                continue;
+            }
+
+            if (in_array($char, ['>', '+', '~'], true)) {
+                if ($lastTokenWasCombinator) {
+                    return true;
+                }
+
+                $lastTokenWasCombinator = true;
+
+                continue;
+            }
+
+            if ($char !== ' ') {
+                $lastTokenWasCombinator = false;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -4523,6 +4483,136 @@ final readonly class SelectorTokenizer
         }
 
         return [trim($argument), null];
+    }
+
+    private function isIdentifierBodyChar(string $char): bool
+    {
+        if (ord($char[0]) >= 0x80) {
+            return true;
+        }
+
+        return ctype_alnum($char) || $char === '-' || $char === '_' || $char === '\\';
+    }
+
+    /**
+     * @return array{0: string, 1: int}
+     */
+    private function decodeSelectorEscape(string $text, int $index): array
+    {
+        $length = strlen($text);
+
+        $index++;
+
+        if ($index >= $length) {
+            return ['\\', $index];
+        }
+
+        $char = $text[$index];
+
+        if ($char === "\n") {
+            return ['', $index + 1];
+        }
+
+        if ($char === "\r") {
+            $index++;
+
+            if (($text[$index] ?? '') === "\n") {
+                $index++;
+            }
+
+            return ['', $index];
+        }
+
+        if (ctype_xdigit($char)) {
+            $hex = '';
+
+            while ($index < $length && strlen($hex) < 6 && ctype_xdigit($text[$index])) {
+                $hex .= $text[$index];
+
+                $index++;
+            }
+
+            if ($index < $length && ($text[$index] === ' ' || $text[$index] === "\t")) {
+                $index++;
+            }
+
+            return [StringEscapeDecoder::hexToUtf8($hex), $index];
+        }
+
+        return [$char, $index + 1];
+    }
+
+    private function encodeCanonicalIdentifierChar(string $char, bool $insideIdentifier): string
+    {
+        $byte = ord($char[0]);
+
+        if ($byte >= 0x80) {
+            return $char;
+        }
+
+        if (ctype_digit($char) && ! $insideIdentifier) {
+            return '\\' . dechex($byte) . ' ';
+        }
+
+        if (
+            ($char >= 'a' && $char <= 'z')
+            || ($char >= 'A' && $char <= 'Z')
+            || $char === '-'
+            || $char === '_'
+            || ctype_digit($char)
+        ) {
+            return $char;
+        }
+
+        if ($byte >= 0x20 && $byte <= 0x7E) {
+            return '\\' . $char;
+        }
+
+        return '\\' . dechex($byte) . ' ';
+    }
+
+    private function skipVerbatimRegion(string $text, int $startIndex, string $open, string $close): int
+    {
+        $length = strlen($text);
+        $depth  = 0;
+        $quote  = '';
+        $index  = $startIndex;
+
+        while ($index < $length) {
+            $char = $text[$index];
+
+            if ($quote !== '') {
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === $open) {
+                $depth++;
+            } elseif ($char === $close) {
+                $depth--;
+
+                if ($depth === 0) {
+                    return $index + 1;
+                }
+            }
+
+            $index++;
+        }
+
+        return $length;
     }
 
     /**

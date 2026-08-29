@@ -99,6 +99,10 @@ final readonly class AtRuleNodeHandler
             return $this->compileContentDirective($node, $ctx);
         }
 
+        if ($node->name === 'charset') {
+            return '';
+        }
+
         $output          = '';
         $prelude         = '';
         $resolvedPrelude = '';

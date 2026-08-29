@@ -71,6 +71,11 @@ final readonly class Selector
         return $this->text->resolveDirectivePrelude($prelude, $env);
     }
 
+    public function normalizeSelectorAttributes(string $selector): string
+    {
+        return $this->tokenizer->normalizeSelectorAttributes($selector);
+    }
+
     /**
      * @return list<AtRuleContextEntry>
      */
@@ -593,6 +598,11 @@ final readonly class Selector
     public function hasAdjacentCompoundSelectors(string $selector): bool
     {
         return $this->tokenizer->hasAdjacentCompoundSelectors($selector);
+    }
+
+    public function hasBogusSelectorPseudoCombinator(string $selector): bool
+    {
+        return $this->tokenizer->hasBogusSelectorPseudoCombinator($selector);
     }
 
     private function isValidNestedPropertyName(string $name): bool

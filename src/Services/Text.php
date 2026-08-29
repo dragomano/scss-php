@@ -61,6 +61,7 @@ final readonly class Text
     {
         $resolved = $this->interpolateText($condition, $env);
         $resolved = $this->replaceVariableReferencesInText($resolved, $env);
+        $resolved = $this->normalizeCssLogicalOperators($resolved);
 
         do {
             $previous = $resolved;
@@ -88,7 +89,9 @@ final readonly class Text
             ? $this->interpolateText($prelude, $env)
             : $prelude;
 
-        return $this->replaceVariableReferencesInText($resolved, $env);
+        return $this->normalizeCssLogicalOperators(
+            $this->replaceVariableReferencesInText($resolved, $env),
+        );
     }
 
     public function replaceInterpolations(string $value, Environment $env): string
@@ -228,7 +231,7 @@ final readonly class Text
                 continue;
             }
 
-            if (substr($condition, $i, $needleLength) !== $needle) {
+            if (strtolower(substr($condition, $i, $needleLength)) !== $needle) {
                 continue;
             }
 
@@ -553,7 +556,7 @@ final readonly class Text
             return $this->makeSupportsBinaryNode('and', $andParts);
         }
 
-        if (str_starts_with($expression, 'not ')) {
+        if (str_starts_with(strtolower($expression), 'not ')) {
             return [
                 'type'  => 'not',
                 'child' => $this->parseSupportsExpression(substr($expression, 4)),
@@ -563,7 +566,7 @@ final readonly class Text
         if ($this->isWrappedBySingleOuterParentheses($expression)) {
             $inner = trim(substr($expression, 1, -1));
 
-            if ($this->hasTopLevelLogicalOperator($inner) || str_starts_with($inner, 'not ')) {
+            if ($this->hasTopLevelLogicalOperator($inner) || str_starts_with(strtolower($inner), 'not ')) {
                 $node = $this->parseSupportsExpression($inner);
 
                 $node['grouped'] = true;
@@ -1031,5 +1034,37 @@ final readonly class Text
     {
         return count($this->splitTopLevelByOperator($condition, 'and')) > 1
             || count($this->splitTopLevelByOperator($condition, 'or')) > 1;
+    }
+
+    private function normalizeCssLogicalOperators(string $value): string
+    {
+        $result = '';
+        $length = strlen($value);
+        $index  = 0;
+
+        while ($index < $length) {
+            $char = $value[$index];
+
+            if (! ctype_alpha($char)) {
+                $result .= $char;
+                $index++;
+
+                continue;
+            }
+
+            $start = $index;
+
+            while ($index < $length && ctype_alpha($value[$index])) {
+                $index++;
+            }
+
+            $word = substr($value, $start, $index - $start);
+
+            $result .= in_array(strtolower($word), ['and', 'or', 'not'], true)
+                ? strtolower($word)
+                : $word;
+        }
+
+        return $result;
     }
 }

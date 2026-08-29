@@ -18,7 +18,9 @@ use function ctype_digit;
 use function implode;
 use function is_array;
 use function str_contains;
+use function str_ends_with;
 use function strlen;
+use function trim;
 
 final readonly class SelectorResolutionStep implements CompilationStepInterface
 {
@@ -38,6 +40,7 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
         $selector = str_contains($node->selector, '#{')
             ? $this->evaluation->interpolateText($node->selector, $env)
             : $node->selector;
+        $selector = $this->selector->normalizeSelectorAttributes($selector);
 
         // Normalize scientific notation in keyframe selectors (13E+1% → 13e+1%)
         if ($this->isInsideKeyframes($scope)) {
@@ -59,7 +62,14 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
 
         $ruleCtx->parentSelector    = $selector;
         $ruleCtx->selector          = $this->selector->applyExtendsToSelector($selector);
-        $ruleCtx->omitOwnRuleOutput = $this->selector->hasBogusTopLevelCombinatorSequence($ruleCtx->selector);
+
+        $trimmedSelector = trim($ruleCtx->selector);
+
+        $ruleCtx->omitOwnRuleOutput = $this->selector->hasBogusTopLevelCombinatorSequence($ruleCtx->selector)
+            || $this->selector->hasBogusSelectorPseudoCombinator($ruleCtx->selector)
+            || str_ends_with($trimmedSelector, '>')
+            || str_ends_with($trimmedSelector, '+')
+            || str_ends_with($trimmedSelector, '~');
 
         if ($ruleCtx->omitOwnRuleOutput) {
             $this->context->logWarning(
