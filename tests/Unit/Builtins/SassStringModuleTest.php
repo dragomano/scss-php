@@ -96,7 +96,7 @@ describe('SassStringModule', function () {
             ->and(count($result->items))->toBe(3);
     });
 
-    it('validates split limits and keeps empty input as a single bracketed item', function () {
+    it('validates split limits and keeps empty input as an empty bracketed list', function () {
         $empty = $this->module->call('split', [new StringNode('', true), new StringNode('-')], []);
 
         expect(fn() => $this->module->call('split', [
@@ -112,10 +112,7 @@ describe('SassStringModule', function () {
             ->toThrow(BuiltinArgumentException::class)
             ->and($empty)->toBeInstanceOf(ListNode::class)
             ->and($empty->bracketed)->toBeTrue()
-            ->and(count($empty->items))->toBe(1)
-            ->and($empty->items[0])->toBeInstanceOf(StringNode::class)
-            ->and($empty->items[0]->value)->toBe('')
-            ->and($empty->items[0]->quoted)->toBeTrue();
+            ->and($empty->items)->toBe([]);
     });
 
     it('evaluates to-lower-case', function () {

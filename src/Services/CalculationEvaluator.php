@@ -370,6 +370,10 @@ final readonly class CalculationEvaluator
 
     private function formatListItem(AstNode $item, string $parentSeparator, Environment $env): string
     {
+        if ($item instanceof ListNode && $item->bracketed) {
+            return '[' . $this->formatListValue($item->items, $item->separator, false, $env) . ']';
+        }
+
         if ($parentSeparator === 'space' && $item instanceof ListNode && ! $item->bracketed) {
             if ($this->isSlashTriple($item)) {
                 return $this->formatSlashTriple($item, $env);

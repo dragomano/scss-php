@@ -6,7 +6,9 @@ namespace Bugo\SCSS\Lexer;
 
 use Bugo\SCSS\Utils\StringEscapeDecoder;
 
+use function array_map;
 use function chr;
+use function count;
 use function ctype_alnum;
 use function ctype_alpha;
 use function ctype_digit;
@@ -17,6 +19,7 @@ use function hexdec;
 use function min;
 use function ord;
 use function str_replace;
+use function str_split;
 use function strcspn;
 use function strlen;
 use function strpos;
@@ -662,7 +665,7 @@ final class Tokenizer
             return $this->normalizeIdentifierEscapedCodePoint($codePoint);
         }
 
-        return $this->normalizeIdentifierEscapedCodePoint(ord(substr($escapeResult, 1)));
+        return $this->normalizeIdentifierEscapedCodePoint($this->decodeUtf8CodePoint(substr($escapeResult, 1)));
     }
 
     private function utf8SequenceWidth(): int
@@ -704,10 +707,25 @@ final class Tokenizer
         }
 
         $escapedChar = $this->source[$this->position];
+        $width       = $this->utf8SequenceWidth();
+        $escapedChar = substr($this->source, $this->position, $width);
 
-        $this->advance();
+        $this->advance($width);
 
         return '\\' . $escapedChar;
+    }
+
+    private function decodeUtf8CodePoint(string $value): int
+    {
+        $bytes = array_map(ord(...), str_split($value));
+
+        return match (count($bytes)) {
+            1       => $bytes[0],
+            2       => (($bytes[0] & 0x1F) << 6) | ($bytes[1] & 0x3F),
+            3       => (($bytes[0] & 0x0F) << 12) | (($bytes[1] & 0x3F) << 6) | ($bytes[2] & 0x3F),
+            4       => (($bytes[0] & 0x07) << 18) | (($bytes[1] & 0x3F) << 12) | (($bytes[2] & 0x3F) << 6) | ($bytes[3] & 0x3F),
+            default => 0,
+        };
     }
 
     private function normalizeIdentifierEscapedCodePoint(int $codePoint): string

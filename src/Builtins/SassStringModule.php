@@ -17,10 +17,12 @@ use Bugo\SCSS\Utils\StringHelper;
 use Bugo\SCSS\Values\AstValueInspector;
 
 use function array_map;
+use function array_slice;
+use function count;
 use function implode;
 use function is_int;
+use function ord;
 use function strlen;
-use function strpos;
 use function strtolower;
 use function strtoupper;
 use function substr;
@@ -129,7 +131,9 @@ final class SassStringModule extends AbstractModule
         $string = $this->requireStringArg($positional, 0, 'string.insert');
         $insert = $this->requireStringArg($positional, 1, 'string.insert');
         $index  = $this->requireIntegerArg($positional, 2, 'string.insert');
-        $length = strlen($string);
+
+        $characters = $this->characters($string);
+        $length     = count($characters);
 
         $firstString  = $positional[0] ?? null;
         $secondString = $positional[1] ?? null;
@@ -152,7 +156,8 @@ final class SassStringModule extends AbstractModule
         }
 
         return new StringNode(
-            substr($string, 0, $offset) . $insert . substr($string, $offset),
+            implode('', array_slice($characters, 0, $offset)) . $insert
+                . implode('', array_slice($characters, $offset)),
             $quoted,
         );
     }
@@ -167,13 +172,25 @@ final class SassStringModule extends AbstractModule
         $string    = $this->requireStringArg($positional, 0, 'string.index');
         $substring = $this->requireStringArg($positional, 1, 'string.index');
 
-        $pos = strpos($string, $substring);
+        $characters          = $this->characters($string);
+        $substringCharacters = $this->characters($substring);
+        $substringLength     = count($substringCharacters);
 
-        if ($pos === false) {
-            return $this->nullNode();
+        if ($substringLength === 0) {
+            return new NumberNode(1);
         }
 
-        return new NumberNode($pos + 1);
+        foreach ($characters as $index => $_) {
+            if ($substringLength > count($characters) - $index) {
+                break;
+            }
+
+            if (array_slice($characters, $index, $substringLength) === $substringCharacters) {
+                return new NumberNode($index + 1);
+            }
+        }
+
+        return $this->nullNode();
     }
 
     /**
@@ -185,7 +202,7 @@ final class SassStringModule extends AbstractModule
 
         $value = $this->requireStringArg($positional, 0, 'string.length');
 
-        return new NumberNode(strlen($value));
+        return new NumberNode(count($this->characters($value)));
     }
 
     /**
@@ -208,10 +225,11 @@ final class SassStringModule extends AbstractModule
     {
         $this->warnAboutDeprecatedStringFunction($context, 'slice', $positional);
 
-        $string = $this->requireStringArg($positional, 0, 'string.slice');
-        $start  = $this->requireIntegerArg($positional, 1, 'string.slice');
-        $end    = isset($positional[2]) ? $this->requireIntegerArg($positional, 2, 'string.slice') : -1;
-        $length = strlen($string);
+        $string     = $this->requireStringArg($positional, 0, 'string.slice');
+        $start      = $this->requireIntegerArg($positional, 1, 'string.slice');
+        $end        = isset($positional[2]) ? $this->requireIntegerArg($positional, 2, 'string.slice') : -1;
+        $characters = $this->characters($string);
+        $length     = count($characters);
 
         $quoted      = AstValueInspector::isQuotedString($positional[0] ?? null);
         $startOffset = $start > 0 ? $start - 1 : ($start === 0 ? 0 : $length + $start);
@@ -230,7 +248,10 @@ final class SassStringModule extends AbstractModule
             return new StringNode('', $quoted);
         }
 
-        return new StringNode(substr($string, $startOffset, $endOffset - $startOffset), $quoted);
+        return new StringNode(
+            implode('', array_slice($characters, $startOffset, $endOffset - $startOffset)),
+            $quoted,
+        );
     }
 
     /**
@@ -264,41 +285,43 @@ final class SassStringModule extends AbstractModule
         }
 
         if ($string === '') {
-            return new ListNode([new StringNode('', $quoted)], 'comma', true);
+            return new ListNode([], 'comma', true);
         }
 
-        $remaining = $string;
+        $remaining = $this->characters($string);
 
         $parts = [];
-        $limit ??= strlen($string);
+        $limit ??= count($remaining);
         $splits = 0;
 
-        while ($splits <= $limit && strlen($remaining) > 0) {
+        while ($splits <= $limit && $remaining !== []) {
             if ($splits === $limit) {
-                $parts[] = $remaining;
+                $parts[] = implode('', $remaining);
 
                 break;
             }
 
             if ($separator === '') {
-                $parts[]   = substr($remaining, 0, 1);
-                $remaining = substr($remaining, 1);
+                $parts[]   = $remaining[0];
+                $remaining = array_slice($remaining, 1);
 
                 $splits++;
 
                 continue;
             }
 
-            $index = strpos($remaining, $separator);
+            $separatorCharacters = $this->characters($separator);
 
-            if ($index === false) {
-                $parts[] = $remaining;
+            $index = $this->findCharacters($remaining, $separatorCharacters);
+
+            if ($index === null) {
+                $parts[] = implode('', $remaining);
 
                 break;
             }
 
-            $parts[]   = substr($remaining, 0, $index);
-            $remaining = substr($remaining, $index + strlen($separator));
+            $parts[]   = implode('', array_slice($remaining, 0, $index));
+            $remaining = array_slice($remaining, $index + count($separatorCharacters));
 
             $splits++;
         }
@@ -308,6 +331,45 @@ final class SassStringModule extends AbstractModule
             'comma',
             true,
         );
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function characters(string $value): array
+    {
+        $characters = [];
+        $length     = strlen($value);
+
+        for ($index = 0; $index < $length;) {
+            $byte  = ord($value[$index]);
+            $width = $byte >= 0xF0 ? 4 : ($byte >= 0xE0 ? 3 : ($byte >= 0xC0 ? 2 : 1));
+
+            $characters[] = substr($value, $index, $width);
+
+            $index += $width;
+        }
+
+        return $characters;
+    }
+
+    /**
+     * @param list<string> $haystack
+     * @param list<string> $needle
+     */
+    private function findCharacters(array $haystack, array $needle): ?int
+    {
+        if ($needle === []) {
+            return 0;
+        }
+
+        foreach ($haystack as $index => $_) {
+            if (array_slice($haystack, $index, count($needle)) === $needle) {
+                return $index;
+            }
+        }
+
+        return null;
     }
 
     /**
