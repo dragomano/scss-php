@@ -16,7 +16,7 @@ it('renders preserved and interpolated comments', function () {
 
     $comment = new CommentNode('hello #{$name}', true);
 
-    expect($runtime->comment()->handle($comment, $ctx))->toBe('  /*! hello box */');
+    expect($runtime->comment()->handle($comment, $ctx))->toBe('  /*!hello box*/');
 });
 
 it('drops non preserved comments in compressed mode', function () {

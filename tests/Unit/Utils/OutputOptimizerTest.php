@@ -56,7 +56,7 @@ it('compresses css output when style is compressed', function () {
 
     $result = $this->optimizer->optimize($source, $options);
 
-    expect($result)->toBe('.test{width:10px;opacity:0.7}/*# sourceMappingURL=style.css.map */');
+    expect($result)->toBe('.test{width:10px;opacity:0.7}');
 });
 
 it('removes spaces around multiplication in math expressions when compressed', function () {

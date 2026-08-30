@@ -195,7 +195,7 @@ final class Parser implements
                 $token = $this->stream->current();
 
                 $statements[] = new CommentNode(
-                    trim($token->value, " \t"),
+                    $token->value,
                     $token->type === TokenType::COMMENT_PRESERVED,
                     $token->line,
                     $token->column,
@@ -259,7 +259,7 @@ final class Parser implements
                 $token = $this->stream->current();
 
                 $statements[] = new CommentNode(
-                    trim($token->value, " \t"),
+                    $token->value,
                     $token->type === TokenType::COMMENT_PRESERVED,
                     $token->line,
                     $token->column,

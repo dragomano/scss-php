@@ -558,7 +558,7 @@ describe('Parser', function () {
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(CommentNode::class)
-                ->and($ast->children[0]->value)->toBe('comment')
+                ->and($ast->children[0]->value)->toBe(' comment ')
                 ->and($ast->children[0]->isPreserved)->toBeFalse()
                 ->and($ast->children[1]->selector)->toBe('.test')
                 ->and($ast->children[1]->children[0])->toBeInstanceOf(DeclarationNode::class)
@@ -590,7 +590,7 @@ describe('Parser', function () {
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(CommentNode::class)
-                ->and($ast->children[0]->value)->toBe('comment')
+                ->and($ast->children[0]->value)->toBe(' comment ')
                 ->and($ast->children[0]->isPreserved)->toBeFalse();
         });
 
@@ -605,7 +605,7 @@ describe('Parser', function () {
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(CommentNode::class)
-                ->and($ast->children[0]->value)->toBe('comment')
+                ->and($ast->children[0]->value)->toBe(' comment ')
                 ->and($ast->children[0]->isPreserved)->toBeTrue();
         });
 

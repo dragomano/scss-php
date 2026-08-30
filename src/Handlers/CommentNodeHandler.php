@@ -11,8 +11,6 @@ use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Style;
 
-use function str_contains;
-
 final readonly class CommentNodeHandler
 {
     public function __construct(
@@ -46,16 +44,8 @@ final readonly class CommentNodeHandler
 
     private function formatComment(string $comment, bool $preserved, string $prefix): string
     {
-        if ($comment === '') {
-            return $prefix . ($preserved ? '/*! */' : '/* */');
-        }
-
         $open = $preserved ? '/*!' : '/*';
 
-        if (str_contains($comment, "\n")) {
-            return $prefix . $open . $comment . '*/';
-        }
-
-        return $prefix . $open . ' ' . $comment . ' */';
+        return $prefix . $open . $comment . '*/';
     }
 }

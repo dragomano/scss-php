@@ -68,7 +68,7 @@ it('starts a new rule block after standalone nested rule output without source m
     CSS;
 
     expect($result)->toBe(
-        $expected . "\n" . Render::CONTINUATION_MARK . ".parent {\n  /*! keep */\n}\n",
+        $expected . "\n" . Render::CONTINUATION_MARK . ".parent {\n  /*!keep*/\n}\n",
     );
 });
 
@@ -215,7 +215,7 @@ it('renders non-declaration rule children through deferred chunks while collecti
 
     $expected = /** @lang text */ <<<'CSS'
     .parent {
-      /*! keep */
+      /*!keep*/
     }
 
     CSS;

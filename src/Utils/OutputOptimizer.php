@@ -10,6 +10,8 @@ use Bugo\SCSS\Style;
 
 use function mb_check_encoding;
 use function str_replace;
+use function strpos;
+use function substr;
 
 final readonly class OutputOptimizer
 {
@@ -20,11 +22,30 @@ final readonly class OutputOptimizer
 
     public function optimize(string $css, CompilerOptions $options): string
     {
+        if ($options->style === Style::COMPRESSED) {
+            $css = $this->removeSourceMapComments($css);
+        }
+
         $css = $options->style === Style::COMPRESSED
             ? $this->compressedCssFormatter->format($css)
             : $this->expandedCssFormatter->format($css);
 
         return $this->addCharsetIfNeeded($this->stripContinuationMarks($css));
+    }
+
+    private function removeSourceMapComments(string $css): string
+    {
+        while (($start = strpos($css, '/*# source')) !== false) {
+            $end = strpos($css, '*/', $start + 2);
+
+            if ($end === false) {
+                break;
+            }
+
+            $css = substr($css, 0, $start) . substr($css, $end + 2);
+        }
+
+        return $css;
     }
 
     private function stripContinuationMarks(string $css): string

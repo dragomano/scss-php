@@ -157,7 +157,7 @@ it('appends non-declaration mixin output directly when source mappings are disab
 
     $result = $this->runtime->block()->handleInclude(new IncludeNode(null, 'comments'), $this->ctx);
 
-    expect($result)->toBe("/*! note */\n/*! again */");
+    expect($result)->toBe("/*!note*/\n/*!again*/");
 });
 
 it('defers non-declaration mixin output through deferred chunks when source mappings are enabled', function () {
@@ -180,7 +180,7 @@ it('defers non-declaration mixin output through deferred chunks when source mapp
 
     $result = $runtime->block()->handleInclude(new IncludeNode(null, 'mixed'), $ctx);
 
-    expect($result)->toBe("color: red;\n/*! note */")
+    expect($result)->toBe("color: red;\n/*!note*/")
         ->and($compilerContext->sourceMapState->mappings)->toHaveCount(2);
 });
 
