@@ -136,6 +136,7 @@ final readonly class SassNormalizer implements SourceNormalizer
 
                 while ($this->hasUnclosedInterpolation($commentLine) && $index + 1 < $lineCount) {
                     $commentLine .= ' ' . ltrim($lines[$index + 1]);
+
                     $index++;
                 }
 
@@ -171,6 +172,13 @@ final readonly class SassNormalizer implements SourceNormalizer
                 $lines,
                 $indentSize,
             );
+            [$trimmed, $index] = $this->mergeBlockHeaderParenContinuation(
+                $trimmed,
+                $level,
+                $index,
+                $lines,
+                $indentSize,
+            );
 
             if (str_ends_with(rtrim($trimmed), ',')) {
                 $result[] = $this->indent($level, $indentSize) . rtrim($trimmed);
@@ -180,8 +188,8 @@ final readonly class SassNormalizer implements SourceNormalizer
 
             if ($trimmed === '=' && $this->nextIndentedLineHasContent($lines, $index, $level, $indentSize)) {
                 $result[] = $this->indent($level, $indentSize) . '@mixin ' . ltrim($lines[$index + 1]) . ' {';
+                $stack[]  = ['level' => $level];
 
-                $stack[] = ['level' => $level];
                 $index++;
 
                 continue;
@@ -189,8 +197,7 @@ final readonly class SassNormalizer implements SourceNormalizer
 
             if ($this->isMixinDefinitionLine($trimmed)) {
                 $result[] = $this->indent($level, $indentSize) . '@mixin ' . substr($trimmed, 1) . ' {';
-
-                $stack[] = ['level' => $level];
+                $stack[]  = ['level' => $level];
             } elseif ($this->isMixinIncludeLine($trimmed)) {
                 $result[] = $this->indent($level, $indentSize) . '@include ' . substr($trimmed, 1) . ';';
             } elseif ($this->isSingleLineDirective($trimmed)) {
@@ -201,6 +208,8 @@ final readonly class SassNormalizer implements SourceNormalizer
                 $result[] = $this->indent($level, $indentSize) . $this->ensureBlockHeaderHasOpeningBrace($trimmed);
 
                 $stack[] = ['level' => $level];
+            } elseif ($this->isUnknownAtRule($trimmed) && ! $this->nextIndentedLineHasContent($lines, $index, $level, $indentSize)) {
+                $result[] = $this->indent($level, $indentSize) . $trimmed . ';';
             } elseif ($this->isBlockHeader($trimmed)) {
                 $header = $this->ensureBlockHeaderHasOpeningBrace($trimmed);
 
@@ -210,13 +219,13 @@ final readonly class SassNormalizer implements SourceNormalizer
 
                     if ($nextTrimmed !== '' && $this->lineLevel($nextLine, $indentSize) > $level) {
                         $header = '@include ' . $nextTrimmed . '{';
+
                         $index++;
                     }
                 }
 
                 $result[] = $this->indent($level, $indentSize) . $header;
-
-                $stack[] = ['level' => $level];
+                $stack[]  = ['level' => $level];
             } else {
                 $result[] = $this->indent($level, $indentSize) . rtrim($trimmed, ';') . ';';
             }
@@ -264,6 +273,7 @@ final readonly class SassNormalizer implements SourceNormalizer
 
             if ($char === "\n") {
                 $line++;
+
                 $inSingleLineComment = false;
             }
 
@@ -274,6 +284,7 @@ final readonly class SassNormalizer implements SourceNormalizer
             if ($inMultilineComment) {
                 if ($char === '*' && $next === '/') {
                     $inMultilineComment = false;
+
                     $i++;
                 }
 
@@ -302,6 +313,7 @@ final readonly class SassNormalizer implements SourceNormalizer
 
             if ($char === '/' && $next === '/') {
                 $inSingleLineComment = true;
+
                 $i++;
 
                 continue;
@@ -309,6 +321,7 @@ final readonly class SassNormalizer implements SourceNormalizer
 
             if ($char === '/' && $next === '*') {
                 $inMultilineComment = true;
+
                 $i++;
 
                 continue;
@@ -424,6 +437,7 @@ final readonly class SassNormalizer implements SourceNormalizer
             }
 
             $candidate .= ' ' . $nextTrimmed;
+
             $index++;
 
             if (! $this->endsWithContinuationOperator($candidate)) {
@@ -553,7 +567,9 @@ final readonly class SassNormalizer implements SourceNormalizer
             }
 
             $header .= ' ' . $nextTrimmed;
+
             $consumed = true;
+
             $index++;
         }
 
@@ -584,6 +600,44 @@ final readonly class SassNormalizer implements SourceNormalizer
      * @param array<int, string> $lines
      * @return array{0: string, 1: int}
      */
+    private function mergeBlockHeaderParenContinuation(
+        string $trimmed,
+        int $level,
+        int $index,
+        array $lines,
+        int $indentSize,
+    ): array {
+        $candidate = rtrim($trimmed);
+
+        if ($this->parenthesisBalance($candidate) <= 0 || ! $this->isBlockHeader($candidate)) {
+            return [$trimmed, $index];
+        }
+
+        $depth = $this->parenthesisBalance($candidate);
+        $line  = $index + 1;
+        $max   = count($lines);
+
+        while ($depth > 0 && $index + 1 < $max) {
+            $nextLine = rtrim($lines[$index + 1], "\r\n");
+
+            if (trim($nextLine) === '') {
+                throw InvalidSyntaxException::expectedClosingParenthesis($line);
+            }
+
+            $candidate .= "\n" . $nextLine;
+
+            $depth += $this->parenthesisBalance($nextLine);
+
+            $index++;
+        }
+
+        return [$candidate, $index];
+    }
+
+    /**
+     * @param array<int, string> $lines
+     * @return array{0: string, 1: int}
+     */
     private function mergeParenthesizedContinuation(
         string $merged,
         int $level,
@@ -593,8 +647,7 @@ final readonly class SassNormalizer implements SourceNormalizer
     ): array {
         $depth = $this->parenthesisBalance($merged);
         $line  = $index + 1;
-
-        $max = count($lines);
+        $max   = count($lines);
 
         while ($depth > 0 && $index + 1 < $max) {
             $nextLine    = rtrim($lines[$index + 1], "\r\n");
@@ -654,7 +707,9 @@ final readonly class SassNormalizer implements SourceNormalizer
             }
 
             $merged .= $this->bracketedContinuationSeparator($merged, $nextTrimmed) . $nextTrimmed;
+
             $depth += $this->bracketBalance($nextTrimmed);
+
             $index++;
         }
 
@@ -709,8 +764,7 @@ final readonly class SassNormalizer implements SourceNormalizer
 
     private function stripTrailingComment(string $line): string
     {
-        $trimmed = rtrim($line);
-
+        $trimmed   = rtrim($line);
         $silentPos = strpos($trimmed, '//');
 
         if ($silentPos !== false) {
@@ -837,6 +891,13 @@ final readonly class SassNormalizer implements SourceNormalizer
     private function isSingleLineDirective(string $line): bool
     {
         return $this->startsWithAtKeyword($line, self::SINGLE_LINE_DIRECTIVES);
+    }
+
+    private function isUnknownAtRule(string $line): bool
+    {
+        return str_starts_with($line, '@')
+            && ! $this->startsWithAtKeyword($line, self::BLOCK_HEADER_DIRECTIVES)
+            && ! $this->startsWithAtKeyword($line, ['media']);
     }
 
     private function isBlockHeader(string $line): bool

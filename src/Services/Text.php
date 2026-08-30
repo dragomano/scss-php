@@ -755,17 +755,17 @@ final readonly class Text
             return $this->makeSupportsBinaryNode('and', $andParts);
         }
 
-        if (str_starts_with(strtolower($expression), 'not ')) {
+        if ($this->startsWithNot($expression)) {
             return [
                 'type'  => 'not',
-                'child' => $this->parseSupportsExpression(substr($expression, 4)),
+                'child' => $this->parseSupportsExpression($this->stripNotPrefix($expression)),
             ];
         }
 
         if ($this->isWrappedBySingleOuterParentheses($expression)) {
             $inner = trim(substr($expression, 1, -1));
 
-            if ($this->hasTopLevelLogicalOperator($inner) || str_starts_with(strtolower($inner), 'not ')) {
+            if ($this->hasTopLevelLogicalOperator($inner) || $this->startsWithNot($inner)) {
                 $node = $this->parseSupportsExpression($inner);
 
                 $node['grouped'] = true;
@@ -1272,6 +1272,44 @@ final readonly class Text
             $result .= in_array(strtolower($word), ['and', 'or', 'not'], true)
                 ? strtolower($word)
                 : $word;
+        }
+
+        return $result;
+    }
+
+    private function startsWithNot(string $text): bool
+    {
+        $collapsed = $this->collapseWhitespace($text);
+
+        return str_starts_with(strtolower($collapsed), 'not ');
+    }
+
+    private function stripNotPrefix(string $text): string
+    {
+        return trim(substr($this->collapseWhitespace($text), 4));
+    }
+
+    private function collapseWhitespace(string $text): string
+    {
+        $result  = '';
+        $length  = strlen($text);
+        $pending = false;
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $text[$i];
+
+            if ($char === ' ' || $char === "\n" || $char === "\r" || $char === "\t") {
+                $pending = true;
+
+                continue;
+            }
+
+            if ($pending && $result !== '') {
+                $result .= ' ';
+            }
+
+            $pending = false;
+            $result .= $char;
         }
 
         return $result;

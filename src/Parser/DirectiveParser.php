@@ -406,7 +406,7 @@ final readonly class DirectiveParser
             }
 
             if ($token->type === TokenType::WHITESPACE && str_contains($token->value, "\n")) {
-                $condition .= $token->value;
+                $condition .= ltrim($token->value, " \t");
             } else {
                 TokenStreamHelper::appendTokenToBuffer($condition, $token, true);
             }
