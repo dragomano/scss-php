@@ -200,7 +200,7 @@ final readonly class ConditionalEvaluator
     {
         $condition = $this->normalizeRawConnectorIfs($condition, $env);
 
-        $isParenthesized = $condition instanceof ListNode && $condition->parenthesized;
+        $isParenthesized = ($condition instanceof ListNode || $condition instanceof FunctionNode) && $condition->parenthesized;
 
         if (
             $condition instanceof ListNode

@@ -147,7 +147,9 @@ final readonly class FunctionCallParser
         $line = $this->stream->current()->line;
 
         if (strtolower($name) === 'css' && $this->stream->is(TokenType::LPAREN) && $this->stream->getSource() !== '') {
-            return new FunctionNode($name, [new StringNode($this->captureRawCssArgument())], $line);
+            $raw = $this->captureRawCssArgument();
+
+            return new FunctionNode($name, [new StringNode($raw)], $line);
         }
 
         $this->stream->advance();

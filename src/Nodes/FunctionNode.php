@@ -19,5 +19,6 @@ final class FunctionNode extends AstNode
         public bool $modernSyntax = false,
         public ?Scope $capturedScope = null,
         public ?CallableDefinition $lockedDefinition = null,
+        public bool $parenthesized = false,
     ) {}
 }

@@ -645,9 +645,10 @@ final readonly class SassNormalizer implements SourceNormalizer
         array $lines,
         int $indentSize,
     ): array {
-        $depth = $this->parenthesisBalance($merged);
-        $line  = $index + 1;
-        $max   = count($lines);
+        $depth   = $this->parenthesisBalance($merged);
+        $line    = $index + 1;
+        $max     = count($lines);
+        $lenient = $this->isFunctionCallContinuation($merged);
 
         while ($depth > 0 && $index + 1 < $max) {
             $nextLine    = rtrim($lines[$index + 1], "\r\n");
@@ -657,11 +658,13 @@ final readonly class SassNormalizer implements SourceNormalizer
                 throw InvalidSyntaxException::expectedClosingParenthesis($line);
             }
 
-            $leadingSpaces = strlen($nextLine) - strlen($nextTrimmed);
-            $nextLevel     = intdiv($leadingSpaces, $indentSize);
+            if (! $lenient) {
+                $leadingSpaces = strlen($nextLine) - strlen($nextTrimmed);
+                $nextLevel     = intdiv($leadingSpaces, $indentSize);
 
-            if ($nextLevel < $level || ($nextLevel === $level && ! str_starts_with($nextTrimmed, ')'))) {
-                throw InvalidSyntaxException::expectedClosingParenthesis($line);
+                if ($nextLevel < $level || ($nextLevel === $level && ! str_starts_with($nextTrimmed, ')'))) {
+                    throw InvalidSyntaxException::expectedClosingParenthesis($line);
+                }
             }
 
             $merged .= ' ' . $nextTrimmed;
@@ -672,6 +675,19 @@ final readonly class SassNormalizer implements SourceNormalizer
         }
 
         return [$merged, $index];
+    }
+
+    private function isFunctionCallContinuation(string $candidate): bool
+    {
+        $pos = strpos($candidate, '(');
+
+        if ($pos === false || $pos === 0) {
+            return false;
+        }
+
+        $char = $candidate[$pos - 1];
+
+        return ctype_alnum($char) || $char === '-' || $char === '_';
     }
 
     /**

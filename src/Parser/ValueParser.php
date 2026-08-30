@@ -9,6 +9,7 @@ use Bugo\SCSS\Lexer\TokenType;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeprecatedExpressionNode;
+use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
@@ -430,7 +431,7 @@ final readonly class ValueParser implements
             }
 
             if (! $singleItem instanceof ListNode) {
-                if ($singleItem instanceof NumberNode) {
+                if ($singleItem instanceof NumberNode || $singleItem instanceof FunctionNode) {
                     $singleItem->parenthesized = true;
                 }
 
