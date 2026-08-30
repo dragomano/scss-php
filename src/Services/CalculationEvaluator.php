@@ -374,12 +374,12 @@ final readonly class CalculationEvaluator
             return '[' . $this->formatListValue($item->items, $item->separator, false, $env) . ']';
         }
 
-        if ($parentSeparator === 'space' && $item instanceof ListNode && ! $item->bracketed) {
+        if ($parentSeparator === 'space' && $item instanceof ListNode) {
             if ($this->isSlashTriple($item)) {
                 return $this->formatSlashTriple($item, $env);
             }
 
-            return '(' . $this->formatListValue($item->items, $item->separator, false, $env) . ')';
+            return $this->formatListValue($item->items, $item->separator, false, $env);
         }
 
         return $this->valueFormatter->format($item, $env);
