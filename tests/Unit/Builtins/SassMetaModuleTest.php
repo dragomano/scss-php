@@ -298,7 +298,7 @@ describe('SassMetaModule', function () {
 
         $result = $this->module->call('inspect', [$value], []);
 
-        expect($result->value)->toBe('(a: 1, b: x, y)');
+        expect($result->value)->toBe('(a: 1, b: (x, y))');
     });
 
     it('evaluates inspect for scalar values', function () {

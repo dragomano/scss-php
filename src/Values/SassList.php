@@ -24,6 +24,10 @@ final class SassList extends AbstractSassValue
     {
         $items = $this->filterNullItems($this->items);
 
+        if ($items === [] && ! $this->bracketed) {
+            return '()';
+        }
+
         $value    = '';
         $first    = true;
         $previous = '';

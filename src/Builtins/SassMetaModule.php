@@ -512,7 +512,7 @@ final class SassMetaModule extends AbstractModule
             );
         }
 
-        return new StringNode($this->formatValue($positional[0]));
+        return new StringNode($this->formatForInspect($positional[0]));
     }
 
     /**
@@ -947,5 +947,102 @@ final class SassMetaModule extends AbstractModule
     private function formatValue(AstNode $node): string
     {
         return $this->valueFactory()->fromAst($node)->toCss();
+    }
+
+    private function formatForInspect(AstNode $node): string
+    {
+        if ($node instanceof ListNode) {
+            return $this->inspectList($node);
+        }
+
+        if ($node instanceof MapNode) {
+            return $this->inspectMap($node);
+        }
+
+        return $this->formatValue($node);
+    }
+
+    private function inspectList(ListNode $node): string
+    {
+        $items = [];
+
+        foreach ($node->items as $item) {
+            $items[] = $this->inspectListItem($item, $node->separator);
+        }
+
+        if ($items === []) {
+            return $node->bracketed ? '[]' : '()';
+        }
+
+        $sep = match ($node->separator) {
+            'comma' => ', ',
+            'slash' => ' / ',
+            default => ' ',
+        };
+
+        $result = implode($sep, $items);
+
+        if ($node->bracketed) {
+            if (count($items) === 1 && $node->separator === 'comma') {
+                return '[' . $result . ',]';
+            }
+
+            return '[' . $result . ']';
+        }
+
+        if (count($items) === 1) {
+            if ($node->separator === 'comma') {
+                return '(' . $result . ',)';
+            }
+
+            if ($node->separator === 'slash') {
+                return '(' . $items[0] . '/)';
+            }
+        }
+
+        return $result;
+    }
+
+    private function inspectListItem(AstNode $node, string $parentSeparator): string
+    {
+        if ($node instanceof ListNode) {
+            $inner = $this->inspectList($node);
+
+            if (str_starts_with($inner, '(') || str_starts_with($inner, '[')) {
+                return $inner;
+            }
+
+            if ($node->separator === 'comma' || $node->parenthesized || $parentSeparator === 'space') {
+                return '(' . $inner . ')';
+            }
+
+            return $inner;
+        }
+
+        if ($node instanceof MapNode) {
+            return $this->inspectMap($node);
+        }
+
+        return $this->formatValue($node);
+    }
+
+    private function inspectMap(MapNode $node): string
+    {
+        $parts = [];
+
+        foreach ($node->pairs as $pair) {
+            $parts[] = $this->inspectMapItem($pair->key) . ': ' . $this->inspectMapItem($pair->value);
+        }
+
+        return '(' . implode(', ', $parts) . ')';
+    }
+
+    private function inspectMapItem(AstNode $node): string
+    {
+        if ($node instanceof ListNode && $node->separator === 'comma' && count($node->items) > 1) {
+            return '(' . $this->inspectList($node) . ')';
+        }
+
+        return $this->formatForInspect($node);
     }
 }

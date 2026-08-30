@@ -450,7 +450,8 @@ final readonly class ValueParser implements
     {
         $this->stream->expect(TokenType::LBRACKET);
 
-        $items = [];
+        $items    = [];
+        $hasComma = false;
 
         while (! $this->stream->isEof()) {
             $this->stream->skipWhitespace();
@@ -468,6 +469,8 @@ final readonly class ValueParser implements
             $this->stream->skipWhitespace();
 
             if ($this->stream->is(TokenType::COMMA)) {
+                $hasComma = true;
+
                 $this->stream->advance();
 
                 continue;
@@ -482,7 +485,7 @@ final readonly class ValueParser implements
             }
         }
 
-        return new ListNode($items, 'comma', true);
+        return new ListNode($items, $hasComma ? 'comma' : 'space', true);
     }
 
     public function parseString(): string

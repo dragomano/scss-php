@@ -14,6 +14,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
@@ -212,7 +213,7 @@ final class SassListModule extends AbstractModule
         $second = $this->asList($positional[1]);
 
         $separatorArg = $named['separator'] ?? ($positional[2] ?? new StringNode('auto'));
-        $separator    = $this->resolveSeparator($separatorArg, $this->autoJoinSeparator($first->separator, $second->separator));
+        $separator    = $this->resolveSeparator($separatorArg, $this->autoJoinSeparator($first, $second));
         $bracketedArg = $named['bracketed'] ?? ($positional[3] ?? new StringNode('auto'));
         $bracketed    = $this->resolveBracketed($bracketedArg, $first->bracketed);
 
@@ -278,10 +279,6 @@ final class SassListModule extends AbstractModule
         $this->warnAboutDeprecatedListFunction($context, 'separator', $positional);
 
         $list = $this->asList($positional[0]);
-
-        if ($list->items === []) {
-            return new StringNode('space');
-        }
 
         return new StringNode($list->separator);
     }
@@ -546,15 +543,19 @@ final class SassListModule extends AbstractModule
             return $bracketed->value;
         }
 
+        if ($bracketed instanceof NullNode) {
+            return false;
+        }
+
         return true;
     }
 
-    private function autoJoinSeparator(string $first, string $second): string
+    private function autoJoinSeparator(ListNode $first, ListNode $second): string
     {
-        if ($first === 'space' && $second === 'space') {
-            return 'space';
+        if (count($first->items) <= 1 && $first->separator === 'space') {
+            return $second->separator;
         }
 
-        return $first !== 'space' ? $first : $second;
+        return $first->separator;
     }
 }

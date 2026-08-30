@@ -124,10 +124,10 @@ describe('SassListModule', function () {
         expect($result->value)->toBe('slash');
     });
 
-    it('returns space for separator of empty list', function () {
+    it('returns actual separator for empty list', function () {
         $result = $this->module->call('separator', [new ListNode([], 'comma')], []);
 
-        expect($result->value)->toBe('space');
+        expect($result->value)->toBe('comma');
     });
 
     it('evaluates set-nth', function () {
