@@ -33,7 +33,7 @@ final readonly class CallableDirectiveParser
 
     public function parseIncludeDirective(): IncludeNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         $identifier = TokenStreamHelper::parseQualifiedIdentifier($this->stream);
 
@@ -51,7 +51,7 @@ final readonly class CallableDirectiveParser
 
         $arguments = [];
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         if ($this->stream->is(TokenType::LPAREN)) {
             $arguments = $this->valueContext->parseArgumentList();
@@ -60,12 +60,12 @@ final readonly class CallableDirectiveParser
         $contentBlock     = [];
         $contentArguments = [];
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         if (TokenStreamHelper::consumeKeyword($this->stream, 'using', true)) {
             $contentArguments = $this->parseParameterList();
 
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
         }
 
         if ($this->stream->consume(TokenType::LBRACE)) {
@@ -84,18 +84,21 @@ final readonly class CallableDirectiveParser
 
     public function parseMixinDirective(int $line = 1): AstNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         $name      = $this->parsingContext->consumeIdentifier();
         $arguments = $this->parseParameterList();
-        $body      = $this->parsingContext->parseBlock();
+
+        $this->stream->skipWhitespaceAndComments();
+
+        $body = $this->parsingContext->parseBlock();
 
         return new MixinNode($name, $arguments, $body, $line);
     }
 
     public function parseFunctionDirective(int $line = 1, int $column = 1): AstNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         $name          = '';
         $rawName       = '';
@@ -208,12 +211,12 @@ final readonly class CallableDirectiveParser
             }
 
             // Handle CSS function return type: returns <ident>
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             if (TokenStreamHelper::consumeKeyword($this->stream, 'returns', true)) {
                 $selector .= ' returns';
 
-                $this->stream->skipWhitespace();
+                $this->stream->skipWhitespaceAndComments();
 
                 $returnType = '';
 
@@ -232,13 +235,16 @@ final readonly class CallableDirectiveParser
                 }
             }
 
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             return $this->parsingContext->parseRuleFromSelector($selector, $line, $column);
         }
 
         $arguments = $this->parseParameterList();
-        $body      = $this->parsingContext->parseBlock();
+
+        $this->stream->skipWhitespaceAndComments();
+
+        $body = $this->parsingContext->parseBlock();
 
         return new FunctionDeclarationNode($name, $arguments, $body, $line, $column);
     }
@@ -261,14 +267,14 @@ final readonly class CallableDirectiveParser
     {
         $arguments = [];
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         if (! $this->stream->consume(TokenType::LPAREN)) {
             return $arguments;
         }
 
         while (! $this->stream->match(TokenType::RPAREN, TokenType::EOF)) {
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             if ($this->stream->is(TokenType::RPAREN)) {
                 break;
@@ -277,12 +283,12 @@ final readonly class CallableDirectiveParser
             if ($this->stream->consume(TokenType::DOLLAR)) {
                 $varName = $this->parsingContext->consumeIdentifier();
 
-                $this->stream->skipWhitespace();
+                $this->stream->skipWhitespaceAndComments();
 
                 $defaultValue = null;
 
                 if ($this->stream->consume(TokenType::COLON)) {
-                    $this->stream->skipWhitespace();
+                    $this->stream->skipWhitespaceAndComments();
 
                     $defaultValue = $this->parseParameterDefaultValue();
                 }

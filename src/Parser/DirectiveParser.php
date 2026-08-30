@@ -65,7 +65,7 @@ final readonly class DirectiveParser
     {
         $atToken = $this->stream->expect(TokenType::AT);
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         $name = $this->moduleValueContext->consumeIdentifier();
 
@@ -191,7 +191,7 @@ final readonly class DirectiveParser
 
     public function parseIfDirective(): IfNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         $condition = $this->parseCondition();
         $ifBody    = $this->parsingContext->parseBlock();
@@ -204,7 +204,7 @@ final readonly class DirectiveParser
         while ($iterations < $maxIterations) {
             $iterations++;
 
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             if (! $this->stream->is(TokenType::AT)) {
                 break;
@@ -213,7 +213,7 @@ final readonly class DirectiveParser
             $savedPos = $this->stream->getPosition();
 
             $this->stream->advance();
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             $keyword = $this->moduleValueContext->consumeIdentifier();
 
@@ -223,7 +223,7 @@ final readonly class DirectiveParser
                 break;
             }
 
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             $nextWord = '';
 
@@ -233,7 +233,7 @@ final readonly class DirectiveParser
 
             if ($nextWord === 'if') {
                 $this->stream->advance();
-                $this->stream->skipWhitespace();
+                $this->stream->skipWhitespaceAndComments();
 
                 $elseIfCondition = $this->parseCondition();
                 $elseIfBody      = $this->parsingContext->parseBlock();
@@ -251,7 +251,7 @@ final readonly class DirectiveParser
 
     public function parseForDirective(): AstNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         if (! $this->stream->consume(TokenType::DOLLAR)) {
             return $this->parseGenericDirective('for');
@@ -259,11 +259,13 @@ final readonly class DirectiveParser
 
         $variable = $this->moduleValueContext->consumeIdentifier();
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         if (! TokenStreamHelper::consumeKeyword($this->stream, 'from')) {
             return $this->parseGenericDirective('for');
         }
+
+        $this->stream->skipWhitespaceAndComments();
 
         $startExpr = TokenStreamHelper::readRawUntilIdentifier($this->stream, ['through', 'to']);
 
@@ -274,7 +276,7 @@ final readonly class DirectiveParser
         $inclusive = $this->stream->current()->value === 'through';
 
         $this->stream->advance();
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         $endExpr = TokenStreamHelper::readRawUntilToken($this->stream, TokenType::LBRACE);
         $body    = $this->parsingContext->parseBlock();
@@ -290,7 +292,7 @@ final readonly class DirectiveParser
 
     public function parseEachDirective(): AstNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         if (! $this->stream->consume(TokenType::DOLLAR)) {
             return $this->parseGenericDirective('each');
@@ -301,7 +303,7 @@ final readonly class DirectiveParser
         while (true) {
             $savedPos = $this->stream->getPosition();
 
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             if (! $this->stream->consume(TokenType::COMMA)) {
                 $this->stream->setPosition($savedPos);
@@ -309,7 +311,7 @@ final readonly class DirectiveParser
                 break;
             }
 
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             if (! $this->stream->consume(TokenType::DOLLAR)) {
                 $this->stream->setPosition($savedPos);
@@ -320,7 +322,7 @@ final readonly class DirectiveParser
             $variables[] = $this->moduleValueContext->consumeIdentifier();
         }
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         if (! TokenStreamHelper::consumeKeyword($this->stream, 'in')) {
             return $this->parseGenericDirective('each');

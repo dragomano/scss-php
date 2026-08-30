@@ -103,6 +103,30 @@ final class TokenStream
         $this->position = $position;
     }
 
+    public function skipWhitespaceAndComments(): void
+    {
+        $position = $this->position;
+
+        while ($position < $this->length) {
+            $tokenType = $this->tokens[$position]->type;
+
+            if (
+                ! in_array($tokenType, [
+                    TokenType::WHITESPACE,
+                    TokenType::COMMENT_SILENT,
+                    TokenType::COMMENT_LOUD,
+                    TokenType::COMMENT_PRESERVED,
+                ], true)
+            ) {
+                break;
+            }
+
+            $position++;
+        }
+
+        $this->position = $position;
+    }
+
     public function isEof(): bool
     {
         return $this->position >= $this->length - 1;
