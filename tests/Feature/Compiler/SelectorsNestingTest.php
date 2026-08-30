@@ -961,7 +961,7 @@ describe('Compiler', function () {
             ['@supports (--foo: green) { foo {a: b} }', "@supports (--foo: green) {\n  foo {\n    a: b;\n  }\n}"],
             ['@supports not selector(:is(a, b)) { foo {a: b} }', "@supports not selector(:is(a, b)) {\n  foo {\n    a: b;\n  }\n}"],
             ['@supports selector(:nth-child(2n of .foo)) { foo {a: b} }', "@supports selector(:nth-child(2n of .foo)) {\n  foo {\n    a: b;\n  }\n}"],
-            ['@supports ((display: grid) or (display: subgrid)) { foo {a: b} }', "@supports ((display: grid) or (display: subgrid)) {\n  foo {\n    a: b;\n  }\n}"],
+            ['@supports ((display: grid) or (display: subgrid)) { foo {a: b} }', "@supports (display: grid) or (display: subgrid) {\n  foo {\n    a: b;\n  }\n}"],
         ]);
 
         it('handles interpolated @supports conditions in direct syntax forms', function () {

@@ -16,6 +16,7 @@ use Bugo\SCSS\Utils\StringEscapeDecoder;
 use function count;
 use function ctype_alpha;
 use function ctype_digit;
+use function in_array;
 use function is_array;
 use function ltrim;
 use function str_contains;
@@ -89,9 +90,43 @@ final readonly class Text
             ? $this->interpolateText($prelude, $env)
             : $prelude;
 
-        return $this->normalizeCssLogicalOperators(
-            $this->replaceVariableReferencesInText($resolved, $env),
-        );
+        $resolved = $this->replaceVariableReferencesInText($resolved, $env);
+        $resolved = $this->normalizeCssLogicalOperators($resolved);
+
+        return $this->stripPreludeComments($resolved);
+    }
+
+    public function normalizeMediaQueryPrelude(string $prelude): string
+    {
+        $prelude = $this->unwrapRedundantNotParentheses($prelude);
+
+        return $this->padMediaQueryOperators($prelude);
+    }
+
+    public function stripAllComments(string $text): string
+    {
+        $result = '';
+        $length = strlen($text);
+        $i      = 0;
+
+        while ($i < $length) {
+            if ($text[$i] === '/' && ($text[$i + 1] ?? '') === '*') {
+                $end = strpos($text, '*/', $i + 2);
+
+                if ($end === false) {
+                    break;
+                }
+
+                $i = $end + 2;
+
+                continue;
+            }
+
+            $result .= $text[$i];
+            $i++;
+        }
+
+        return trim($result);
     }
 
     public function replaceInterpolations(string $value, Environment $env): string
@@ -327,6 +362,170 @@ final readonly class Text
         $value = trim(substr($input, $colonPosition + 1));
 
         return ['name' => $name, 'value' => $value];
+    }
+
+    private function stripPreludeComments(string $text): string
+    {
+        $text   = trim($text);
+        $length = strlen($text);
+
+        if ($length === 0) {
+            return '';
+        }
+
+        /** @var list<array{text: string, comment: bool, significant: bool}> $chunks */
+        $chunks = [];
+        $i      = 0;
+
+        while ($i < $length) {
+            $isLoud = $text[$i] === '/' && ($text[$i + 1] ?? '') === '*';
+
+            if (! $isLoud) {
+                $start = $i;
+
+                while ($i < $length && ! ($text[$i] === '/' && ($text[$i + 1] ?? '') === '*')) {
+                    $i++;
+                }
+
+                $chunks[] = [
+                    'text'        => substr($text, $start, $i - $start),
+                    'comment'     => false,
+                    'significant' => trim(substr($text, $start, $i - $start)) !== '',
+                ];
+
+                continue;
+            }
+
+            $end = strpos($text, '*/', $i + 2);
+
+            if ($end === false) {
+                $chunks[] = [
+                    'text'        => substr($text, $i),
+                    'comment'     => true,
+                    'significant' => false,
+                ];
+
+                break;
+            }
+
+            $chunks[] = [
+                'text'        => substr($text, $i, $end + 2 - $i),
+                'comment'     => true,
+                'significant' => false,
+            ];
+
+            $i = $end + 2;
+        }
+
+        $count            = count($chunks);
+        $afterSignificant = false;
+        $hasValueAfter    = [];
+
+        for ($index = $count - 1; $index >= 0; $index--) {
+            $hasValueAfter[$index] = $afterSignificant;
+
+            if (! $chunks[$index]['comment'] && $chunks[$index]['significant']) {
+                $afterSignificant = true;
+            }
+        }
+
+        /** @var list<string> $kept */
+        $kept      = [];
+        $valueSeen = false;
+
+        foreach ($chunks as $index => $chunk) {
+            if (! $chunk['comment']) {
+                if (! $chunk['significant']) {
+                    continue;
+                }
+
+                $kept[]     = trim($chunk['text']);
+                $valueSeen  = true;
+
+                continue;
+            }
+
+            if ($valueSeen && ! $hasValueAfter[$index]) {
+                $kept[] = $chunk['text'];
+            }
+        }
+
+        return implode(' ', $kept);
+    }
+
+    private function unwrapRedundantNotParentheses(string $prelude): string
+    {
+        $prelude = trim($prelude);
+
+        if ($this->isWrappedBySingleOuterParentheses($prelude)) {
+            $inner = trim(substr($prelude, 1, -1));
+
+            if (str_starts_with(strtolower($inner), 'not ')) {
+                return $inner;
+            }
+        }
+
+        return $prelude;
+    }
+
+    private function padMediaQueryOperators(string $prelude): string
+    {
+        $result = '';
+        $length = strlen($prelude);
+        $i      = 0;
+
+        while ($i < $length) {
+            if ($prelude[$i] === '#' && ($prelude[$i + 1] ?? '') === '{') {
+                $depth   = 1;
+                $result .= $prelude[$i] . $prelude[$i + 1];
+
+                $i += 2;
+
+                while ($i < $length && $depth > 0) {
+                    if ($prelude[$i] === '{') {
+                        $depth++;
+                    } elseif ($prelude[$i] === '}') {
+                        $depth--;
+                    }
+
+                    $result .= $prelude[$i];
+
+                    $i++;
+                }
+
+                continue;
+            }
+
+            if (! ctype_alpha($prelude[$i])) {
+                $result .= $prelude[$i];
+
+                $i++;
+
+                continue;
+            }
+
+            $start = $i;
+
+            while ($i < $length && ctype_alpha($prelude[$i])) {
+                $i++;
+            }
+
+            $word = substr($prelude, $start, $i - $start);
+
+            if (
+                ! in_array(strtolower($word), ['and', 'or', 'not'], true)
+                || $start === 0
+                || in_array($prelude[$start - 1], [')', ']'], true) === false
+            ) {
+                $result .= $word;
+
+                continue;
+            }
+
+            $result .= ' ' . $word;
+        }
+
+        return trim($result);
     }
 
     private function normalizeSupportsFeatureDeclarations(string $condition): string
@@ -1032,8 +1231,18 @@ final readonly class Text
 
     private function hasTopLevelLogicalOperator(string $condition): bool
     {
-        return count($this->splitTopLevelByOperator($condition, 'and')) > 1
-            || count($this->splitTopLevelByOperator($condition, 'or')) > 1;
+        if (count($this->splitTopLevelByOperator($condition, 'and')) > 1
+            || count($this->splitTopLevelByOperator($condition, 'or')) > 1) {
+            return true;
+        }
+
+        if ($this->isWrappedBySingleOuterParentheses($condition)) {
+            $inner = trim(substr($condition, 1, -1));
+
+            return $this->hasTopLevelLogicalOperator($inner);
+        }
+
+        return false;
     }
 
     private function normalizeCssLogicalOperators(string $value): string

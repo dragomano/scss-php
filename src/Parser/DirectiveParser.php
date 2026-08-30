@@ -405,7 +405,11 @@ final readonly class DirectiveParser
                 continue;
             }
 
-            TokenStreamHelper::appendTokenToBuffer($condition, $token, true);
+            if ($token->type === TokenType::WHITESPACE && str_contains($token->value, "\n")) {
+                $condition .= $token->value;
+            } else {
+                TokenStreamHelper::appendTokenToBuffer($condition, $token, true);
+            }
 
             $this->stream->advance();
         }
@@ -443,10 +447,16 @@ final readonly class DirectiveParser
 
             TokenStreamHelper::updateNestingDepth($token, $parenDepth, $bracketDepth);
 
+            if ($token->type === TokenType::COMMENT_SILENT) {
+                $this->stream->advance();
+                $this->stream->skipWhitespace();
+
+                continue;
+            }
+
             if (in_array($token->type, [
                 TokenType::COMMENT_LOUD,
                 TokenType::COMMENT_PRESERVED,
-                TokenType::COMMENT_SILENT,
             ], true)) {
                 $prelude .= TokenStreamHelper::wrapComment($token) ?? '';
 

@@ -71,6 +71,16 @@ final readonly class Selector
         return $this->text->resolveDirectivePrelude($prelude, $env);
     }
 
+    public function normalizeMediaQueryPrelude(string $prelude): string
+    {
+        return $this->text->normalizeMediaQueryPrelude($prelude);
+    }
+
+    public function stripAllComments(string $text): string
+    {
+        return $this->text->stripAllComments($text);
+    }
+
     public function normalizeSelectorAttributes(string $selector): string
     {
         return $this->tokenizer->normalizeSelectorAttributes($selector);

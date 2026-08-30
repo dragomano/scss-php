@@ -115,9 +115,17 @@ final readonly class AtRuleNodeHandler
                     : $node->prelude;
             } else {
                 $resolvedPrelude = $this->selector->resolveDirectivePrelude($node->prelude, $ctx->env);
+
+                $lowerName = strtolower($node->name);
+
+                if ($lowerName === 'media') {
+                    $resolvedPrelude = $this->selector->normalizeMediaQueryPrelude($resolvedPrelude);
+                } elseif ($lowerName === '-moz-document') {
+                    $resolvedPrelude = $this->selector->stripAllComments($resolvedPrelude);
+                }
             }
 
-            $prelude = ' ' . $resolvedPrelude;
+            $prelude = $resolvedPrelude === '' ? '' : ' ' . $resolvedPrelude;
         }
 
         if (! $node->hasBlock) {
