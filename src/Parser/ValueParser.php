@@ -407,7 +407,7 @@ final readonly class ValueParser implements
         }
 
         if (count($items) === 1 && $sawComma) {
-            return new ListNode([$items[0]], 'comma', false, true);
+            return new ListNode([$items[0]], 'comma', false, 1);
         }
 
         if (count($items) === 1) {
@@ -432,18 +432,20 @@ final readonly class ValueParser implements
 
             if (! $singleItem instanceof ListNode) {
                 if ($singleItem instanceof NumberNode || $singleItem instanceof FunctionNode) {
-                    $singleItem->parenthesized = true;
+                    $singleItem->parenthesized++;
+                } else {
+                    return new ListNode([$singleItem], 'space', false, 1);
                 }
 
                 return $singleItem;
             }
 
-            $singleItem->parenthesized = true;
+            $singleItem->parenthesized++;
 
             return $singleItem;
         }
 
-        return new ListNode($items, 'comma', false, true);
+        return new ListNode($items, 'comma', false, 1);
     }
 
     public function parseBracketedListValue(): AstNode

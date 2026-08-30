@@ -1147,6 +1147,41 @@ final readonly class Text
         $index  = 0;
 
         while ($index < $length) {
+            if ($value[$index] === '(') {
+                $isFunction = $index > 0 && (
+                    ctype_alpha($value[$index - 1])
+                    || $value[$index - 1] === '_'
+                    || $value[$index - 1] === '-'
+                );
+
+                if ($isFunction) {
+                    $depth = 1;
+                    $start = $index;
+
+                    $index++;
+
+                    while ($index < $length && $depth > 0) {
+                        if ($value[$index] === '(') {
+                            $depth++;
+                        } elseif ($value[$index] === ')') {
+                            $depth--;
+                        }
+
+                        $index++;
+                    }
+
+                    $result .= substr($value, $start, $index - $start);
+
+                    continue;
+                }
+
+                $result .= $value[$index];
+
+                $index++;
+
+                continue;
+            }
+
             if (! $this->isVariableNameChar($value[$index])) {
                 $result .= $value[$index];
 

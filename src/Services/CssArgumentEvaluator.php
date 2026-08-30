@@ -176,7 +176,7 @@ final readonly class CssArgumentEvaluator
             [$items, $changed] = $this->evaluateFallbackItems($node->items, $env);
 
             return $changed
-                ? new ListNode($items, $node->separator, $node->bracketed)
+                ? new ListNode($items, $node->separator, $node->bracketed, $node->parenthesized)
                 : $node;
         }
 
@@ -206,7 +206,11 @@ final readonly class CssArgumentEvaluator
         /** @var FunctionNode $node */
         $arguments = $this->expandCssCallArguments($node->arguments, $env);
 
-        return new FunctionNode($node->name, $this->calculationArgumentNormalizer->normalize($node->name, $arguments));
+        return new FunctionNode(
+            name: $node->name,
+            arguments: $this->calculationArgumentNormalizer->normalize($node->name, $arguments),
+            parenthesized: $node->parenthesized,
+        );
     }
 
     /**
@@ -279,6 +283,10 @@ final readonly class CssArgumentEvaluator
     private function shouldPreserveCssArgument(AstNode $node): bool
     {
         if ($node instanceof ListNode) {
+            if ($node->parenthesized > 0) {
+                return true;
+            }
+
             foreach ($node->items as $item) {
                 if (
                     $item instanceof StringNode

@@ -218,6 +218,8 @@ final readonly class FunctionCallEvaluator
             $arguments = $this->callArguments->expandCallArguments($node->arguments, $env);
             $arguments = $this->calculation->normalizeArguments($node->name, $arguments);
 
+            $this->restoreCalcParenthesized($arguments, $node->arguments);
+
             if (
                 in_array(strtolower($node->name), ['channel', 'color.channel'], true)
                 && isset($node->arguments[0])
@@ -315,8 +317,10 @@ final readonly class FunctionCallEvaluator
         }
 
         $fallback = new FunctionNode(
-            $cssName,
-            $this->calculation->normalizeArguments($cssName, $fallbackArguments),
+            name: $cssName,
+            arguments: $this->calculation->normalizeArguments($cssName, $fallbackArguments),
+            line: $node->line,
+            parenthesized: $node->parenthesized,
         );
 
         if ($this->options->style === Style::COMPRESSED) {
@@ -342,5 +346,36 @@ final readonly class FunctionCallEvaluator
             && $mid instanceof StringNode
             && $mid->value === '/'
             && $last instanceof NumberNode;
+    }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     * @param array<int, AstNode> $originalArguments
+     */
+    private function restoreCalcParenthesized(array $arguments, array $originalArguments): void
+    {
+        if ($arguments === [] || $originalArguments === []) {
+            return;
+        }
+
+        $count = min(count($arguments), count($originalArguments));
+
+        for ($i = 0; $i < $count; $i++) {
+            $original = $originalArguments[$i];
+
+            if (! ($original instanceof FunctionNode || $original instanceof ListNode || $original instanceof NumberNode)) {
+                continue;
+            }
+
+            if ($original->parenthesized <= 0) {
+                continue;
+            }
+
+            $arg = $arguments[$i];
+
+            if ($arg instanceof FunctionNode || $arg instanceof ListNode || $arg instanceof NumberNode) {
+                $arg->parenthesized = $original->parenthesized;
+            }
+        }
     }
 }
