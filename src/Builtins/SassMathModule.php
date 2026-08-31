@@ -236,7 +236,15 @@ final class SassMathModule extends AbstractModule
      */
     private function acos(array $positional): AstNode
     {
-        $value = $this->requireUnitlessNumber($positional, 0, 'math.acos');
+        try {
+            $value = $this->requireUnitlessNumber($positional, 0, 'math.acos');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
 
         return new NumberNode(rad2deg(acos($value)), 'deg');
     }
@@ -246,7 +254,15 @@ final class SassMathModule extends AbstractModule
      */
     private function asin(array $positional): AstNode
     {
-        $value = $this->requireUnitlessNumber($positional, 0, 'math.asin');
+        try {
+            $value = $this->requireUnitlessNumber($positional, 0, 'math.asin');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
 
         return new NumberNode(rad2deg(asin($value)), 'deg');
     }
@@ -256,7 +272,15 @@ final class SassMathModule extends AbstractModule
      */
     private function atan(array $positional): AstNode
     {
-        $value = $this->requireUnitlessNumber($positional, 0, 'math.atan');
+        try {
+            $value = $this->requireUnitlessNumber($positional, 0, 'math.atan');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
 
         return new NumberNode(rad2deg(atan($value)), 'deg');
     }
@@ -266,8 +290,16 @@ final class SassMathModule extends AbstractModule
      */
     private function atan2(array $positional): AstNode
     {
-        $a = $this->requireNumber($positional, 0, 'math.atan2');
-        $b = $this->requireNumber($positional, 1, 'math.atan2');
+        try {
+            $a = $this->requireNumber($positional, 0, 'math.atan2');
+            $b = $this->requireNumber($positional, 1, 'math.atan2');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
 
         if (! $this->unitsCompatible($a->unit, $b->unit)) {
             throw IncompatibleUnitsException::functionArguments($this->builtinCallReference('math.atan2'));
@@ -345,7 +377,16 @@ final class SassMathModule extends AbstractModule
      */
     private function cos(array $positional): AstNode
     {
-        $number  = $this->requireNumber($positional, 0, 'math.cos');
+        try {
+            $number  = $this->requireNumber($positional, 0, 'math.cos');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
+
         $radians = $this->toRadians($number);
 
         return new NumberNode(cos($radians));
@@ -439,7 +480,15 @@ final class SassMathModule extends AbstractModule
      */
     private function log(array $positional): AstNode
     {
-        $number = $this->requireUnitlessNumber($positional, 0, 'math.log');
+        try {
+            $number = $this->requireUnitlessNumber($positional, 0, 'math.log');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
 
         if (isset($positional[1])) {
             $base = $this->ensureUnitlessNumber($positional[1], 'math.log');
@@ -500,8 +549,16 @@ final class SassMathModule extends AbstractModule
      */
     private function pow(array $positional): AstNode
     {
-        $base     = $this->requireUnitlessNumber($positional, 0, 'math.pow');
-        $exponent = $this->requireUnitlessNumber($positional, 1, 'math.pow');
+        try {
+            $base     = $this->requireUnitlessNumber($positional, 0, 'math.pow');
+            $exponent = $this->requireUnitlessNumber($positional, 1, 'math.pow');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
 
         if ($base === 0.0 && $exponent < 0.0) {
             return new NumberNode($this->negativeZeroPower($base, $exponent));
@@ -579,7 +636,16 @@ final class SassMathModule extends AbstractModule
      */
     private function sin(array $positional): AstNode
     {
-        $number  = $this->requireNumber($positional, 0, 'math.sin');
+        try {
+            $number  = $this->requireNumber($positional, 0, 'math.sin');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
+
         $radians = $this->toRadians($number);
 
         return new NumberNode(sin($radians));
@@ -590,7 +656,15 @@ final class SassMathModule extends AbstractModule
      */
     private function sqrt(array $positional): AstNode
     {
-        $number = $this->requireUnitlessNumber($positional, 0, 'math.sqrt');
+        try {
+            $number = $this->requireUnitlessNumber($positional, 0, 'math.sqrt');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
 
         return new NumberNode(sqrt($number));
     }
@@ -600,7 +674,16 @@ final class SassMathModule extends AbstractModule
      */
     private function tan(array $positional): AstNode
     {
-        $number  = $this->requireNumber($positional, 0, 'math.tan');
+        try {
+            $number  = $this->requireNumber($positional, 0, 'math.tan');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
+
         $radians = $this->toRadians($number);
 
         return new NumberNode(tan($radians));

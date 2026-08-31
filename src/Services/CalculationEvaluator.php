@@ -643,13 +643,79 @@ final readonly class CalculationEvaluator
         }
 
         if (! isset($arguments[$numberIndex]) || ! ($arguments[$numberIndex] instanceof NumberNode)) {
-            return null;
+            $resolvedNumber = isset($arguments[$numberIndex])
+                ? $this->resolveConstant($arguments[$numberIndex])
+                : null;
+
+            if ($resolvedNumber === null) {
+                return null;
+            }
+
+            $number = $resolvedNumber;
+        } else {
+            $number = $arguments[$numberIndex];
         }
 
-        $number = $arguments[$numberIndex];
         $step   = $stepIndex !== null && isset($arguments[$stepIndex]) ? $arguments[$stepIndex] : null;
 
         if ($step !== null && ! ($step instanceof NumberNode)) {
+            $resolvedStep = $this->resolveConstant($step);
+
+            if ($resolvedStep !== null) {
+                $step = $resolvedStep;
+            } else {
+                return new FunctionNode(
+                    'round',
+                    $numberIndex === 1
+                        ? [new StringNode($strategy), $number, $step]
+                        : [$number, $step],
+                );
+            }
+        }
+
+        if (! $step instanceof NumberNode) {
+            $value = (float) $number->value;
+            $unit  = $number->unit;
+
+            if (is_nan($value)) {
+                return new NumberNode(fdiv(0.0, 0.0), $unit);
+            }
+
+            return new NumberNode(is_nan($value) ? $value : (int) round($value), $unit);
+        }
+
+        $numberValue = (float) $number->value;
+        $stepValue   = (float) $step->value;
+
+        if ($stepValue === 0.0) {
+            return new NumberNode(fdiv(0.0, 0.0), $number->unit ?? $step->unit);
+        }
+
+        if (is_infinite($numberValue) && is_infinite($stepValue)) {
+            return new NumberNode(fdiv(0.0, 0.0));
+        }
+
+        if (is_infinite($stepValue)) {
+            if ($numberValue === 0.0) {
+                return new NumberNode($numberValue, $number->unit ?? $step->unit);
+            }
+
+            return match ($strategy) {
+                'up'    => $numberValue > 0
+                    ? new NumberNode(fdiv(1.0, 0.0), $number->unit)
+                    : new NumberNode($numberValue < 0 ? -0.0 : 0.0, $number->unit),
+                'down'  => $numberValue < 0
+                    ? new NumberNode(fdiv(-1.0, 0.0), $number->unit)
+                    : new NumberNode(0.0, $number->unit),
+                default => new NumberNode($numberValue < 0 ? -0.0 : 0.0, $number->unit ?? $step->unit),
+            };
+        }
+
+        if (is_infinite($numberValue)) {
+            return new NumberNode($numberValue, $number->unit);
+        }
+
+        if (! UnitConverter::compatible($number->unit, $step->unit)) {
             return new FunctionNode(
                 'round',
                 $numberIndex === 1
@@ -658,29 +724,20 @@ final readonly class CalculationEvaluator
             );
         }
 
-        if (! $step instanceof NumberNode) {
-            return new NumberNode((int) round((float) $number->value), $number->unit);
-        }
-
-        if ((float) $step->value === 0.0) {
-            return null;
-        }
-
-        if (! UnitConverter::compatible($number->unit, $step->unit)) {
-            return null;
-        }
-
-        $stepValue = UnitConverter::convert((float) $step->value, $step->unit, $number->unit);
-        $scaled    = (float) $number->value / $stepValue;
+        $convertedStep  = UnitConverter::convert($stepValue, $step->unit, $number->unit);
+        $scaled         = $numberValue / $convertedStep;
+        $isNegativeStep = $convertedStep < 0;
 
         $rounded = match ($strategy) {
-            'up'      => ceil($scaled),
-            'down'    => floor($scaled),
-            'to-zero' => $scaled < 0 ? ceil($scaled) : floor($scaled),
+            'up'      => $isNegativeStep ? floor($scaled) : ceil($scaled),
+            'down'    => $isNegativeStep ? ceil($scaled) : floor($scaled),
+            'to-zero' => $isNegativeStep
+                ? ($scaled < 0 ? floor($scaled) : ceil($scaled))
+                : ($scaled < 0 ? ceil($scaled) : floor($scaled)),
             default   => round($scaled),
         };
 
-        return new NumberNode($rounded * $stepValue, $number->unit ?? $step->unit);
+        return new NumberNode($rounded * $convertedStep, $number->unit ?? $step->unit);
     }
 
     /**

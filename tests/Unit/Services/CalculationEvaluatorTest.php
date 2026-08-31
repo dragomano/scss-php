@@ -187,8 +187,11 @@ describe('CalculationEvaluator', function () {
                 new NumberNode(4),
             ], $this->env))->toBeNull()
             ->and($deferredStep)->toBeInstanceOf(FunctionNode::class)
-            ->and($evaluator->simplifyFunction('round', [new NumberNode(12, 'px'), new NumberNode(0, 'px')], $this->env))->toBeNull()
-            ->and($evaluator->simplifyFunction('round', [new NumberNode(12, 'px'), new NumberNode(1, 's')], $this->env))->toBeNull();
+            ->and($evaluator->simplifyFunction('round', [new NumberNode(12, 'px'), new NumberNode(0, 'px')], $this->env))
+            ->toBeInstanceOf(NumberNode::class)
+            ->and((float) $evaluator->simplifyFunction('round', [new NumberNode(12, 'px'), new NumberNode(0, 'px')], $this->env)->value)
+            ->toBeNan()
+            ->and($evaluator->simplifyFunction('round', [new NumberNode(12, 'px'), new NumberNode(1, 's')], $this->env))->toBeInstanceOf(FunctionNode::class);
 
         /** @var FunctionNode $deferredStep */
         expect($deferredStep->arguments)->toHaveCount(3)
