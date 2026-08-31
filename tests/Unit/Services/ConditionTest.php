@@ -112,6 +112,12 @@ describe('Condition', function () {
                 '==',
                 new FunctionNode('rgb', [new NumberNode(255), new NumberNode(0), new NumberNode(0)]),
                 $this->env,
+            ))->toBeTrue()
+            ->and($this->condition->compare(
+                new FunctionNode('rgb', [new NumberNode(255), new NumberNode(0), new NumberNode(0)]),
+                '==',
+                new FunctionNode('rgb', [new NumberNode(0), new NumberNode(0), new NumberNode(255)]),
+                $this->env,
             ))->toBeFalse();
     });
 

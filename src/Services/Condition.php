@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Services;
 
+use Bugo\Iris\LiteralParser;
+use Bugo\Iris\Spaces\RgbColor;
+use Bugo\SCSS\Builtins\Color\Conversion\CssColorFunctionConverter;
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
 use Bugo\SCSS\Nodes\AstNode;
@@ -353,7 +356,11 @@ final readonly class Condition
         }
 
         if ($left instanceof FunctionNode && $right instanceof FunctionNode) {
-            return $this->areFunctionsEqual($left, $right);
+            return $this->areFunctionsEqual($left, $right, $env);
+        }
+
+        if ($this->areColorsCrossType($left, $right)) {
+            return true;
         }
 
         return false;
@@ -440,9 +447,61 @@ final readonly class Condition
         return true;
     }
 
-    private function areFunctionsEqual(FunctionNode $left, FunctionNode $right): bool
+    private function areFunctionsEqual(FunctionNode $left, FunctionNode $right, Environment $env): bool
     {
-        return $left === $right;
+        if ($left === $right) {
+            return true;
+        }
+
+        if ($left->name !== $right->name) {
+            return false;
+        }
+
+        if (count($left->arguments) === count($right->arguments)) {
+            $allMatch = true;
+
+            foreach ($left->arguments as $index => $argument) {
+                if (! $this->areValuesEqual($argument, $right->arguments[$index], $env)) {
+                    $allMatch = false;
+
+                    break;
+                }
+            }
+
+            if ($allMatch) {
+                return true;
+            }
+        }
+
+        $nameLower = strtolower($left->name);
+
+        if (! $this->hasNoneChannel($left) && ! $this->hasNoneChannel($right) && $nameLower !== 'color') {
+            $leftRgb  = $this->resolveNamedColorToRgb($left);
+            $rightRgb = $this->resolveNamedColorToRgb($right);
+
+            if ($leftRgb !== null && $rightRgb !== null) {
+                return $this->areRgbColorsEqual($leftRgb, $rightRgb);
+            }
+        }
+
+        return false;
+    }
+
+    private function hasNoneChannel(FunctionNode $function): bool
+    {
+        foreach ($function->arguments as $argument) {
+            if ($argument instanceof ListNode) {
+                foreach ($argument->items as $item) {
+                    if ($item instanceof StringNode && ! $item->quoted && strtolower(trim($item->value)) === 'none') {
+                        return true;
+                    }
+                }
+            } elseif ($argument instanceof StringNode && ! $argument->quoted && strtolower(trim($argument->value)) === 'none') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function areFunctionRefsEqual(FunctionRefNode $left, FunctionRefNode $right): bool
@@ -456,6 +515,55 @@ final readonly class Condition
         }
 
         return false;
+    }
+
+    private function areColorsCrossType(AstNode $left, AstNode $right): bool
+    {
+        $leftRgb  = $this->resolveNamedColorToRgb($left);
+        $rightRgb = $this->resolveNamedColorToRgb($right);
+
+        if ($leftRgb === null || $rightRgb === null) {
+            return false;
+        }
+
+        return $this->areRgbColorsEqual($leftRgb, $rightRgb);
+    }
+
+    private function resolveNamedColorToRgb(AstNode $node): ?RgbColor
+    {
+        if ($node instanceof StringNode && ! $node->quoted) {
+            $literalParser = new LiteralParser();
+
+            return $literalParser->toRgb($node->value);
+        }
+
+        if ($node instanceof FunctionNode) {
+            $converter = new CssColorFunctionConverter();
+            $rgba      = $converter->tryConvertToRgba($node);
+
+            if ($rgba === null) {
+                return null;
+            }
+
+            return new RgbColor(
+                r: $rgba->rValue() * 255.0,
+                g: $rgba->gValue() * 255.0,
+                b: $rgba->bValue() * 255.0,
+                a: $rgba->a,
+            );
+        }
+
+        return null;
+    }
+
+    private function areRgbColorsEqual(RgbColor $left, RgbColor $right): bool
+    {
+        $epsilon = 0.000000001;
+
+        return abs($left->rValue() - $right->rValue()) < $epsilon
+            && abs($left->gValue() - $right->gValue()) < $epsilon
+            && abs($left->bValue() - $right->bValue()) < $epsilon
+            && abs($left->a - $right->a) < $epsilon;
     }
 
     private function compareNumbers(NumberNode $left, string $operator, NumberNode $right): bool
