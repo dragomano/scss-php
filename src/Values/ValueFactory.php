@@ -34,7 +34,6 @@ final readonly class ValueFactory
     public function fromAst(
         AstNode $node,
         ?callable $formatter = null,
-        bool $preserveZeroUnits = false,
     ): SassValue {
         if ($node instanceof BooleanNode) {
             return SassBoolean::fromBool($node->value);
@@ -45,7 +44,7 @@ final readonly class ValueFactory
         }
 
         if ($node instanceof NumberNode) {
-            return new SassNumber($node->value, $node->unit, $preserveZeroUnits);
+            return new SassNumber($node->value, $node->unit);
         }
 
         if ($node instanceof ColorNode) {
@@ -64,7 +63,7 @@ final readonly class ValueFactory
             $items = [];
 
             foreach ($node->items as $item) {
-                $items[] = $this->fromAst($item, $formatter, $preserveZeroUnits)->toCss();
+                $items[] = $this->fromAst($item, $formatter)->toCss();
             }
 
             return new SassList($items, $node->separator, $node->bracketed);
@@ -76,7 +75,7 @@ final readonly class ValueFactory
             foreach ($node->pairs as $pair) {
                 $pairs[] = [
                     'key'   => $this->fromAst($pair->key, $formatter),
-                    'value' => $this->fromAst($pair->value, $formatter, $preserveZeroUnits),
+                    'value' => $this->fromAst($pair->value, $formatter),
                 ];
             }
 
@@ -88,11 +87,9 @@ final readonly class ValueFactory
                 return new SassFunctionRef($this->callableDisplayName($node->name));
             }
 
-            $preserveNestedZeroUnits = $preserveZeroUnits || SassCalculation::isCalculationFunctionName($node->name);
-
             $arguments = [];
             foreach ($node->arguments as $argument) {
-                $arguments[] = $this->fromAst($argument, $formatter, $preserveNestedZeroUnits);
+                $arguments[] = $this->fromAst($argument, $formatter);
             }
 
             return new SassCalculation($node->name, $arguments);

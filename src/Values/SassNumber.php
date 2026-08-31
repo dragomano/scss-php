@@ -24,23 +24,9 @@ use const PHP_INT_MAX;
 
 final class SassNumber extends AbstractSassValue
 {
-    private const ZERO_UNITS = [
-        'cm',
-        'em',
-        'in',
-        'mm',
-        'pc',
-        'pt',
-        'px',
-        'rem',
-        'vmax',
-        'vmin',
-    ];
-
     public function __construct(
         private readonly int|float $value,
         private readonly ?string $unit = null,
-        private readonly bool $preserveZeroUnit = false,
     ) {}
 
     public function toCss(): string
@@ -52,11 +38,7 @@ final class SassNumber extends AbstractSassValue
         $number = $this->formatNumberValue($this->value);
 
         if (! $this->isCompoundUnit($this->unit)) {
-            return $number . $this->formatUnit($number, $this->unit);
-        }
-
-        if ($number === '0' && ! $this->preserveZeroUnit) {
-            return '0';
+            return $number . $this->formatUnit($this->unit);
         }
 
         return $this->formatCompoundUnitAsCalc($number, $this->unit ?? '');
@@ -185,13 +167,9 @@ final class SassNumber extends AbstractSassValue
         return $number;
     }
 
-    private function formatUnit(string $number, ?string $unit): string
+    private function formatUnit(?string $unit): string
     {
-        if ($unit === null || $unit === '' || $number !== '0' || $this->preserveZeroUnit) {
-            return $unit ?? '';
-        }
-
-        return in_array($unit, self::ZERO_UNITS, true) ? '' : $unit;
+        return $unit ?? '';
     }
 
     private function isCompoundUnit(?string $unit): bool

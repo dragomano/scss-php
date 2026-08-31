@@ -305,5 +305,43 @@ describe('CompressedCssFormatter', function () {
 
             expect($this->formatter->format($css))->toBe('@media screen{.a{margin:4px}}');
         });
+
+        describe('stripZeroUnits', function () {
+            it('strips px unit from zero values', function () {
+                expect($this->formatter->format('.a{width:0px}'))->toBe('.a{width:0}');
+            });
+
+            it('strips em unit from zero values', function () {
+                expect($this->formatter->format('.a{margin:0em}'))->toBe('.a{margin:0}');
+            });
+
+            it('strips rem unit from zero values', function () {
+                expect($this->formatter->format('.a{font-size:0rem}'))->toBe('.a{font-size:0}');
+            });
+
+            it('strips multiple zero units in one declaration', function () {
+                expect($this->formatter->format('.a{margin:0px 0em 0rem}'))->toBe('.a{margin:0 0 0}');
+            });
+
+            it('does not strip unit from non-zero values', function () {
+                expect($this->formatter->format('.a{width:10px}'))->toBe('.a{width:10px}');
+            });
+
+            it('does not strip percent unit from zero values', function () {
+                expect($this->formatter->format('.a{width:0%}'))->toBe('.a{width:0%}');
+            });
+
+            it('does not strip units inside quoted strings', function () {
+                expect($this->formatter->format('.a{content:"0px"}'))->toBe('.a{content:"0px"}');
+            });
+
+            it('strips zero units in calc expressions', function () {
+                expect($this->formatter->format('.a{width:calc(100% - 0px)}'))->toBe('.a{width:calc(100% - 0)}');
+            });
+
+            it('strips zero units from compound values', function () {
+                expect($this->formatter->format('.a{border:0px solid red}'))->toBe('.a{border:0 solid red}');
+            });
+        });
     });
 });

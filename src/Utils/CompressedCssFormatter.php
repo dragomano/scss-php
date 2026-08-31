@@ -10,6 +10,7 @@ use function implode;
 use function in_array;
 use function ltrim;
 use function max;
+use function preg_match;
 use function str_contains;
 use function str_replace;
 use function str_starts_with;
@@ -46,11 +47,16 @@ final readonly class CompressedCssFormatter
         'scroll-padding-inline',
     ];
 
+    private const ZERO_UNITS = [
+        'cm', 'em', 'in', 'mm', 'pc', 'pt', 'px', 'rem', 'vmax', 'vmin',
+    ];
+
     public function format(string $css): string
     {
         $css = $this->removeRegularComments($css);
         $css = $this->compactCss($css);
         $css = $this->collapseBoxShorthandDeclarations($css);
+        $css = $this->stripZeroUnits($css);
         $css = $this->optimizeCompressedLiterals($css);
 
         return trim($css);
@@ -525,6 +531,79 @@ final readonly class CompressedCssFormatter
         }
 
         return $hex;
+    }
+
+    private function stripZeroUnits(string $css): string
+    {
+        $parts    = [];
+        $length   = strlen($css);
+        $inString = false;
+        $quote    = '';
+        $i        = 0;
+
+        while ($i < $length) {
+            $char = $css[$i];
+
+            if (! $inString && ($char === '"' || $char === "'")) {
+                $inString = true;
+                $quote    = $char;
+                $parts[]  = $char;
+
+                $i++;
+
+                continue;
+            }
+
+            if ($inString) {
+                if ($char === $quote && ($i === 0 || $css[$i - 1] !== '\\')) {
+                    $inString = false;
+                }
+
+                $parts[] = $char;
+
+                $i++;
+
+                continue;
+            }
+
+            if ($char === '0' && $i + 1 < $length) {
+                $matched = false;
+
+                if ($i > 0 && preg_match('/[a-zA-Z0-9_-]/', $css[$i - 1])) {
+                    $parts[] = $char;
+
+                    $i++;
+
+                    continue;
+                }
+
+                foreach (self::ZERO_UNITS as $unit) {
+                    $unitLen = strlen($unit);
+
+                    if (substr($css, $i + 1, $unitLen) === $unit) {
+                        $after = $i + 1 + $unitLen;
+
+                        if ($after >= $length || ! preg_match('/[a-zA-Z0-9_-]/', $css[$after])) {
+                            $parts[] = '0';
+                            $i       = $after;
+                            $matched = true;
+
+                            break;
+                        }
+                    }
+                }
+
+                if ($matched) {
+                    continue;
+                }
+            }
+
+            $parts[] = $char;
+
+            $i++;
+        }
+
+        return $parts !== [] ? implode('', $parts) : $css;
     }
 
     private function optimizeCompressedLiterals(string $css): string

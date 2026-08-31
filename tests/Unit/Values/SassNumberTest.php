@@ -17,10 +17,10 @@ describe(SassNumber::class, function () {
         expect($number->toCss())->toBe('-.5');
     });
 
-    it('drops safe units for zero values', function () {
+    it('preserves unit for zero values', function () {
         $number = new SassNumber(0.0, 'px');
 
-        expect($number->toCss())->toBe('0');
+        expect($number->toCss())->toBe('0px');
     });
 
     it('keeps percent unit for zero values', function () {
@@ -49,10 +49,10 @@ describe(SassNumber::class, function () {
             ->and($nearLowerInteger->toCss())->toBe('.9999999999');
     });
 
-    it('drops compound units for zero values unless preservation is requested', function () {
+    it('preserves compound units for zero values', function () {
         $number = new SassNumber(0.0, 'px/s');
 
-        expect($number->toCss())->toBe('0');
+        expect($number->toCss())->toBe('calc(0px / 1s)');
     });
 
     it('returns zero when a float rounds down to all zero fractional digits', function () {

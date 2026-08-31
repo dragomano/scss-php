@@ -681,7 +681,7 @@ final readonly class CalculationEvaluator
                 return new NumberNode(fdiv(0.0, 0.0), $unit);
             }
 
-            return new NumberNode(is_nan($value) ? $value : (int) round($value), $unit);
+            return new NumberNode((int) round($value), $unit);
         }
 
         $numberValue = (float) $number->value;

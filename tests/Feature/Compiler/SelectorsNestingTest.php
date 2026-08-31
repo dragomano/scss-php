@@ -464,7 +464,7 @@ describe('Compiler', function () {
             input.name {
               position: absolute;
               height: 150px;
-              margin-top: 0;
+              margin-top: 0px;
             }
 
             input.address {
