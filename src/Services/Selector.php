@@ -590,6 +590,60 @@ final readonly class Selector
         return $this->extends->applyExtendsToSelector($selector);
     }
 
+    public function normalizeSelectorList(string $selector): string
+    {
+        $parts = $this->splitTopLevelSelectorList($selector, trim: false);
+
+        if ($parts === []) {
+            return $selector;
+        }
+
+        $keepIndices = [];
+
+        foreach ($parts as $i => $part) {
+            if (trim($part) !== '') {
+                $keepIndices[] = $i;
+            }
+        }
+
+        if ($keepIndices === []) {
+            return $selector;
+        }
+
+        $result = trim($parts[$keepIndices[0]]);
+        $count  = count($keepIndices);
+
+        for ($idx = 1; $idx < $count; $idx++) {
+            $prev       = $keepIndices[$idx - 1];
+            $curr       = $keepIndices[$idx];
+            $hasNewline = false;
+
+            for ($j = $prev + 1; $j < $curr; $j++) {
+                if (str_contains($parts[$j], "\n")) {
+                    $hasNewline = true;
+
+                    break;
+                }
+            }
+
+            if (! $hasNewline) {
+                $currPart    = $parts[$curr];
+                $currTrimmed = ltrim($currPart);
+                $leadingLen  = strlen($currPart) - strlen($currTrimmed);
+                $leading     = substr($currPart, 0, $leadingLen);
+
+                if (str_contains($leading, "\n")) {
+                    $hasNewline = true;
+                }
+            }
+
+            $result .= $hasNewline ? ",\n" : ', ';
+            $result .= trim($parts[$curr]);
+        }
+
+        return $result;
+    }
+
     public function optimizeRuleBlock(string $ruleBlock): string
     {
         return $this->optimizer->optimizeRuleBlock($ruleBlock, $this->options->style === Style::COMPRESSED);

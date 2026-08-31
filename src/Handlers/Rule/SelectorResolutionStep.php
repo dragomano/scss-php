@@ -61,7 +61,9 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
         }
 
         $ruleCtx->parentSelector    = $selector;
-        $ruleCtx->selector          = $this->selector->applyExtendsToSelector($selector);
+        $ruleCtx->selector          = $this->selector->normalizeSelectorList(
+            $this->selector->applyExtendsToSelector($selector),
+        );
 
         $trimmedSelector = trim($ruleCtx->selector);
 
