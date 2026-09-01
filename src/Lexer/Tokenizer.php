@@ -151,7 +151,11 @@ final class Tokenizer
         }
 
         if ($char === '+') {
-            return $this->tokenizeNumberOrSingleChar(TokenType::PLUS);
+            if ($this->peekChar() !== '' && ctype_digit($this->peekChar()) && $this->isUnarySignPosition()) {
+                return $this->tokenizeNumber();
+            }
+
+            return $this->makeToken(TokenType::PLUS, '+', 1);
         }
 
         if ($char === '-') {
@@ -920,6 +924,29 @@ final class Tokenizer
         }
 
         $this->position = $end;
+    }
+
+    private function isUnarySignPosition(): bool
+    {
+        $i = $this->position - 1;
+
+        while ($i >= 0) {
+            $ch = $this->source[$i];
+
+            if ($ch === ' ' || $ch === "\t" || $ch === "\n" || $ch === "\r" || $ch === "\f" || $ch === "\v") {
+                --$i;
+
+                continue;
+            }
+
+            if (ctype_alnum($ch) || $ch === '_' || $ch === ')' || $ch === ']' || $ch === '%') {
+                return false;
+            }
+
+            return true;
+        }
+
+        return true;
     }
 
     private function isSingleLineCommentStart(): bool
