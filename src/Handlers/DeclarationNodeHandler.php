@@ -150,6 +150,16 @@ final readonly class DeclarationNodeHandler
             );
         }
 
+        if (
+            $important === ''
+            && (
+                $val === ''
+                || ($val === '()' && $evaluatedValue instanceof ListNode)
+            )
+        ) {
+            return '';
+        }
+
         return $prefix . $property . ': ' . $val . $important . ';';
     }
 

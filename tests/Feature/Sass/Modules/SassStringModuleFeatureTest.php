@@ -358,7 +358,7 @@ describe('Sass String Module Feature', function () {
             expect($css)->toEqualCss($expected);
         });
 
-        it('keeps empty declaration value for empty string', function () {
+        it('drops declaration with empty unquoted string', function () {
             $scss = <<<'SCSS'
             @use "sass:string";
 
@@ -367,13 +367,7 @@ describe('Sass String Module Feature', function () {
             }
             SCSS;
 
-            $expected = /** @lang text */ <<<'CSS'
-            .test {
-              content: ;
-            }
-            CSS;
-
-            expect($this->compiler->compileString($scss))->toEqualCss($expected);
+            expect($this->compiler->compileString($scss))->toBe('');
         });
 
         it('unquotes string with backslash escapes', function () {
@@ -564,20 +558,14 @@ describe('Sass String Module Feature', function () {
                 expect($css)->toEqualCss($expected);
             });
 
-            it('keeps empty declaration value for empty string', function () {
+            it('drops declaration with empty unquoted string', function () {
                 $scss = <<<'SCSS'
                 .test {
                   content: unquote("");
                 }
                 SCSS;
 
-                $expected = /** @lang text */ <<<'CSS'
-                .test {
-                  content: ;
-                }
-                CSS;
-
-                expect($this->compiler->compileString($scss))->toEqualCss($expected);
+                expect($this->compiler->compileString($scss))->toBe('');
             });
         });
     });

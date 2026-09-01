@@ -76,7 +76,7 @@ final class SassCalculation extends AbstractSassValue
                 continue;
             }
 
-            $parts[] = $argument->toCss();
+            $parts[] = $argument instanceof SassNull ? '' : $argument->toCss();
         }
 
         if (in_array(strtolower($this->name), self::MODERN_COLOR_FUNCTIONS, true)) {
@@ -93,6 +93,11 @@ final class SassCalculation extends AbstractSassValue
         return $this->name . '(' . $joined . ')';
     }
 
+    public function isTruthy(): bool
+    {
+        return true;
+    }
+
     /**
      * @param array<int, string> $parts
      */
@@ -105,10 +110,5 @@ final class SassCalculation extends AbstractSassValue
         }
 
         return implode(' ', $parts);
-    }
-
-    public function isTruthy(): bool
-    {
-        return true;
     }
 }
