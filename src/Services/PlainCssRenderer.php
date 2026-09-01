@@ -22,6 +22,7 @@ final readonly class PlainCssRenderer
     public function __construct(
         private NodeDispatcherInterface $dispatcher,
         private Render $render,
+        private Text $text,
     ) {}
 
     public function render(RootNode $root, Environment $env): string
@@ -63,7 +64,7 @@ final readonly class PlainCssRenderer
             return '';
         }
 
-        return $this->dispatcher->compileWithContext($child, new TraversalContext($env, $indent));
+        return $this->dispatcher->compileWithContext($child, new TraversalContext($env, $indent, true));
     }
 
     /**
@@ -163,8 +164,12 @@ final readonly class PlainCssRenderer
             return '@supports ' . $node->condition;
         }
 
-        $prelude = $node->prelude === '' ? '' : ' ' . $node->prelude;
+        $prelude = $node->prelude;
 
-        return '@' . $node->name . $prelude;
+        if ($prelude !== '' && strtolower($node->name) === 'media') {
+            $prelude = $this->text->normalizePlainCssMediaQueryPrelude($prelude);
+        }
+
+        return '@' . $node->name . ($prelude === '' ? '' : ' ' . $prelude);
     }
 }

@@ -14,6 +14,7 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
@@ -75,6 +76,11 @@ final readonly class DeclarationNodeHandler
             }
 
             return $prefix . $property . ': ' . $value . ';';
+        }
+
+        if ($ctx->plainCss && $this->containsSassKeyword($node->value)) {
+            return $prefix . $property . ': ' . $this->formatRawCssValue($node->value)
+                . ($node->important ? ' !important' : '') . ';';
         }
 
         $evaluatedValue = $this->evaluation->evaluateDeclarationValue($node->value, $property, $ctx->env);
@@ -198,12 +204,50 @@ final readonly class DeclarationNodeHandler
         return ! in_array(strtolower($entry->name ?? ''), ['font-face', 'page', 'property', 'counter-style'], true);
     }
 
+    private function containsSassKeyword(AstNode $node): bool
+    {
+        if ($node instanceof BooleanNode || $node instanceof NullNode) {
+            return true;
+        }
+
+        if ($node instanceof ListNode) {
+            foreach ($node->items as $item) {
+                if ($this->containsSassKeyword($item)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($node instanceof FunctionNode) {
+            foreach ($node->arguments as $argument) {
+                if ($this->containsSassKeyword($argument)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($node instanceof MapNode) {
+            foreach ($node->pairs as $pair) {
+                if ($this->containsSassKeyword($pair->key) || $this->containsSassKeyword($pair->value)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private function formatRawCssValue(AstNode $node): string
     {
         return match (true) {
             $node instanceof StringNode,
             $node instanceof NumberNode,
             $node instanceof BooleanNode           => (string) $node,
+            $node instanceof NullNode              => 'null',
             $node instanceof ColorNode             => $node->value,
             $node instanceof ListNode              => $this->formatRawListNode($node),
             $node instanceof FunctionNode          => $this->formatRawFunctionNode($node),

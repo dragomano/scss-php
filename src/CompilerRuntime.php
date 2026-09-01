@@ -216,7 +216,7 @@ final class CompilerRuntime
 
     private function createPlainCssRenderer(): PlainCssRenderer
     {
-        return new PlainCssRenderer($this->dispatcher, $this->render());
+        return new PlainCssRenderer($this->dispatcher, $this->render(), $this->text());
     }
 
     private function createEvaluator(): Evaluator

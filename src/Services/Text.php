@@ -103,6 +103,11 @@ final readonly class Text
         return $this->padMediaQueryOperators($prelude);
     }
 
+    public function normalizePlainCssMediaQueryPrelude(string $prelude): string
+    {
+        return $this->normalizeMediaQueryPrelude($this->normalizeCssLogicalOperators($prelude));
+    }
+
     public function stripAllComments(string $text): string
     {
         $result = '';
