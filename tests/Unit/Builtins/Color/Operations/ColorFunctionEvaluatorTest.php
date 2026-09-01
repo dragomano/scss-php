@@ -55,7 +55,7 @@ describe('ColorFunctionEvaluator', function () {
             ->and($result->name)->toBe('rgb');
     });
 
-    it('grayscales non-srgb colors through float rgb serialization', function () {
+    it('grayscales non-srgb colors while preserving their color space', function () {
         $displayP3 = new FunctionNode('color', [new ListNode([
             new StringNode('display-p3'),
             new NumberNode(0.4),
@@ -66,7 +66,16 @@ describe('ColorFunctionEvaluator', function () {
         $result = $this->evaluator->grayscale([$displayP3]);
 
         expect($result)->toBeInstanceOf(FunctionNode::class)
-            ->and($result->name)->toBe('rgb');
+            ->and($result->name)->toBe('color');
+
+        /** @var FunctionNode $result */
+        $channels = $result->arguments[0];
+
+        expect($channels)->toBeInstanceOf(ListNode::class)
+            ->and($channels->items[0]->value)->toBe('display-p3')
+            ->and($channels->items[1]->value)->toBeCloseTo(0.3331712936, 0.0000001)
+            ->and($channels->items[2]->value)->toBeCloseTo(0.3331712936, 0.0000001)
+            ->and($channels->items[3]->value)->toBeCloseTo(0.3331712936, 0.0000001);
     });
 
     it('mixes hsl colors when the right hue is missing', function () {

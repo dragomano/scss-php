@@ -951,6 +951,10 @@ final class SassMetaModule extends AbstractModule
 
     private function formatForInspect(AstNode $node): string
     {
+        if ($node instanceof ArgumentListNode) {
+            return $this->inspectList(new ListNode($node->items, $node->separator, $node->bracketed));
+        }
+
         if ($node instanceof ListNode) {
             return $this->inspectList($node);
         }
@@ -1039,7 +1043,11 @@ final class SassMetaModule extends AbstractModule
 
     private function inspectMapItem(AstNode $node): string
     {
-        if ($node instanceof ListNode && $node->separator === 'comma' && count($node->items) > 1) {
+        if ($node instanceof ArgumentListNode) {
+            $node = new ListNode($node->items, $node->separator, $node->bracketed);
+        }
+
+        if ($node instanceof ListNode && $node->separator === 'comma' && ! $node->bracketed) {
             return '(' . $this->inspectList($node) . ')';
         }
 

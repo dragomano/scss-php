@@ -145,7 +145,23 @@ final class ColorSpaceConverter
                 && $g >= 0.0 && $g <= 255.0
                 && $b >= 0.0 && $b <= 255.0;
 
-            if ($inGamut) {
+            if ($inGamut || ($space === 'hsl' && $color instanceof FunctionNode)) {
+                return $color;
+            }
+        }
+
+        if (
+            $color instanceof FunctionNode
+            && $space === 'rgb'
+            && in_array(strtolower($color->name), ['hsl', 'hsla'], true)
+        ) {
+            [$srgbR, $srgbG, $srgbB] = $this->extractUnclampedSrgbChannels($color);
+
+            $outOfGamut = $srgbR < 0.0 || $srgbR > 255.0
+                || $srgbG < 0.0 || $srgbG > 255.0
+                || $srgbB < 0.0 || $srgbB > 255.0;
+
+            if ($outOfGamut) {
                 return $color;
             }
         }
@@ -1290,8 +1306,8 @@ final class ColorSpaceConverter
 
         $alpha = $this->converter->toAlpha($color);
 
-        if ($originalSpace === 'hsl' && $srcSpace === 'rgb') {
-            $originalSpace = 'rgb';
+        if ($originalSpace === 'hsl' && ($srcSpace === 'rgb' || $srcSpace === 'hwb')) {
+            $originalSpace = $srcSpace;
         }
 
         $destSpace = $explicitSpace ?? $originalSpace;
@@ -1471,6 +1487,17 @@ final class ColorSpaceConverter
         $name = strtolower($color->name);
 
         if ($name === 'hsl' || $name === 'hsla') {
+            if ($color->originSrgbChannels !== null) {
+                $exact = $color->originSrgbChannels;
+
+                return [
+                    $exact[0] * 255.0,
+                    $exact[1] * 255.0,
+                    $exact[2] * 255.0,
+                    $this->converter->toAlpha($color),
+                ];
+            }
+
             [$r, $g, $b] = $this->dartMath->convert('hsl', 'rgb', $this->extractRawHslChannels($color));
 
             $alpha = $this->converter->toAlpha($color);
@@ -1491,6 +1518,36 @@ final class ColorSpaceConverter
         }
 
         return null;
+    }
+
+    public function isColorInGamut(AstNode $color, ?string $space): bool
+    {
+        $target = $this->normalizeGamutSpace(
+            $space ?? $this->converter->detectNativeColorSpace($color),
+        );
+
+        if (in_array($target, self::UNBOUNDED_GAMUT_SPACES, true)) {
+            return true;
+        }
+
+        $gamutSpace = match ($target) {
+            'rgb',
+            'hsl',
+            'hwb'   => 'rgb',
+            default => $target,
+        };
+
+        [$srcSpace, $srcChannels] = $this->extractToGamutSourceChannels($color);
+
+        $channels = $srcSpace === $gamutSpace
+            ? $srcChannels
+            : $this->dartMath->convert(
+                $srcSpace === 'xyz' ? 'xyz-d65' : $srcSpace,
+                $gamutSpace,
+                $srcChannels,
+            );
+
+        return $this->areChannelsInGamut($gamutSpace, $channels);
     }
 
     private function hasMissingChannelNode(AstNode $color): bool
@@ -1627,37 +1684,19 @@ final class ColorSpaceConverter
     private function extractToGamutSourceChannels(AstNode $color): array
     {
         if ($color instanceof FunctionNode) {
-            if (in_array(strtolower($color->name), ['hsl', 'hsla'], true)) {
-                [$nodes] = $this->converter->extractRawChannelsPublic($color);
+            $origin = $color->originColorSpace;
 
-                $saturation = $nodes[1] ?? null;
-                $lightness  = $nodes[2] ?? null;
+            if (($origin === 'rgb' || $origin === 'hwb') && in_array(strtolower($color->name), ['hsl', 'hsla'], true)) {
+                $raw = $this->extractRawHslChannels($color);
 
-                $synthetic = ($saturation instanceof NumberNode && ! $saturation->isLiteral)
-                    || ($lightness instanceof NumberNode && ! $lightness->isLiteral);
-
-                $outOfRange = ($saturation instanceof NumberNode
-                        && ((float) $saturation->value < 0.0 || (float) $saturation->value > 100.0))
-                    || ($lightness instanceof NumberNode
-                        && ((float) $lightness->value < 0.0 || (float) $lightness->value > 100.0));
-
-                if ($synthetic && $outOfRange) {
-                    $hueNode = $nodes[0] ?? null;
-                    $hue     = 0.0;
-
-                    if ($hueNode instanceof NumberNode) {
-                        $hue = $this->hueToDegrees((float) $hueNode->value, $hueNode->unit ?? '');
-                    }
-
-                    return [
-                        'rgb',
-                        $this->dartMath->convertNumeric('hsl', 'rgb', [
-                            $hue,
-                            $saturation instanceof NumberNode ? (float) $saturation->value : 0.0,
-                            $lightness instanceof NumberNode ? (float) $lightness->value : 0.0,
-                        ]),
-                    ];
-                }
+                return [
+                    $origin,
+                    $this->dartMath->convertNumeric('hsl', $origin, [
+                        $raw[0] ?? 0.0,
+                        $raw[1] ?? 0.0,
+                        $raw[2] ?? 0.0,
+                    ]),
+                ];
             }
 
             $native = $this->extractNativeSpaceAndChannels($color);
@@ -2568,6 +2607,11 @@ final class ColorSpaceConverter
             if ($native !== null) {
                 [$srcSpace, $channels] = $native;
 
+                if ($srcSpace === 'hsl' && $color->originSrgbChannels !== null) {
+                    $srcSpace = 'srgb';
+                    $channels = $color->originSrgbChannels;
+                }
+
                 $converted = $srcSpace === $destSpace
                     ? $channels
                     : $this->dartMath->convert($srcSpace, $destSpace, $channels);
@@ -2619,6 +2663,15 @@ final class ColorSpaceConverter
         }
 
         [$space, $channels] = $native;
+
+        if (
+            $space === 'hsl'
+            && $color->originSrgbChannels !== null
+            && ! in_array($dest, ['rgb', 'hsl', 'hwb'], true)
+        ) {
+            $space    = 'srgb';
+            $channels = $color->originSrgbChannels;
+        }
 
         if ($space === $dest) {
             return [$channels[0], $channels[1], $channels[2]];

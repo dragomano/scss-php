@@ -106,7 +106,9 @@ final readonly class ColorArgumentParser
         int $minArguments,
         bool $allowMissingChannels = false,
     ): array {
-        $arguments = $this->expandSingleSpaceListArgument($positional);
+        $arguments = $this->expandSingleSpaceListArgument(
+            $this->expandSingleSlashListArgument($positional),
+        );
 
         if (
             $this->isRelativeColorSyntax($arguments)
@@ -653,6 +655,36 @@ final readonly class ColorArgumentParser
         $ctx = $this->context->errorCtx($context);
 
         return str_contains($ctx, '()') ? $ctx : $ctx . '()';
+    }
+
+    /**
+     * @param array<int, AstNode> $positional
+     * @return array<int, AstNode>
+     */
+    private function expandSingleSlashListArgument(array $positional): array
+    {
+        if (count($positional) !== 1) {
+            return $positional;
+        }
+
+        $list = $positional[0];
+
+        if (
+            ! ($list instanceof ListNode)
+            || $list->separator !== 'slash'
+            || $list->bracketed
+            || count($list->items) !== 2
+        ) {
+            return $positional;
+        }
+
+        $channels = $list->items[0];
+
+        if (! ($channels instanceof ListNode) || $channels->separator !== 'space' || $channels->bracketed) {
+            return $positional;
+        }
+
+        return [...$channels->items, new StringNode('/'), $list->items[1]];
     }
 
     private function isColorFunction(string $name): bool

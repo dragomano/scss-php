@@ -84,6 +84,8 @@ final class SassMathModule extends AbstractModule
         'abs',
         'acos',
         'asin',
+        'atan',
+        'atan2',
         'ceil',
         'clamp',
         'cos',
@@ -301,11 +303,47 @@ final class SassMathModule extends AbstractModule
             throw $sassThrowable;
         }
 
-        if (! $this->unitsCompatible($a->unit, $b->unit)) {
+        return new NumberNode(
+            rad2deg(atan2((float) $a->value, $this->resolveAtan2Divisor($a, $b))),
+            'deg',
+        );
+    }
+
+    private function resolveAtan2Divisor(NumberNode $a, NumberNode $b): float
+    {
+        $aUnit = $a->unit === '' ? null : $a->unit;
+        $bUnit = $b->unit === '' ? null : $b->unit;
+
+        if (($aUnit === null) !== ($bUnit === null)) {
             throw IncompatibleUnitsException::functionArguments($this->builtinCallReference('math.atan2'));
         }
 
-        return new NumberNode(rad2deg(atan2((float) $a->value, (float) $b->value)), 'deg');
+        if ($aUnit === null) {
+            return (float) $b->value;
+        }
+
+        if ($aUnit !== '%' && $bUnit !== '%') {
+            $aKnown = UnitConverter::isKnownUnit($aUnit);
+            $bKnown = UnitConverter::isKnownUnit($bUnit);
+
+            if ($aKnown && $bKnown) {
+                if (! $this->unitsCompatible($aUnit, $bUnit)) {
+                    throw IncompatibleUnitsException::functionArguments(
+                        $this->builtinCallReference('math.atan2'),
+                    );
+                }
+
+                return $this->convertNumberValue($b, $aUnit);
+            }
+
+            if (! $aKnown && ! $bKnown && $aUnit === $bUnit) {
+                return (float) $b->value;
+            }
+        }
+
+        throw new DeferToCssFunctionException(
+            $this->builtinCallReference('math.atan2') . ' should be emitted as a CSS function.',
+        );
     }
 
     /**

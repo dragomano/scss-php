@@ -23,7 +23,6 @@ use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Bugo\SCSS\Values\AstValueInspector;
 
 use function abs;
 use function in_array;
@@ -92,19 +91,6 @@ final readonly class ColorNodeConverter
         }
 
         throw new UnsupportedColorValueException(strtolower($color->value));
-    }
-
-    private function throwDeferredOrUnsupported(StringNode $color, ?UnsupportedColorValueException $previous): never
-    {
-        if (! $color->quoted && str_contains($color->value, '(')) {
-            throw new DeferToCssFunctionException(
-                $this->runtime->context->errorCtx('color') . ' should be emitted as a CSS function.',
-                0,
-                $previous,
-            );
-        }
-
-        throw $previous ?? new UnsupportedColorValueException(strtolower($color->value));
     }
 
     public function toAlpha(AstNode $color): float
@@ -265,55 +251,6 @@ final readonly class ColorNodeConverter
         [$channels] = $this->extractRawChannels($fn);
 
         return $channels;
-    }
-
-    public function isInGamut(AstNode $color): bool
-    {
-        if ($this->isLegacyColor($color)) {
-            return true;
-        }
-
-        if (! ($color instanceof FunctionNode)) {
-            return true;
-        }
-
-        $name = strtolower($color->name);
-
-        if (in_array($name, ['lab', 'lch', 'oklab', 'oklch'], true)) {
-            return true;
-        }
-
-        if ($name !== 'color') {
-            return true;
-        }
-
-        $space = $this->detectGenericColorSpace($color);
-
-        if (in_array($space, ['xyz', 'xyz-d50', 'xyz-d65'], true)) {
-            return true;
-        }
-
-        $nodes = $this->extractChannelNodes($color);
-
-        for ($i = 1; $i <= 3; $i++) {
-            $node = $nodes[$i] ?? null;
-
-            if (empty($node) || AstValueInspector::isNoneKeyword($node) || ! ($node instanceof NumberNode)) {
-                continue;
-            }
-
-            $val = (float) $node->value;
-
-            if ($node->unit === '%') {
-                $val /= 100.0;
-            }
-
-            if ($val < -1e-10 || $val > 1.0 + 1e-10) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     public function isLegacyColor(AstNode $color): bool
@@ -943,6 +880,19 @@ final readonly class ColorNodeConverter
             : new StringNode('none');
 
         return $this->buildFunctionalColorNode('lch', [$lNode, $cNode, $hNode], $alpha);
+    }
+
+    private function throwDeferredOrUnsupported(StringNode $color, ?UnsupportedColorValueException $previous): never
+    {
+        if (! $color->quoted && str_contains($color->value, '(')) {
+            throw new DeferToCssFunctionException(
+                $this->runtime->context->errorCtx('color') . ' should be emitted as a CSS function.',
+                0,
+                $previous,
+            );
+        }
+
+        throw $previous ?? new UnsupportedColorValueException(strtolower($color->value));
     }
 
     /**

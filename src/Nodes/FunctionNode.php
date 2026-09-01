@@ -20,5 +20,8 @@ final class FunctionNode extends AstNode
         public ?Scope $capturedScope = null,
         public ?CallableDefinition $lockedDefinition = null,
         public int $parenthesized = 0,
+        public ?string $originColorSpace = null,
+        /** @var array{0: float, 1: float, 2: float}|null */
+        public ?array $originSrgbChannels = null,
     ) {}
 }

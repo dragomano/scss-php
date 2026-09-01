@@ -530,8 +530,12 @@ final class Tokenizer
             $this->position++;
         }
 
-        // Decimal part
-        if ($this->position < $this->length && $this->source[$this->position] === '.') {
+        if (
+            $this->position < $this->length
+            && $this->source[$this->position] === '.'
+            && $this->position + 1 < $this->length
+            && ctype_digit($this->source[$this->position + 1])
+        ) {
             $this->position++;
 
             while ($this->position < $this->length && ctype_digit($this->source[$this->position])) {

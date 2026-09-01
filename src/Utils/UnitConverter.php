@@ -62,6 +62,11 @@ final class UnitConverter
         return $cache[$key] = ($leftInfo !== null && $rightInfo !== null && $leftInfo['group'] === $rightInfo['group']);
     }
 
+    public static function isKnownUnit(?string $unit): bool
+    {
+        return $unit !== null && isset(self::CONVERSIONS[$unit]);
+    }
+
     public static function convert(float $value, ?string $fromUnit, ?string $toUnit): float
     {
         if ($toUnit === null || $fromUnit === null || $fromUnit === $toUnit) {

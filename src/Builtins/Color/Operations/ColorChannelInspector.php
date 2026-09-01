@@ -21,7 +21,15 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 
 use function abs;
+use function count;
+use function ctype_alnum;
+use function ctype_alpha;
+use function implode;
+use function rtrim;
+use function strlen;
+use function strpos;
 use function strtolower;
+use function substr;
 
 final readonly class ColorChannelInspector
 {
@@ -107,6 +115,16 @@ final readonly class ColorChannelInspector
     public function channelAlpha(array $positional, string $name, ?BuiltinCallContext $context): AstNode
     {
         $isGlobal = $this->runtime->context->isGlobalBuiltinCall();
+
+        if (! $isGlobal) {
+            $cssFallback = $this->cssFilterFallback($positional, $name);
+
+            if ($cssFallback !== null) {
+                $this->runtime->context->warn($context, $cssFallback);
+
+                throw new DeferToCssFunctionException($cssFallback);
+            }
+        }
 
         try {
             $color = $isGlobal
@@ -272,17 +290,26 @@ final readonly class ColorChannelInspector
     {
         $color = $this->runtime->argumentParser->requireColor($positional, 0, 'space');
 
+        if ($color instanceof FunctionNode && $color->originColorSpace !== null) {
+            return new StringNode($color->originColorSpace);
+        }
+
         return new StringNode($this->converter->detectNativeColorSpace($color));
     }
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    public function isInGamut(array $positional): BooleanNode
+    public function isInGamut(array $positional, array $named = []): BooleanNode
     {
-        $color = $this->runtime->argumentParser->requireColor($positional, 0, 'is-in-gamut');
+        $color     = $this->runtime->argumentParser->requireColor($positional, 0, 'is-in-gamut');
+        $spaceNode = $named['space'] ?? ($positional[1] ?? null);
+        $space     = $spaceNode === null
+            ? null
+            : strtolower($this->runtime->argumentParser->asString($spaceNode, 'is-in-gamut'));
 
-        return new BooleanNode($this->converter->isInGamut($color));
+        return new BooleanNode($this->spaceInterop->isColorInGamut($color, $space));
     }
 
     /**
@@ -293,6 +320,72 @@ final readonly class ColorChannelInspector
         $color = $this->runtime->argumentParser->requireColor($positional, 0, 'is-legacy');
 
         return new BooleanNode($this->converter->isLegacyColor($color));
+    }
+
+    /**
+     * @param array<int, AstNode> $positional
+     */
+    private function cssFilterFallback(array $positional, string $name): ?string
+    {
+        if ($positional === []) {
+            return null;
+        }
+
+        if ($name === 'opacity') {
+            $single = count($positional) === 1 ? $positional[0] : null;
+
+            return $single instanceof NumberNode && $single->unit === null
+                ? 'opacity(' . $this->runtime->formatter->formatNumberNode($single) . ')'
+                : null;
+        }
+
+        $arguments = [];
+
+        foreach ($positional as $argument) {
+            if (! $this->isMicrosoftFilterArgument($argument)) {
+                return null;
+            }
+
+            /** @var StringNode $argument */
+            $arguments[] = $argument->value;
+        }
+
+        return 'alpha(' . implode(', ', $arguments) . ')';
+    }
+
+    private function isMicrosoftFilterArgument(AstNode $node): bool
+    {
+        if (! ($node instanceof StringNode) || $node->quoted) {
+            return false;
+        }
+
+        $equals = strpos($node->value, '=');
+
+        if ($equals === false) {
+            return false;
+        }
+
+        $identifier = rtrim(substr($node->value, 0, $equals));
+
+        if ($identifier === '') {
+            return false;
+        }
+
+        $first = $identifier[0];
+
+        if ($first !== '-' && $first !== '_' && ! ctype_alpha($first)) {
+            return false;
+        }
+
+        for ($i = 1, $length = strlen($identifier); $i < $length; $i++) {
+            $character = $identifier[$i];
+
+            if ($character !== '-' && $character !== '_' && ! ctype_alnum($character)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function resolveRgbChannel(AstNode $color, string $channelName, bool $normalized): NumberNode

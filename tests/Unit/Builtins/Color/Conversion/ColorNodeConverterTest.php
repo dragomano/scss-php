@@ -122,64 +122,14 @@ describe('ColorNodeConverter', function () {
             ->and($this->converter->detectNativeColorSpace($generic))->toBe('xyz');
     });
 
-    it('short-circuits gamut checks for legacy, non-function, perceptual and xyz colors', function () {
-        $legacy      = new ColorNode('#abc');
-        $plainString = new StringNode('not-a-function');
-
-        $lab = new FunctionNode('lab', [
-            new NumberNode(50.0),
-            new NumberNode(0.0),
-            new NumberNode(0.0),
-        ]);
-
-        $xyz = new FunctionNode('color', [
-            new StringNode('xyz-d50'),
-            new NumberNode(0.1),
-            new NumberNode(0.2),
-            new NumberNode(0.3),
-        ]);
-
-        expect($this->converter->isInGamut($legacy))->toBeTrue()
-            ->and($this->converter->isInGamut($plainString))->toBeTrue()
-            ->and($this->converter->isInGamut($lab))->toBeTrue()
-            ->and($this->converter->isInGamut($xyz))->toBeTrue();
-    });
-
     it('treats unknown string functions as non-legacy colors', function () {
         $unknown   = new StringNode('color(display-p3 1 0 0)');
         $legacyRgb = new StringNode('rgba(1, 2, 3, 0.5)');
         $otherNode = new class extends AstNode {};
 
         expect($this->converter->isLegacyColor($unknown))->toBeFalse()
-            ->and($this->converter->isInGamut($unknown))->toBeTrue()
             ->and($this->converter->isLegacyColor($legacyRgb))->toBeTrue()
             ->and($this->converter->isLegacyColor($otherNode))->toBeFalse();
-    });
-
-    it('short-circuits gamut checks for non-color functions and rejects out of range percentages', function () {
-        $deviceCmyk = new FunctionNode('device-cmyk', [new NumberNode(1.2)]);
-        $displayP3  = new FunctionNode('color', [
-            new StringNode('display-p3'),
-            new NumberNode(120.0, '%'),
-            new NumberNode(0.5),
-            new NumberNode(0.25),
-        ]);
-
-        expect($this->converter->isInGamut($deviceCmyk))->toBeTrue()
-            ->and($this->converter->isInGamut($displayP3))->toBeFalse();
-    });
-
-    it('ignores missing generic color channels during gamut checks', function () {
-        $displayP3 = new FunctionNode('color', [
-            new ListNode([
-                new StringNode('display-p3'),
-                new StringNode('none'),
-                new NumberNode(0.5),
-                new NumberNode(0.25),
-            ], 'space'),
-        ]);
-
-        expect($this->converter->isInGamut($displayP3))->toBeTrue();
     });
 
     it('converts srgb percentages to unclamped rgb bytes', function () {

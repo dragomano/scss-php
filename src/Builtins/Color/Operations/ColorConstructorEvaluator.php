@@ -398,13 +398,17 @@ final readonly class ColorConstructorEvaluator
             return $this->converter->fromRgb(new RgbColor($red, $green, $blue, $alpha));
         }
 
-        return $this->converter->serializeAsUnclampedHsl(
+        $collapsed = $this->converter->serializeAsUnclampedHsl(
             $red,
             $green,
             $blue,
             $alpha,
-            true,
         );
+
+        $collapsed->originColorSpace   = 'hwb';
+        $collapsed->originSrgbChannels = [$red / 255.0, $green / 255.0, $blue / 255.0];
+
+        return $collapsed;
     }
 
     /**

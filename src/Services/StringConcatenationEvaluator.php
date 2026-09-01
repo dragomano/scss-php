@@ -49,6 +49,8 @@ final readonly class StringConcatenationEvaluator
             return null;
         }
 
+        $list = $this->unwrapParenthesizedOperands($list);
+
         $hasQuoted  = false;
         $allStrings = true;
 
@@ -100,6 +102,35 @@ final readonly class StringConcatenationEvaluator
         }
 
         return new StringNode($result, $quoted ?? false);
+    }
+
+    private function unwrapParenthesizedOperands(ListNode $list): ListNode
+    {
+        $items   = $list->items;
+        $changed = false;
+
+        foreach ($items as $index => $item) {
+            if ($index % 2 === 1) {
+                continue;
+            }
+
+            if (
+                $item instanceof ListNode
+                && $item->parenthesized > 0
+                && ! $item->bracketed
+                && count($item->items) === 1
+                && $item->items[0] instanceof StringNode
+            ) {
+                $items[$index] = $item->items[0];
+                $changed       = true;
+            }
+        }
+
+        if (! $changed) {
+            return $list;
+        }
+
+        return new ListNode($items, $list->separator, $list->bracketed, $list->parenthesized);
     }
 
     private function collapseNumberWithUnitSuffix(ListNode $list): ?AstNode

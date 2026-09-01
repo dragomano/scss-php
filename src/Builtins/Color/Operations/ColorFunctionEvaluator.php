@@ -12,6 +12,7 @@ use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
 use Bugo\SCSS\Builtins\Color\Conversion\DartColorMath;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
 use Bugo\SCSS\Builtins\Color\Support\LegacyColorMath;
+use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnknownColorChannelException;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
@@ -76,6 +77,25 @@ final readonly class ColorFunctionEvaluator
         'oklab'             => ['fraction01', 'oklab-ab', 'oklab-ab'],
         'lch'               => ['percent', 'lch-c', 'hue'],
         'oklch'             => ['fraction01', 'oklch-c', 'hue'],
+    ];
+
+    private const SPACE_CHANNEL_CATEGORIES = [
+        'rgb'               => ['red', 'green', 'blue'],
+        'srgb'              => ['red', 'green', 'blue'],
+        'srgb-linear'       => ['red', 'green', 'blue'],
+        'display-p3'        => ['red', 'green', 'blue'],
+        'display-p3-linear' => ['red', 'green', 'blue'],
+        'a98-rgb'           => ['red', 'green', 'blue'],
+        'prophoto-rgb'      => ['red', 'green', 'blue'],
+        'rec2020'           => ['red', 'green', 'blue'],
+        'xyz'               => ['x', 'y', 'z'],
+        'xyz-d50'           => ['x', 'y', 'z'],
+        'hsl'               => ['hue', 'colorfulness', 'lightness'],
+        'hwb'               => ['hue', null, null],
+        'lab'               => ['lightness', null, null],
+        'oklab'             => ['lightness', null, null],
+        'lch'               => ['lightness', 'colorfulness', 'hue'],
+        'oklch'             => ['lightness', 'colorfulness', 'hue'],
     ];
 
     private const CHANNEL_TYPE_RANGES = [
@@ -411,7 +431,7 @@ final readonly class ColorFunctionEvaluator
     public function adjustHue(array $positional, ?BuiltinCallContext $context): AstNode
     {
         $color   = $this->runtime->argumentParser->requireColorOrDefer($positional, 'adjust-hue');
-        $degrees = $this->runtime->argumentParser->asNumber($positional[1] ?? null, 'adjust-hue');
+        $degrees = $this->runtime->argumentParser->asHueAngle($positional[1] ?? null, 'adjust-hue');
 
         if ($context !== null) {
             $this->runtime->context->warn(
@@ -472,6 +492,17 @@ final readonly class ColorFunctionEvaluator
             return new FunctionNode($context, [$positional[1]]);
         }
 
+        if (
+            $allowCssDefer
+            && ! isset($positional[1])
+            && isset($positional[0])
+            && $this->runtime->argumentParser->isSpecialNumberNode($positional[0])
+        ) {
+            throw new DeferToCssFunctionException(
+                $this->runtime->argumentParser->callRef($context) . ' should be emitted as a CSS function.',
+            );
+        }
+
         $color = $allowCssDefer
             ? $this->runtime->argumentParser->requireColorOrDefer($positional, $context)
             : $this->runtime->argumentParser->requireColor($positional, 0, $context);
@@ -522,6 +553,13 @@ final readonly class ColorFunctionEvaluator
             case 'hsl':
                 if ($c0 === null || $c1 === null || $c2 === null || $alpha === null) {
                     return $this->converter->buildModernHslFunctionNode([$c0, $c1, $c2], $alpha);
+                }
+
+                if ($original instanceof FunctionNode
+                    && $original->originColorSpace === 'hwb'
+                    && $this->dartMath->fuzzyEquals($c1, 0.0)
+                ) {
+                    $c0 = 0.0;
                 }
 
                 return $this->buildCommaHslNode($c0, $c1, $c2, $alpha);
@@ -599,30 +637,29 @@ final readonly class ColorFunctionEvaluator
         }
     }
 
-    /** @param array<int, AstNode> $positional */
-    public function complement(array $positional): AstNode
+    /**
+     * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
+     */
+    public function complement(array $positional, array $named = []): AstNode
     {
-        $color = $this->runtime->argumentParser->requireColorOrDefer($positional, 'complement');
-        $space = isset($positional[1])
-            ? strtolower($this->runtime->argumentParser->asString($positional[1], 'complement'))
-            : null;
+        $color     = $this->runtime->argumentParser->requireColorOrDefer($positional, 'complement');
+        $spaceNode = $named['space'] ?? ($positional[1] ?? null);
+        $space     = $spaceNode === null
+            ? null
+            : strtolower($this->runtime->argumentParser->asString($spaceNode, 'complement'));
 
-        $named = ['hue' => new NumberNode(180)];
+        $arguments = ['hue' => new NumberNode(180)];
 
         if ($space !== null) {
-            $named['space'] = new StringNode($space);
-        }
-
-        if ($space === null && $this->converter->isLegacyColor($color)) {
-            return $this->emitModifiedLegacyColor(
-                $color,
-                fn(array $channels): array => $this->legacyMath->shiftChannel($channels, 'h', 180.0),
-            );
+            $arguments['space'] = new StringNode($space);
+        } elseif ($this->converter->isLegacyColor($color)) {
+            $arguments['space'] = new StringNode('hsl');
         }
 
         return $this->applyColorOperation(
             [$color],
-            $named,
+            $arguments,
             'complement',
             'adjust',
         );
@@ -633,47 +670,11 @@ final readonly class ColorFunctionEvaluator
     {
         $color = $this->runtime->argumentParser->requireColorOrDefer($positional, 'grayscale');
 
-        if ($this->converter->isLegacyColor($color)) {
-            return $this->emitModifiedLegacyColor(
-                $color,
-                function (array $channels): array {
-                    $channels['s'] = 0.0;
+        $named = $this->converter->isLegacyColor($color)
+            ? ['saturation' => new NumberNode(0, '%'), 'space' => new StringNode('hsl')]
+            : ['chroma' => new NumberNode(0), 'space' => new StringNode('oklch')];
 
-                    return $channels;
-                },
-            );
-        }
-
-        $nativeSpace = $this->converter->detectNativeColorSpace($color);
-
-        if ($nativeSpace === 'oklch' && $color instanceof FunctionNode) {
-            $oklch = $this->converter->readNativeOklch($color);
-
-            return $this->converter->serializeAsOklchString(
-                new OklchColor(
-                    l: $oklch->l,
-                    c: 0.0,
-                    h: $oklch->h,
-                    a: 1.0,
-                ),
-                true,
-            );
-        }
-
-        $rgb       = $this->converter->toRgb($color);
-        $oklch     = $this->createOklchFromRgb($rgb);
-        $grayOklch = new OklchColor(l: $oklch->l, c: 0.0, h: $oklch->h, a: $rgb->a);
-        $grayRgb   = $this->runtime->spaceConverter->oklchToRgb($grayOklch);
-
-        if ($nativeSpace === 'srgb') {
-            return $this->converter->serializeAsSrgbString(
-                $grayRgb->rValue(),
-                $grayRgb->gValue(),
-                $grayRgb->bValue(),
-            );
-        }
-
-        return $this->converter->serializeAsFloatRgb($grayRgb);
+        return $this->applyColorOperation([$color], $named, 'grayscale', 'change');
     }
 
     /**
@@ -797,27 +798,25 @@ final readonly class ColorFunctionEvaluator
         if ($space !== $originalSpace) {
             $channels = $this->dartConvert($space, $originalSpace, $channels);
 
+            [$origin1] = $this->colorChannelsInSpace($color1, $originalSpace);
+            [$origin2] = $this->colorChannelsInSpace($color2, $originalSpace);
+
             foreach ([0, 1, 2] as $i) {
-                if ($ch1[$i] === null && $ch2[$i] === null) {
+                if (($origin1[$i] ?? null) === null && ($origin2[$i] ?? null) === null) {
                     $channels[$i] = null;
                 }
+            }
+
+            if (($originalSpace === 'lch' || $originalSpace === 'oklch')
+                && $channels[1] !== null
+                && $this->dartMath->fuzzyEquals($channels[1], 0.0)
+            ) {
+                $channels[2] = null;
             }
 
             if (in_array($originalSpace, ['rgb', 'hsl', 'hwb'], true)) {
                 $channels = [$channels[0] ?? 0.0, $channels[1] ?? 0.0, $channels[2] ?? 0.0];
             }
-        }
-
-        if (($originalSpace === 'lch' || $originalSpace === 'oklch')
-            && $channels[1] !== null
-            && $this->dartMath->fuzzyEquals($channels[1], 0.0)
-        ) {
-            $channels[2] = null;
-        } elseif ($originalSpace === 'hsl'
-            && $channels[1] !== null
-            && $this->dartMath->fuzzyEquals($channels[1], 0.0)
-        ) {
-            $channels[0] = null;
         }
 
         return $this->serializeModifiedColor($color1, $originalSpace, $channels, $resultAlpha);
@@ -945,6 +944,20 @@ final readonly class ColorFunctionEvaluator
 
         $color       = $this->runtime->argumentParser->requireColorOrDefer($positional, $context);
         $nativeSpace = $this->converter->detectNativeColorSpace($color);
+
+        $hwbOriginChannels = null;
+
+        if (
+            $nativeSpace === 'hsl'
+            && $color instanceof FunctionNode
+            && $color->originColorSpace === 'hwb'
+            && $color->originSrgbChannels !== null
+            && $this->sniffLegacySpace($named) === 'hwb'
+        ) {
+            $nativeSpace       = 'hwb';
+            $hwbOriginChannels = $this->dartMath->convertNumeric('srgb', 'hwb', $color->originSrgbChannels);
+        }
+
         $targetSpace = $requestedSpace
             ?? ($this->converter->isLegacyColor($color)
                 ? ($this->sniffLegacySpace($named) ?? $this->normalizeSpaceName($nativeSpace))
@@ -961,19 +974,33 @@ final readonly class ColorFunctionEvaluator
             return $color;
         }
 
-        $native   = $this->nativeChannels($color, $nativeSpace);
-        $channels = $targetSpace === $nativeSpace
-            ? $native['channels']
-            : $this->dartConvert($nativeSpace, $targetSpace, $native['channels']);
+        $native = $this->nativeChannels($color, $nativeSpace);
+
+        if ($hwbOriginChannels !== null) {
+            $native['channels'] = $hwbOriginChannels;
+        }
+
+        $channels = $native['channels'];
+
+        if ($targetSpace !== $nativeSpace) {
+            $channels = $this->preserveAnalogousMissingChannels(
+                $this->dartConvert($nativeSpace, $targetSpace, $channels),
+                $channels,
+                $nativeSpace,
+                $targetSpace,
+            );
+        }
 
         [$channels, $alpha] = $this->modifyChannels($channels, $native['alpha'], $provided, $targetSpace, $mode);
 
         if ($targetSpace !== $nativeSpace) {
-            $channels = $this->dartConvert($targetSpace, $nativeSpace, $channels);
-
-            if (in_array($nativeSpace, ['rgb', 'hsl', 'hwb'], true)) {
-                $channels = [$channels[0] ?? 0.0, $channels[1] ?? 0.0, $channels[2] ?? 0.0];
-            }
+            $targetChannels = $channels;
+            $channels       = $this->preserveAnalogousMissingChannels(
+                $this->dartConvert($targetSpace, $nativeSpace, $channels),
+                $targetChannels,
+                $targetSpace,
+                $nativeSpace,
+            );
 
             if (($nativeSpace === 'lch' || $nativeSpace === 'oklch')
                 && $channels[1] !== null
@@ -981,9 +1008,52 @@ final readonly class ColorFunctionEvaluator
             ) {
                 $channels[2] = null;
             }
+
+            if (in_array($nativeSpace, ['rgb', 'hsl', 'hwb'], true)) {
+                $channels = [$channels[0] ?? 0.0, $channels[1] ?? 0.0, $channels[2] ?? 0.0];
+            }
         }
 
         return $this->serializeModifiedColor($color, $nativeSpace, $channels, $alpha);
+    }
+
+    /**
+     * @param array<int, float|null> $destChannels
+     * @param array<int, float|null> $sourceChannels
+     * @return array<int, float|null>
+     */
+    private function preserveAnalogousMissingChannels(
+        array $destChannels,
+        array $sourceChannels,
+        string $sourceSpace,
+        string $destSpace,
+    ): array {
+        $sourceCategories = self::SPACE_CHANNEL_CATEGORIES[$sourceSpace] ?? null;
+        $destCategories   = self::SPACE_CHANNEL_CATEGORIES[$destSpace] ?? null;
+
+        if ($sourceCategories === null || $destCategories === null) {
+            return $destChannels;
+        }
+
+        foreach ([0, 1, 2] as $sourceIndex) {
+            if (($sourceChannels[$sourceIndex] ?? null) !== null) {
+                continue;
+            }
+
+            $category = $sourceCategories[$sourceIndex] ?? null;
+
+            if ($category === null) {
+                continue;
+            }
+
+            $destIndex = array_search($category, $destCategories, true);
+
+            if ($destIndex !== false) {
+                $destChannels[$destIndex] = null;
+            }
+        }
+
+        return $destChannels;
     }
 
     private function normalizeSpaceName(string $space): string
@@ -1325,7 +1395,11 @@ final readonly class ColorFunctionEvaluator
         }
 
         if ($this->isOutOfByteRange($c0, $c1, $c2)) {
-            return $this->converter->serializeAsUnclampedHsl($c0, $c1, $c2, $resolvedAlpha);
+            $collapsed = $this->converter->serializeAsUnclampedHsl($c0, $c1, $c2, $resolvedAlpha);
+
+            $collapsed->originColorSpace = 'rgb';
+
+            return $collapsed;
         }
 
         $opaque = abs($resolvedAlpha - 1.0) < 0.000001;
@@ -1593,11 +1667,6 @@ final readonly class ColorFunctionEvaluator
             $channel,
             $formattedAmount,
         );
-    }
-
-    private function createOklchFromRgb(RgbColor $rgb): OklchColor
-    {
-        return $this->converter->createOklchFromRgb($rgb);
     }
 
     private function buildScaleSuggestion(AstNode $color, string $channel, int $direction, float $amount): string

@@ -927,7 +927,7 @@ describe('SassColorModule', function () {
                 ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
                 ->and($result->arguments[0]->items[0]->value)->toBe(50.0)
                 ->and($result->arguments[0]->items[0]->unit)->toBe('%')
-                ->and($result->arguments[0]->items[1]->value)->toBe(0)
+                ->and($result->arguments[0]->items[1]->value)->toBe(0.0)
                 ->and($result->arguments[0]->items[2]->value)->toBe(270.0)
                 ->and($result->arguments[0]->items[2]->unit)->toBe('deg');
         });
