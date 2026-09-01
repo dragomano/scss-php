@@ -159,10 +159,10 @@ describe('Selector', function () {
             expect($this->selector->optimizeRuleBlock($input))->toBe($input);
         });
 
-        it('deduplicates repeated declarations', function () {
+        it('keeps repeated identical declarations', function () {
             $result = $this->selector->optimizeRuleBlock(".a {\n  color: red;\n  color: red;\n}");
 
-            expect($result)->toBe(".a {\n  color: red;\n}");
+            expect($result)->toBe(".a {\n  color: red;\n  color: red;\n}");
         });
 
         it('keeps both values when property repeated with different values', function () {
@@ -191,10 +191,10 @@ describe('Selector', function () {
             expect($this->selector->optimizeRuleBlock($input))->toBe($input);
         });
 
-        it('removes inner blank lines when optimizing duplicate declarations', function () {
+        it('removes inner blank lines while keeping repeated declarations', function () {
             $input = ".a {\n  color: red;\n\n  color: red;\n}";
 
-            expect($this->selector->optimizeRuleBlock($input))->toBe(".a {\n  color: red;\n}");
+            expect($this->selector->optimizeRuleBlock($input))->toBe(".a {\n  color: red;\n  color: red;\n}");
         });
     });
 

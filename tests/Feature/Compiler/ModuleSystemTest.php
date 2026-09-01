@@ -802,6 +802,7 @@ describe('Compiler', function () {
 
                 .test {
                   color: green;
+                  color: green;
                 }
                 CSS;
 
@@ -848,6 +849,7 @@ describe('Compiler', function () {
                 }
 
                 .test {
+                  color: green;
                   color: green;
                 }
                 CSS;

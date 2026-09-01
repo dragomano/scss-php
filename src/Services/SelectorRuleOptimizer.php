@@ -69,7 +69,10 @@ final class SelectorRuleOptimizer
         foreach ($lines as $index => $line) {
             $trimmedLine = trim($line);
 
-            if (isset($declarationKeys[$index])) {
+            if (
+                $collapseRedundantProperties
+                && isset($declarationKeys[$index])
+            ) {
                 $declarationKey = $declarationKeys[$index];
 
                 if (
