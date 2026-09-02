@@ -19,7 +19,9 @@ use function implode;
 use function is_array;
 use function str_contains;
 use function str_ends_with;
+use function str_starts_with;
 use function strlen;
+use function strtolower;
 use function trim;
 
 final readonly class SelectorResolutionStep implements CompilationStepInterface
@@ -42,65 +44,74 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
             : $node->selector;
         $selector = $this->selector->normalizeSelectorAttributes($selector);
 
-        $insideKeyframes = $this->isInsideKeyframes($scope);
+        $ruleCtx->parentSelector = $selector;
 
-        // Normalize scientific notation in keyframe selectors (13E+1% → 13e+1%)
-        if ($insideKeyframes) {
-            $selector = $this->normalizeScientificNotation($selector);
-        }
+        $isCssFunctionPrelude = str_starts_with(strtolower(trim($selector)), '@function ');
 
-        $scopeParentSelector = $scope->getStringVariable('__parent_selector')?->value;
-        $atRootVar           = $scope->getAstVariable('__at_root_context');
-        $isAtRootContext     = $atRootVar instanceof BooleanNode && $atRootVar->value;
+        if ($isCssFunctionPrelude) {
+            $ruleCtx->selector       = $selector;
+            $ruleCtx->omitOwnRuleOutput = false;
+        } else {
+            $insideKeyframes = $this->isInsideKeyframes($scope);
 
-        if (
-            $isAtRootContext
-            && $scopeParentSelector !== null
-            && str_contains($selector, '&')
-            && ! str_contains($scopeParentSelector, '%')
-        ) {
-            $selector = $this->selector->resolveNestedSelector($selector, $scopeParentSelector);
-        }
+            // Normalize scientific notation in keyframe selectors (13E+1% → 13e+1%)
+            if ($insideKeyframes) {
+                $selector = $this->normalizeScientificNotation($selector);
+            }
 
-        $ruleCtx->parentSelector    = $selector;
-        $ruleCtx->selector          = $this->selector->normalizeSelectorList(
-            $insideKeyframes ? $selector : $this->selector->applyExtendsToSelector($selector),
-        );
+            $scopeParentSelector = $scope->getStringVariable('__parent_selector')?->value;
+            $atRootVar           = $scope->getAstVariable('__at_root_context');
+            $isAtRootContext     = $atRootVar instanceof BooleanNode && $atRootVar->value;
 
-        $trimmedSelector = trim($ruleCtx->selector);
+            if (
+                $isAtRootContext
+                && $scopeParentSelector !== null
+                && str_contains($selector, '&')
+                && ! str_contains($scopeParentSelector, '%')
+            ) {
+                $selector = $this->selector->resolveNestedSelector($selector, $scopeParentSelector);
+            }
 
-        $ruleCtx->omitOwnRuleOutput = $this->selector->hasBogusTopLevelCombinatorSequence($ruleCtx->selector)
-            || $this->selector->hasBogusSelectorPseudoCombinator($ruleCtx->selector)
-            || str_ends_with($trimmedSelector, '>')
-            || str_ends_with($trimmedSelector, '+')
-            || str_ends_with($trimmedSelector, '~');
-
-        if ($ruleCtx->omitOwnRuleOutput) {
-            $this->context->logWarning(
-                implode(', ', [
-                    "The selector \"$selector\" uses multiple consecutive combinators",
-                    'which is deprecated and will be an error in a future release.',
-                ]),
-                $node->line,
+            $ruleCtx->parentSelector = $selector;
+            $ruleCtx->selector       = $this->selector->normalizeSelectorList(
+                $insideKeyframes ? $selector : $this->selector->applyExtendsToSelector($selector),
             );
-        }
 
-        if ($this->selector->hasAdjacentCompoundSelectors($ruleCtx->selector)) {
-            $this->context->logWarning(
-                "The selector \"{$ruleCtx->selector}\" uses adjacent compound selectors "
-                . '(e.g. "[attr]a"). This is not valid CSS and will be an error in a future release. '
-                . 'Add a combinator or whitespace between the compound selectors.',
-                $node->line,
-            );
-        }
+            $trimmedSelector = trim($ruleCtx->selector);
 
-        if ($ruleCtx->selector === '') {
-            $outputState = $this->render->outputState();
+            $ruleCtx->omitOwnRuleOutput = $this->selector->hasBogusTopLevelCombinatorSequence($ruleCtx->selector)
+                || $this->selector->hasBogusSelectorPseudoCombinator($ruleCtx->selector)
+                || str_ends_with($trimmedSelector, '>')
+                || str_ends_with($trimmedSelector, '+')
+                || str_ends_with($trimmedSelector, '~');
 
-            array_pop($outputState->deferral->atRootStack);
-            array_pop($outputState->deferral->bubblingStack);
+            if ($ruleCtx->omitOwnRuleOutput) {
+                $this->context->logWarning(
+                    implode(', ', [
+                        "The selector \"$selector\" uses multiple consecutive combinators",
+                        'which is deprecated and will be an error in a future release.',
+                    ]),
+                    $node->line,
+                );
+            }
 
-            return '';
+            if ($this->selector->hasAdjacentCompoundSelectors($ruleCtx->selector)) {
+                $this->context->logWarning(
+                    "The selector \"{$ruleCtx->selector}\" uses adjacent compound selectors "
+                    . '(e.g. "[attr]a"). This is not valid CSS and will be an error in a future release. '
+                    . 'Add a combinator or whitespace between the compound selectors.',
+                    $node->line,
+                );
+            }
+
+            if ($ruleCtx->selector === '') {
+                $outputState = $this->render->outputState();
+
+                array_pop($outputState->deferral->atRootStack);
+                array_pop($outputState->deferral->bubblingStack);
+
+                return '';
+            }
         }
 
         $parentSelectorValue = str_replace("\n", ' ', $ruleCtx->parentSelector);

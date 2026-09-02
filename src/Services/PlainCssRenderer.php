@@ -15,7 +15,9 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
 
 use function in_array;
+use function str_starts_with;
 use function strtolower;
+use function trim;
 
 final readonly class PlainCssRenderer
 {
@@ -92,6 +94,24 @@ final readonly class PlainCssRenderer
     }
 
     private function renderCssRule(RuleNode $node, Environment $env, int $indent, bool $isTopLevel): string
+    {
+        $isCssFunctionBody = str_starts_with(strtolower(trim($node->selector)), '@function --');
+
+        $scope   = $env->getCurrentScope();
+        $restore = $scope->isInsideCssFunctionBody();
+
+        if ($isCssFunctionBody) {
+            $scope->setInsideCssFunctionBody(true);
+        }
+
+        try {
+            return $this->renderCssRuleBody($node, $env, $indent, $isTopLevel);
+        } finally {
+            $scope->setInsideCssFunctionBody($restore);
+        }
+    }
+
+    private function renderCssRuleBody(RuleNode $node, Environment $env, int $indent, bool $isTopLevel): string
     {
         $prefix   = $this->render->indentPrefix($indent);
         $bubbling = [];

@@ -27,6 +27,8 @@ use Bugo\SCSS\Parser\RuleParser;
 use Bugo\SCSS\Parser\RuleParserContextInterface;
 use Bugo\SCSS\Parser\ValueParser;
 
+use function str_starts_with;
+use function strtolower;
 use function trim;
 
 final class Parser implements
@@ -41,6 +43,8 @@ final class Parser implements
     private TokenStream $stream;
 
     private int $blockDepth = 0;
+
+    private int $cssFunctionBodyDepth = 0;
 
     private bool $trackSourceLocations = true;
 
@@ -78,6 +82,8 @@ final class Parser implements
 
         $this->blockDepth = 0;
 
+        $this->cssFunctionBodyDepth = 0;
+
         $this->initSubParsers();
 
         $children = $this->parseStatements();
@@ -102,7 +108,19 @@ final class Parser implements
 
         $this->blockDepth++;
 
-        $children = $this->parseStatements(true);
+        $isCssFunctionBody = str_starts_with(strtolower(trim($selector)), '@function --');
+
+        if ($isCssFunctionBody) {
+            $this->cssFunctionBodyDepth++;
+        }
+
+        try {
+            $children = $this->parseStatements(true);
+        } finally {
+            if ($isCssFunctionBody) {
+                $this->cssFunctionBodyDepth--;
+            }
+        }
 
         if ($this->stream->is(TokenType::RBRACE)) {
             $this->blockDepth--;
@@ -147,6 +165,11 @@ final class Parser implements
     public function isInsideBraces(): bool
     {
         return $this->blockDepth > 0;
+    }
+
+    public function isInsideCssFunctionBody(): bool
+    {
+        return $this->cssFunctionBodyDepth > 0;
     }
 
     /**

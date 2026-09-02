@@ -96,7 +96,7 @@ final readonly class CallableDirectiveParser
         return new MixinNode($name, $arguments, $body, $line);
     }
 
-    public function parseFunctionDirective(int $line = 1, int $column = 1): AstNode
+    public function parseFunctionDirective(string $keyword = 'function', int $line = 1, int $column = 1): AstNode
     {
         $this->stream->skipWhitespaceAndComments();
 
@@ -112,6 +112,30 @@ final readonly class CallableDirectiveParser
             $name          = $parenPosition === false ? $rawName : substr($rawName, 0, $parenPosition);
 
             $this->stream->advance();
+
+            if (
+                str_starts_with($name, '--')
+                && $this->stream->is(TokenType::HASH)
+                && $this->stream->peek()->type === TokenType::LBRACE
+            ) {
+                $interpolationDepth = 0;
+
+                while (! $this->stream->isEof()) {
+                    $token = $this->stream->current();
+
+                    if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $name, $interpolationDepth, $token)) {
+                        continue;
+                    }
+
+                    if ($interpolationDepth === 0) {
+                        break;
+                    }
+
+                    TokenStreamHelper::appendTokenToBuffer($name, $token);
+
+                    $this->stream->advance();
+                }
+            }
 
             if (str_contains($name, '#{') && ! str_contains($name, '}')) {
                 if ($this->stream->is(TokenType::RBRACE)) {
@@ -140,7 +164,7 @@ final readonly class CallableDirectiveParser
                 $name = substr($name, 0, $start) . substr($name, $start + 2, $end - $start - 2) . substr($name, $end + 1);
             }
 
-            $selector = '@function ' . $name;
+            $selector = '@' . $keyword . ' ' . $name;
 
             // The CSS_VARIABLE token may already contain '(' and part of the signature
             if ($parenPosition !== false) {

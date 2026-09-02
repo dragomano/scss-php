@@ -69,6 +69,18 @@ final readonly class DirectiveParser
 
         $name = $this->moduleValueContext->consumeIdentifier();
 
+        if ($name === '' && $this->stream->is(TokenType::HASH) && $this->stream->peek()->type === TokenType::LBRACE) {
+            $name = $this->readInterpolatedDirectiveName();
+        }
+
+        if (strtolower($name) === 'function') {
+            $isCssFunctionName = $this->isCssFunctionNameAhead();
+
+            if ($name === 'function' || $isCssFunctionName) {
+                return $this->parseFunctionDirective($name, $atToken->line, $atToken->column);
+            }
+        }
+
         return match ($name) {
             'use'       => $this->parseUseDirective(),
             'import'    => $this->parseImportDirective(),
@@ -76,7 +88,6 @@ final readonly class DirectiveParser
             'font-face' => $this->parsingContext->parseRuleFromSelector('@font-face', $atToken->line, $atToken->column),
             'include'   => $this->parseIncludeDirective(),
             'mixin'     => $this->parseMixinDirective($atToken->line),
-            'function'  => $this->parseFunctionDirective($atToken->line, $atToken->column),
             'extend'    => $this->parseExtendDirective(),
             'at-root'   => $this->parseAtRootDirective(),
             'debug'     => $this->parseDebugDirective($atToken->line, $atToken->column),
@@ -117,9 +128,9 @@ final readonly class DirectiveParser
         return $this->callable->parseMixinDirective($line);
     }
 
-    public function parseFunctionDirective(int $line = 1, int $column = 1): AstNode
+    public function parseFunctionDirective(string $keyword = 'function', int $line = 1, int $column = 1): AstNode
     {
-        return $this->callable->parseFunctionDirective($line, $column);
+        return $this->callable->parseFunctionDirective($keyword, $line, $column);
     }
 
     public function parseReturnDirective(): AstNode
@@ -561,6 +572,44 @@ final readonly class DirectiveParser
             'mode'  => $mode,
             'rules' => $rules,
         ];
+    }
+
+    private function isCssFunctionNameAhead(): bool
+    {
+        $savedPosition = $this->stream->getPosition();
+
+        $this->stream->skipWhitespaceAndComments();
+
+        $isCssFunctionName = $this->stream->is(TokenType::CSS_VARIABLE)
+            && str_starts_with($this->stream->current()->value, '--');
+
+        $this->stream->setPosition($savedPosition);
+
+        return $isCssFunctionName;
+    }
+
+    private function readInterpolatedDirectiveName(): string
+    {
+        $buffer             = '';
+        $interpolationDepth = 0;
+
+        while (! $this->stream->isEof()) {
+            $token = $this->stream->current();
+
+            if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
+                continue;
+            }
+
+            if ($interpolationDepth === 0) {
+                break;
+            }
+
+            TokenStreamHelper::appendTokenToBuffer($buffer, $token, true);
+
+            $this->stream->advance();
+        }
+
+        return $buffer;
     }
 
     private function readPreludeUntilBlock(): string

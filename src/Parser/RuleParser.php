@@ -20,6 +20,7 @@ use function str_starts_with;
 use function strlen;
 use function strpbrk;
 use function strpos;
+use function strtolower;
 use function substr;
 use function trim;
 
@@ -146,6 +147,14 @@ final class RuleParser
             if ($this->context->isInsideBraces()) {
                 if (str_starts_with(trim($selectorOrProperty), '--')) {
                     return $this->parseDeclarationFromProperty($selectorOrProperty, $startLine, $startColumn);
+                }
+
+                if (
+                    $this->context->isInsideCssFunctionBody()
+                    && strtolower(trim($selectorOrProperty)) === 'result'
+                    && $this->hasRuleBlockAfterColon()
+                ) {
+                    return $this->parseCssFunctionResultDeclaration($selectorOrProperty, $startLine, $startColumn);
                 }
 
                 if ($this->isLikelySelector($selectorOrProperty) && $this->hasRuleBlockAfterColon()) {
@@ -497,6 +506,18 @@ final class RuleParser
         $this->consumeSemicolon();
 
         return new DeclarationNode($property, new StringNode($value), $line, $column, $modifiers['important']);
+    }
+
+    private function parseCssFunctionResultDeclaration(string $property, int $line = 1, int $column = 1): DeclarationNode
+    {
+        $this->stream->advance();
+
+        $value     = new StringNode(trim($this->valueContext->parseCustomPropertyValue()));
+        $modifiers = $this->valueContext->parseValueModifiers();
+
+        $this->consumeSemicolon();
+
+        return new DeclarationNode($property, $value, $line, $column, $modifiers['important']);
     }
 
     private function consumeIdentifier(): string

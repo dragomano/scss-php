@@ -95,6 +95,10 @@ final readonly class AtRuleNodeHandler
     {
         $prefix = $this->render->indentPrefix($ctx->indent);
 
+        $directiveName = str_contains($node->name, '#{')
+            ? $this->evaluation->interpolateText($node->name, $ctx->env)
+            : $node->name;
+
         if ($node->name === 'content') {
             return $this->compileContentDirective($node, $ctx);
         }
@@ -129,7 +133,7 @@ final readonly class AtRuleNodeHandler
         }
 
         if (! $node->hasBlock) {
-            $this->render->appendChunk($output, $prefix . '@' . $node->name . $prelude . ';', $node);
+            $this->render->appendChunk($output, $prefix . '@' . $directiveName . $prelude . ';', $node);
 
             return $output;
         }
@@ -166,7 +170,7 @@ final readonly class AtRuleNodeHandler
             if ($this->isKeyframesDirective($node) && $this->isCommentOnlyBody($body)) {
                 $this->render->appendChunk(
                     $output,
-                    $prefix . '@' . $node->name . $prelude . ' { /**/ }',
+                    $prefix . '@' . $directiveName . $prelude . ' { /**/ }',
                     $node,
                 );
 
@@ -257,7 +261,7 @@ final readonly class AtRuleNodeHandler
                 if (! $hasParentContent) {
                     $parentSegmentSaved = $this->render->savePosition();
 
-                    $this->render->appendChunk($output, $prefix . '@' . $node->name . $prelude . ' {', $node);
+                    $this->render->appendChunk($output, $prefix . '@' . $directiveName . $prelude . ' {', $node);
                 }
 
                 $collectMappings     = $this->render->collectSourceMappings();
@@ -317,7 +321,7 @@ final readonly class AtRuleNodeHandler
 
             $this->render->restorePosition($parentSegmentSaved);
         } elseif (! in_array(strtolower($node->name), ['media', 'supports'], true)) {
-            $emptyOutput = $prefix . '@' . $node->name . $prelude . ' {}';
+            $emptyOutput = $prefix . '@' . $directiveName . $prelude . ' {}';
 
             $orderedChunks[] = [
                 'chunk'    => $this->render->createDeferredChunk($emptyOutput, $parentSegmentSaved),

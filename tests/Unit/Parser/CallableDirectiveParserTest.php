@@ -180,7 +180,7 @@ describe('CallableDirectiveParser', function () {
         ]);
 
         /* @var $node RuleNode */
-        $node = $parser->parseFunctionDirective(3, 5);
+        $node = $parser->parseFunctionDirective('function', 3, 5);
 
         expect($node)->toBeInstanceOf(RuleNode::class)
             ->and($node->selector)->toBe('@function --token($value, calc(1 + 2))')

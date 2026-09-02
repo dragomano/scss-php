@@ -93,6 +93,11 @@ function createRuleParserForTest(array $tokens, array $overrides = []): array
             return ($this->isInsideBraces)();
         }
 
+        public function isInsideCssFunctionBody(): bool
+        {
+            return false;
+        }
+
         public function parseRuleFromSelector(string $selector, int $line = 1, int $column = 1): RuleNode
         {
             return ($this->parseRuleFromSelector)($selector, $line, $column);
