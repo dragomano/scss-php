@@ -31,8 +31,8 @@ final class SassNumber extends AbstractSassValue
 
     public function toCss(): string
     {
-        if (! is_int($this->value) && (is_nan($this->value) || is_infinite($this->value))) {
-            return $this->formatNonFiniteValue();
+        if ($this->isNonFinite()) {
+            return 'calc(' . $this->formatNonFiniteExpression() . ')';
         }
 
         $number = $this->formatNumberValue($this->value);
@@ -47,6 +47,11 @@ final class SassNumber extends AbstractSassValue
     public function isTruthy(): bool
     {
         return true;
+    }
+
+    public function toCalcOperandCss(): string
+    {
+        return $this->isNonFinite() ? $this->formatNonFiniteExpression() : $this->toCss();
     }
 
     private function formatNumberValue(int|float $value): string
@@ -141,17 +146,22 @@ final class SassNumber extends AbstractSassValue
         return ($negative ? '-' : '') . $intPart . '.' . $significant;
     }
 
-    private function formatNonFiniteValue(): string
+    private function isNonFinite(): bool
+    {
+        return ! is_int($this->value) && (is_nan($this->value) || is_infinite($this->value));
+    }
+
+    private function formatNonFiniteExpression(): string
     {
         $keyword = is_nan($this->value)
             ? 'NaN'
             : ($this->value < 0 ? '-infinity' : 'infinity');
 
         if ($this->unit === null || $this->unit === '') {
-            return 'calc(' . $keyword . ')';
+            return $keyword;
         }
 
-        return 'calc(' . $keyword . ' * ' . $this->formatUnitFactor($this->unit) . ')';
+        return $keyword . ' * ' . $this->formatUnitFactor($this->unit);
     }
 
     private function compressLeadingZero(string $number): string

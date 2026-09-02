@@ -17,6 +17,7 @@ use Bugo\SCSS\Values\SassNumber;
 use Closure;
 
 use function count;
+use function fdiv;
 use function floor;
 use function in_array;
 use function is_infinite;
@@ -99,7 +100,7 @@ final readonly class ArithmeticEvaluator
         }
     }
 
-    public function applyOperator(NumberNode $left, string $operator, NumberNode $right): AstNode
+    public function applyOperator(NumberNode $left, string $operator, NumberNode $right, bool $insideCalc = false): AstNode
     {
         if ($operator === '+' || $operator === '-') {
             if (! UnitConverter::compatible($left->unit, $right->unit)) {
@@ -124,7 +125,11 @@ final readonly class ArithmeticEvaluator
         }
 
         if ((float) $right->value === 0.0) {
-            throw new DivisionByZeroException();
+            if (! $insideCalc) {
+                throw new DivisionByZeroException();
+            }
+
+            return $this->applyDegenerateDivision($left, $operator, $right);
         }
 
         if ($operator === '%') {
@@ -165,6 +170,21 @@ final readonly class ArithmeticEvaluator
         [$unit, $conversionFactor] = UnitConverter::divideWithConversion($left->unit, $right->unit);
 
         return new NumberNode((float) $left->value / (float) $right->value * $conversionFactor, $unit, false);
+    }
+
+    private function applyDegenerateDivision(NumberNode $left, string $operator, NumberNode $right): NumberNode
+    {
+        if ($operator === '%') {
+            return new NumberNode(fdiv(0.0, 0.0), $left->unit ?? $right->unit, false);
+        }
+
+        [$unit, $conversionFactor] = UnitConverter::divideWithConversion($left->unit, $right->unit);
+
+        return new NumberNode(
+            fdiv((float) $left->value * $conversionFactor, (float) $right->value),
+            $unit,
+            false,
+        );
     }
 
     /**
@@ -285,7 +305,7 @@ final readonly class ArithmeticEvaluator
                     || $operator->value === '%')
                 && $current instanceof NumberNode
             ) {
-                $current = $this->applyOperator($current, $operator->value, $next);
+                $current = $this->applyOperator($current, $operator->value, $next, $insideCalc);
 
                 continue;
             }
@@ -313,7 +333,7 @@ final readonly class ArithmeticEvaluator
                 return $result;
             }
 
-            $result = $this->applyOperator($result, $operator->value, $next);
+            $result = $this->applyOperator($result, $operator->value, $next, $insideCalc);
         }
 
         return $result;
@@ -386,7 +406,7 @@ final readonly class ArithmeticEvaluator
                 && $value instanceof NumberNode
                 && ($insideCalc || ! ($op->value === '/' && $this->isSimpleSlashOperand($value) && $this->isSimpleSlashOperand($nextItem)))
             ) {
-                $value   = $this->applyOperator($value, $op->value, $nextItem);
+                $value   = $this->applyOperator($value, $op->value, $nextItem, $insideCalc);
                 $changed = true;
 
                 $i += 2;

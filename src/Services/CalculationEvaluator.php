@@ -16,6 +16,7 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\UnitConverter;
 use Bugo\SCSS\Values\SassCalculation;
 use Bugo\SCSS\Values\SassList;
+use Bugo\SCSS\Values\SassNumber;
 use Bugo\SCSS\Values\SassValue;
 
 use function ceil;
@@ -25,6 +26,8 @@ use function fdiv;
 use function floor;
 use function fmod;
 use function in_array;
+use function is_finite;
+use function is_int;
 use function is_nan;
 use function round;
 use function sqrt;
@@ -497,8 +500,16 @@ final readonly class CalculationEvaluator
             }
 
             if (($item instanceof FunctionNode || $item instanceof NumberNode) && $item->parenthesized > 0) {
-                $inner   = $this->valueFormatter->format($item, $env);
+                $inner   = $this->formatCalcOperand($item, $env);
                 $items[] = str_repeat('(', $item->parenthesized) . $inner . str_repeat(')', $item->parenthesized);
+
+                continue;
+            }
+
+            $nonFinite = $this->formatNonFiniteOperand($item);
+
+            if ($nonFinite !== null) {
+                $items[] = $nonFinite;
 
                 continue;
             }
@@ -507,6 +518,20 @@ final readonly class CalculationEvaluator
         }
 
         return (string) new SassList($items, $list->separator, $list->bracketed);
+    }
+
+    private function formatCalcOperand(AstNode $item, Environment $env): string
+    {
+        return $this->formatNonFiniteOperand($item) ?? $this->valueFormatter->format($item, $env);
+    }
+
+    private function formatNonFiniteOperand(AstNode $item): ?string
+    {
+        if (! $item instanceof NumberNode || is_int($item->value) || is_finite($item->value)) {
+            return null;
+        }
+
+        return (new SassNumber($item->value, $item->unit))->toCalcOperandCss();
     }
 
     private function extractLeadingOperatorContext(ListNode $list): ?string
