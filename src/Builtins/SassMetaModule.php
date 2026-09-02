@@ -585,7 +585,7 @@ final class SassMetaModule extends AbstractModule
 
                 foreach ($builtinFunctions as $function) {
                     $pairs[] = new MapPair(
-                        new StringNode($function),
+                        new StringNode($function, true),
                         new FunctionNode($module . '.' . $function, capturedScope: $scope),
                     );
                 }
@@ -604,8 +604,8 @@ final class SassMetaModule extends AbstractModule
 
         foreach ($scope->getFunctions() as $name => $_function) {
             $pairs[] = new MapPair(
-                new StringNode($name),
-                new FunctionNode($module . '.' . $name, capturedScope: $scope),
+                new StringNode($name, true),
+                new FunctionRefNode($name, $module, $scope->findFunction($name)?->definition, $scope),
             );
         }
 
@@ -618,16 +618,29 @@ final class SassMetaModule extends AbstractModule
     private function moduleMixins(array $positional, ?BuiltinCallContext $context): AstNode
     {
         $module = $this->requiredString($positional, 'meta.module-mixins');
+        $isMeta = $context?->registry?->resolveModuleAlias($module) === 'meta';
         $scope  = $this->scopeFromContext($context)->getModule($module);
 
-        if ($scope === null) {
+        if ($scope === null && ! $isMeta) {
             throw ModuleResolutionException::unknownNamespace($module);
         }
 
         $pairs = [];
 
-        foreach ($scope->getMixins() as $name => $_mixin) {
-            $pairs[] = new MapPair(new StringNode($name), new MixinRefNode($module . '.' . $name));
+        if ($isMeta) {
+            foreach (self::BUILTIN_META_MIXINS as $name) {
+                $pairs[] = new MapPair(new StringNode($name, true), new MixinRefNode($module . '.' . $name));
+            }
+        }
+
+        foreach ($scope?->getMixins() ?? [] as $name => $_mixin) {
+            $pairs[] = new MapPair(
+                new StringNode($name, true),
+                new MixinRefNode(
+                    $module . '.' . $name,
+                    lockedDefinition: $scope?->findMixin($name)?->definition,
+                ),
+            );
         }
 
         return new MapNode($pairs);
@@ -652,7 +665,7 @@ final class SassMetaModule extends AbstractModule
                 continue;
             }
 
-            $pairs[] = new MapPair(new StringNode($name), $value);
+            $pairs[] = new MapPair(new StringNode($name, true), $value);
         }
 
         return new MapNode($pairs);

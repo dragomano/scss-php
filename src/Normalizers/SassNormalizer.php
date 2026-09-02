@@ -91,8 +91,7 @@ final readonly class SassNormalizer implements SourceNormalizer
         /** @var list<array{level: int}> $stack */
         $stack = [];
 
-        $pendingEmptyLines  = [];
-        $inMultilineComment = false;
+        $pendingEmptyLines = [];
 
         $lineCount = count($lines);
 
@@ -107,23 +106,20 @@ final readonly class SassNormalizer implements SourceNormalizer
                 continue;
             }
 
-            if ($inMultilineComment) {
-                $result[] = $line;
-
-                if (str_contains($trimmed, '*/')) {
-                    $inMultilineComment = false;
-                }
-
-                continue;
-            }
-
             if (str_starts_with($trimmed, '/*')) {
                 $this->flushPendingEmptyLines($result, $pendingEmptyLines);
 
-                $result[] = $line;
+                $commentLevel = intdiv(strlen($line) - strlen($trimmed), $indentSize);
 
-                if (! str_contains($trimmed, '*/')) {
-                    $inMultilineComment = true;
+                [$commentLines, $index] = $this->collectLoudComment(
+                    $index,
+                    $lines,
+                    $commentLevel,
+                    $indentSize,
+                );
+
+                foreach ($commentLines as $commentLine) {
+                    $result[] = $commentLine;
                 }
 
                 continue;
@@ -173,6 +169,21 @@ final readonly class SassNormalizer implements SourceNormalizer
                 $indentSize,
             );
             [$trimmed, $index] = $this->mergeBlockHeaderParenContinuation(
+                $trimmed,
+                $level,
+                $index,
+                $lines,
+                $indentSize,
+            );
+            [$trimmed, $index] = $this->mergeInterpolationContinuation(
+                $trimmed,
+                $level,
+                $index,
+                $lines,
+                $indentSize,
+            );
+
+            [$trimmed, $index] = $this->mergeSelectorCommaContinuation(
                 $trimmed,
                 $level,
                 $index,
@@ -239,6 +250,110 @@ final readonly class SassNormalizer implements SourceNormalizer
         }
 
         return implode($eol, $result);
+    }
+
+    /**
+     * @param array<int, string> $lines
+     * @return array{0: list<string>, 1: int}
+     */
+    private function collectLoudComment(int $index, array $lines, int $level, int $indentSize): array
+    {
+        $first  = rtrim($lines[$index], "\r\n");
+        $inBase = strlen($first) - strlen(ltrim($first));
+        $head   = rtrim($first);
+        $prefix = $this->indent($level, $indentSize);
+        $max    = count($lines);
+
+        if ($this->loudCommentHeadIsEmpty(ltrim($head)) && $index + 1 < $max) {
+            $next = ltrim(rtrim($lines[$index + 1], "\r\n"));
+
+            if ($next !== '') {
+                $head .= ' ' . $next;
+
+                $index++;
+            }
+        }
+
+        $collected = [$prefix . ltrim($head)];
+
+        if (str_contains(ltrim($head), '*/')) {
+            return [$collected, $index];
+        }
+
+        while ($index + 1 < $max) {
+            $line = rtrim($lines[$index + 1], "\r\n");
+
+            if (trim($line) === '' && ! $this->hasLoudCommentClosingAhead($lines, $index + 1)) {
+                break;
+            }
+
+            $index++;
+
+            /** @var string $previous */
+            $previous = end($collected);
+
+            if ($this->hasUnclosedInterpolation($previous)) {
+                array_pop($collected);
+
+                $line        = $previous . ' ' . ltrim($line);
+                $collected[] = $line;
+            } else {
+                $collected[] = $this->reindentLoudCommentLine($line, $inBase, $prefix, $indentSize);
+            }
+
+            if (str_contains($line, '*/')) {
+                return [$collected, $index];
+            }
+        }
+
+        /** @var string $last */
+        $last = array_pop($collected);
+
+        $collected[] = rtrim($last) . ' */';
+
+        return [$collected, $index];
+    }
+
+    private function reindentLoudCommentLine(string $line, int $inBase, string $prefix, int $indentSize): string
+    {
+        $body = ltrim($line);
+        $star = $inBase === 0 ? ' *' : '*';
+
+        if ($body === '') {
+            return $prefix . $star;
+        }
+
+        $relative = strlen($line) - strlen($body) - $inBase;
+        $padding  = $relative - $indentSize;
+
+        if ($padding < 1) {
+            $padding = 1;
+        }
+
+        return $prefix . $star . str_repeat(' ', $padding) . $body;
+    }
+
+    /**
+     * @param array<int, string> $lines
+     */
+    private function hasLoudCommentClosingAhead(array $lines, int $index): bool
+    {
+        $max = count($lines);
+
+        for ($cursor = $index; $cursor < $max; $cursor++) {
+            if (str_contains($lines[$cursor], '*/')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function loudCommentHeadIsEmpty(string $trimmed): bool
+    {
+        $body = str_starts_with($trimmed, '/*!') ? substr($trimmed, 3) : substr($trimmed, 2);
+
+        return trim($body) === '';
     }
 
     /**
@@ -632,6 +747,97 @@ final readonly class SassNormalizer implements SourceNormalizer
         }
 
         return [$candidate, $index];
+    }
+
+    /**
+     * @param array<int, string> $lines
+     * @return array{0: string, 1: int}
+     */
+    private function mergeSelectorCommaContinuation(
+        string $trimmed,
+        int $level,
+        int $index,
+        array $lines,
+        int $indentSize,
+    ): array {
+        $candidate = rtrim($trimmed);
+
+        if (! str_ends_with($candidate, ',') || str_contains($candidate, ':') || str_starts_with($candidate, '@')) {
+            return [$trimmed, $index];
+        }
+
+        $max = count($lines);
+
+        while (str_ends_with($candidate, ',') && $index + 1 < $max) {
+            $nextLine    = rtrim($lines[$index + 1], "\r\n");
+            $nextTrimmed = ltrim($nextLine);
+
+            if ($nextTrimmed === '') {
+                break;
+            }
+
+            $leadingSpaces = strlen($nextLine) - strlen($nextTrimmed);
+
+            if (intdiv($leadingSpaces, $indentSize) <= $level) {
+                break;
+            }
+
+            $candidate .= "\n" . $nextTrimmed;
+
+            $index++;
+        }
+
+        return [$candidate, $index];
+    }
+
+    /**
+     * @param array<int, string> $lines
+     * @return array{0: string, 1: int}
+     */
+    private function mergeInterpolationContinuation(
+        string $trimmed,
+        int $level,
+        int $index,
+        array $lines,
+        int $indentSize,
+    ): array {
+        $candidate = rtrim($trimmed);
+
+        if (! $this->hasUnclosedInterpolation($candidate)) {
+            return [$trimmed, $index];
+        }
+
+        $max = count($lines);
+
+        while ($this->hasUnclosedInterpolation($candidate) && $index + 1 < $max) {
+            $nextLine    = rtrim($lines[$index + 1], "\r\n");
+            $nextTrimmed = ltrim($nextLine);
+
+            if ($nextTrimmed === '') {
+                break;
+            }
+
+            $leadingSpaces = strlen($nextLine) - strlen($nextTrimmed);
+
+            if (intdiv($leadingSpaces, $indentSize) <= $level) {
+                break;
+            }
+
+            $candidate .= $this->interpolationContinuationSeparator($candidate, $nextTrimmed) . $nextTrimmed;
+
+            $index++;
+        }
+
+        return [$candidate, $index];
+    }
+
+    private function interpolationContinuationSeparator(string $merged, string $continuation): string
+    {
+        if (str_ends_with($merged, '#{') || str_starts_with($continuation, '}')) {
+            return '';
+        }
+
+        return ' ';
     }
 
     /**

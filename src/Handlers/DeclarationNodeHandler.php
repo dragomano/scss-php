@@ -53,6 +53,12 @@ final readonly class DeclarationNodeHandler
             ? $this->text->interpolateText($node->property, $ctx->env)
             : $node->property;
 
+        $nestedPropertyName = $this->render->outputState()->nestedPropertyName;
+
+        if ($nestedPropertyName !== null) {
+            $property = $nestedPropertyName . '-' . $property;
+        }
+
         if (
             $ctx->env->getCurrentScope()->isInsideCssFunctionBody()
             && strtolower($property) === 'result'

@@ -245,9 +245,134 @@ describe('SassNormalizer', function () {
 
         $expected = <<<'SCSS'
         /* This is a
-           multiline comment */
+         * multiline comment */
         .box {
           color: red;
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
+    it('merges indented selector continuation after a trailing comma', function () {
+        $sass = <<<'SASS'
+        a,
+            b
+          c: d
+        SASS;
+
+        $expected = <<<'SCSS'
+        a,
+        b {
+          c: d;
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
+    it('merges several indented selector parts after trailing commas', function () {
+        $sass = <<<'SASS'
+        a,
+            b,
+          e
+          c: d
+        SASS;
+
+        $expected = <<<'SCSS'
+        a,
+        b,
+        e {
+          c: d;
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
+    it('merges an empty loud comment head with the next line', function () {
+        $sass = "/* \n  a */\n";
+
+        expect($this->normalizer->normalize($sass))->toBe('/* a */');
+    });
+
+    it('auto-closes an unterminated inline loud comment', function () {
+        $sass = "/* a\n";
+
+        expect($this->normalizer->normalize($sass))->toBe('/* a */');
+    });
+
+    it('auto-closes an unterminated loud comment with an empty head', function () {
+        $sass = "/* \n  a\n";
+
+        expect($this->normalizer->normalize($sass))->toBe('/* a */');
+    });
+
+    it('keeps a closed inline loud comment untouched', function () {
+        $sass = "/* a */\n";
+
+        expect($this->normalizer->normalize($sass))->toBe('/* a */');
+    });
+
+    it('merges interpolation spanning multiple lines', function () {
+        $sass = <<<'SASS'
+        a
+          b: #{
+            c}
+        SASS;
+
+        $expected = <<<'SCSS'
+        a {
+          b: #{c};
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
+    it('merges interpolation with trailing newline before closing brace', function () {
+        $sass = <<<'SASS'
+        a
+          b: #{c
+            }
+        SASS;
+
+        $expected = <<<'SCSS'
+        a {
+          b: #{c};
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
+    it('merges interpolation with values split across lines', function () {
+        $sass = <<<'SASS'
+        a
+          b: #{c
+            d}
+        SASS;
+
+        $expected = <<<'SCSS'
+        a {
+          b: #{c d};
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
+    it('does not merge interpolation continuation at or below the current level', function () {
+        $sass = <<<'SASS'
+        a
+          b: #{c
+          d: e
+        SASS;
+
+        $expected = <<<'SCSS'
+        a {
+          b: #{c;
+          d: e;
         }
         SCSS;
 
@@ -1002,7 +1127,7 @@ describe('SassNormalizer', function () {
             $expected = <<<'SCSS'
 
             /* This is a
-               multiline comment */
+             * multiline comment */
             .box {
               color: red;
             }
@@ -1044,7 +1169,7 @@ describe('SassNormalizer', function () {
 
 
             /* Multiline
-               comment */
+             * comment */
             .container {
               padding: 10px;
             }

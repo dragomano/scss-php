@@ -13,6 +13,7 @@ use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Text;
+use Bugo\SCSS\States\OutputState;
 use Tests\Support\RuntimeFactory;
 
 it('renders declarations with important flag', function () {
@@ -54,6 +55,7 @@ it('replaces declaration value with non-strict arithmetic result when available'
 
     $render = mock(Render::class);
     $render->shouldReceive('indentPrefix')->once()->with(0)->andReturn('');
+    $render->shouldReceive('outputState')->once()->andReturn(new OutputState());
     $render->shouldReceive('collectSourceMappings')->once()->andReturn(false);
 
     $text = mock(Text::class);
@@ -82,6 +84,7 @@ it('interpolates formatted declaration values that still contain interpolation m
 
     $render = mock(Render::class);
     $render->shouldReceive('indentPrefix')->once()->with(0)->andReturn('');
+    $render->shouldReceive('outputState')->once()->andReturn(new OutputState());
     $render->shouldReceive('collectSourceMappings')->once()->andReturn(false);
 
     $text = mock(Text::class);

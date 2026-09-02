@@ -431,7 +431,7 @@ describe('SassMetaModule', function () {
 
         expect($functions)->toBeInstanceOf(MapNode::class)
             ->and($functions->pairs[0]->key->value)->toBe('custom-fn')
-            ->and($functions->pairs[0]->value)->toBeInstanceOf(FunctionNode::class)
+            ->and($functions->pairs[0]->value)->toBeInstanceOf(FunctionRefNode::class)
             ->and($mixins)->toBeInstanceOf(MapNode::class)
             ->and($mixins->pairs[0]->key->value)->toBe('custom-mixin')
             ->and($variables)->toBeInstanceOf(MapNode::class)

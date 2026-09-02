@@ -364,162 +364,26 @@ final readonly class Selector
         string $baseProperty,
         ?string $baseValue = null,
     ): string {
-        $output    = '';
-        $prefix    = $this->render->indentPrefix($indent);
-        $hasOutput = false;
+        $outputState    = $this->ctx->outputState;
+        $activeProperty = $outputState->nestedPropertyName;
 
-        if ($baseValue !== null) {
-            $this->render->appendChunk($output, $prefix . $baseProperty . ': ' . $baseValue . ';');
-
-            $hasOutput = true;
+        if ($activeProperty === null) {
+            return $this->renderNestedPropertyBlock($children, $env, $indent, $baseProperty, $baseValue);
         }
 
-        foreach ($children as $child) {
-            if ($child instanceof VariableDeclarationNode) {
-                $env->getCurrentScope()->setVariable(
-                    $child->name,
-                    $this->valueEvaluator->evaluate($child->value, $env),
-                    $child->global,
-                    $child->default,
-                );
+        $outputState->nestedPropertyName = null;
 
-                continue;
-            }
-
-            if ($child instanceof ModuleVarDeclarationNode) {
-                $this->moduleVariableAssigner->assign($child, $env);
-
-                continue;
-            }
-
-            if ($child instanceof DeclarationNode) {
-                $property       = $this->text->interpolateText($child->property, $env);
-                $fullProperty   = $baseProperty . '-' . $property;
-                $evaluatedValue = $this->valueEvaluator->evaluate($child->value, $env);
-
-                if ($evaluatedValue instanceof NullNode) {
-                    continue;
-                }
-
-                if ($this->options->style === Style::COMPRESSED && ! str_starts_with($fullProperty, '--')) {
-                    $evaluatedValue = $this->cssArgumentEvaluator->compressNamedColorsForOutput($evaluatedValue);
-                }
-
-                $value     = $this->valueFormatter->format($evaluatedValue, $env);
-                $value     = $this->text->interpolateText($value, $env);
-                $important = $child->important ? ' !important' : '';
-                $line      = $prefix . $fullProperty . ': ' . $value . $important . ';';
-
-                if ($hasOutput) {
-                    $this->render->appendChunk($output, "\n");
-                }
-
-                $this->render->appendChunk($output, $line, $child);
-
-                $hasOutput = true;
-
-                continue;
-            }
-
-            if ($child instanceof ForNode) {
-                $fromNode = $this->valueEvaluator->evaluate($child->from, $env);
-
-                if (! $fromNode instanceof NumberNode) {
-                    $formatted = $this->valueFormatter->format($fromNode, $env);
-
-                    if (! is_numeric($formatted)) {
-                        throw new InvalidLoopBoundaryException($formatted);
-                    }
-
-                    $fromNode = new NumberNode((float) $formatted);
-                }
-
-                $toNode = $this->valueEvaluator->evaluate($child->to, $env);
-
-                if (! $toNode instanceof NumberNode) {
-                    $formatted = $this->valueFormatter->format($toNode, $env);
-
-                    if (! is_numeric($formatted)) {
-                        throw new InvalidLoopBoundaryException($formatted);
-                    }
-
-                    $toNode = new NumberNode((float) $formatted);
-                }
-
-                $unit = $fromNode->unit;
-                $from = (int) $fromNode->value;
-                $to   = (int) $toNode->value;
-                $step = $from <= $to ? 1 : -1;
-
-                if (! $child->inclusive) {
-                    $to -= $step;
-                }
-
-                $env->enterScope();
-
-                try {
-                    for ($i = $from; $step > 0 ? $i <= $to : $i >= $to; $i += $step) {
-                        $env->getCurrentScope()->setVariable($child->variable, new NumberNode($i, $unit));
-
-                        $chunk = $this->compileNestedPropertyBlockChildren(
-                            $child->body,
-                            $env,
-                            $indent,
-                            $baseProperty,
-                        );
-
-                        if ($chunk !== '') {
-                            if ($hasOutput) {
-                                $this->render->appendChunk($output, "\n");
-                            }
-
-                            $this->render->appendChunk($output, $chunk, $child);
-
-                            $hasOutput = true;
-                        }
-                    }
-                } finally {
-                    $env->exitScope();
-                }
-
-                continue;
-            }
-
-            if (! $child instanceof RuleNode) {
-                continue;
-            }
-
-            $childSelector  = $this->text->interpolateText($child->selector, $env);
-            $nestedProperty = $this->parseNestedPropertyBlockSelector($childSelector);
-
-            if ($nestedProperty === null) {
-                continue;
-            }
-
-            $nestedBase = $baseProperty . '-' . $nestedProperty['property'];
-
-            $chunk = $this->compileNestedPropertyBlockChildren(
-                $child->children,
+        try {
+            return $this->renderNestedPropertyBlock(
+                $children,
                 $env,
                 $indent,
-                $nestedBase,
-                $nestedProperty['value'],
+                $activeProperty . '-' . $baseProperty,
+                $baseValue,
             );
-
-            if ($chunk === '') {
-                continue;
-            }
-
-            if ($hasOutput) {
-                $this->render->appendChunk($output, "\n");
-            }
-
-            $this->render->appendChunk($output, $chunk, $child);
-
-            $hasOutput = true;
+        } finally {
+            $outputState->nestedPropertyName = $activeProperty;
         }
-
-        return $output;
     }
 
     public function resolveNestedSelector(string $selector, string $parentSelector): string
@@ -678,12 +542,12 @@ final readonly class Selector
         $length = strlen($name);
         $index  = 0;
 
-        if ($name[0] === '-') {
-            if ($length === 1) {
-                return false;
-            }
+        while ($index < $length && $name[$index] === '-') {
+            $index++;
+        }
 
-            $index = 1;
+        if ($index === $length) {
+            return false;
         }
 
         $first = $name[$index];
@@ -701,6 +565,194 @@ final readonly class Selector
         }
 
         return true;
+    }
+
+    /**
+     * @param array<int, AstNode> $children
+     */
+    private function renderNestedPropertyBlock(
+        array $children,
+        Environment $env,
+        int $indent,
+        string $baseProperty,
+        ?string $baseValue,
+    ): string {
+        $output    = '';
+        $prefix    = $this->render->indentPrefix($indent);
+        $hasOutput = false;
+
+        if ($baseValue !== null) {
+            $this->render->appendChunk($output, $prefix . $baseProperty . ': ' . $baseValue . ';');
+
+            $hasOutput = true;
+        }
+
+        foreach ($children as $child) {
+            if ($child instanceof VariableDeclarationNode) {
+                $env->getCurrentScope()->setVariable(
+                    $child->name,
+                    $this->valueEvaluator->evaluate($child->value, $env),
+                    $child->global,
+                    $child->default,
+                );
+
+                continue;
+            }
+
+            if ($child instanceof ModuleVarDeclarationNode) {
+                $this->moduleVariableAssigner->assign($child, $env);
+
+                continue;
+            }
+
+            if ($child instanceof DeclarationNode) {
+                $property       = $this->text->interpolateText($child->property, $env);
+                $fullProperty   = $baseProperty . '-' . $property;
+                $evaluatedValue = $this->valueEvaluator->evaluate($child->value, $env);
+
+                if ($evaluatedValue instanceof NullNode) {
+                    continue;
+                }
+
+                if ($this->options->style === Style::COMPRESSED && ! str_starts_with($fullProperty, '--')) {
+                    $evaluatedValue = $this->cssArgumentEvaluator->compressNamedColorsForOutput($evaluatedValue);
+                }
+
+                $value     = $this->valueFormatter->format($evaluatedValue, $env);
+                $value     = $this->text->interpolateText($value, $env);
+                $important = $child->important ? ' !important' : '';
+                $line      = $prefix . $fullProperty . ': ' . $value . $important . ';';
+
+                if ($hasOutput) {
+                    $this->render->appendChunk($output, "\n");
+                }
+
+                $this->render->appendChunk($output, $line, $child);
+
+                $hasOutput = true;
+
+                continue;
+            }
+
+            if ($child instanceof ForNode) {
+                $fromNode = $this->valueEvaluator->evaluate($child->from, $env);
+
+                if (! $fromNode instanceof NumberNode) {
+                    $formatted = $this->valueFormatter->format($fromNode, $env);
+
+                    if (! is_numeric($formatted)) {
+                        throw new InvalidLoopBoundaryException($formatted);
+                    }
+
+                    $fromNode = new NumberNode((float) $formatted);
+                }
+
+                $toNode = $this->valueEvaluator->evaluate($child->to, $env);
+
+                if (! $toNode instanceof NumberNode) {
+                    $formatted = $this->valueFormatter->format($toNode, $env);
+
+                    if (! is_numeric($formatted)) {
+                        throw new InvalidLoopBoundaryException($formatted);
+                    }
+
+                    $toNode = new NumberNode((float) $formatted);
+                }
+
+                $unit = $fromNode->unit;
+                $from = (int) $fromNode->value;
+                $to   = (int) $toNode->value;
+                $step = $from <= $to ? 1 : -1;
+
+                if (! $child->inclusive) {
+                    $to -= $step;
+                }
+
+                $env->enterScope();
+
+                try {
+                    for ($i = $from; $step > 0 ? $i <= $to : $i >= $to; $i += $step) {
+                        $env->getCurrentScope()->setVariable($child->variable, new NumberNode($i, $unit));
+
+                        $chunk = $this->compileNestedPropertyBlockChildren(
+                            $child->body,
+                            $env,
+                            $indent,
+                            $baseProperty,
+                        );
+
+                        if ($chunk !== '') {
+                            if ($hasOutput) {
+                                $this->render->appendChunk($output, "\n");
+                            }
+
+                            $this->render->appendChunk($output, $chunk, $child);
+
+                            $hasOutput = true;
+                        }
+                    }
+                } finally {
+                    $env->exitScope();
+                }
+
+                continue;
+            }
+
+            if ($child instanceof RuleNode) {
+                $childSelector  = $this->text->interpolateText($child->selector, $env);
+                $nestedProperty = $this->parseNestedPropertyBlockSelector($childSelector);
+
+                if ($nestedProperty === null) {
+                    continue;
+                }
+
+                $chunk = $this->compileNestedPropertyBlockChildren(
+                    $child->children,
+                    $env,
+                    $indent,
+                    $baseProperty . '-' . $nestedProperty['property'],
+                    $nestedProperty['value'],
+                );
+            } elseif ($child instanceof Visitable) {
+                $chunk = $this->compileNestedPropertyBlockChild($child, $env, $indent, $baseProperty);
+            } else {
+                continue;
+            }
+
+            if ($chunk === '') {
+                continue;
+            }
+
+            if ($hasOutput) {
+                $this->render->appendChunk($output, "\n");
+            }
+
+            $this->render->appendChunk($output, $chunk, $child);
+
+            $hasOutput = true;
+        }
+
+        return $output;
+    }
+
+    private function compileNestedPropertyBlockChild(
+        Visitable $child,
+        Environment $env,
+        int $indent,
+        string $baseProperty,
+    ): string {
+        $outputState      = $this->ctx->outputState;
+        $previousProperty = $outputState->nestedPropertyName;
+
+        $outputState->nestedPropertyName = $baseProperty;
+
+        try {
+            return $this->render->trimAndAdjustState(
+                $this->dispatcher->compileWithContext($child, new TraversalContext($env, $indent)),
+            );
+        } finally {
+            $outputState->nestedPropertyName = $previousProperty;
+        }
     }
 
     private function normalizeAtRuleText(string $value): string

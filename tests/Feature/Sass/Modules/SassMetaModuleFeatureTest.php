@@ -564,7 +564,7 @@ describe('Sass Meta Module Feature', function () {
             $compiler->compileString($scss);
 
             expect($this->logger->records[0]['message'])
-                ->toBe('input.scss:3 >>> (pow: get-function("pow"))');
+                ->toBe('input.scss:3 >>> ("pow": get-function("pow"))');
         });
 
         it('returns map containing known functions', function () {
@@ -610,7 +610,7 @@ describe('Sass Meta Module Feature', function () {
             $compiler->compileString($scss);
 
             expect($this->logger->records[0]['message'])
-                ->toBe('input.scss:3 >>> (stretch: get-mixin("stretch"))');
+                ->toBe('input.scss:3 >>> ("stretch": get-mixin("stretch"))');
         });
     });
 
