@@ -42,8 +42,10 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
             : $node->selector;
         $selector = $this->selector->normalizeSelectorAttributes($selector);
 
+        $insideKeyframes = $this->isInsideKeyframes($scope);
+
         // Normalize scientific notation in keyframe selectors (13E+1% → 13e+1%)
-        if ($this->isInsideKeyframes($scope)) {
+        if ($insideKeyframes) {
             $selector = $this->normalizeScientificNotation($selector);
         }
 
@@ -62,7 +64,7 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
 
         $ruleCtx->parentSelector    = $selector;
         $ruleCtx->selector          = $this->selector->normalizeSelectorList(
-            $this->selector->applyExtendsToSelector($selector),
+            $insideKeyframes ? $selector : $this->selector->applyExtendsToSelector($selector),
         );
 
         $trimmedSelector = trim($ruleCtx->selector);

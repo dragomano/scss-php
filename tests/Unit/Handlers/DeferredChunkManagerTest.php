@@ -283,6 +283,58 @@ describe('DeferredChunkManager', function () {
             ->and($state->first)->toBeFalse();
     });
 
+    it('returns immediately for included bubbling chunks that compile to an empty chunk', function () {
+        $output = '';
+        $state  = new class {
+            public bool $first = true;
+        };
+        $child  = new RuleNode('@font-face', []);
+
+        $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx);
+
+        expect($output)->toBe('')
+            ->and($state->first)->toBeTrue();
+    });
+
+    it('defers @font-face include bubbling chunks to the at-root stack after children were rendered', function () {
+        $outputState = $this->runtime->render()->outputState();
+        $outputState->deferral->bubblingStack[] = [];
+        $outputState->deferral->atRootStack[]   = [];
+
+        $output = '';
+        $state  = new class {
+            public bool $first = true;
+        };
+        $child  = new RuleNode('@font-face', [
+            new DeclarationNode('font-family', new StringNode('Custom')),
+        ]);
+
+        $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx, true);
+
+        expect($output)->toBe('')
+            ->and($outputState->deferral->atRootStack[0])->toHaveCount(1)
+            ->and($outputState->deferral->atRootStack[0][0]->content())->toContain('@font-face');
+    });
+
+    it('defers non-directive include bubbling chunks to the bubbling stack', function () {
+        $outputState = $this->runtime->render()->outputState();
+        $outputState->deferral->bubblingStack[] = [];
+
+        $output = '';
+        $state  = new class {
+            public bool $first = true;
+        };
+        $child  = new RuleNode('.item', [
+            new DeclarationNode('color', new StringNode('red')),
+        ]);
+
+        $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx);
+
+        expect($output)->toBe('')
+            ->and($outputState->deferral->bubblingStack[0])->toHaveCount(1)
+            ->and($outputState->deferral->bubblingStack[0][0]->content())->toContain('.item');
+    });
+
     it('defers supports include bubbling chunks when only the bubbling stack is available', function () {
         $outputState = $this->runtime->render()->outputState();
         $outputState->deferral->bubblingStack[] = [];
@@ -433,6 +485,17 @@ describe('DeferredChunkManager', function () {
 
         expect($chunk)->not->toBeNull()
             ->and($chunk->content())->toBe('@foo bar {}');
+    });
+
+    it('returns null for non-media interleaved chunks that compile to nothing', function () {
+        $chunk = $this->manager->compileInterleavedBubblingChunk(
+            '.host',
+            $this->ctx->env->getCurrentScope(),
+            new RuleNode('.empty', []),
+            $this->ctx,
+        );
+
+        expect($chunk)->toBeNull();
     });
 
     it('returns null for empty interleaved merged media chunks', function () {

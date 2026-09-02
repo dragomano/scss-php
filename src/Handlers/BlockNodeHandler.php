@@ -35,8 +35,6 @@ use function trim;
 
 final readonly class BlockNodeHandler
 {
-    private DeferredChunkManager $chunks;
-
     private MixinHandler $mixin;
 
     /** @var list<CompilationStepInterface> */
@@ -52,21 +50,12 @@ final readonly class BlockNodeHandler
         private Module $module,
         private Render $render,
         private Selector $selector,
+        private DeferredChunkManager $chunks,
     ) {
-        $this->chunks = new DeferredChunkManager(
-            $this->dispatcher,
-            $this->context,
-            $this->evaluation,
-            $this->render,
-            $this->selector,
-        );
-
         $this->mixin = new MixinHandler(
-            $this->dispatcher,
             $this->evaluation,
             $registry,
             $this->module,
-            $this->render,
             $this->selector,
             $this->chunks,
         );

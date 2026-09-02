@@ -45,9 +45,10 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
         $outputState = $this->render->outputState();
 
         foreach ($ruleCtx->node->children as $child) {
+            $inlinesBody = $child instanceof IncludeNode || $child instanceof ImportNode;
+
             if (
-                $child instanceof ImportNode
-                || $child instanceof VariableDeclarationNode
+                $child instanceof VariableDeclarationNode
                 || $child instanceof ModuleVarDeclarationNode
                 || $child instanceof DiagnosticNode
             ) {
@@ -60,7 +61,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
                 continue;
             }
 
-            if ($child instanceof IncludeNode) {
+            if ($inlinesBody) {
                 $ruleCtx->requiresRuleBlockOptimization = true;
             }
 
@@ -131,7 +132,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
 
             $deferredAtRootCount = null;
 
-            if ($child instanceof IncludeNode) {
+            if ($inlinesBody) {
                 $scope->setVariableLocal('__parent_rule_has_rendered_children', $ruleCtx->hasRenderedChildren);
 
                 $atRootStackIndex    = count($outputState->deferral->atRootStack) - 1;
@@ -177,7 +178,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
                 }
             }
 
-            if ($child instanceof IncludeNode && $deferredAtRootCount !== null) {
+            if ($deferredAtRootCount !== null) {
                 $this->chunks->collectDeferredIncludeRootChunks(
                     $ruleCtx->leadingRootChunks,
                     $ruleCtx->trailingRootChunks,

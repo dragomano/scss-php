@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bugo\SCSS;
 
 use Bugo\SCSS\Handlers\AtRuleNodeHandler;
+use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\Handlers\BlockNodeHandler;
 use Bugo\SCSS\Handlers\CommentNodeHandler;
 use Bugo\SCSS\Handlers\DeclarationNodeHandler;
@@ -70,6 +71,8 @@ final class CompilerRuntime
     private ?AtRuleNodeHandler $atRuleHandler = null;
 
     private ?BlockNodeHandler $blockHandler = null;
+
+    private ?DeferredChunkManager $deferredChunks = null;
 
     private ?DeclarationNodeHandler $declarationHandler = null;
 
@@ -169,6 +172,11 @@ final class CompilerRuntime
     public function block(): BlockNodeHandler
     {
         return $this->blockHandler ??= $this->createBlockHandler();
+    }
+
+    public function deferredChunks(): DeferredChunkManager
+    {
+        return $this->deferredChunks ??= $this->createDeferredChunkManager();
     }
 
     public function declaration(): DeclarationNodeHandler
@@ -340,6 +348,18 @@ final class CompilerRuntime
             $this->module(),
             $this->render(),
             $this->selector(),
+            $this->deferredChunks(),
+        );
+    }
+
+    private function createDeferredChunkManager(): DeferredChunkManager
+    {
+        return new DeferredChunkManager(
+            $this->dispatcher,
+            $this->context(),
+            $this->evaluation(),
+            $this->render(),
+            $this->selector(),
         );
     }
 
@@ -387,6 +407,7 @@ final class CompilerRuntime
             $this->module(),
             $this->render(),
             $this->selector(),
+            $this->deferredChunks(),
         );
     }
 

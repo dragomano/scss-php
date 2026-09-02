@@ -85,6 +85,17 @@ it('qualifies imported sass css with the current parent selector', function () {
     expect($result)->toContain('.wrapper .from-import');
 });
 
+it('qualifies imported plain css with the current parent selector', function () {
+    $runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);
+    $ctx     = RuntimeFactory::context();
+
+    $ctx->env->getCurrentScope()->setVariable('__parent_selector', new StringNode('.wrapper'));
+
+    $result = $runtime->moduleLoad()->handleImport(new ImportNode(['"plain_import"']), $ctx);
+
+    expect($result)->toContain('.wrapper .plain');
+});
+
 it('does not emit used css twice for the same module', function () {
     $runtime = RuntimeFactory::createRuntime([__DIR__ . '/../../fixtures']);
     $ctx     = RuntimeFactory::context();
@@ -115,6 +126,7 @@ it('returns empty string when namespace is absent from loaded modules state', fu
         $module,
         $runtime->render(),
         $runtime->selector(),
+        $runtime->deferredChunks(),
     );
 
     expect($handler->handleUse($use, $ctx))->toBe('');
@@ -138,6 +150,7 @@ it('skips sass imports that resolve to an empty path', function () {
         $module,
         $runtime->render(),
         $runtime->selector(),
+        $runtime->deferredChunks(),
     );
 
     expect($handler->handleImport(new ImportNode(['"_missing.scss"']), $ctx))->toBe('');

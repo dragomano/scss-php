@@ -40,6 +40,7 @@ use function implode;
 use function in_array;
 use function is_numeric;
 use function str_contains;
+use function str_ends_with;
 use function str_starts_with;
 use function strlen;
 use function strpos;
@@ -957,15 +958,7 @@ final readonly class Selector
 
     private function isBubblingDirective(DirectiveNode $node): bool
     {
-        return match (strtolower($node->name)) {
-            'container',
-            'media',
-            'keyframes',
-            '-webkit-keyframes',
-            '-moz-keyframes',
-            '-o-keyframes' => true,
-            default        => false,
-        };
+        return $node->hasBlock;
     }
 
     private function isBubblingRuleNode(RuleNode $node): bool
@@ -1015,7 +1008,9 @@ final readonly class Selector
 
         $name = strtolower($node->name);
 
-        return $name === 'container' || $name === 'media';
+        return $name !== 'font-face'
+            && $name !== 'keyframes'
+            && ! str_ends_with($name, '-keyframes');
     }
 
     private function mergeMediaPreludeParts(string $outerPart, string $innerPart): string

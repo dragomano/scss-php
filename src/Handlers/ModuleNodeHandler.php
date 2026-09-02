@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Handlers;
 
+use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\UseNode;
@@ -26,6 +27,7 @@ final readonly class ModuleNodeHandler
         private Module $module,
         private Render $render,
         private Selector $selector,
+        private DeferredChunkManager $chunks,
     ) {}
 
     public function handleForward(ForwardNode $node, TraversalContext $ctx): string
@@ -50,7 +52,10 @@ final readonly class ModuleNodeHandler
             }
         }
 
-        return $css;
+        return $this->qualifyCssWithinParentSelector(
+            $css,
+            $this->selector->getCurrentParentSelector($ctx->env),
+        ) ?? '';
     }
 
     public function handleImport(ImportNode $node, TraversalContext $ctx): string
@@ -96,6 +101,37 @@ final readonly class ModuleNodeHandler
                 continue;
             }
 
+            $parentSelector = $this->selector->getCurrentParentSelector($ctx->env);
+            $inlined        = null;
+
+            if ($parentSelector !== null && $parentSelector !== '') {
+                $inlined = $this->module->inlineImportedFile(
+                    $path,
+                    fn(array $children): string => $this->chunks->compileBodyChunks(
+                        $children,
+                        $ctx,
+                        $ctx->env->getCurrentScope(),
+                    ),
+                );
+            }
+
+            if ($inlined !== null) {
+                if ($inlined === '') {
+                    continue;
+                }
+
+                if ($output !== '' && ! $endsWithNewline) {
+                    $output .= "\n";
+                }
+
+                $output .= $inlined;
+
+                $inlinedLength   = strlen($inlined);
+                $endsWithNewline = $inlined[$inlinedLength - 1] === "\n";
+
+                continue;
+            }
+
             $data = $this->module->loadAndEvaluateModule(
                 $path,
                 [],
@@ -112,24 +148,13 @@ final readonly class ModuleNodeHandler
                 continue;
             }
 
-            $parentSelector = $this->selector->getCurrentParentSelector($ctx->env);
+            $qualified = $this->qualifyCssWithinParentSelector($css, $parentSelector);
 
-            if ($parentSelector !== null && $parentSelector !== '') {
-                $qualifiedCss = $this->module->qualifyImportedCssWithParentSelector($css, $parentSelector);
-                $stackIndex   = count($outputState->deferral->atRootStack) - 1;
-
-                if ($stackIndex >= 0) {
-                    $outputState->deferral->atRootStack[$stackIndex][] = new RawChunk(
-                        $this->render->trimTrailingNewlines(
-                            $qualifiedCss,
-                        ),
-                    );
-
-                    continue;
-                }
-
-                $css = $qualifiedCss;
+            if ($qualified === null) {
+                continue;
             }
+
+            $css = $qualified;
 
             if ($output !== '' && ! $endsWithNewline) {
                 $output .= "\n";
@@ -175,5 +200,25 @@ final readonly class ModuleNodeHandler
         $moduleState->emittedModuleCss[$loaded->id] = true;
 
         return $loaded->css;
+    }
+
+    private function qualifyCssWithinParentSelector(string $css, ?string $parentSelector): ?string
+    {
+        if ($css === '' || $parentSelector === null || $parentSelector === '') {
+            return $css;
+        }
+
+        $qualifiedCss = $this->module->qualifyImportedCssWithParentSelector($css, $parentSelector);
+        $stackIndex   = count($this->render->outputState()->deferral->atRootStack) - 1;
+
+        if ($stackIndex < 0) {
+            return $qualifiedCss;
+        }
+
+        $this->render->outputState()->deferral->atRootStack[$stackIndex][] = new RawChunk(
+            $this->render->trimTrailingNewlines($qualifiedCss),
+        );
+
+        return null;
     }
 }

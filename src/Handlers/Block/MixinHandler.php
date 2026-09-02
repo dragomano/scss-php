@@ -6,23 +6,17 @@ namespace Bugo\SCSS\Handlers\Block;
 
 use Bugo\SCSS\Builtins\FunctionRegistry;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
-use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
-use Bugo\SCSS\Nodes\AtRootNode;
-use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
-use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Bugo\SCSS\Nodes\Visitable;
 use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Module;
-use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\RawChunk;
@@ -33,11 +27,9 @@ use function str_contains;
 final readonly class MixinHandler
 {
     public function __construct(
-        private NodeDispatcherInterface $dispatcher,
         private Evaluator $evaluation,
         private FunctionRegistry $registry,
         private Module $module,
-        private Render $render,
         private Selector $selector,
         private DeferredChunkManager $chunks,
     ) {}
@@ -239,77 +231,7 @@ final readonly class MixinHandler
                 $ctx->env,
             );
 
-            $first = true;
-
-            foreach ($mixin->body as $child) {
-                if ($this->evaluation->applyVariableDeclaration($child, $ctx->env)) {
-                    continue;
-                }
-
-                if ($child instanceof AtRootNode) {
-                    $this->chunks->appendIncludeAtRootChunk($output, $first, $child, $ctx);
-
-                    continue;
-                }
-
-                if ($this->evaluation->isBubblingAtRuleNode($child)) {
-                    $parentHasRendered = $includeCallScope->hasVariable('__parent_rule_has_rendered_children')
-                        && $includeCallScope->getVariable('__parent_rule_has_rendered_children') === true;
-
-                    $this->chunks->appendIncludeBubblingChunk($output, $first, $child, $ctx, $parentHasRendered);
-
-                    continue;
-                }
-
-                if ($child instanceof RuleNode) {
-                    $this->chunks->appendIncludedRuleChunk($output, $first, $child, $ctx);
-
-                    continue;
-                }
-
-                $savedPosition = null;
-
-                if ($this->render->collectSourceMappings() && ! $child instanceof DeclarationNode) {
-                    $savedPosition = $this->render->savePosition();
-                }
-
-                /** @var Visitable $child */
-                $compiled = $this->dispatcher->compileWithContext($child, $childCtx);
-
-                if ($compiled === '') {
-                    continue;
-                }
-
-                if ($child instanceof DeclarationNode) {
-                    if (! $first) {
-                        $this->render->appendChunk($output, "\n");
-                    }
-
-                    $this->render->appendChunk($output, $compiled, $child);
-                } else {
-                    $compiled = $this->render->trimAndAdjustState($compiled);
-
-                    if ($savedPosition !== null) {
-                        $deferredChunk = $this->render->createDeferredChunk($compiled, $savedPosition);
-
-                        $this->render->restorePosition($savedPosition);
-
-                        if (! $first) {
-                            $this->render->appendChunk($output, "\n");
-                        }
-
-                        $this->render->appendDeferredChunk($output, $deferredChunk);
-                    } else {
-                        if (! $first) {
-                            $this->render->appendChunk($output, "\n");
-                        }
-
-                        $output .= $compiled;
-                    }
-                }
-
-                $first = false;
-            }
+            $output = $this->chunks->compileBodyChunks($mixin->body, $childCtx, $includeCallScope);
         } finally {
             $ctx->env->exitScope();
 

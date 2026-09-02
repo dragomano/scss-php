@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Handlers\Block;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StatementNode;
@@ -542,6 +543,156 @@ final readonly class DeferredChunkManager
     }
 
     /**
+     * @param string $selector
+     * @param Scope $scope
+     * @param AstNode $child
+     * @param TraversalContext $ctx
+     * @return DeferredChunk|null
+     */
+    public function compileInterleavedBubblingChunk(
+        string $selector,
+        Scope $scope,
+        AstNode $child,
+        TraversalContext $ctx,
+    ): ?DeferredChunk {
+        /** @var StatementNode $child */
+        $bubblingNode = $this->evaluation->normalizeBubblingNodeForSelector($child, $selector);
+        $saved        = $this->render->savePosition();
+
+        if ($child instanceof DirectiveNode && strtolower($child->name) === 'media') {
+            $atRuleStack        = $this->selector->getCurrentAtRuleStack($ctx->env);
+            $parentMediaPrelude = $this->findLastMediaPrelude($atRuleStack);
+
+            if ($parentMediaPrelude !== null && $bubblingNode instanceof DirectiveNode) {
+                ['chunk' => $chunk, 'deferredChunk' => $deferredChunk] = $this->compileMergedMediaChunk(
+                    $atRuleStack,
+                    $parentMediaPrelude,
+                    $bubblingNode,
+                    $child,
+                    $scope,
+                    $ctx,
+                    $saved,
+                );
+
+                $this->render->restorePosition($saved);
+
+                if ($chunk !== '') {
+
+                    if ($this->appendDeferredAtRuleChunk(1, $chunk)) {
+                        return null;
+                    }
+
+                    return $deferredChunk;
+                }
+
+                return null;
+            }
+        }
+
+        $chunk = $this->render->trimAndAdjustState(
+            $this->dispatcher->compileWithContext($bubblingNode, $ctx),
+        );
+
+        if ($chunk === '') {
+            $this->render->restorePosition($saved);
+
+            return null;
+        }
+
+        $deferredChunk = $this->render->createDeferredChunk($chunk, $saved);
+
+        $this->render->restorePosition($saved);
+
+        return $deferredChunk;
+    }
+
+    public function appendResolvedChunk(string &$output, OutputChunk $chunk): void
+    {
+        $this->render->appendOutputChunk($output, $chunk);
+    }
+
+    /**
+     * @param array<int, AstNode> $body
+     */
+    public function compileBodyChunks(array $body, TraversalContext $ctx, Scope $callScope): string
+    {
+        $output = '';
+        $first  = true;
+
+        foreach ($body as $child) {
+            if ($this->evaluation->applyVariableDeclaration($child, $ctx->env)) {
+                continue;
+            }
+
+            if ($child instanceof AtRootNode) {
+                $this->appendIncludeAtRootChunk($output, $first, $child, $ctx);
+
+                continue;
+            }
+
+            if ($this->evaluation->isBubblingAtRuleNode($child)) {
+                $parentHasRendered = $callScope->hasVariable('__parent_rule_has_rendered_children')
+                    && $callScope->getVariable('__parent_rule_has_rendered_children') === true;
+
+                $this->appendIncludeBubblingChunk($output, $first, $child, $ctx, $parentHasRendered);
+
+                continue;
+            }
+
+            if ($child instanceof RuleNode) {
+                $this->appendIncludedRuleChunk($output, $first, $child, $ctx);
+
+                continue;
+            }
+
+            $savedPosition = null;
+
+            if ($this->render->collectSourceMappings() && ! $child instanceof DeclarationNode) {
+                $savedPosition = $this->render->savePosition();
+            }
+
+            /** @var Visitable $child */
+            $compiled = $this->dispatcher->compileWithContext($child, $ctx);
+
+            if ($compiled === '') {
+                continue;
+            }
+
+            if ($child instanceof DeclarationNode) {
+                if (! $first) {
+                    $this->render->appendChunk($output, "\n");
+                }
+
+                $this->render->appendChunk($output, $compiled, $child);
+            } else {
+                $compiled = $this->render->trimAndAdjustState($compiled);
+
+                if ($savedPosition !== null) {
+                    $deferredChunk = $this->render->createDeferredChunk($compiled, $savedPosition);
+
+                    $this->render->restorePosition($savedPosition);
+
+                    if (! $first) {
+                        $this->render->appendChunk($output, "\n");
+                    }
+
+                    $this->render->appendDeferredChunk($output, $deferredChunk);
+                } else {
+                    if (! $first) {
+                        $this->render->appendChunk($output, "\n");
+                    }
+
+                    $output .= $compiled;
+                }
+            }
+
+            $first = false;
+        }
+
+        return $output;
+    }
+
+    /**
      * @param list<AtRuleContextEntry> $stack
      */
     private function findLastMediaPrelude(array $stack): ?string
@@ -701,75 +852,6 @@ final readonly class DeferredChunkManager
             'chunk'         => $chunk,
             'deferredChunk' => $this->render->createDeferredChunk($chunk, $saved),
         ];
-    }
-
-    /**
-     * @param string $selector
-     * @param Scope $scope
-     * @param AstNode $child
-     * @param TraversalContext $ctx
-     * @return DeferredChunk|null
-     */
-    public function compileInterleavedBubblingChunk(
-        string $selector,
-        Scope $scope,
-        AstNode $child,
-        TraversalContext $ctx,
-    ): ?DeferredChunk {
-        /** @var StatementNode $child */
-        $bubblingNode = $this->evaluation->normalizeBubblingNodeForSelector($child, $selector);
-        $saved        = $this->render->savePosition();
-
-        if ($child instanceof DirectiveNode && strtolower($child->name) === 'media') {
-            $atRuleStack        = $this->selector->getCurrentAtRuleStack($ctx->env);
-            $parentMediaPrelude = $this->findLastMediaPrelude($atRuleStack);
-
-            if ($parentMediaPrelude !== null && $bubblingNode instanceof DirectiveNode) {
-                ['chunk' => $chunk, 'deferredChunk' => $deferredChunk] = $this->compileMergedMediaChunk(
-                    $atRuleStack,
-                    $parentMediaPrelude,
-                    $bubblingNode,
-                    $child,
-                    $scope,
-                    $ctx,
-                    $saved,
-                );
-
-                $this->render->restorePosition($saved);
-
-                if ($chunk !== '') {
-
-                    if ($this->appendDeferredAtRuleChunk(1, $chunk)) {
-                        return null;
-                    }
-
-                    return $deferredChunk;
-                }
-
-                return null;
-            }
-        }
-
-        $chunk = $this->render->trimAndAdjustState(
-            $this->dispatcher->compileWithContext($bubblingNode, $ctx),
-        );
-
-        if ($chunk === '') {
-            $this->render->restorePosition($saved);
-
-            return null;
-        }
-
-        $deferredChunk = $this->render->createDeferredChunk($chunk, $saved);
-
-        $this->render->restorePosition($saved);
-
-        return $deferredChunk;
-    }
-
-    public function appendResolvedChunk(string &$output, OutputChunk $chunk): void
-    {
-        $this->render->appendOutputChunk($output, $chunk);
     }
 
     private function separatorBetween(?OutputChunk $previous, OutputChunk $chunk): string

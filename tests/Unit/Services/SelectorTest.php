@@ -534,8 +534,8 @@ describe('Selector', function () {
         expect($directive)->toBeInstanceOf(DirectiveNode::class)
             ->and($directive->body[0])->toBeInstanceOf(RuleNode::class)
             ->and($directive->body[0]->selector)->toBe('.child')
-            ->and($directive->body[1])->toBeInstanceOf(RuleNode::class)
-            ->and($directive->body[1]->selector)->toBe('.parent');
+            ->and($directive->body[1])->toBeInstanceOf(DeclarationNode::class)
+            ->and($directive->body[1]->property)->toBe('color');
     });
 
     it('leaves non-directive non-supports bubbling nodes unchanged', function () {

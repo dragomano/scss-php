@@ -377,6 +377,7 @@ final readonly class Module
             $node->prefix,
             $node->visibility,
             $node->members,
+            $this->importEvaluationDepth() > 0,
         );
 
         return $forwardKey;
@@ -495,6 +496,42 @@ final readonly class Module
             'scope' => $moduleEnv->getCurrentScope(),
             'css'   => $css,
         ];
+    }
+
+    /**
+     * @param callable(array<int, AstNode>): string $compileChildren
+     */
+    public function inlineImportedFile(string $path, callable $compileChildren): ?string
+    {
+        $file = $this->loader->load($path, true);
+
+        $this->loader->addPath(dirname($file['path']));
+
+        $resolvedPath = $file['path'];
+        $syntax       = Syntax::fromPath($resolvedPath, $file['content']);
+
+        if ($syntax === Syntax::CSS) {
+            return null;
+        }
+
+        $state = $this->state();
+
+        if (isset($state->loadingFiles[$resolvedPath])) {
+            throw ModuleResolutionException::circularDependency($resolvedPath);
+        }
+
+        $ast = $this->parser->parse($this->ctx->normalizerPipeline->process($file['content'], $syntax));
+
+        $state->loadingFiles[$resolvedPath] = true;
+        $state->importEvaluationDepth++;
+
+        try {
+            return $compileChildren($ast->children);
+        } finally {
+            $state->importEvaluationDepth--;
+
+            unset($state->loadingFiles[$resolvedPath]);
+        }
     }
 
     /**
