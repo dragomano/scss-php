@@ -18,6 +18,7 @@ use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 
+use function array_key_last;
 use function implode;
 use function in_array;
 use function str_contains;
@@ -105,24 +106,95 @@ final readonly class FunctionCallParser
         $this->stream->advance();
 
         $arguments = [];
+        $loopCount = 0;
 
-        $this->stream->skipWhitespace();
+        while (! $this->stream->isEof()) {
+            $loopCount++;
 
-        $nameNode = $this->parseSingleValueNode();
+            if ($loopCount > 100) {
+                break;
+            }
 
-        if ($nameNode !== null) {
-            $arguments[] = $nameNode;
+            $this->stream->skipWhitespace();
+
+            if ($this->stream->consume(TokenType::RPAREN)) {
+                break;
+            }
+
+            if ($this->stream->is(TokenType::COMMA)) {
+                $this->stream->advance();
+                $this->stream->skipWhitespace();
+
+                if ($this->stream->consume(TokenType::RPAREN)) {
+                    $last = null;
+
+                    if ($arguments !== []) {
+                        $last = $arguments[array_key_last($arguments)];
+                    }
+
+                    if (! $last instanceof SpreadArgumentNode && ! $last instanceof NamedArgumentNode) {
+                        $arguments[] = new StringNode('');
+                    }
+
+                    break;
+                }
+            }
+
+            $this->stream->skipWhitespace();
+
+            $savedPos     = $this->stream->getPosition();
+            $potentialArg = $this->parseSingleValueNode();
+
+            if ($potentialArg !== null) {
+                $this->stream->skipWhitespace();
+
+                if ($this->stream->is(TokenType::COLON)) {
+                    $this->stream->setPosition($savedPos);
+
+                    if ($this->stream->is(TokenType::DOLLAR)) {
+                        $varRef = $this->parsingContext->parseVariableReference();
+
+                        $this->stream->skipWhitespace();
+
+                        if ($this->stream->consume(TokenType::COLON)) {
+                            $this->stream->skipWhitespace();
+
+                            $value = $this->parsingContext->parseCommaSeparatedValue();
+
+                            if ($value !== null) {
+                                $arguments[] = new NamedArgumentNode($varRef->name, $value);
+
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                $this->stream->setPosition($savedPos);
+
+                $arg = $this->parseFunctionArgument();
+
+                if ($arg !== null) {
+                    $arguments[] = $arg;
+
+                    continue;
+                }
+
+                break;
+            }
+
+            $this->stream->setPosition($savedPos);
+
+            $arg = $this->parseFunctionArgument();
+
+            if ($arg !== null) {
+                $arguments[] = $arg;
+
+                continue;
+            }
+
+            break;
         }
-
-        $this->stream->skipWhitespace();
-
-        if ($this->stream->consume(TokenType::COMMA)) {
-            $fallback = $this->parsingContext->parseValueUntil([TokenType::RPAREN]);
-
-            $arguments[] = $fallback ?? new StringNode('');
-        }
-
-        $this->stream->consume(TokenType::RPAREN);
 
         return new FunctionNode($name, $arguments);
     }

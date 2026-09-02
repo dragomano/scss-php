@@ -75,6 +75,8 @@ final readonly class FlowControlNodeHandler
         $ctx->env->enterScope();
 
         try {
+            $ctx->env->getCurrentScope()->markAsFlowControlScope();
+
             $bodyCtx = new TraversalContext($ctx->env, $ctx->indent);
 
             foreach ($items as $item) {
@@ -102,6 +104,8 @@ final readonly class FlowControlNodeHandler
         $ctx->env->enterScope();
 
         try {
+            $ctx->env->getCurrentScope()->markAsFlowControlScope();
+
             $bodyCtx = new TraversalContext($ctx->env, $ctx->indent);
 
             $this->loopIterator->forLoop(

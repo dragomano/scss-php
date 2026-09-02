@@ -170,7 +170,7 @@ final readonly class ColorArgumentParser
         array $channelNames,
         AstNode $input,
     ): ParsedColorChannels {
-        if ($this->isVarNode($input)) {
+        if ($this->isVarNode($input) || $this->isModernCssIfFunction($input)) {
             throw new DeferToCssFunctionException(
                 $this->callRef($function) . ' should be emitted as a CSS function.',
             );
@@ -693,6 +693,23 @@ final readonly class ColorArgumentParser
             'rgb', 'rgba', 'hsl', 'hsla', 'hwb',
             'color', 'lab', 'lch', 'oklab', 'oklch',
         ], true);
+    }
+
+    private function isModernCssIfFunction(AstNode $node): bool
+    {
+        if ($node instanceof FunctionNode) {
+            return strtolower($node->name) === 'if' && $node->modernSyntax;
+        }
+
+        if (! ($node instanceof StringNode) || $node->quoted) {
+            return false;
+        }
+
+        $value = strtolower($node->value);
+
+        return str_starts_with($value, 'if(')
+            && str_ends_with($value, ')')
+            && (str_contains($value, ':') || str_contains($value, ';'));
     }
 
     private function resolveChannelAlpha(string $argument, ?AstNode $alphaNode): ?float

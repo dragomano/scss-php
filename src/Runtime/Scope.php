@@ -40,6 +40,8 @@ final class Scope
 
     private bool $insideCssFunctionBody = false;
 
+    private bool $flowControlScope = false;
+
     public function __construct(private readonly ?Scope $parent = null)
     {
         $this->variables = new VariableRegistry();
@@ -58,6 +60,11 @@ final class Scope
     public function isInsideCssFunctionBody(): bool
     {
         return $this->insideCssFunctionBody;
+    }
+
+    public function markAsFlowControlScope(): void
+    {
+        $this->flowControlScope = true;
     }
 
     /** @param array<string, AstNode> $configuration */
@@ -116,6 +123,16 @@ final class Scope
     public function setVariableLocal(string $name, mixed $value, bool $default = false, int $line = 1): void
     {
         $name = $this->normalizeName($name);
+
+        if ($this->flowControlScope && ! $default) {
+            $existingScope = $this->findScopeForVariable($name);
+
+            if ($existingScope !== null && $existingScope !== $this) {
+                $existingScope->setVariableLocal($name, $value, false, $line);
+
+                return;
+            }
+        }
 
         if ($default) {
             $existingScope = $this->findScopeForVariable($name);
