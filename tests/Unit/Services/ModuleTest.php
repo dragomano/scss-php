@@ -156,9 +156,9 @@ describe('Module service', function () {
             ->toBe(['type' => 'css', 'raw' => 'theme screen and (color)']);
     });
 
-    it('resolveImport() keeps unquoted css paths as css', function () {
+    it('resolveImport() quotes unquoted css paths', function () {
         expect($this->module->resolveImport('theme.css'))
-            ->toBe(['type' => 'css', 'raw' => 'theme.css']);
+            ->toBe(['type' => 'css', 'raw' => '"theme.css"']);
     });
 
     it('resolveImport() resolves plain unquoted sass imports as sass', function () {

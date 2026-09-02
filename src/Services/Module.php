@@ -431,7 +431,7 @@ final readonly class Module
         }
 
         if ($this->isCssImportPath($raw)) {
-            return ['type' => 'css', 'raw' => $raw];
+            return ['type' => 'css', 'raw' => '"' . $raw . '"'];
         }
 
         return ['type' => 'sass', 'path' => $raw];
@@ -468,6 +468,8 @@ final readonly class Module
 
         $moduleEnv->getCurrentScope()->setIncomingConfiguration($configuration);
 
+        $emittedCss = null;
+
         if ($fromImport) {
             $resolvedPath = $file['path'];
 
@@ -477,6 +479,8 @@ final readonly class Module
 
             $this->ctx->moduleState->loadingFiles[$resolvedPath] = true;
             $this->ctx->moduleState->importEvaluationDepth++;
+
+            $emittedCss = $this->ctx->moduleState->takeEmittedCssState();
         }
 
         try {
@@ -486,9 +490,11 @@ final readonly class Module
                     : $this->dispatcher->compile($moduleAst, $moduleEnv))
                 : '';
         } finally {
-            if ($fromImport) {
+            if ($emittedCss !== null) {
                 $this->ctx->moduleState->importEvaluationDepth--;
                 unset($this->ctx->moduleState->loadingFiles[$file['path']]);
+
+                $this->ctx->moduleState->restoreEmittedCssState($emittedCss);
             }
         }
 

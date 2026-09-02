@@ -5,10 +5,16 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Handlers;
 
 use Bugo\SCSS\NodeDispatcherInterface;
+use Bugo\SCSS\Nodes\CommentNode;
+use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\RootNode;
+use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\Nodes\Visitable;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Render;
+
+use function array_splice;
+use function count;
 
 final readonly class RootNodeHandler
 {
@@ -19,7 +25,10 @@ final readonly class RootNodeHandler
 
     public function handle(RootNode $node, TraversalContext $ctx): string
     {
-        $output = '';
+        $output          = '';
+        $outputState     = $this->render->outputState();
+        $leadingComments = [];
+        $inLeadingRun    = $outputState->hoistCssImports && $ctx->indent === 0;
 
         foreach ($node->children as $child) {
             $savedPosition = null;
@@ -32,18 +41,62 @@ final readonly class RootNodeHandler
                 $this->render->appendChunk($dummy, "\n\n");
             }
 
+            $importCount = count($outputState->cssImports);
+
             /** @var Visitable $child */
             $compiled = $this->dispatcher->compileWithContext($child, $ctx);
 
-            if ($compiled !== '') {
-                if ($output !== '') {
-                    $output .= "\n";
+            if ($inLeadingRun) {
+                if ($leadingComments !== [] && count($outputState->cssImports) > $importCount) {
+                    array_splice($outputState->cssImports, $importCount, 0, $leadingComments);
+
+                    $leadingComments = [];
                 }
 
-                $output .= $compiled;
-            } elseif ($savedPosition !== null) {
-                $this->render->restorePosition($savedPosition);
+                if ($compiled !== '' && $child instanceof CommentNode) {
+                    $leadingComments[] = $compiled;
+
+                    continue;
+                }
+
+                if ($compiled !== '' && ! $child instanceof UseNode && ! $child instanceof ForwardNode) {
+                    $inLeadingRun = false;
+                }
             }
+
+            if ($compiled === '') {
+                if ($savedPosition !== null) {
+                    $this->render->restorePosition($savedPosition);
+                }
+
+                continue;
+            }
+
+            $output = $this->appendLeadingComments($output, $leadingComments);
+
+            $leadingComments = [];
+
+            if ($output !== '') {
+                $output .= "\n";
+            }
+
+            $output .= $compiled;
+        }
+
+        return $this->appendLeadingComments($output, $leadingComments);
+    }
+
+    /**
+     * @param list<string> $comments
+     */
+    private function appendLeadingComments(string $output, array $comments): string
+    {
+        foreach ($comments as $comment) {
+            if ($output !== '') {
+                $output .= "\n";
+            }
+
+            $output .= $comment;
         }
 
         return $output;

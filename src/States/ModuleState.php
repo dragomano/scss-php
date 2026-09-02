@@ -68,6 +68,34 @@ final class ModuleState
         $this->idToNamespace[$module->id] = $namespace;
     }
 
+    /**
+     * @return array{forward: array<string, bool>, use: array<string, bool>, module: array<string, bool>}
+     */
+    public function takeEmittedCssState(): array
+    {
+        $snapshot = [
+            'forward' => $this->emittedForwardCss,
+            'use'     => $this->emittedUseCss,
+            'module'  => $this->emittedModuleCss,
+        ];
+
+        $this->emittedForwardCss = [];
+        $this->emittedUseCss     = [];
+        $this->emittedModuleCss  = [];
+
+        return $snapshot;
+    }
+
+    /**
+     * @param array{forward: array<string, bool>, use: array<string, bool>, module: array<string, bool>} $snapshot
+     */
+    public function restoreEmittedCssState(array $snapshot): void
+    {
+        $this->emittedForwardCss = $snapshot['forward'];
+        $this->emittedUseCss     = $snapshot['use'];
+        $this->emittedModuleCss  = $snapshot['module'];
+    }
+
     public function reset(): void
     {
         $this->loadedModules         = [];
