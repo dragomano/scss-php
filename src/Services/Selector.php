@@ -985,15 +985,11 @@ final readonly class Selector
             );
         }
 
-        if (
-            $child instanceof AtRootNode
-            || $child instanceof DirectiveNode
-            || $child instanceof SupportsNode
-        ) {
-            return $child;
+        if ($child instanceof DirectiveNode || $child instanceof SupportsNode) {
+            return $this->normalizeBubblingNodeForSelector($child, $selector);
         }
 
-        return new RuleNode($selector, [$child]);
+        return $child instanceof AtRootNode ? $child : new RuleNode($selector, [$child]);
     }
 
     private function shouldAttachParentSelectorToBubbledBody(AstNode $node): bool

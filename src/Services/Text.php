@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Services;
 
+use Bugo\SCSS\Exceptions\SassThrowable;
 use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
@@ -60,16 +61,10 @@ final readonly class Text
 
     public function resolveSupportsCondition(string $condition, Environment $env): string
     {
-        $resolved = $this->interpolateText($condition, $env);
-        $resolved = $this->replaceVariableReferencesInText($resolved, $env);
+        $resolved = $this->unwrapRedundantSupportsParentheses($condition);
+        $resolved = $this->interpolateText($resolved, $env);
         $resolved = $this->normalizeCssLogicalOperators($resolved);
-
-        do {
-            $previous = $resolved;
-            $resolved = $this->collapsePlusConcatenation($resolved);
-        } while ($resolved !== $previous);
-
-        $resolved = $this->normalizeSupportsFeatureDeclarations($resolved);
+        $resolved = $this->normalizeSupportsFeatureDeclarations($resolved, $env);
         $resolved = trim($resolved);
 
         if (
@@ -458,6 +453,80 @@ final readonly class Text
         return implode(' ', $kept);
     }
 
+    private function unwrapRedundantSupportsParentheses(string $condition): string
+    {
+        $result = '';
+        $length = strlen($condition);
+        $index  = 0;
+
+        while ($index < $length) {
+            $char = $condition[$index];
+
+            if ($char === '"' || $char === "'") {
+                $end = $this->findQuotedLiteralEnd($condition, $index);
+
+                $result .= substr($condition, $index, $end - $index);
+                $index   = $end;
+
+                continue;
+            }
+
+            if ($char !== '(') {
+                $result .= $char;
+                $index++;
+
+                continue;
+            }
+
+            $closePos = $this->findMatchingParenthesis($condition, $index);
+
+            if ($closePos === null) {
+                $result .= substr($condition, $index);
+
+                break;
+            }
+
+            if ($this->isSupportsFunctionCall($condition, $index)) {
+                $result .= substr($condition, $index, $closePos - $index + 1);
+                $index   = $closePos + 1;
+
+                continue;
+            }
+
+            $inner = $this->unwrapRedundantSupportsParentheses(
+                substr($condition, $index + 1, $closePos - $index - 1),
+            );
+
+            $result .= $this->isWrappedBySingleOuterParentheses(trim($inner))
+                ? trim($inner)
+                : '(' . $inner . ')';
+
+            $index = $closePos + 1;
+        }
+
+        return $result;
+    }
+
+    private function findQuotedLiteralEnd(string $text, int $start): int
+    {
+        $length = strlen($text);
+        $quote  = $text[$start];
+
+        for ($i = $start + 1; $i < $length; $i++) {
+            if ($text[$i] === '\\') {
+                $i++;
+
+                continue;
+            }
+
+            if ($text[$i] === $quote) {
+                return $i + 1;
+            }
+        }
+
+        return $length;
+    }
+
     private function unwrapRedundantNotParentheses(string $prelude): string
     {
         $prelude = trim($prelude);
@@ -533,7 +602,7 @@ final readonly class Text
         return trim($result);
     }
 
-    private function normalizeSupportsFeatureDeclarations(string $condition): string
+    private function normalizeSupportsFeatureDeclarations(string $condition, Environment $env): string
     {
         $result = '';
         $offset = 0;
@@ -548,43 +617,85 @@ final readonly class Text
                 break;
             }
 
-            $result  .= $this->stripComments(substr($condition, $offset, $openPos - $offset));
-            $closePos = strpos($condition, ')', $openPos + 1);
+            $before   = $this->stripComments(substr($condition, $offset, $openPos - $offset));
+            $closePos = $this->findMatchingParenthesis($condition, $openPos);
 
-            if ($closePos === false) {
-                $result .= substr($condition, $openPos);
+            if ($closePos === null) {
+                $result .= $before . substr($condition, $openPos);
 
                 break;
             }
 
             $inner = substr($condition, $openPos + 1, $closePos - $openPos - 1);
 
-            $normalized = $this->normalizeSupportsDeclarationInner($inner);
-
-            if ($normalized === null) {
-                // Not a declaration — check if this is a function call
-                $preceding  = ($openPos > 0) ? $condition[$openPos - 1] : '';
-                $isFunction = $preceding !== '' && (
-                    ctype_alpha($preceding)
-                    || $preceding === '_'
-                    || $preceding === '-'
-                );
-
-                if ($isFunction) {
-                    // Function args: use raw text as-is (comments already handled by parseCondition)
-                    $result .= '(' . $inner . ')';
-                } else {
-                    // "Anything" expression: strip leading comment and whitespace
-                    $result .= '(' . $this->stripLeadingCommentAndWhitespace($inner) . ')';
-                }
-            } else {
-                $result .= '(' . $normalized . ')';
-            }
+            $result .= $before . '(' . ($this->isSupportsFunctionCall($condition, $openPos)
+                ? $inner
+                : $this->normalizeSupportsGroup($inner, $env)) . ')';
 
             $offset = $closePos + 1;
         }
 
         return $result;
+    }
+
+    private function findMatchingParenthesis(string $text, int $openPos): ?int
+    {
+        $depth  = 0;
+        $length = strlen($text);
+
+        for ($i = $openPos; $i < $length; $i++) {
+            $char = $text[$i];
+
+            if ($char === '"' || $char === "'") {
+                $i = $this->findQuotedLiteralEnd($text, $i) - 1;
+
+                continue;
+            }
+
+            if ($char === '(') {
+                $depth++;
+
+                continue;
+            }
+
+            if ($char === ')') {
+                $depth--;
+
+                if ($depth === 0) {
+                    return $i;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function isSupportsFunctionCall(string $condition, int $openPos): bool
+    {
+        if ($openPos === 0) {
+            return false;
+        }
+
+        $preceding = $condition[$openPos - 1];
+
+        return ctype_alpha($preceding) || $preceding === '_' || $preceding === '-';
+    }
+
+    private function normalizeSupportsGroup(string $inner, Environment $env): string
+    {
+        $declaration = $this->normalizeSupportsDeclarationInner($inner, $env);
+
+        if ($declaration !== null) {
+            return $declaration;
+        }
+
+        $stripped = $this->stripLeadingCommentAndWhitespace($inner);
+
+        if (str_starts_with($stripped, '(') || $this->startsWithNot($stripped)) {
+            return $this->normalizeSupportsFeatureDeclarations($stripped, $env);
+        }
+
+        return $stripped;
     }
 
     private function stripLeadingCommentAndWhitespace(string $text): string
@@ -603,13 +714,13 @@ final readonly class Text
         return $ltrimmed;
     }
 
-    private function normalizeSupportsDeclarationInner(string $inner): ?string
+    private function normalizeSupportsDeclarationInner(string $inner, Environment $env): ?string
     {
         $trimmed = ltrim($inner);
 
-        $colonPos = strpos($trimmed, ':');
+        $colonPos = $this->findTopLevelColon($trimmed);
 
-        if ($colonPos === false) {
+        if ($colonPos === null) {
             return null;
         }
 
@@ -632,21 +743,115 @@ final readonly class Text
             return $name . ':' . $value;
         }
 
-        // Normal properties: trim and use parseColonSeparatedPair
-        $parsed = $this->parseColonSeparatedPair(trim($inner));
+        $value = trim($this->stripComments(substr($trimmed, $colonPos + 1)));
 
-        if ($parsed === null) {
+        if ($value === '') {
             return null;
         }
 
-        $name  = trim($this->stripComments($parsed['name']));
-        $value = trim($this->stripComments($parsed['value']));
+        return $this->resolveSupportsDeclarationPart($name, $env)
+            . ': '
+            . $this->resolveSupportsDeclarationPart($value, $env);
+    }
 
-        if ($name === '' || $value === '' || ! $this->isValidSupportsFeatureName($name)) {
-            return null;
+    private function findTopLevelColon(string $text): ?int
+    {
+        $depth  = 0;
+        $length = strlen($text);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $text[$i];
+
+            if ($char === '"' || $char === "'") {
+                $i = $this->findQuotedLiteralEnd($text, $i) - 1;
+
+                continue;
+            }
+
+            if ($char === '(' || $char === '[') {
+                $depth++;
+            } elseif ($char === ')' || $char === ']') {
+                $depth--;
+            } elseif ($char === ':' && $depth === 0) {
+                return $i;
+            }
         }
 
-        return $name . ': ' . $value;
+        return null;
+    }
+
+    private function resolveSupportsDeclarationPart(string $part, Environment $env): string
+    {
+        if (! $this->hasTopLevelArithmeticOperator($part)) {
+            return $this->replaceVariableReferencesInText($part, $env);
+        }
+
+        $evaluated = $this->formatSupportsExpression($part, $env);
+
+        if ($evaluated !== null && ! $this->hasTopLevelArithmeticOperator($evaluated)) {
+            return $evaluated;
+        }
+
+        $resolved = $evaluated ?? $this->replaceVariableReferencesInText($part, $env);
+
+        do {
+            $previous = $resolved;
+            $resolved = $this->collapsePlusConcatenation($resolved);
+        } while ($resolved !== $previous);
+
+        return $resolved;
+    }
+
+    private function formatSupportsExpression(string $expression, Environment $env): ?string
+    {
+        try {
+            $node = $this->parser->parseInlineExpression($expression);
+
+            return $this->valueFormatter->format($this->valueEvaluator->evaluate($node, $env), $env);
+        } catch (SassThrowable) {
+            return null;
+        }
+    }
+
+    private function hasTopLevelArithmeticOperator(string $text): bool
+    {
+        $depth  = 0;
+        $length = strlen($text);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $text[$i];
+
+            if ($char === '"' || $char === "'") {
+                $i = $this->findQuotedLiteralEnd($text, $i) - 1;
+
+                continue;
+            }
+
+            if ($char === '(' || $char === '[') {
+                $depth++;
+
+                continue;
+            }
+
+            if ($char === ')' || $char === ']') {
+                $depth--;
+
+                continue;
+            }
+
+            if (
+                $depth === 0
+                && $i > 0
+                && isset($text[$i + 1])
+                && $text[$i - 1] === ' '
+                && $text[$i + 1] === ' '
+                && in_array($char, ['+', '-', '*', '/', '%'], true)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function normalizeCustomPropertyValue(string $value): string

@@ -74,6 +74,75 @@ describe('Text service', function () {
         });
     });
 
+    describe('resolveSupportsCondition()', function () {
+        it('evaluates arithmetic in both halves of a feature declaration', function () {
+            expect($this->text->resolveSupportsCondition('(1 + 1: 2 * 3)', $this->env))->toBe('(2: 6)');
+        });
+
+        it('drops redundant parentheses around a group', function () {
+            expect($this->text->resolveSupportsCondition('((((a: b))))', $this->env))->toBe('(a: b)');
+        });
+
+        it('keeps parentheses and colons inside quoted values', function () {
+            expect($this->text->resolveSupportsCondition('(a: "b: c)")', $this->env))->toBe('(a: "b: c)")');
+        });
+
+        it('strips a leading comment from an anything expression', function () {
+            expect($this->text->resolveSupportsCondition('(/**/ a b)', $this->env))->toBe('(a b)');
+        });
+
+        it('keeps custom property values unevaluated', function () {
+            expect($this->text->resolveSupportsCondition('(--a: 1 + 1)', $this->env))->toBe('(--a: 1 + 1)');
+        });
+
+        it('keeps function arguments unevaluated', function () {
+            expect($this->text->resolveSupportsCondition('a(1 + 1)', $this->env))->toBe('a(1 + 1)');
+        });
+
+        it('concatenates operands when an expression is not a valid Sass value', function () {
+            $this->env->getCurrentScope()->setVariable('feature', new StringNode('feature2'));
+
+            expect($this->text->resolveSupportsCondition('($feature + 3: b)', $this->env))
+                ->toBe('(feature23: b)');
+        });
+
+        it('ignores a colon inside a quoted feature name', function () {
+            expect($this->text->resolveSupportsCondition('("a: b": c)', $this->env))->toBe('("a: b": c)');
+        });
+
+        it('ignores escaped quotes when scanning a quoted value', function () {
+            expect($this->text->resolveSupportsCondition('(a: "b\\") c")', $this->env))
+                ->toBe('(a: "b\\") c")');
+        });
+
+        it('keeps an unterminated quoted value as is', function () {
+            expect($this->text->resolveSupportsCondition('(a: "b) {c', $this->env))->toBe('(a: "b) {c');
+        });
+
+        it('keeps a group without a feature name as an anything expression', function () {
+            expect($this->text->resolveSupportsCondition('(: b)', $this->env))->toBe('(: b)');
+        });
+
+        it('keeps an invalid custom property name as an anything expression', function () {
+            expect($this->text->resolveSupportsCondition('(--a b: c)', $this->env))->toBe('(--a b: c)');
+        });
+
+        it('keeps a feature declaration without a value as an anything expression', function () {
+            expect($this->text->resolveSupportsCondition('(a:)', $this->env))->toBe('(a:)');
+        });
+
+        it('concatenates operands when evaluation throws a Sass error', function () {
+            expect($this->text->resolveSupportsCondition('(a: 1px + 1em)', $this->env))->toBe('(a: 1px1em)')
+                ->and($this->text->resolveSupportsCondition('(a: nth((), 1) + 1)', $this->env))
+                ->toBe('(a: nth((), 1) + 1)');
+        });
+
+        it('ignores arithmetic nested in parentheses or brackets', function () {
+            expect($this->text->resolveSupportsCondition('(a: b(c + d))', $this->env))->toBe('(a: b(c + d))')
+                ->and($this->text->resolveSupportsCondition('(a: [1 + 1])', $this->env))->toBe('(a: [1 + 1])');
+        });
+    });
+
     describe('replaceVariableReferencesInText()', function () {
         it('replaces $var references with formatted value', function () {
             $this->env->getCurrentScope()->setVariable('gap', new NumberNode(12, 'px'));

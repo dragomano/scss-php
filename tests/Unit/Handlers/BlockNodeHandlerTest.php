@@ -152,15 +152,28 @@ it('appends escaped at-root chunks after supports output when content exists', f
     expect($result)->toEqualCss($expected);
 });
 
-it('returns compressed empty supports blocks without trailing newline', function () {
+it('omits empty supports blocks', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $context = RuntimeFactory::context();
+
+    $result = $runtime->block()->handleSupports(new SupportsNode('(display: grid)', []), $context);
+
+    expect($result)->toBe('');
+});
+
+it('returns compressed supports blocks without trailing newline', function () {
     $runtime = RuntimeFactory::createRuntime(
         options: new CompilerOptions(style: Style::COMPRESSED),
     );
     $context = RuntimeFactory::context();
 
-    $result = $runtime->block()->handleSupports(new SupportsNode('(display: grid)', []), $context);
+    $result = $runtime->block()->handleSupports(new SupportsNode('(display: grid)', [
+        new RuleNode('.inside', [
+            new DeclarationNode('display', new StringNode('grid')),
+        ]),
+    ]), $context);
 
-    expect($result)->toBe('@supports (display: grid) {}');
+    expect($result)->toBe("@supports (display: grid) {\n  .inside {\n    display: grid;\n  }\n}");
 });
 
 it('handles supports bodies with local and module declarations while collecting source mappings', function () {

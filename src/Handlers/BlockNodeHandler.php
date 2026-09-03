@@ -112,9 +112,10 @@ final readonly class BlockNodeHandler
 
     public function handleSupports(SupportsNode $node, TraversalContext $ctx): string
     {
-        $output    = '';
-        $prefix    = $this->render->indentPrefix($ctx->indent);
-        $condition = $this->selector->resolveSupportsCondition($node->condition, $ctx->env);
+        $output         = '';
+        $prefix         = $this->render->indentPrefix($ctx->indent);
+        $condition      = $this->selector->resolveSupportsCondition($node->condition, $ctx->env);
+        $headerPosition = $this->render->savePosition();
 
         $this->render->appendChunk($output, $prefix . '@supports ' . $condition . ' {');
 
@@ -205,7 +206,9 @@ final readonly class BlockNodeHandler
                 return $outside;
             }
 
-            $this->render->appendChunk($output, '}');
+            $this->render->restorePosition($headerPosition);
+
+            return '';
         }
 
         if ($outsideChunks !== []) {
