@@ -43,6 +43,11 @@ final class Tokenizer
 
     private bool $trackPositions = true;
 
+    public static function normalizeLineEndings(string $source): string
+    {
+        return str_replace(["\r\n", "\r"], "\n", $source);
+    }
+
     public function setTrackPositions(bool $trackPositions): void
     {
         $this->trackPositions = $trackPositions;
@@ -53,7 +58,7 @@ final class Tokenizer
      */
     public function tokenize(string $source): array
     {
-        $this->source   = str_replace(["\r\n", "\r"], "\n", $source);
+        $this->source   = self::normalizeLineEndings($source);
         $this->length   = strlen($this->source);
         $this->position = 0;
         $this->line     = 1;

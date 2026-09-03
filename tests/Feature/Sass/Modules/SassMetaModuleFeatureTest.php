@@ -87,9 +87,9 @@ describe('Sass Meta Module Feature', function () {
               background: white;
               box-shadow: 0 2px 10px rgba(0, 0, 0, .1);
               padding: 20px;
-              h3 {
-                color: #333;
-              }
+            }
+            .actual-card h3 {
+              color: #333;
             }
 
             .actual-simple {

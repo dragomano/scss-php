@@ -78,7 +78,7 @@ final class Parser implements
     {
         $tokens = $this->tokenizer->tokenize($source);
 
-        $this->stream = new TokenStream($tokens, $source);
+        $this->stream = new TokenStream($tokens, Tokenizer::normalizeLineEndings($source));
 
         $this->blockDepth = 0;
 

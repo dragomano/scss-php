@@ -9,12 +9,14 @@ use Bugo\SCSS\Syntax;
 
 use function array_pop;
 use function ctype_alnum;
+use function ctype_alpha;
 use function ctype_digit;
 use function end;
 use function implode;
 use function in_array;
 use function intdiv;
 use function ltrim;
+use function ord;
 use function rtrim;
 use function sort;
 use function str_contains;
@@ -88,7 +90,7 @@ final readonly class SassNormalizer implements SourceNormalizer
         /** @var list<string> $result */
         $result = [];
 
-        /** @var list<array{level: int}> $stack */
+        /** @var list<array{level: int, spaces: int}> $stack */
         $stack = [];
 
         $pendingEmptyLines = [];
@@ -144,8 +146,8 @@ final readonly class SassNormalizer implements SourceNormalizer
             $leadingSpaces = strlen($line) - strlen($trimmed);
             $level         = intdiv($leadingSpaces, $indentSize);
 
-            while (! empty($stack) && end($stack)['level'] >= $level) {
-                /** @var array{level: int} $block */
+            while (! empty($stack) && end($stack)['spaces'] >= $leadingSpaces) {
+                /** @var array{level: int, spaces: int} $block */
                 $block = array_pop($stack);
 
                 $result[] = $this->indent($block['level'], $indentSize) . '}';
@@ -157,11 +159,21 @@ final readonly class SassNormalizer implements SourceNormalizer
 
             $pendingEmptyLines = [];
 
-            $trimmed = $this->stripAtRuleSilentComment($trimmed);
+            $trimmed = $this->stripTrailingLineComment($trimmed);
+            $trimmed = $this->stripLeadingEscape($trimmed);
 
+            [$trimmed, $index] = $this->mergeEscapedNewlineContinuation($trimmed, $index, $lines);
+            [$trimmed, $index] = $this->mergeCustomPropertyDeclaration(
+                $trimmed,
+                $level,
+                $index,
+                $lines,
+                $indentSize,
+            );
             [$trimmed, $index] = $this->mergeParenthesizedDeclaration($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeBracketedDeclaration($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeDirectiveHeader($trimmed, $level, $index, $lines, $indentSize);
+            [$trimmed, $index] = $this->mergeBareSingleLineDirective($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeOperatorContinuation($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeSingleLineDirectiveParenthesizedCall(
                 $trimmed,
@@ -193,7 +205,11 @@ final readonly class SassNormalizer implements SourceNormalizer
                 $indentSize,
             );
 
-            if (str_ends_with(rtrim($trimmed), ',')) {
+            if (
+                str_ends_with(rtrim($trimmed), ',')
+                && ! $this->isSingleLineDirective($trimmed)
+                && ! $this->isTrailingCommaDirectiveHeader($trimmed, $level, $index, $lines, $indentSize)
+            ) {
                 $result[] = $this->indent($level, $indentSize) . rtrim($trimmed);
 
                 continue;
@@ -201,7 +217,7 @@ final readonly class SassNormalizer implements SourceNormalizer
 
             if ($trimmed === '=' && $this->nextIndentedLineHasContent($lines, $index, $level, $indentSize)) {
                 $result[] = $this->indent($level, $indentSize) . '@mixin ' . ltrim($lines[$index + 1]) . ' {';
-                $stack[]  = ['level' => $level];
+                $stack[]  = ['level' => $level, 'spaces' => $leadingSpaces];
 
                 $index++;
 
@@ -210,9 +226,14 @@ final readonly class SassNormalizer implements SourceNormalizer
 
             if ($this->isMixinDefinitionLine($trimmed)) {
                 $result[] = $this->indent($level, $indentSize) . '@mixin ' . substr($trimmed, 1) . ' {';
-                $stack[]  = ['level' => $level];
+                $stack[]  = ['level' => $level, 'spaces' => $leadingSpaces];
             } elseif ($this->isMixinIncludeLine($trimmed)) {
-                $result[] = $this->indent($level, $indentSize) . '@include ' . substr($trimmed, 1) . ';';
+                if ($this->nextIndentedLineHasContent($lines, $index, $level, $indentSize)) {
+                    $result[] = $this->indent($level, $indentSize) . '@include ' . substr($trimmed, 1) . ' {';
+                    $stack[]  = ['level' => $level, 'spaces' => $leadingSpaces];
+                } else {
+                    $result[] = $this->indent($level, $indentSize) . '@include ' . substr($trimmed, 1) . ';';
+                }
             } elseif ($this->isSingleLineDirective($trimmed)) {
                 $endsWithSemicolon = str_ends_with(rtrim($trimmed), ';');
 
@@ -220,7 +241,7 @@ final readonly class SassNormalizer implements SourceNormalizer
             } elseif ($this->startsWithAtKeyword($trimmed, ['media'])) {
                 $result[] = $this->indent($level, $indentSize) . $this->ensureBlockHeaderHasOpeningBrace($trimmed);
 
-                $stack[] = ['level' => $level];
+                $stack[] = ['level' => $level, 'spaces' => $leadingSpaces];
             } elseif ($this->isUnknownAtRule($trimmed) && ! $this->nextIndentedLineHasContent($lines, $index, $level, $indentSize)) {
                 $result[] = $this->indent($level, $indentSize) . $trimmed . ';';
             } elseif ($this->isBlockHeader($trimmed)) {
@@ -238,14 +259,17 @@ final readonly class SassNormalizer implements SourceNormalizer
                 }
 
                 $result[] = $this->indent($level, $indentSize) . $header;
-                $stack[]  = ['level' => $level];
+                $stack[]  = ['level' => $level, 'spaces' => $leadingSpaces];
+            } elseif ($this->hasNestedPropertyChildren($trimmed, $level, $index, $lines, $indentSize)) {
+                $result[] = $this->indent($level, $indentSize) . $trimmed . ' {';
+                $stack[]  = ['level' => $level, 'spaces' => $leadingSpaces];
             } else {
                 $result[] = $this->indent($level, $indentSize) . rtrim($trimmed, ';') . ';';
             }
         }
 
         while (! empty($stack)) {
-            /** @var array{level: int} $block */
+            /** @var array{level: int, spaces: int} $block */
             $block = array_pop($stack);
 
             $result[] = $this->indent($block['level'], $indentSize) . '}';
@@ -279,13 +303,19 @@ final readonly class SassNormalizer implements SourceNormalizer
         $collected = [$prefix . ltrim($head)];
 
         if (str_contains(ltrim($head), '*/')) {
+            $collected = [$prefix . $this->stripCommentAfterLoudCommentClose(ltrim($head))];
+
             return [$collected, $index];
         }
 
         while ($index + 1 < $max) {
             $line = rtrim($lines[$index + 1], "\r\n");
 
-            if (trim($line) === '' && ! $this->hasLoudCommentClosingAhead($lines, $index + 1)) {
+            if (trim($line) === '') {
+                if (! $this->hasDeeperLoudCommentLineAhead($lines, $index + 1, $inBase)) {
+                    break;
+                }
+            } elseif ($this->leadingSpaceCount($line) <= $inBase) {
                 break;
             }
 
@@ -316,6 +346,24 @@ final readonly class SassNormalizer implements SourceNormalizer
         return [$collected, $index];
     }
 
+    private function stripCommentAfterLoudCommentClose(string $head): string
+    {
+        $closePos = strpos($head, '*/');
+
+        if ($closePos === false) {
+            return $head;
+        }
+
+        $tail      = substr($head, $closePos + 2);
+        $tailStart = ltrim($tail);
+
+        if (! str_starts_with($tailStart, '/*') && ! str_starts_with($tailStart, '//')) {
+            return $head;
+        }
+
+        return substr($head, 0, $closePos + 2);
+    }
+
     private function reindentLoudCommentLine(string $line, int $inBase, string $prefix, int $indentSize): string
     {
         $body = ltrim($line);
@@ -338,14 +386,18 @@ final readonly class SassNormalizer implements SourceNormalizer
     /**
      * @param array<int, string> $lines
      */
-    private function hasLoudCommentClosingAhead(array $lines, int $index): bool
+    private function hasDeeperLoudCommentLineAhead(array $lines, int $index, int $inBase): bool
     {
         $max = count($lines);
 
         for ($cursor = $index; $cursor < $max; $cursor++) {
-            if (str_contains($lines[$cursor], '*/')) {
-                return true;
+            $line = rtrim($lines[$cursor], "\r\n");
+
+            if (trim($line) === '') {
+                continue;
             }
+
+            return $this->leadingSpaceCount($line) > $inBase;
         }
 
         return false;
@@ -519,15 +571,102 @@ final readonly class SassNormalizer implements SourceNormalizer
         return str_repeat(' ', $level * $indentSize);
     }
 
-    private function stripAtRuleSilentComment(string $line): string
+    private function stripLeadingEscape(string $line): string
     {
-        if (! str_starts_with($line, '@')) {
+        if (! str_starts_with($line, '\\')) {
+            return $line;
+        }
+
+        $next = $line[1] ?? '';
+
+        if ($next === '' || ctype_alnum($next) || $next === '_' || $next === ' ') {
+            return $line;
+        }
+
+        return substr($line, 1);
+    }
+
+    private function stripTrailingLineComment(string $line): string
+    {
+        if ($this->isCustomPropertyDeclaration($line)) {
             return $line;
         }
 
         $position = $this->findSilentCommentStart($line);
 
-        return $position === null ? $line : rtrim(substr($line, 0, $position));
+        if ($position !== null) {
+            return $position === 0 ? $line : rtrim(substr($line, 0, $position));
+        }
+
+        return $this->stripTrailingLoudComment($line);
+    }
+
+    private function stripTrailingLoudComment(string $line): string
+    {
+        $trimmed = rtrim($line);
+
+        if (! str_ends_with($trimmed, '*/')) {
+            return $line;
+        }
+
+        $start = $this->findLastLoudCommentStart($trimmed);
+
+        if ($start === null || $start === 0) {
+            return $line;
+        }
+
+        $head = rtrim(substr($trimmed, 0, $start));
+
+        return $head === '' ? $line : $head;
+    }
+
+    private function findLastLoudCommentStart(string $line): ?int
+    {
+        $length  = strlen($line);
+        $quote   = null;
+        $escaped = false;
+        $start   = null;
+
+        for ($index = 0; $index < $length; $index++) {
+            $char = $line[$index];
+
+            if ($quote !== null) {
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                continue;
+            }
+
+            if ($char !== '/' || ($line[$index + 1] ?? '') !== '*') {
+                continue;
+            }
+
+            $start = $index;
+            $index += 2;
+
+            while ($index < $length) {
+                if ($line[$index] === '*' && ($line[$index + 1] ?? '') === '/') {
+                    $index++;
+
+                    break;
+                }
+
+                $index++;
+            }
+        }
+
+        return $start;
     }
 
     private function findSilentCommentStart(string $line): ?int
@@ -568,6 +707,12 @@ final readonly class SassNormalizer implements SourceNormalizer
                 continue;
             }
 
+            if ($char === '(' && $this->isUrlCallEnd($line, $index)) {
+                $index = $this->skipToMatchingParenthesis($line, $index);
+
+                continue;
+            }
+
             if ($char !== '/') {
                 continue;
             }
@@ -590,6 +735,45 @@ final readonly class SassNormalizer implements SourceNormalizer
         return null;
     }
 
+    private function isUrlCallEnd(string $line, int $parenIndex): bool
+    {
+        $end = $parenIndex;
+
+        while ($end > 0) {
+            $char = $line[$end - 1];
+
+            if (! ctype_alnum($char) && $char !== '-' && $char !== '_') {
+                break;
+            }
+
+            $end--;
+        }
+
+        return strtolower(substr($line, $end, $parenIndex - $end)) === 'url';
+    }
+
+    private function skipToMatchingParenthesis(string $line, int $parenIndex): int
+    {
+        $length = strlen($line);
+        $depth  = 0;
+
+        for ($index = $parenIndex; $index < $length; $index++) {
+            $char = $line[$index];
+
+            if ($char === '(') {
+                $depth++;
+            } elseif ($char === ')') {
+                $depth--;
+
+                if ($depth === 0) {
+                    return $index;
+                }
+            }
+        }
+
+        return $length;
+    }
+
     /**
      * @param array<int, string> $lines
      * @return array{0: string, 1: int}
@@ -607,6 +791,13 @@ final readonly class SassNormalizer implements SourceNormalizer
             return [$trimmed, $index];
         }
 
+        if (
+            strlen($candidate) === 1
+            && $this->nextIndentedLineHasContent($lines, $index, $level, $indentSize)
+        ) {
+            return [$trimmed, $index];
+        }
+
         $max = count($lines);
 
         while ($index + 1 < $max) {
@@ -621,6 +812,10 @@ final readonly class SassNormalizer implements SourceNormalizer
             $nextLevel     = intdiv($leadingSpaces, $indentSize);
 
             if ($nextLevel < $level) {
+                break;
+            }
+
+            if ($nextLevel === $level && ! str_contains($candidate, ':')) {
                 break;
             }
 
@@ -648,7 +843,11 @@ final readonly class SassNormalizer implements SourceNormalizer
             return true;
         }
 
-        foreach ([' not', ' and', ' or'] as $suffix) {
+        if ($last === '!' && str_contains($line, ':')) {
+            return true;
+        }
+
+        foreach ([' not', ' and', ' or', ' %'] as $suffix) {
             if (str_ends_with($line, $suffix) || $line === trim($suffix)) {
                 return true;
             }
@@ -660,6 +859,167 @@ final readonly class SassNormalizer implements SourceNormalizer
     private function hasUnclosedInterpolation(string $text): bool
     {
         return substr_count($text, '#{') > substr_count($text, '}');
+    }
+
+    /**
+     * @param array<int, string> $lines
+     * @return array{0: string, 1: int}
+     */
+    private function mergeEscapedNewlineContinuation(string $trimmed, int $index, array $lines): array
+    {
+        $candidate = $trimmed;
+        $max       = count($lines);
+
+        while (str_ends_with($candidate, '\\') && $index + 1 < $max) {
+            $candidate .= "\n" . rtrim($lines[$index + 1], "\r\n");
+
+            $index++;
+        }
+
+        return [$candidate, $index];
+    }
+
+    /**
+     * @param array<int, string> $lines
+     * @return array{0: string, 1: int}
+     */
+    private function mergeCustomPropertyDeclaration(
+        string $trimmed,
+        int $level,
+        int $index,
+        array $lines,
+        int $indentSize,
+    ): array {
+        if (! $this->isCustomPropertyDeclaration($trimmed)) {
+            return [$trimmed, $index];
+        }
+
+        $candidate = rtrim($trimmed);
+        $max       = count($lines);
+
+        while ($this->hasUnclosedGroup($candidate) && $index + 1 < $max) {
+            $nextLine = rtrim($lines[$index + 1], "\r\n");
+
+            if (ltrim($nextLine) === '') {
+                break;
+            }
+
+            $candidate .= "\n" . rtrim($nextLine);
+
+            $index++;
+        }
+
+        return [$candidate, $index];
+    }
+
+    private function isCustomPropertyDeclaration(string $line): bool
+    {
+        if (! str_starts_with($line, '--')) {
+            return false;
+        }
+
+        $colon = strpos($line, ':');
+
+        return $colon !== false && $colon >= 2;
+    }
+
+    /**
+     * @param array<int, string> $lines
+     */
+    private function isTrailingCommaDirectiveHeader(
+        string $trimmed,
+        int $level,
+        int $index,
+        array $lines,
+        int $indentSize,
+    ): bool {
+        if (! str_starts_with($trimmed, '@')) {
+            return false;
+        }
+
+        return $this->nextIndentedLineHasContent($lines, $index, $level, $indentSize);
+    }
+
+    /**
+     * @param array<int, string> $lines
+     */
+    private function hasNestedPropertyChildren(
+        string $trimmed,
+        int $level,
+        int $index,
+        array $lines,
+        int $indentSize,
+    ): bool {
+        if (
+            str_starts_with($trimmed, '@')
+            || str_starts_with($trimmed, '$')
+            || str_ends_with(rtrim($trimmed), ';')
+            || $this->isCustomPropertyDeclaration($trimmed)
+            || str_contains($trimmed, "\n")
+        ) {
+            return false;
+        }
+
+        if ($this->findFirstColon($trimmed) === null) {
+            return false;
+        }
+
+        if (! $this->nextIndentedLineHasContent($lines, $index, $level, $indentSize)) {
+            return false;
+        }
+
+        return $this->isNestedPropertyChild(ltrim($lines[$index + 1] ?? ''));
+    }
+
+    private function isNestedPropertyChild(string $line): bool
+    {
+        if ($line === '' || str_starts_with($line, '$')) {
+            return false;
+        }
+
+        if (str_starts_with($line, '@') || $this->isMixinIncludeLine($line)) {
+            return true;
+        }
+
+        if (in_array($line[0], self::BLOCK_HEADER_CHARS, true)) {
+            return false;
+        }
+
+        return $this->findFirstColon($line) !== null;
+    }
+
+    private function hasUnclosedGroup(string $line): bool
+    {
+        $depth   = 0;
+        $length  = strlen($line);
+        $quote   = null;
+        $escaped = false;
+
+        for ($index = 0; $index < $length; $index++) {
+            $char = $line[$index];
+
+            if ($quote !== null) {
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+            } elseif ($char === '(' || $char === '[' || $char === '{') {
+                $depth++;
+            } elseif ($char === ')' || $char === ']' || $char === '}') {
+                $depth--;
+            }
+        }
+
+        return $depth > 0;
     }
 
     /**
@@ -768,6 +1128,48 @@ final readonly class SassNormalizer implements SourceNormalizer
      * @param array<int, string> $lines
      * @return array{0: string, 1: int}
      */
+    private function mergeBareSingleLineDirective(
+        string $trimmed,
+        int $level,
+        int $index,
+        array $lines,
+        int $indentSize,
+    ): array {
+        $candidate = rtrim($trimmed);
+
+        if (! $this->isBareSingleLineDirective($candidate)) {
+            return [$trimmed, $index];
+        }
+
+        $max = count($lines);
+
+        while ($index + 1 < $max) {
+            $nextLine    = rtrim($lines[$index + 1], "\r\n");
+            $nextTrimmed = ltrim($nextLine);
+
+            if ($nextTrimmed === '' || $this->lineLevel($nextLine, $indentSize) <= $level) {
+                break;
+            }
+
+            $candidate .= ' ' . $nextTrimmed;
+
+            $index++;
+        }
+
+        return [$candidate, $index];
+    }
+
+    private function isBareSingleLineDirective(string $line): bool
+    {
+        return $this->isSingleLineDirective($line)
+            && ! str_contains($line, ' ')
+            && ! str_contains($line, "\t");
+    }
+
+    /**
+     * @param array<int, string> $lines
+     * @return array{0: string, 1: int}
+     */
     private function mergeSingleLineDirectiveParenthesizedCall(
         string $trimmed,
         int $level,
@@ -801,6 +1203,8 @@ final readonly class SassNormalizer implements SourceNormalizer
             return [$trimmed, $index];
         }
 
+        $preserveLineBreaks = $this->startsWithAtKeyword($candidate, ['supports']);
+
         $depth = $this->parenthesisBalance($candidate);
         $line  = $index + 1;
         $max   = count($lines);
@@ -812,7 +1216,13 @@ final readonly class SassNormalizer implements SourceNormalizer
                 throw InvalidSyntaxException::expectedClosingParenthesis($line);
             }
 
-            $candidate .= "\n" . $nextLine;
+            if ($preserveLineBreaks) {
+                $candidate .= "\n" . $nextLine;
+            } else {
+                $nextTrimmed = ltrim($nextLine);
+
+                $candidate .= $this->parenthesizedContinuationSeparator($candidate, $nextTrimmed) . $nextTrimmed;
+            }
 
             $depth += $this->parenthesisBalance($nextLine);
 
@@ -924,49 +1334,49 @@ final readonly class SassNormalizer implements SourceNormalizer
         array $lines,
         int $indentSize,
     ): array {
-        $depth   = $this->parenthesisBalance($merged);
-        $line    = $index + 1;
-        $max     = count($lines);
-        $lenient = $this->isFunctionCallContinuation($merged);
+        $depth = $this->parenthesisBalance($merged);
+        $line  = $index + 1;
+        $max   = count($lines);
 
         while ($depth > 0 && $index + 1 < $max) {
-            $nextLine    = rtrim($lines[$index + 1], "\r\n");
-            $nextTrimmed = ltrim($nextLine);
-
-            if ($nextTrimmed === '') {
-                throw InvalidSyntaxException::expectedClosingParenthesis($line);
-            }
-
-            if (! $lenient) {
-                $leadingSpaces = strlen($nextLine) - strlen($nextTrimmed);
-                $nextLevel     = intdiv($leadingSpaces, $indentSize);
-
-                if ($nextLevel < $level || ($nextLevel === $level && ! str_starts_with($nextTrimmed, ')'))) {
-                    throw InvalidSyntaxException::expectedClosingParenthesis($line);
-                }
-            }
-
-            $merged .= ' ' . $nextTrimmed;
-
-            $depth += $this->parenthesisBalance($nextTrimmed);
+            $nextTrimmed = trim($lines[$index + 1]);
 
             $index++;
+
+            if ($nextTrimmed === '') {
+                continue;
+            }
+
+            $merged .= $this->parenthesizedContinuationSeparator($merged, $nextTrimmed) . $nextTrimmed;
+
+            $depth += $this->parenthesisBalance($nextTrimmed);
+        }
+
+        if ($depth > 0 || $this->isEmptyParenthesizedValue($merged)) {
+            throw InvalidSyntaxException::expectedClosingParenthesis($line);
         }
 
         return [$merged, $index];
     }
 
-    private function isFunctionCallContinuation(string $candidate): bool
+    private function isEmptyParenthesizedValue(string $merged): bool
     {
-        $pos = strpos($candidate, '(');
+        $colon = $this->findFirstColon($merged);
 
-        if ($pos === false || $pos === 0) {
+        if ($colon === null) {
             return false;
         }
 
-        $char = $candidate[$pos - 1];
+        return trim(substr($merged, $colon + 1)) === '()';
+    }
 
-        return ctype_alnum($char) || $char === '-' || $char === '_';
+    private function parenthesizedContinuationSeparator(string $merged, string $continuation): string
+    {
+        if (str_ends_with($merged, '(') || str_starts_with($continuation, ')')) {
+            return '';
+        }
+
+        return ' ';
     }
 
     /**
@@ -1093,9 +1503,7 @@ final readonly class SassNormalizer implements SourceNormalizer
 
     private function isMixinDefinitionLine(string $line): bool
     {
-        $second = $line[1] ?? '';
-
-        return $line !== '' && $line[0] === '=' && $second !== '' && $second !== ' ' && $second !== "\t";
+        return $line !== '' && $line[0] === '=' && ltrim(substr($line, 1)) !== '';
     }
 
     private function isMixinIncludeLine(string $line): bool
@@ -1209,7 +1617,78 @@ final readonly class SassNormalizer implements SourceNormalizer
             return true;
         }
 
-        return ! str_contains($line, ':') || $this->containsPseudoClass($line);
+        return ! str_contains($line, ':')
+            || $this->containsPseudoClass($line)
+            || $this->looksLikeIndentedPseudoSelector($line);
+    }
+
+    private function looksLikeIndentedPseudoSelector(string $line): bool
+    {
+        if (str_starts_with($line, '@') || str_starts_with($line, '--')) {
+            return false;
+        }
+
+        $colon = $this->findFirstColon($line);
+
+        if ($colon === null) {
+            return false;
+        }
+
+        return $colon === 0 || $this->isIdentifierStartAt($line, $colon + 1);
+    }
+
+    private function findFirstColon(string $line): ?int
+    {
+        $length  = strlen($line);
+        $quote   = null;
+        $escaped = false;
+
+        for ($index = 0; $index < $length; $index++) {
+            $char = $line[$index];
+
+            if ($quote !== null) {
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                continue;
+            }
+
+            if ($char === ':') {
+                return $index;
+            }
+        }
+
+        return null;
+    }
+
+    private function isIdentifierStartAt(string $line, int $position): bool
+    {
+        $char = $line[$position] ?? '';
+
+        if ($char === '') {
+            return false;
+        }
+
+        if ($char === '#') {
+            return ($line[$position + 1] ?? '') === '{';
+        }
+
+        return ctype_alpha($char)
+            || $char === '_'
+            || $char === '-'
+            || $char === '\\'
+            || ord($char) >= 0x80;
     }
 
     private function ensureBlockHeaderHasOpeningBrace(string $line): string
@@ -1241,6 +1720,13 @@ final readonly class SassNormalizer implements SourceNormalizer
             }
 
             if ($char === "\n") {
+                $lines[] = $current;
+                $current = '';
+
+                continue;
+            }
+
+            if ($char === "\f") {
                 $lines[] = $current;
                 $current = '';
 

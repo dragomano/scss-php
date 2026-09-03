@@ -335,6 +335,7 @@ final class CompilerRuntime
             $this->evaluation(),
             $this->render(),
             $this->selector(),
+            $this->deferredChunks(),
         );
     }
 

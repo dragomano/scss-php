@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Handlers\AtRuleNodeHandler;
+use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
@@ -105,6 +106,7 @@ it('defers non-escaped @at-root chunks into the deferred root stack when a paren
     $evaluation = mock(Evaluator::class);
     $render     = mock(Render::class);
     $selector   = mock(Selector::class);
+    $chunks     = mock(DeferredChunkManager::class);
 
     $render->shouldReceive('savePosition')->once()->andReturn($savedPosition);
     $selector->shouldReceive('compileAtRootBody')->once()->andReturn([
@@ -126,7 +128,7 @@ it('defers non-escaped @at-root chunks into the deferred root stack when a paren
         },
     );
 
-    $handler = new AtRuleNodeHandler($dispatcher, $evaluation, $render, $selector);
+    $handler = new AtRuleNodeHandler($dispatcher, $evaluation, $render, $selector, $chunks);
 
     expect($handler->handleAtRoot(new AtRootNode(), $ctx))->toBe('');
 

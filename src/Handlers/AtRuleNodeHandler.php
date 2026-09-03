@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Handlers;
 
+use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
@@ -38,6 +39,7 @@ final readonly class AtRuleNodeHandler
         private Evaluator $evaluation,
         private Render $render,
         private Selector $selector,
+        private DeferredChunkManager $chunks,
     ) {}
 
     public function handleAtRoot(AtRootNode $node, TraversalContext $ctx): string
@@ -482,26 +484,30 @@ final readonly class AtRuleNodeHandler
                 return $output;
             }
 
-            /**
-             * @var iterable<AstNode> $contentBlock
-             */
-            foreach ($contentBlock as $child) {
-                /** @var Visitable $child */
-                $compiled = $this->render->trimAndAdjustState(
-                    $this->dispatcher->compileWithContext($child, $contentCtx),
-                );
+            if ($atRuleStack === []) {
+                $output = $this->chunks->compileBodyChunks($contentBlock, $contentCtx, $contentScope);
+            } else {
+                /**
+                 * @var iterable<AstNode> $contentBlock
+                 */
+                foreach ($contentBlock as $child) {
+                    /** @var Visitable $child */
+                    $compiled = $this->render->trimAndAdjustState(
+                        $this->dispatcher->compileWithContext($child, $contentCtx),
+                    );
 
-                if ($compiled === '') {
-                    continue;
+                    if ($compiled === '') {
+                        continue;
+                    }
+
+                    if (! $first) {
+                        $this->render->appendChunk($output, "\n");
+                    }
+
+                    $this->render->appendChunk($output, $compiled, $child);
+
+                    $first = false;
                 }
-
-                if (! $first) {
-                    $this->render->appendChunk($output, "\n");
-                }
-
-                $this->render->appendChunk($output, $compiled, $child);
-
-                $first = false;
             }
         } finally {
             $childSnapshotAfter = $childScope->getVariables();

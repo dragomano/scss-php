@@ -582,7 +582,7 @@ describe('SassNormalizer', function () {
         $expected = <<<'SCSS'
         .grid {
           display: grid;
-          grid-template: ( "header" min-content "main" 1fr );
+          grid-template: ("header" min-content "main" 1fr);
         }
 
         @for $i from 1 through 3 {
@@ -697,7 +697,7 @@ describe('SassNormalizer', function () {
             ->toThrow(InvalidSyntaxException::class, "Expected closing ')' for '(' opened at line 2.");
     });
 
-    it('throws when a balanced same-level continuation does not close the parenthesized declaration', function () {
+    it('merges a balanced same-level continuation into the parenthesized declaration', function () {
         $sass = <<<'SASS'
         .grid
           grid-template: (
@@ -705,8 +705,13 @@ describe('SassNormalizer', function () {
           )
         SASS;
 
-        expect(fn() => $this->normalizer->normalize($sass))
-            ->toThrow(InvalidSyntaxException::class, "Expected closing ')' for '(' opened at line 2.");
+        $expected = <<<'SCSS'
+        .grid {
+          grid-template: (foo);
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
     });
 
     it('handles @each loops', function () {
