@@ -314,6 +314,55 @@ describe('SassNormalizer', function () {
         expect($this->normalizer->normalize($sass))->toBe('/* a */');
     });
 
+    it('strips a trailing silent comment from a directive header', function () {
+        $sass = <<<'SASS'
+        @for $i from 1 through 3 //
+          a
+            b: $i
+        SASS;
+
+        $expected = <<<'SCSS'
+        @for $i from 1 through 3 {
+          a {
+            b: $i;
+          }
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
+    it('strips a silent comment splitting a directive header', function () {
+        $sass = <<<'SASS'
+        @for //
+          $i from 1 through 3
+          a
+            b: $i
+        SASS;
+
+        $expected = <<<'SCSS'
+        @for $i from 1 through 3 {
+          a {
+            b: $i;
+          }
+        }
+        SCSS;
+
+        expect($this->normalizer->normalize($sass))->toBe($expected);
+    });
+
+    it('keeps a silent comment marker nested in a directive loud comment', function () {
+        $sass = "@debug /* a // b */ c\n";
+
+        expect($this->normalizer->normalize($sass))->toBe('@debug /* a // b */ c;');
+    });
+
+    it('keeps a silent comment marker inside a directive string', function () {
+        $sass = '@debug "a\" // b" \'c // d\'' . "\n";
+
+        expect($this->normalizer->normalize($sass))->toBe('@debug "a\" // b" \'c // d\';');
+    });
+
     it('merges interpolation spanning multiple lines', function () {
         $sass = <<<'SASS'
         a

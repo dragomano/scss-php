@@ -157,6 +157,8 @@ final readonly class SassNormalizer implements SourceNormalizer
 
             $pendingEmptyLines = [];
 
+            $trimmed = $this->stripAtRuleSilentComment($trimmed);
+
             [$trimmed, $index] = $this->mergeParenthesizedDeclaration($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeBracketedDeclaration($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeDirectiveHeader($trimmed, $level, $index, $lines, $indentSize);
@@ -515,6 +517,77 @@ final readonly class SassNormalizer implements SourceNormalizer
     private function indent(int $level, int $indentSize): string
     {
         return str_repeat(' ', $level * $indentSize);
+    }
+
+    private function stripAtRuleSilentComment(string $line): string
+    {
+        if (! str_starts_with($line, '@')) {
+            return $line;
+        }
+
+        $position = $this->findSilentCommentStart($line);
+
+        return $position === null ? $line : rtrim(substr($line, 0, $position));
+    }
+
+    private function findSilentCommentStart(string $line): ?int
+    {
+        $length  = strlen($line);
+        $quote   = null;
+        $inLoud  = false;
+        $escaped = false;
+
+        for ($index = 0; $index < $length; $index++) {
+            $char = $line[$index];
+
+            if ($quote !== null) {
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($inLoud) {
+                if ($char === '*' && ($line[$index + 1] ?? '') === '/') {
+                    $inLoud = false;
+
+                    $index++;
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                continue;
+            }
+
+            if ($char !== '/') {
+                continue;
+            }
+
+            $next = $line[$index + 1] ?? '';
+
+            if ($next === '*') {
+                $inLoud = true;
+
+                $index++;
+
+                continue;
+            }
+
+            if ($next === '/') {
+                return $index;
+            }
+        }
+
+        return null;
     }
 
     /**
