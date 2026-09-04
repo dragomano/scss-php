@@ -87,4 +87,16 @@ describe('ColorArgumentParser', function () {
             ->and($this->parser->unwrapCalcNumber($nonNumericList))->toBeNull()
             ->and($this->parser->unwrapCalcNumber(new StringNode('calc(10%)')))->toBeNull();
     });
+
+    it('drops the sign of negative zero channels', function () {
+        $isNegativeZero = static fn(float $value): bool => $value === 0.0 && fdiv(1.0, $value) < 0;
+
+        expect($isNegativeZero($this->parser->asNumber(new NumberNode(-0.0), 'scale')))->toBeFalse()
+            ->and($isNegativeZero($this->parser->asHueAngle(new NumberNode(-0.0, 'rad'), 'spin')))->toBeFalse()
+            ->and($isNegativeZero($this->parser->asAbsoluteChannel(new NumberNode(-0.0, '%'), 'lab', 125.0)))->toBeFalse()
+            ->and($isNegativeZero($this->parser->asColorChannel(new NumberNode(-0.0, '%'))))->toBeFalse()
+            ->and($isNegativeZero($this->parser->asPercentage(new NumberNode(-0.0, '%'), 'mix')))->toBeFalse()
+            ->and($isNegativeZero($this->parser->asLenientPercentage(new NumberNode(-0.0, '%'), 'hsl')))->toBeFalse()
+            ->and($isNegativeZero($this->parser->normalizeHue(-360.0)))->toBeFalse();
+    });
 });

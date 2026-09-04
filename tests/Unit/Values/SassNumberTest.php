@@ -67,6 +67,18 @@ describe(SassNumber::class, function () {
         expect($number->toCss())->toBe('0');
     });
 
+    it('preserves the sign of negative zero', function () {
+        expect((new SassNumber(-0.0))->toCss())->toBe('-0')
+            ->and((new SassNumber(-0.0, 'px'))->toCss())->toBe('-0px')
+            ->and((new SassNumber(-0.0, '%'))->toCss())->toBe('-0%')
+            ->and((new SassNumber(-0.0, 'px/s'))->toCss())->toBe('calc(-0px / 1s)');
+    });
+
+    it('does not add a sign to positive zero', function () {
+        expect((new SassNumber(0.0))->toCss())->toBe('0')
+            ->and((new SassNumber(0))->toCss())->toBe('0');
+    });
+
     it('formats negative infinity with compound units as calc expression', function () {
         $number = new SassNumber(-INF, 'px/s');
 

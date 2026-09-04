@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Values;
 use Bugo\SCSS\Utils\UnitConverter;
 
 use function abs;
+use function fdiv;
 use function is_infinite;
 use function is_int;
 use function is_nan;
@@ -64,7 +65,9 @@ final class SassNumber extends AbstractSassValue
             $truncated = (int) $value;
 
             if ((float) $truncated === $value) {
-                return $this->compressLeadingZero((string) $truncated);
+                $sign = $truncated === 0 && $this->isNegativeZero($value) ? '-' : '';
+
+                return $sign . $this->compressLeadingZero((string) $truncated);
             }
         }
 
@@ -75,6 +78,11 @@ final class SassNumber extends AbstractSassValue
         }
 
         return $this->compressLeadingZero($this->roundDecimalString($text));
+    }
+
+    private function isNegativeZero(float $value): bool
+    {
+        return $value === 0.0 && fdiv(1.0, $value) < 0;
     }
 
     private function removeExponent(string $text): string

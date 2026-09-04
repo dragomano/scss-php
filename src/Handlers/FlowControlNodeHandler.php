@@ -52,9 +52,7 @@ final readonly class FlowControlNodeHandler
                 }
             }
 
-            if ($branch === null) {
-                $branch = $node->elseBody;
-            }
+            $branch ??= $node->elseBody;
         }
 
         $this->compileBody($branch, $ctx, $output, $first);

@@ -388,9 +388,10 @@ final readonly class DartColorMath
             : 100.0 * ($max - $lightness) / min($lightness, 1.0 - $lightness);
 
         if ($saturation < 0) {
-            $hue       += 180.0;
-            $saturation = abs($saturation);
+            $hue += 180.0;
         }
+
+        $saturation = abs($saturation);
 
         if ($this->fuzzyEquals($saturation, 0.0)) {
             $hue = 0.0;

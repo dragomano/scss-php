@@ -92,9 +92,7 @@ final readonly class FunctionCallEvaluator
             $userFunction = $node->capturedScope->findFunction($node->name)?->definition;
         }
 
-        if ($userFunction === null) {
-            $userFunction = $currentScope->findFunction($node->name)?->definition;
-        }
+        $userFunction ??= $currentScope->findFunction($node->name)?->definition;
 
         if ($userFunction === null) {
             return null;

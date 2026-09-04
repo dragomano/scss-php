@@ -330,9 +330,7 @@ final readonly class Module
             $prefixedIncoming = $this->stripPrefixFromConfiguration($incomingConfig, $node->prefix);
 
             foreach ($prefixedIncoming as $name => $value) {
-                if (! isset($resolvedConfiguration[$name])) {
-                    $resolvedConfiguration[$name] = $value;
-                }
+                $resolvedConfiguration[$name] ??= $value;
             }
         }
 

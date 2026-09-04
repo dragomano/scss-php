@@ -58,9 +58,7 @@ final class SassCalculation extends AbstractSassValue
         /** @var array<string, int>|null $set */
         static $set = null;
 
-        if ($set === null) {
-            $set = array_flip(self::SUPPORTED_FUNCTIONS);
-        }
+        $set ??= array_flip(self::SUPPORTED_FUNCTIONS);
 
         return isset($set[strtolower($name)]);
     }

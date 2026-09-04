@@ -385,7 +385,7 @@ final readonly class ColorArgumentParser
             );
         }
 
-        return (float) $value->value;
+        return $this->normalizeChannelValue((float) $value->value);
     }
 
     public function renderForError(AstNode $node): string
@@ -474,7 +474,7 @@ final readonly class ColorArgumentParser
             );
         }
 
-        return (float) $value->value;
+        return $this->normalizeChannelValue((float) $value->value);
     }
 
     public function asHueAngle(?AstNode $value, string $context): float
@@ -488,12 +488,12 @@ final readonly class ColorArgumentParser
 
         $v = (float) $value->value;
 
-        return match ($value->unit) {
+        return $this->normalizeChannelValue(match ($value->unit) {
             'turn'  => $v * 360.0,
             'rad'   => $v * (180.0 / M_PI),
             'grad'  => $v * 0.9,
             default => $v,
-        };
+        });
     }
 
     public function asAbsoluteChannel(?AstNode $value, string $context, float $range): float
@@ -507,7 +507,7 @@ final readonly class ColorArgumentParser
 
         $v = (float) $value->value;
 
-        return $value->unit === '%' ? ($v / 100.0) * $range : $v;
+        return $this->normalizeChannelValue($value->unit === '%' ? ($v / 100.0) * $range : $v);
     }
 
     public function asColorChannel(?AstNode $value): float
@@ -524,10 +524,10 @@ final readonly class ColorArgumentParser
         }
 
         if ($value->unit === '%') {
-            return (float) $value->value / 100.0;
+            return $this->normalizeChannelValue((float) $value->value / 100.0);
         }
 
-        return (float) $value->value;
+        return $this->normalizeChannelValue((float) $value->value);
     }
 
     public function asString(?AstNode $value, string $context): string
@@ -560,7 +560,7 @@ final readonly class ColorArgumentParser
             );
         }
 
-        return (float) $value->value;
+        return $this->normalizeChannelValue((float) $value->value);
     }
 
     public function unwrapCalcNumber(?AstNode $value): ?NumberNode
@@ -610,7 +610,7 @@ final readonly class ColorArgumentParser
 
     public function normalizeHue(float $hue): float
     {
-        return $this->colorSpaceConverter->normalizeHue($hue);
+        return $this->normalizeChannelValue($this->colorSpaceConverter->normalizeHue($hue));
     }
 
     public function isMissingChannelNode(AstNode $node): bool
@@ -808,5 +808,10 @@ final readonly class ColorArgumentParser
         }
 
         return $arguments[1]->items[0];
+    }
+
+    private function normalizeChannelValue(float $value): float
+    {
+        return $value === 0.0 ? 0.0 : $value;
     }
 }

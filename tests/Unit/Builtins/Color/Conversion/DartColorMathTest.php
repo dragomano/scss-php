@@ -105,6 +105,12 @@ describe('DartColorMath', function () {
         expect($lightness)->toBe(25.0);
     });
 
+    it('drops the sign of negative zero saturation', function () {
+        [, $saturation] = $this->math->srgbToHsl(-0.1, -0.1, -0.1);
+
+        expect($saturation === 0.0 && fdiv(1.0, $saturation) < 0)->toBeFalse();
+    });
+
     it('converts lab to lch with dart trigonometry', function () {
         [$lightness, $chroma, $hue] = $this->math->labToLch(10.0, 3.0, 4.0);
 

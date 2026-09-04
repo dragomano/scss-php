@@ -47,9 +47,7 @@ final readonly class CallableParameterBinder
             }
 
             if ($parameter->rest) {
-                if ($parameterNameSet === null) {
-                    $parameterNameSet = $this->buildParameterNameSet($parameters);
-                }
+                $parameterNameSet ??= $this->buildParameterNameSet($parameters);
 
                 $scope->setVariableLocal(
                     $parameterName,

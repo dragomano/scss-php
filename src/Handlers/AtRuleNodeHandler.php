@@ -436,9 +436,7 @@ final readonly class AtRuleNodeHandler
             $ctx->env,
         );
 
-        if ($contentScope === null) {
-            $contentScope = $ctx->env->getCurrentScope();
-        }
+        $contentScope ??= $ctx->env->getCurrentScope();
 
         $ctx->env->enterScope($contentScope);
 

@@ -565,9 +565,7 @@ final readonly class ExtendsResolver
         $selectorsForTarget = $store['selectors'][$target] ?? null;
         $hadExistingExtensions = isset($store['byExtender'][$target]);
 
-        if (! isset($store['extensions'][$target])) {
-            $store['extensions'][$target] = [];
-        }
+        $store['extensions'][$target] ??= [];
 
         $sources = & $store['extensions'][$target];
 
@@ -602,9 +600,7 @@ final readonly class ExtendsResolver
             foreach ($this->simpleSelectorsRecursive($extender) as $simple) {
                 $store['byExtender'][$simple][] = $extension;
 
-                if (! isset($store['sourceSpecificity'][$simple])) {
-                    $store['sourceSpecificity'][$simple] = $this->structuralSpecificity($extender);
-                }
+                $store['sourceSpecificity'][$simple] ??= $this->structuralSpecificity($extender);
             }
 
             if ($selectorsForTarget !== null || $hadExistingExtensions) {
