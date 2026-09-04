@@ -177,7 +177,7 @@ final readonly class Module
             throw ModuleResolutionException::duplicateNamespace($namespace);
         }
 
-        $file = $this->loader->load($node->path);
+        $file = $this->loadModuleFile($node->path);
 
         $this->loader->addPath(dirname($file['path']));
 
@@ -216,7 +216,7 @@ final readonly class Module
 
         $syntax       = Syntax::fromPath($file['path'], $file['content']);
         $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
-        $moduleAst    = $this->parser->parse($moduleSource);
+        $moduleAst    = $this->parseModuleAst($file['path'], $moduleSource);
 
         if ($node->configuration !== []) {
             $defaultVars = $this->collectDefaultVariableNames($moduleAst);
@@ -246,11 +246,20 @@ final readonly class Module
 
         $state->loadingFiles[$moduleId] = true;
 
+        $previousExtends  = $this->ctx->outputState->extends->enterModuleScope($moduleId);
+        $previousModuleId = $state->currentModuleId;
+
+        $state->currentModuleId = $moduleId;
+
         try {
             $compiledCss = $syntax === Syntax::CSS
                 ? $this->plainCssRenderer->render($moduleAst, $moduleEnv)
                 : $this->dispatcher->compile($moduleAst, $moduleEnv);
         } finally {
+            $state->currentModuleId = $previousModuleId;
+
+            $this->ctx->outputState->extends->leaveModuleScope($previousExtends);
+
             unset($state->loadingFiles[$moduleId]);
         }
 
@@ -449,13 +458,15 @@ final readonly class Module
         bool $compileCss = true,
         array $initialVariables = [],
     ): array {
-        $file = $this->loader->load($path, $fromImport);
+        $file = $fromImport ? $this->loader->load($path, true) : $this->loadModuleFile($path);
 
         $this->loader->addPath(dirname($file['path']));
 
         $syntax       = Syntax::fromPath($file['path'], $file['content']);
         $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
-        $moduleAst    = $this->parser->parse($moduleSource);
+        $moduleAst    = $fromImport
+            ? $this->parser->parse($moduleSource)
+            : $this->parseModuleAst($file['path'], $moduleSource);
         $moduleEnv    = new Environment();
 
         foreach ($initialVariables as $name => $value) {
@@ -483,6 +494,16 @@ final readonly class Module
             $emittedCss = $this->ctx->moduleState->takeEmittedCssState();
         }
 
+        $previousExtends = $fromImport
+            ? null
+            : $this->ctx->outputState->extends->enterModuleScope($file['path']);
+
+        $previousModuleId = $this->ctx->moduleState->currentModuleId;
+
+        if (! $fromImport) {
+            $this->ctx->moduleState->currentModuleId = $file['path'];
+        }
+
         try {
             $css = $compileCss
                 ? ($syntax === Syntax::CSS
@@ -490,6 +511,10 @@ final readonly class Module
                     : $this->dispatcher->compile($moduleAst, $moduleEnv))
                 : '';
         } finally {
+            $this->ctx->moduleState->currentModuleId = $previousModuleId;
+
+            $this->ctx->outputState->extends->leaveModuleScope($previousExtends);
+
             if ($emittedCss !== null) {
                 $this->ctx->moduleState->importEvaluationDepth--;
                 unset($this->ctx->moduleState->loadingFiles[$file['path']]);
@@ -882,6 +907,17 @@ final readonly class Module
         }
 
         return str_ends_with($lower, '.css');
+    }
+
+    /** @return array{path: string, content: string} */
+    private function loadModuleFile(string $path): array
+    {
+        return $this->ctx->moduleState->prefetchedFile($path) ?? $this->loader->load($path);
+    }
+
+    private function parseModuleAst(string $path, string $source): RootNode
+    {
+        return $this->ctx->moduleState->prefetchedAst($path) ?? $this->parser->parse($source);
     }
 
     /** @return array<string, true> */

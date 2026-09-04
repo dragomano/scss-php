@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\States;
 
+use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Runtime\Scope;
 
 final class ModuleState
@@ -38,6 +39,14 @@ final class ModuleState
     /** @var array<string, bool> */
     public array $loadingFiles = [];
 
+    /** @var array<string, array{path: string, content: string}> */
+    public array $prefetchedFiles = [];
+
+    /** @var array<string, RootNode> */
+    public array $prefetchedAsts = [];
+
+    public string $currentModuleId = '';
+
     public function registerModule(string $namespace, string $id, Scope $scope, string $css): void
     {
         $module = new LoadedModule($id, $scope, $css);
@@ -66,6 +75,25 @@ final class ModuleState
     {
         $this->loadedModules[$namespace]  = $module;
         $this->idToNamespace[$module->id] = $namespace;
+    }
+
+    public function prefetchModule(string $parentId, string $url, string $path, string $content, RootNode $ast): void
+    {
+        $this->prefetchedFiles[$parentId . "\0" . $url] = ['path' => $path, 'content' => $content];
+        $this->prefetchedAsts[$path]                    = $ast;
+    }
+
+    /**
+     * @return array{path: string, content: string}|null
+     */
+    public function prefetchedFile(string $url): ?array
+    {
+        return $this->prefetchedFiles[$this->currentModuleId . "\0" . $url] ?? null;
+    }
+
+    public function prefetchedAst(string $path): ?RootNode
+    {
+        return $this->prefetchedAsts[$path] ?? null;
     }
 
     /**
@@ -109,5 +137,8 @@ final class ModuleState
         $this->callDepth             = 0;
         $this->loadingFiles          = [];
         $this->hasUseDirective       = false;
+        $this->prefetchedFiles       = [];
+        $this->prefetchedAsts        = [];
+        $this->currentModuleId       = '';
     }
 }

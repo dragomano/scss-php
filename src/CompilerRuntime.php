@@ -25,6 +25,7 @@ use Bugo\SCSS\Services\DiagnosticDirectiveHandler;
 use Bugo\SCSS\Services\DiagnosticDirectiveHandlerInterface;
 use Bugo\SCSS\Services\EachLoopBinder;
 use Bugo\SCSS\Services\Evaluator;
+use Bugo\SCSS\Services\ExtendsGraphResolver;
 use Bugo\SCSS\Services\ExtendsResolver;
 use Bugo\SCSS\Services\FunctionConditionEvaluator;
 use Bugo\SCSS\Services\LoopIterator;
@@ -55,6 +56,8 @@ final class CompilerRuntime
     private ?Evaluator $evaluation = null;
 
     private ?ExtendsResolver $extends = null;
+
+    private ?ExtendsGraphResolver $extendsGraph = null;
 
     private ?Module $module = null;
 
@@ -127,6 +130,11 @@ final class CompilerRuntime
     public function extends(): ExtendsResolver
     {
         return $this->extends ??= $this->createExtendsResolver();
+    }
+
+    public function extendsGraph(): ExtendsGraphResolver
+    {
+        return $this->extendsGraph ??= $this->createExtendsGraphResolver();
     }
 
     public function selector(): Selector
@@ -224,7 +232,7 @@ final class CompilerRuntime
 
     private function createPlainCssRenderer(): PlainCssRenderer
     {
-        return new PlainCssRenderer($this->dispatcher, $this->render(), $this->text());
+        return new PlainCssRenderer($this->dispatcher, $this->render(), $this->text(), $this->selector());
     }
 
     private function createEvaluator(): Evaluator
@@ -273,6 +281,17 @@ final class CompilerRuntime
             ),
             new EachLoopBinder($this->ctx->valueFactory),
             $this->createAstValueFormatter(),
+        );
+    }
+
+    private function createExtendsGraphResolver(): ExtendsGraphResolver
+    {
+        return new ExtendsGraphResolver(
+            $this->ctx,
+            $this->loader,
+            $this->parser,
+            $this->extends(),
+            $this->module(),
         );
     }
 

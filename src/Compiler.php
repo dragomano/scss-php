@@ -106,8 +106,9 @@ final readonly class Compiler implements CompilerInterface
 
         if ($collectExtends) {
             $this->runtime->selector()->collectExtends($ast, $environment);
-            $this->runtime->selector()->finalizeCollectedExtends();
         }
+
+        $this->runtime->extendsGraph()->finalize($ast);
 
         return $environment;
     }

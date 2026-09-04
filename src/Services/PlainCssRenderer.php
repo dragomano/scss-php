@@ -25,6 +25,7 @@ final readonly class PlainCssRenderer
         private NodeDispatcherInterface $dispatcher,
         private Render $render,
         private Text $text,
+        private Selector $selector,
     ) {}
 
     public function render(RootNode $root, Environment $env): string
@@ -114,6 +115,7 @@ final readonly class PlainCssRenderer
     private function renderCssRuleBody(RuleNode $node, Environment $env, int $indent, bool $isTopLevel): string
     {
         $prefix   = $this->render->indentPrefix($indent);
+        $selector = $this->selector->applyExtendsToSelector($node->selector);
         $bubbling = [];
         $regular  = [];
 
@@ -129,7 +131,7 @@ final readonly class PlainCssRenderer
         $content = $this->renderChildren($regular, $env, $indent + 1);
 
         if ($content !== '') {
-            $out .= $prefix . $node->selector . " {\n" . $content . "\n" . $prefix . '}';
+            $out .= $prefix . $selector . " {\n" . $content . "\n" . $prefix . '}';
         }
 
         foreach ($bubbling as $atRule) {
@@ -143,7 +145,7 @@ final readonly class PlainCssRenderer
 
             $innerPrefix = $this->render->indentPrefix($indent + 1);
 
-            $innerRule = $innerPrefix . $node->selector . " {\n"
+            $innerRule = $innerPrefix . $selector . " {\n"
                 . $this->renderChildren($atRule->body, $env, $indent + 2) . "\n"
                 . $innerPrefix . '}';
 

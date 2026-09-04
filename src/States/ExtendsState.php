@@ -4,6 +4,33 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\States;
 
+/**
+ * @phpstan-type ExtendsBox array{
+ *     rawParts: array<int, string>,
+ *     selectors: array<int, string>,
+ *     originals: array<int, string>,
+ *     context: string
+ * }
+ * @phpstan-type ExtendsScope array{
+ *     extendMap: array<string, array<int, array{source: string, priority: int}>>,
+ *     selectorContexts: array<string, array<string, true>>,
+ *     partLineBreaks: array<string, bool>,
+ *     boxes: array<int, ExtendsBox>
+ * }
+ *
+ * @psalm-type ExtendsBox=array{
+ *     rawParts: array<int, string>,
+ *     selectors: array<int, string>,
+ *     originals: array<int, string>,
+ *     context: string
+ * }
+ * @psalm-type ExtendsScope=array{
+ *     extendMap: array<string, array<int, array{source: string, priority: int}>>,
+ *     selectorContexts: array<string, array<string, true>>,
+ *     partLineBreaks: array<string, bool>,
+ *     boxes: array<int, ExtendsBox>
+ * }
+ */
 final class ExtendsState
 {
     /** @var array<string, array<int, array{source: string, priority: int}>> */
@@ -43,17 +70,65 @@ final class ExtendsState
 
     public int $extendSequence = 0;
 
-    /**
-     * @var array<int, array{
-     *     rawParts: array<int, string>,
-     *     selectors: array<int, string>,
-     *     originals: array<int, string>,
-     *     context: string
-     * }>
-     */
+    /** @var array<int, ExtendsBox> */
     public array $boxes = [];
 
-    public function reset(): void
+    /** @var array<string, ExtendsScope> */
+    public array $moduleScopes = [];
+
+    /**
+     * @return ExtendsScope
+     */
+    public function captureScope(): array
+    {
+        return [
+            'extendMap'        => $this->extendMap,
+            'selectorContexts' => $this->selectorContexts,
+            'partLineBreaks'   => $this->partLineBreaks,
+            'boxes'            => $this->boxes,
+        ];
+    }
+
+    /**
+     * @param ExtendsScope $scope
+     */
+    public function applyScope(array $scope): void
+    {
+        $this->extendMap        = $scope['extendMap'];
+        $this->selectorContexts = $scope['selectorContexts'];
+        $this->partLineBreaks   = $scope['partLineBreaks'];
+        $this->boxes            = $scope['boxes'];
+    }
+
+    /**
+     * @return ExtendsScope|null
+     */
+    public function enterModuleScope(string $moduleId): ?array
+    {
+        if (! isset($this->moduleScopes[$moduleId])) {
+            return null;
+        }
+
+        $previous = $this->captureScope();
+
+        $this->applyScope($this->moduleScopes[$moduleId]);
+
+        return $previous;
+    }
+
+    /**
+     * @param ExtendsScope|null $previous
+     */
+    public function leaveModuleScope(?array $previous): void
+    {
+        if ($previous === null) {
+            return;
+        }
+
+        $this->applyScope($previous);
+    }
+
+    public function resetCollection(): void
     {
         $this->extendMap        = [];
         $this->pendingExtends   = [];
@@ -64,5 +139,12 @@ final class ExtendsState
         $this->ruleStack        = [];
         $this->extendSequence   = 0;
         $this->boxes            = [];
+    }
+
+    public function reset(): void
+    {
+        $this->resetCollection();
+
+        $this->moduleScopes = [];
     }
 }

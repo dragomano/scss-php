@@ -23,6 +23,7 @@ use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\States\ExtendsState;
 use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\SelectorTokenizer;
@@ -53,9 +54,11 @@ use function usort;
 
 /**
  * @phpstan-import-type Complex from SelectorTokenizer
+ * @phpstan-import-type ExtendsBox from ExtendsState
  * @phpstan-type Extension array{extender: Complex, target: string, context: string, optional: bool, priority: int}
  * @phpstan-type Extender array{selector: Complex, original: bool, context: string}
  * @phpstan-type ExtensionMap array<string, array<string, Extension>>
+ * @phpstan-type BoxMeta array<int, array{rawParts: array<int, string>, originals: array<int, string>, context: string}>
  * @phpstan-type ExtensionStore array{
  *     selectors: array<string, array<int, true>>,
  *     extensions: ExtensionMap,
@@ -67,9 +70,11 @@ use function usort;
  * }
  *
  * @psalm-import-type Complex from SelectorTokenizer
+ * @psalm-import-type ExtendsBox from ExtendsState
  * @psalm-type Extension=array{extender: Complex, target: string, context: string, optional: bool, priority: int}
  * @psalm-type Extender=array{selector: Complex, original: bool, context: string}
  * @psalm-type ExtensionMap=array<string, array<string, Extension>>
+ * @psalm-type BoxMeta=array<int, array{rawParts: array<int, string>, originals: array<int, string>, context: string}>
  * @psalm-type ExtensionStore=array{
  *     selectors: array<string, array<int, true>>,
  *     extensions: ExtensionMap,
@@ -173,10 +178,17 @@ final readonly class ExtendsResolver
             return;
         }
 
-        $this->playExtendEvents();
+        $built        = $this->buildExtensionStore();
+        $materialized = $this->materializeExtensionStore($built['store'], $built['meta']);
+
+        $state->boxes     = $materialized['boxes'];
+        $state->extendMap = $materialized['extendMap'];
     }
 
-    private function playExtendEvents(): void
+    /**
+     * @return array{store: ExtensionStore, meta: BoxMeta}
+     */
+    public function buildExtensionStore(): array
     {
         $state = $this->ctx->outputState->extends;
 
@@ -191,9 +203,7 @@ final readonly class ExtendsResolver
             'boxes'             => [],
         ];
 
-        /**
-         * @var array<int, array{rawParts: array<int, string>, originals: array<int, string>, context: string}> $boxMeta
-         */
+        /** @var BoxMeta $boxMeta */
         $boxMeta = [];
 
         foreach ($state->events as $event) {
@@ -233,33 +243,253 @@ final readonly class ExtendsResolver
             );
         }
 
-        $state->boxes = [];
+        return ['store' => $store, 'meta' => $boxMeta];
+    }
 
-        foreach ($boxMeta as $boxId => $meta) {
+    /**
+     * @param ExtensionStore $store
+     * @param BoxMeta $meta
+     * @return array{boxes: array<int, ExtendsBox>, extendMap: array<string, array<int, array{source: string, priority: int}>>}
+     */
+    public function materializeExtensionStore(array $store, array $meta): array
+    {
+        /** @var array<int, ExtendsBox> $boxes */
+        $boxes = [];
+
+        foreach ($meta as $boxId => $boxMeta) {
             $selectors = [];
 
             foreach ($store['boxes'][$boxId] ?? [] as $complex) {
                 $selectors[] = $this->complexKey($complex);
             }
 
-            $state->boxes[$boxId] = [
-                'rawParts'  => $meta['rawParts'],
+            $boxes[$boxId] = [
+                'rawParts'  => $boxMeta['rawParts'],
                 'selectors' => $selectors,
-                'originals' => $meta['originals'],
-                'context'   => $meta['context'],
+                'originals' => $boxMeta['originals'],
+                'context'   => $boxMeta['context'],
             ];
         }
 
-        $state->extendMap = [];
+        /** @var array<string, array<int, array{source: string, priority: int}>> $extendMap */
+        $extendMap = [];
 
         foreach ($store['extensions'] as $target => $sources) {
             foreach ($sources as $extension) {
-                $state->extendMap[$target][] = [
+                $extendMap[$target][] = [
                     'source'   => $this->complexKey($extension['extender']),
                     'priority' => $extension['priority'],
                 ];
             }
         }
+
+        return ['boxes' => $boxes, 'extendMap' => $extendMap];
+    }
+
+    /**
+     * @param ExtensionStore $store
+     * @param array<int, ExtensionStore> $foreignStores
+     */
+    public function addForeignExtensionsToStore(array &$store, array $foreignStores): void
+    {
+        /** @var ExtensionMap $newExtensions */
+        $newExtensions = [];
+
+        /** @var list<Extension> $extensionsToExtend */
+        $extensionsToExtend = [];
+
+        /** @var array<int, true> $selectorsToExtend */
+        $selectorsToExtend = [];
+
+        foreach ($foreignStores as $foreignStore) {
+            if ($foreignStore['extensions'] === []) {
+                continue;
+            }
+
+            foreach ($foreignStore['sourceSpecificity'] as $simple => $specificity) {
+                $store['sourceSpecificity'][$simple] = $specificity;
+            }
+
+            foreach ($foreignStore['extensions'] as $target => $foreignSources) {
+                if ($this->isPrivatePlaceholderTarget($target)) {
+                    continue;
+                }
+
+                $hasExtenders = isset($store['byExtender'][$target]);
+                $hasSelectors = isset($store['selectors'][$target]);
+
+                foreach ($store['byExtender'][$target] ?? [] as $extension) {
+                    $extensionsToExtend[] = $extension;
+                }
+
+                foreach (array_keys($store['selectors'][$target] ?? []) as $boxId) {
+                    $selectorsToExtend[$boxId] = true;
+                }
+
+                foreach ($foreignSources as $key => $extension) {
+                    if (isset($store['extensions'][$target][$key])) {
+                        if (! $extension['optional']) {
+                            $store['extensions'][$target][$key]['optional'] = false;
+                        }
+                    } else {
+                        $store['extensions'][$target][$key] = $extension;
+                    }
+
+                    if ($hasExtenders || $hasSelectors) {
+                        $newExtensions[$target][$key] = $store['extensions'][$target][$key];
+                    }
+                }
+            }
+        }
+
+        if ($newExtensions === []) {
+            return;
+        }
+
+        if ($extensionsToExtend !== []) {
+            $this->extendExistingExtensionsInStore($store, $extensionsToExtend, $newExtensions);
+        }
+
+        if ($selectorsToExtend !== []) {
+            $this->extendExistingSelectorsInStore($store, array_keys($selectorsToExtend), $newExtensions);
+        }
+    }
+
+    /**
+     * @param ExtensionStore $store
+     * @param BoxMeta $meta
+     */
+    public function applyExtensionStore(array $store, array $meta): void
+    {
+        $state        = $this->ctx->outputState->extends;
+        $materialized = $this->materializeExtensionStore($store, $meta);
+
+        $state->boxes     = $materialized['boxes'];
+        $state->extendMap = $materialized['extendMap'];
+    }
+
+    public function registerExtend(string $target, string $source, int $priority = 0): void
+    {
+        $target = $this->tokenizer->canonicalizeSelectorEscapes(
+            $this->tokenizer->normalizeSelectorAttributes(trim($target)),
+        );
+        $source = $this->tokenizer->canonicalizeSelectorEscapes(
+            $this->tokenizer->normalizeSelectorAttributes(trim($source)),
+        );
+
+        if ($target === '' || $source === '' || $target === $source) {
+            return;
+        }
+
+        $state = $this->ctx->outputState;
+
+        $state->extends->extendMap[$target] ??= [];
+        $state->extends->extendMap[$target][] = [
+            'source'   => $source,
+            'priority' => $priority,
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function extractSimpleExtendTargetSelectors(string $target): array
+    {
+        $target = $this->tokenizer->canonicalizeSelectorEscapes(
+            $this->tokenizer->normalizeSelectorAttributes(trim($target)),
+        );
+
+        if ($target === '') {
+            return [];
+        }
+
+        $targets = $this->splitTopLevelSelectorList($target);
+
+        foreach ($targets as $item) {
+            $this->assertSimpleExtendTargetSelector($item);
+        }
+
+        return $targets;
+    }
+
+    public function applyExtendsToSelector(string $selector): string
+    {
+        $lineBreaks = array_merge(
+            $this->ctx->outputState->extends->partLineBreaks,
+            $this->collectLineBreakMap($selector),
+        );
+
+        $selector = $this->tokenizer->canonicalizeSelectorEscapes($selector);
+
+        if (! $this->hasCollectedExtends() && ! str_contains($selector, '%')) {
+            return $selector;
+        }
+
+        $state = $this->ctx->outputState->extends;
+
+        if ($state->boxes !== []) {
+            $parts = $this->splitTopLevelSelectorList($selector);
+
+            foreach ($state->boxes as $box) {
+                if ($box['originals'] === $parts) {
+                    return $this->joinSelectorListWithLineBreaks(
+                        $this->renderBoxSelectors($box['selectors']),
+                        $lineBreaks,
+                    );
+                }
+            }
+
+            foreach ($state->boxes as $box) {
+                if (in_array($selector, $box['selectors'], true)) {
+                    return $selector;
+                }
+            }
+        }
+
+        $parts  = SelectorHelper::splitList($selector, false);
+        $result = [];
+        $exact  = [];
+
+        foreach ($parts as $part) {
+            if ($part === '') {
+                continue;
+            }
+
+            $part = $this->tokenizer->normalizeSelectorAttributes($part);
+
+            $isPlaceholderPart = str_contains($part, '%');
+
+            if (! $isPlaceholderPart) {
+                $result[] = $part;
+                $exact[]  = $part;
+            }
+
+            foreach ($this->applyExtendsIncrementally($part) as $candidate) {
+                if (str_contains($candidate, '%')) {
+                    continue;
+                }
+
+                $result[] = $candidate;
+            }
+        }
+
+        $unique      = array_values(array_unique($result));
+        $uniqueExact = array_values(array_unique($exact));
+
+        return $this->joinSelectorListWithLineBreaks(
+            $this->trimRedundantSelectors($unique, $uniqueExact),
+            $lineBreaks,
+        );
+    }
+
+    public function hasCollectedExtends(): bool
+    {
+        $state = $this->ctx->outputState->extends;
+
+        return $state->extendMap !== []
+            || $state->pendingExtends !== []
+            || $state->selectorContexts !== []
+            || $state->boxes !== [];
     }
 
     /**
@@ -1458,120 +1688,6 @@ final readonly class ExtendsResolver
         throw new SassErrorException('You may not @extend selectors across media queries.');
     }
 
-    public function registerExtend(string $target, string $source, int $priority = 0): void
-    {
-        $target = $this->tokenizer->canonicalizeSelectorEscapes(
-            $this->tokenizer->normalizeSelectorAttributes(trim($target)),
-        );
-        $source = $this->tokenizer->canonicalizeSelectorEscapes(
-            $this->tokenizer->normalizeSelectorAttributes(trim($source)),
-        );
-
-        if ($target === '' || $source === '' || $target === $source) {
-            return;
-        }
-
-        $state = $this->ctx->outputState;
-
-        $state->extends->extendMap[$target] ??= [];
-        $state->extends->extendMap[$target][] = [
-            'source'   => $source,
-            'priority' => $priority,
-        ];
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    public function extractSimpleExtendTargetSelectors(string $target): array
-    {
-        $target = $this->tokenizer->canonicalizeSelectorEscapes(
-            $this->tokenizer->normalizeSelectorAttributes(trim($target)),
-        );
-
-        if ($target === '') {
-            return [];
-        }
-
-        $targets = $this->splitTopLevelSelectorList($target);
-
-        foreach ($targets as $item) {
-            $this->assertSimpleExtendTargetSelector($item);
-        }
-
-        return $targets;
-    }
-
-    public function applyExtendsToSelector(string $selector): string
-    {
-        $lineBreaks = array_merge(
-            $this->ctx->outputState->extends->partLineBreaks,
-            $this->collectLineBreakMap($selector),
-        );
-
-        $selector = $this->tokenizer->canonicalizeSelectorEscapes($selector);
-
-        if (! $this->hasCollectedExtends() && ! str_contains($selector, '%')) {
-            return $selector;
-        }
-
-        $state = $this->ctx->outputState->extends;
-
-        if ($state->boxes !== []) {
-            $parts = $this->splitTopLevelSelectorList($selector);
-
-            foreach ($state->boxes as $box) {
-                if ($box['originals'] === $parts) {
-                    return $this->joinSelectorListWithLineBreaks(
-                        $this->renderBoxSelectors($box['selectors']),
-                        $lineBreaks,
-                    );
-                }
-            }
-
-            foreach ($state->boxes as $box) {
-                if (in_array($selector, $box['selectors'], true)) {
-                    return $selector;
-                }
-            }
-        }
-
-        $parts  = SelectorHelper::splitList($selector, false);
-        $result = [];
-        $exact  = [];
-
-        foreach ($parts as $part) {
-            if ($part === '') {
-                continue;
-            }
-
-            $part = $this->tokenizer->normalizeSelectorAttributes($part);
-
-            $isPlaceholderPart = str_contains($part, '%');
-
-            if (! $isPlaceholderPart) {
-                $result[] = $part;
-                $exact[]  = $part;
-            }
-
-            foreach ($this->applyExtendsIncrementally($part) as $candidate) {
-                if (str_contains($candidate, '%')) {
-                    continue;
-                }
-
-                $result[] = $candidate;
-            }
-        }
-
-        $unique      = array_values(array_unique($result));
-        $uniqueExact = array_values(array_unique($exact));
-
-        return $this->joinSelectorListWithLineBreaks(
-            $this->trimRedundantSelectors($unique, $uniqueExact),
-            $lineBreaks,
-        );
-    }
-
     /**
      * @return array<string, bool>
      */
@@ -1695,16 +1811,6 @@ final readonly class ExtendsResolver
         );
 
         return $extends;
-    }
-
-    public function hasCollectedExtends(): bool
-    {
-        $state = $this->ctx->outputState->extends;
-
-        return $state->extendMap !== []
-            || $state->pendingExtends !== []
-            || $state->selectorContexts !== []
-            || $state->boxes !== [];
     }
 
     private function collectRootExtends(RootNode $node, Environment $env): void
@@ -2447,6 +2553,11 @@ final readonly class ExtendsResolver
         }
 
         throw new SassErrorException('The target selector was not found.');
+    }
+
+    private function isPrivatePlaceholderTarget(string $target): bool
+    {
+        return str_starts_with($target, '%') && NameNormalizer::isPrivate(substr($target, 1));
     }
 
     /**
