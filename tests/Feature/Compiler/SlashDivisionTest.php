@@ -32,7 +32,7 @@ describe('Slash-separated values vs division', function () {
 
         $css = $this->compiler->compileString($source);
 
-        expect($css)->toContain('width: .5');
+        expect($css)->toContain('width: 0.5');
     });
 
     it('evaluates division when assigned to variable', function () {
@@ -45,7 +45,7 @@ describe('Slash-separated values vs division', function () {
 
         $css = $this->compiler->compileString($source);
 
-        expect($css)->toContain('width: .5');
+        expect($css)->toContain('width: 0.5');
     });
 
     it('evaluates division when returned from function', function () {
@@ -60,7 +60,7 @@ describe('Slash-separated values vs division', function () {
 
         $css = $this->compiler->compileString($source);
 
-        expect($css)->toContain('width: .5');
+        expect($css)->toContain('width: 0.5');
     });
 
     it('evaluates division in parentheses', function () {
@@ -72,7 +72,7 @@ describe('Slash-separated values vs division', function () {
 
         $css = $this->compiler->compileString($source);
 
-        expect($css)->toContain('width: .5');
+        expect($css)->toContain('width: 0.5');
     });
 
     it('evaluates division when part of arithmetic expression', function () {

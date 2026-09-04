@@ -126,7 +126,7 @@ describe('Compiler', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 code {
-                  padding: .25em;
+                  padding: 0.25em;
                   line-height: 0;
                 }
                 CSS;
@@ -208,8 +208,8 @@ describe('Compiler', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             code {
-              border-radius: .1rem;
-              box-shadow: 0 .5rem 1rem rgba(34, 34, 34, .15);
+              border-radius: 0.1rem;
+              box-shadow: 0 0.5rem 1rem rgba(34, 34, 34, 0.15);
             }
             CSS;
 
@@ -404,7 +404,7 @@ describe('Compiler', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 code {
-                  padding: .25em;
+                  padding: 0.25em;
                   line-height: 0;
                 }
 
@@ -902,8 +902,8 @@ describe('Compiler', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 code {
-                  border-radius: .1rem;
-                  box-shadow: 0 .5rem 1rem rgba(51, 51, 51, .15);
+                  border-radius: 0.1rem;
+                  box-shadow: 0 0.5rem 1rem rgba(51, 51, 51, 0.15);
                 }
                 CSS;
 

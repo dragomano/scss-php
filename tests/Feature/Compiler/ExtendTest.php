@@ -252,12 +252,12 @@ describe('Compiler', function () {
             }
 
             .guide .info, .guide .content nav.sidebar, .content .guide nav.sidebar {
-              border: 1px solid rgba(0, 0, 0, .8);
+              border: 1px solid rgba(0, 0, 0, 0.8);
               border-radius: 2px;
             }
 
             main.content .info, main.content nav.sidebar {
-              font-size: .8em;
+              font-size: 0.8em;
             }
             CSS;
 
@@ -571,12 +571,12 @@ describe('Compiler', function () {
             $expected = /** @lang text */ <<<'CSS'
             .reset-buttons, .action-buttons {
               box-sizing: border-box;
-              border-top: 1px rgba(0, 0, 0, .12) solid;
+              border-top: 1px rgba(0, 0, 0, 0.12) solid;
               padding: 16px 0;
               width: 100%;
             }
             .reset-buttons:hover, .action-buttons:hover {
-              border: 2px rgba(0, 0, 0, .5) solid;
+              border: 2px rgba(0, 0, 0, 0.5) solid;
             }
 
             .action-buttons {

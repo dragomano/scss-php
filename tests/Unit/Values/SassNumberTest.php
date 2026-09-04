@@ -5,14 +5,26 @@ declare(strict_types=1);
 use Bugo\SCSS\Values\SassNumber;
 
 describe(SassNumber::class, function () {
-    it('removes leading zero for decimals', function () {
+    it('keeps leading zero for decimals', function () {
         $number = new SassNumber(0.75);
+
+        expect($number->toCss())->toBe('0.75');
+    });
+
+    it('keeps leading zero for negative decimals', function () {
+        $number = new SassNumber(-0.5);
+
+        expect($number->toCss())->toBe('-0.5');
+    });
+
+    it('removes leading zero for decimals when compressed', function () {
+        $number = new SassNumber(0.75, compressed: true);
 
         expect($number->toCss())->toBe('.75');
     });
 
-    it('removes leading zero for negative decimals', function () {
-        $number = new SassNumber(-0.5);
+    it('removes leading zero for negative decimals when compressed', function () {
+        $number = new SassNumber(-0.5, compressed: true);
 
         expect($number->toCss())->toBe('-.5');
     });
@@ -38,6 +50,12 @@ describe(SassNumber::class, function () {
     it('keeps only first ten digits after decimal point', function () {
         $number = new SassNumber(0.012345678912345);
 
+        expect($number->toCss())->toBe('0.0123456789');
+    });
+
+    it('keeps only first ten digits after decimal point when compressed', function () {
+        $number = new SassNumber(0.012345678912345, compressed: true);
+
         expect($number->toCss())->toBe('.0123456789');
     });
 
@@ -46,7 +64,7 @@ describe(SassNumber::class, function () {
         $nearLowerInteger = new SassNumber(0.99999999991);
 
         expect($nearUpperInteger->toCss())->toBe('1.0000000001')
-            ->and($nearLowerInteger->toCss())->toBe('.9999999999');
+            ->and($nearLowerInteger->toCss())->toBe('0.9999999999');
     });
 
     it('preserves compound units for zero values', function () {

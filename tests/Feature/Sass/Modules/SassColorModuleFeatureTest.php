@@ -77,7 +77,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-mix {
-              value: color(rec2020 .95 .7 .15);
+              value: color(rec2020 0.95 0.7 0.15);
             }
             CSS;
 
@@ -94,7 +94,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-mix {
-              value: oklch(65% .06 240deg);
+              value: oklch(65% 0.06 240deg);
             }
             CSS;
 
@@ -112,11 +112,11 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .increasing {
-              value: oklch(65% .06 30deg);
+              value: oklch(65% 0.06 30deg);
             }
 
             .decreasing {
-              value: oklch(65% .06 210deg);
+              value: oklch(65% 0.06 210deg);
             }
             CSS;
 
@@ -134,11 +134,11 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .a {
-              value: oklch(65% .06 120deg);
+              value: oklch(65% 0.06 120deg);
             }
 
             .b {
-              value: oklch(65% .04 60deg);
+              value: oklch(65% 0.04 60deg);
             }
             CSS;
 
@@ -158,7 +158,7 @@ describe('Sass Color Module Feature', function () {
 
             expect($this->logger->records)->toHaveCount(2)
                 ->and($this->logger->records[0]['message'])->toBe('input.scss:2 >>> 1')
-                ->and($this->logger->records[1]['message'])->toBe('input.scss:3 >>> .4');
+                ->and($this->logger->records[1]['message'])->toBe('input.scss:3 >>> 0.4');
         });
     });
 
@@ -237,7 +237,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .a {
-              color: oklch(50% .12 250deg);
+              color: oklch(50% 0.12 250deg);
             }
             CSS;
 
@@ -284,7 +284,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .a {
-              color: color(srgb .8 .2 .1);
+              color: color(srgb 0.8 0.2 0.1);
             }
             CSS;
 
@@ -395,7 +395,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-scale {
-              value: oklch(80% .24 120deg / .6);
+              value: oklch(80% 0.24 120deg / 0.6);
             }
             CSS;
 
@@ -525,7 +525,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-opacity {
-              value: .5019607843;
+              value: 0.5019607843;
             }
             CSS;
 
@@ -722,7 +722,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-to-space {
-              value: color(srgb .2 .4 .6);
+              value: color(srgb 0.2 0.4 0.6);
             }
             CSS;
 
@@ -739,7 +739,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-to-space {
-              value: color(display-p3 .0690923275 .196438359 .3861624224);
+              value: color(display-p3 0.0690923275 0.196438359 0.3861624224);
             }
             CSS;
 
@@ -760,9 +760,9 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-to-space {
-              xyz: color(xyz .4865709486 .2289745641 0);
+              xyz: color(xyz 0.4865709486 0.2289745641 0);
               lab: lab(56.2077729169% 94.464418467 98.8921195438);
-              oklab: oklab(64.8574075144% .2620417594 .1450019071);
+              oklab: oklab(64.8574075144% 0.2620417594 0.1450019071);
             }
             CSS;
 
@@ -796,7 +796,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-to-space {
-              value: oklch(none .3782382557 11.1889157942deg);
+              value: oklch(none 0.3782382557 11.1889157942deg);
             }
             CSS;
 
@@ -830,7 +830,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-to-space {
-              value: color(rec2020 1 none .3);
+              value: color(rec2020 1 none 0.3);
             }
             CSS;
 
@@ -914,7 +914,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-to-gamut {
-              value: oklch(61.2058837805% .2466052582 22.0773321712deg);
+              value: oklch(61.2058837805% 0.2466052582 22.0773321712deg);
             }
             CSS;
 
@@ -948,7 +948,7 @@ describe('Sass Color Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .color-to-gamut {
-              value: oklch(62.5026608983% .2528579733 24.1000460045deg);
+              value: oklch(62.5026608983% 0.2528579733 24.1000460045deg);
             }
             CSS;
 
@@ -1037,7 +1037,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .color-fade-in {
-                  value: rgba(17, 34, 51, .7019607843);
+                  value: rgba(17, 34, 51, 0.7019607843);
                 }
                 CSS;
 
@@ -1055,7 +1055,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .color-fade-out {
-                  value: rgba(17, 34, 51, .6);
+                  value: rgba(17, 34, 51, 0.6);
                 }
                 CSS;
 
@@ -1117,7 +1117,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: color(srgb .1 .6 1);
+                  color: color(srgb 0.1 0.6 1);
                 }
                 CSS;
 
@@ -1129,7 +1129,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: color(xyz .3 0 .9 / .5);
+                  color: color(xyz 0.3 0 0.9 / 0.5);
                 }
                 CSS;
 
@@ -1141,7 +1141,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: color(srgb 1.2 -.1 .5);
+                  color: color(srgb 1.2 -0.1 0.5);
                 }
                 CSS;
 
@@ -1153,7 +1153,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: color(srgb .5 .5 .5);
+                  color: color(srgb 0.5 0.5 0.5);
                 }
                 CSS;
 
@@ -1179,7 +1179,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: lch(80% 75 72deg / .5);
+                  color: lch(80% 75 72deg / 0.5);
                 }
                 CSS;
 
@@ -1229,7 +1229,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: oklch(80% .2 72deg);
+                  color: oklch(80% 0.2 72deg);
                 }
                 CSS;
 
@@ -1241,7 +1241,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: oklch(50% .3 270deg);
+                  color: oklch(50% 0.3 270deg);
                 }
                 CSS;
 
@@ -1253,7 +1253,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: oklch(80% .2 30deg);
+                  color: oklch(80% 0.2 30deg);
                 }
                 CSS;
 
@@ -1265,7 +1265,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: oklch(none .1 180);
+                  color: oklch(none 0.1 180);
                 }
                 CSS;
 
@@ -1277,7 +1277,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: oklch(70% .15 250deg);
+                  color: oklch(70% 0.15 250deg);
                 }
                 CSS;
 
@@ -1329,7 +1329,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: oklab(80% .08 -.04);
+                  color: oklab(80% 0.08 -0.04);
                 }
                 CSS;
 
@@ -1341,7 +1341,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: oklab(70% .05 -.1);
+                  color: oklab(70% 0.05 -0.1);
                 }
                 CSS;
 
@@ -1379,7 +1379,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: hsla(210, 100%, 20%, .5);
+                  color: hsla(210, 100%, 20%, 0.5);
                 }
                 CSS;
 
@@ -1493,7 +1493,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: hsla(210, 100%, 20%, .5);
+                  color: hsla(210, 100%, 20%, 0.5);
                 }
                 CSS;
 
@@ -1505,7 +1505,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .color-hsla {
-                  value: hsla(240, 100%, 50%, .5);
+                  value: hsla(240, 100%, 50%, 0.5);
                 }
                 CSS;
 
@@ -1544,7 +1544,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: rgba(242, 236, 228, .5);
+                  color: rgba(242, 236, 228, 0.5);
                 }
                 CSS;
 
@@ -1556,7 +1556,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: rgba(242, 236, 228, .5);
+                  color: rgba(242, 236, 228, 0.5);
                 }
                 CSS;
 
@@ -1570,7 +1570,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: rgba(0, 0, 0, .3);
+                  color: rgba(0, 0, 0, 0.3);
                 }
                 CSS;
 
@@ -1595,7 +1595,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: rgba(95%, 92.5%, 89.5%, .2);
+                  color: rgba(95%, 92.5%, 89.5%, 0.2);
                 }
                 CSS;
 
@@ -1619,7 +1619,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .color-rgba {
-                  value: rgba(255, 0, 0, .5);
+                  value: rgba(255, 0, 0, 0.5);
                 }
                 CSS;
 
@@ -1631,7 +1631,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: rgba(255, 0, 0, .5);
+                  color: rgba(255, 0, 0, 0.5);
                 }
                 CSS;
 
@@ -1643,7 +1643,7 @@ describe('Sass Color Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .a {
-                  color: rgba(255, 0, 0, .5);
+                  color: rgba(255, 0, 0, 0.5);
                 }
                 CSS;
 
@@ -1723,7 +1723,7 @@ describe('Sass Color Module Feature', function () {
             ->and($messages)->toContain('lightness() is deprecated. Suggestion: color.channel(#dadbdf, "lightness", $space: hsl)')
             ->and($messages)->toContain('opacify() is deprecated. Suggestions: color.scale(rgba(0, 51, 102, 0.7), $alpha: 100%), or color.adjust(rgba(0, 51, 102, 0.7), $alpha: 0.3)')
             ->and($messages)->toContain('fade-in() is deprecated. Suggestions: color.scale(rgba(225, 215, 210, 0.5), $alpha: 80%), or color.adjust(rgba(225, 215, 210, 0.5), $alpha: 0.4)')
-            ->and($messages)->toContain('rgba(225, 215, 210, .9)')
+            ->and($messages)->toContain('rgba(225, 215, 210, 0.9)')
             ->and($messages)->toContain('color.red() is deprecated. Suggestion: color.channel(#e1d7d2, "red", $space: rgb)')
             ->and($messages)->toContain('red() is deprecated. Suggestion: color.channel(black, "red", $space: rgb)')
             ->and($messages)->toContain('saturate() is deprecated. Suggestions: color.scale(#0e4982, $saturation: 100%), or color.adjust(#0e4982, $saturation: 30%)')
@@ -1733,7 +1733,7 @@ describe('Sass Color Module Feature', function () {
             ->and($messages)->toContain('saturation() is deprecated. Suggestion: color.channel(#dadbdf, "saturation", $space: hsl)')
             ->and($messages)->toContain('transparentize() is deprecated. Suggestions: color.scale(rgba(0, 51, 102, 0.3), $alpha: -100%), or color.adjust(rgba(0, 51, 102, 0.3), $alpha: -0.3)')
             ->and($messages)->toContain('fade-out() is deprecated. Suggestions: color.scale(rgba(225, 215, 210, 0.5), $alpha: -80%), or color.adjust(rgba(225, 215, 210, 0.5), $alpha: -0.4)')
-            ->and($messages)->toContain('rgba(225, 215, 210, .1)')
+            ->and($messages)->toContain('rgba(225, 215, 210, 0.1)')
             ->and($messages)->toContain('color.whiteness() is deprecated. Suggestion: color.channel(#e1d7d2, "whiteness", $space: hwb)')
             ->and($messages)->toContain('whiteness() is deprecated. Suggestion: color.channel(black, "whiteness", $space: hwb)');
     });

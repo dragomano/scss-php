@@ -85,7 +85,7 @@ describe('Sass Meta Module Feature', function () {
               border-radius: 8px;
               overflow: hidden;
               background: white;
-              box-shadow: 0 2px 10px rgba(0, 0, 0, .1);
+              box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
               padding: 20px;
             }
             .actual-card h3 {
@@ -243,7 +243,7 @@ describe('Sass Meta Module Feature', function () {
               border-radius: 8px;
               padding: 16px;
               background: white;
-              box-shadow: 0 2px 8px rgba(0, 0, 0, .1);
+              box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
               color: #333;
               font-size: 16px;
             }

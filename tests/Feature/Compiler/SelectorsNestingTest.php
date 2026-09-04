@@ -587,7 +587,7 @@ describe('Compiler', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .component--compact .component {
-              padding: .8rem;
+              padding: 0.8rem;
             }
 
             .component--bordered .component {
@@ -725,12 +725,12 @@ describe('Compiler', function () {
             $expected = /** @lang text */ <<<'CSS'
             .app-background {
               background-color: #036;
-              color: rgba(255, 255, 255, .75);
+              color: rgba(255, 255, 255, 0.75);
             }
 
             .sidebar.app-background {
               background-color: #c6538c;
-              color: rgba(255, 255, 255, .75);
+              color: rgba(255, 255, 255, 0.75);
             }
             CSS;
 
@@ -888,7 +888,7 @@ describe('Compiler', function () {
 
             $expected = <<<'CSS'
             .article_simple_view > div:hover {
-              box-shadow: 0 1px 3px 0 rgba(0, 0, 0, .1), 0 1px 2px 0 rgba(0, 0, 0, .06);
+              box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
             }
             CSS;
 
@@ -908,7 +908,7 @@ describe('Compiler', function () {
             $expected = <<<'CSS'
             article a:hover {
               text-decoration: none;
-              opacity: .7;
+              opacity: 0.7;
             }
             CSS;
 
@@ -931,7 +931,7 @@ describe('Compiler', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             section #display_head {
-              margin-top: .1em;
+              margin-top: 0.1em;
               margin-bottom: 0;
             }
             section #display_head span {

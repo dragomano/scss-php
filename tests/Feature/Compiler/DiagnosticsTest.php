@@ -125,10 +125,10 @@ describe('Compiler', function () {
 
             expect($css)->toBe('')
                 ->and($this->logger->records)->toHaveCount(4)
-                ->and($this->logger->records[0]['message'])->toBe('.0123456789')
+                ->and($this->logger->records[0]['message'])->toBe('0.0123456789')
                 ->and($this->logger->records[1]['message'])->toBe('true')
                 ->and($this->logger->records[2]['message'])->toBe('1.0000000001')
-                ->and($this->logger->records[3]['message'])->toBe('.9999999999');
+                ->and($this->logger->records[3]['message'])->toBe('0.9999999999');
         });
 
         it('logs @debug directives in sass syntax with inline comments', function () {

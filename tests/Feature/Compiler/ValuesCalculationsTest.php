@@ -40,7 +40,7 @@ describe('Compiler', function () {
             $expected = /** @lang text */ <<<'CSS'
             .numbers {
               width: 100px;
-              opacity: .5;
+              opacity: 0.5;
             }
             CSS;
 
@@ -55,7 +55,7 @@ describe('Compiler', function () {
             ['.test { filter: hue-rotate(177deg) saturate(109%); }', ".test {\n  filter: hue-rotate(177deg) saturate(109%);\n}"],
             ['.test { filter: blur(5px) brightness(1.2) contrast(150%); }', ".test {\n  filter: blur(5px) brightness(1.2) contrast(150%);\n}"],
             ['.test { filter: saturate(150%); }', ".test {\n  filter: saturate(150%);\n}"],
-            ['.test { filter: sepia(0.8) saturate(120%) hue-rotate(45deg); }', ".test {\n  filter: sepia(.8) saturate(120%) hue-rotate(45deg);\n}"],
+            ['.test { filter: sepia(0.8) saturate(120%) hue-rotate(45deg); }', ".test {\n  filter: sepia(0.8) saturate(120%) hue-rotate(45deg);\n}"],
         ]);
 
         it('evaluates calc expressions inside CSS filter functions', function () {
@@ -328,7 +328,7 @@ describe('Compiler', function () {
               grid-row: 2 / 4;
               grid-column: 1 / 4;
               font: 16px/1.4 Arial;
-              margin: .5;
+              margin: 0.5;
             }
             CSS;
 
@@ -396,7 +396,7 @@ describe('Compiler', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .test {
-              box-shadow: 0 2px 5px rgba(0, 0, 0, .3);
+              box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
             }
             CSS;
 
@@ -631,7 +631,7 @@ describe('Compiler', function () {
             $expected = /** @lang text */ <<<'CSS'
             .test {
               wide: 5200;
-              tiny: .06;
+              tiny: 0.06;
             }
             CSS;
 
@@ -661,7 +661,7 @@ describe('Compiler', function () {
               velocity: calc(2.5px / 1s);
               complex: calc(3.125px * 1deg / 1s / 1em);
               ratio: calc(20deg / 1s);
-              inverse: calc(.05s / 1deg);
+              inverse: calc(0.05s / 1deg);
             }
             CSS;
 

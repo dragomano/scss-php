@@ -28,6 +28,7 @@ final class SassNumber extends AbstractSassValue
     public function __construct(
         private readonly int|float $value,
         private readonly ?string $unit = null,
+        private readonly bool $compressed = false,
     ) {}
 
     public function toCss(): string
@@ -58,7 +59,7 @@ final class SassNumber extends AbstractSassValue
     private function formatNumberValue(int|float $value): string
     {
         if (is_int($value)) {
-            return $this->compressLeadingZero((string) $value);
+            return (string) $value;
         }
 
         if (abs($value) < PHP_INT_MAX) {
@@ -67,17 +68,17 @@ final class SassNumber extends AbstractSassValue
             if ((float) $truncated === $value) {
                 $sign = $truncated === 0 && $this->isNegativeZero($value) ? '-' : '';
 
-                return $sign . $this->compressLeadingZero((string) $truncated);
+                return $sign . $truncated;
             }
         }
 
         $text = $this->removeExponent(str_replace('E', 'e', var_export($value, true)));
 
-        if (strlen($text) < 12) {
-            return $this->compressLeadingZero($text);
+        if (strlen($text) >= 12) {
+            $text = $this->roundDecimalString($text);
         }
 
-        return $this->compressLeadingZero($this->roundDecimalString($text));
+        return $this->compressLeadingZero($text);
     }
 
     private function isNegativeZero(float $value): bool
@@ -174,6 +175,10 @@ final class SassNumber extends AbstractSassValue
 
     private function compressLeadingZero(string $number): string
     {
+        if (! $this->compressed) {
+            return $number;
+        }
+
         if (str_starts_with($number, '0.') && strlen($number) > 2) {
             return substr($number, 1);
         }

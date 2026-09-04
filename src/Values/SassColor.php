@@ -10,7 +10,6 @@ use Bugo\Iris\Serializers\Serializer;
 use function sprintf;
 use function str_starts_with;
 use function strlen;
-use function substr;
 use function trim;
 
 final class SassColor extends AbstractSassValue
@@ -19,6 +18,7 @@ final class SassColor extends AbstractSassValue
         private readonly string $value,
         private readonly bool $outputHexColors = false,
         private readonly Serializer $colorSerializer = new Serializer(),
+        private readonly bool $compressed = false,
     ) {}
 
     public function toCss(): string
@@ -55,19 +55,12 @@ final class SassColor extends AbstractSassValue
         $g = (int) $rgb->g;
         $b = (int) $rgb->b;
 
-        return sprintf('rgba(%d, %d, %d, %s)', $r, $g, $b, $this->formatAlpha($rgb->a));
-    }
-
-    private function formatAlpha(float $alpha): string
-    {
-        $formatted = sprintf('%.10f', $alpha);
-        $formatted = rtrim($formatted, '0');
-        $formatted = rtrim($formatted, '.');
-
-        if (str_starts_with($formatted, '0.') && strlen($formatted) > 2) {
-            $formatted = substr($formatted, 1);
-        }
-
-        return $formatted;
+        return sprintf(
+            'rgba(%d, %d, %d, %s)',
+            $r,
+            $g,
+            $b,
+            (new SassNumber($rgb->a, compressed: $this->compressed))->toCss(),
+        );
     }
 }

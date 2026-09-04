@@ -80,7 +80,10 @@ final readonly class Compiler implements CompilerInterface
     private function createContext(): CompilerContext
     {
         return new CompilerContext(
-            valueFactory: new ValueFactory($this->options->outputHexColors),
+            valueFactory: new ValueFactory(
+                $this->options->outputHexColors,
+                compressed: $this->options->style === Style::COMPRESSED,
+            ),
         );
     }
 
