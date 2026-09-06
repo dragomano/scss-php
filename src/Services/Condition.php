@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Services;
 use Bugo\Iris\LiteralParser;
 use Bugo\Iris\Spaces\RgbColor;
 use Bugo\SCSS\Builtins\Color\Conversion\CssColorFunctionConverter;
+use Bugo\SCSS\Builtins\Color\Support\RgbChannelScale;
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
 use Bugo\SCSS\Nodes\AstNode;
@@ -533,8 +534,13 @@ final readonly class Condition
     {
         if ($node instanceof StringNode && ! $node->quoted) {
             $literalParser = new LiteralParser();
+            $parsed        = $literalParser->toRgb($node->value);
 
-            return $literalParser->toRgb($node->value);
+            if ($parsed === null) {
+                return null;
+            }
+
+            return RgbChannelScale::toByte($parsed);
         }
 
         if ($node instanceof FunctionNode) {

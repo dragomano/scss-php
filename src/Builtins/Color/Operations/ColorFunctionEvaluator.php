@@ -12,6 +12,7 @@ use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
 use Bugo\SCSS\Builtins\Color\Conversion\DartColorMath;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
 use Bugo\SCSS\Builtins\Color\Support\LegacyColorMath;
+use Bugo\SCSS\Builtins\Color\Support\RgbChannelScale;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnknownColorChannelException;
@@ -395,7 +396,7 @@ final readonly class ColorFunctionEvaluator
             );
         }
 
-        $invertedRgb = $this->legacy->invert($rgb, $p);
+        $invertedRgb = $this->legacy->invert(RgbChannelScale::toNormalized($rgb), $p);
 
         if ($space === 'rgb'
             && ! $this->converter->isLegacyColor($color)
@@ -414,12 +415,12 @@ final readonly class ColorFunctionEvaluator
 
         if ($legacyHsl !== null && $legacyHsl['origin'] !== 'rgb') {
             return $this->emitLegacyHsl(
-                $this->legacyMath->rgbToHsl($invertedRgb),
+                $this->legacyMath->rgbToHsl(RgbChannelScale::toByte($invertedRgb)),
                 $legacyHsl['origin'],
             );
         }
 
-        return $this->converter->serializeRgbResult($invertedRgb);
+        return $this->converter->serializeRgbResult(RgbChannelScale::toByte($invertedRgb));
     }
 
     public function extractNativeOrConvertedOklchColor(AstNode $color): OklchColor

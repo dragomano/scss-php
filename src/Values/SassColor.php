@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Values;
 use Bugo\Iris\LiteralParser;
 use Bugo\Iris\Serializers\Serializer;
 
+use function round;
 use function sprintf;
 use function str_starts_with;
 use function strlen;
@@ -50,9 +51,9 @@ final class SassColor extends AbstractSassValue
             return $hex;
         }
 
-        $r = (int) $rgb->r;
-        $g = (int) $rgb->g;
-        $b = (int) $rgb->b;
+        $r = (int) round($rgb->rValue() * 255.0);
+        $g = (int) round($rgb->gValue() * 255.0);
+        $b = (int) round($rgb->bValue() * 255.0);
 
         return sprintf(
             'rgba(%d, %d, %d, %s)',

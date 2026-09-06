@@ -14,6 +14,7 @@ use Bugo\Iris\Spaces\OklchColor;
 use Bugo\Iris\Spaces\RgbColor;
 use Bugo\Iris\Spaces\XyzColor;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
+use Bugo\SCSS\Builtins\Color\Support\RgbChannelScale;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
@@ -73,7 +74,7 @@ final readonly class ColorNodeConverter
         $parsed = $this->runtime->literalParser->toRgb($color->value);
 
         if ($parsed !== null) {
-            return $parsed;
+            return RgbChannelScale::toByte($parsed);
         }
 
         if ($color instanceof StringNode) {
@@ -116,7 +117,9 @@ final readonly class ColorNodeConverter
             }
         }
 
-        return $this->runtime->spaceConverter->rgbToXyzD65($this->toRgb($color));
+        return $this->runtime->spaceConverter->rgbToXyzD65(
+            RgbChannelScale::toNormalized($this->toRgb($color)),
+        );
     }
 
     public function toXyzD50(AstNode $color): XyzColor
@@ -129,7 +132,9 @@ final readonly class ColorNodeConverter
             }
         }
 
-        return $this->runtime->spaceConverter->rgbToXyzD50($this->toRgb($color));
+        return $this->runtime->spaceConverter->rgbToXyzD50(
+            RgbChannelScale::toNormalized($this->toRgb($color)),
+        );
     }
 
     /**
@@ -142,7 +147,9 @@ final readonly class ColorNodeConverter
 
     public function toHsl(AstNode $color): HslColor
     {
-        return $this->runtime->modelConverter->rgbToHslColor($this->toRgb($color));
+        return $this->runtime->modelConverter->rgbToHslColor(
+            RgbChannelScale::toNormalized($this->toRgb($color)),
+        );
     }
 
     public function toUnclampedRgb(AstNode $color): RgbColor
@@ -327,7 +334,7 @@ final readonly class ColorNodeConverter
 
     public function createOklchFromRgb(RgbColor $rgb): OklchColor
     {
-        $oklch = $this->runtime->spaceConverter->rgbToOklch($rgb);
+        $oklch = $this->runtime->spaceConverter->rgbToOklch(RgbChannelScale::toNormalized($rgb));
 
         return new OklchColor(l: $oklch->l, c: $oklch->c, h: $oklch->h, a: $rgb->a);
     }
@@ -385,7 +392,9 @@ final readonly class ColorNodeConverter
             );
         }
 
-        return $this->runtime->spaceConverter->rgbToOklch($this->toRgb($color));
+        return $this->runtime->spaceConverter->rgbToOklch(
+            RgbChannelScale::toNormalized($this->toRgb($color)),
+        );
     }
 
     /**
@@ -411,7 +420,9 @@ final readonly class ColorNodeConverter
             ];
         }
 
-        $oklch = $this->runtime->spaceConverter->rgbToOklch($this->toRgb($color));
+        $oklch = $this->runtime->spaceConverter->rgbToOklch(
+            RgbChannelScale::toNormalized($this->toRgb($color)),
+        );
 
         return [
             'l'         => $oklch->lValue(),
@@ -426,7 +437,7 @@ final readonly class ColorNodeConverter
 
     public function fromRgb(RgbColor $rgb): ColorNode
     {
-        return new ColorNode($this->runtime->literalSerializer->serialize($rgb));
+        return new ColorNode($this->runtime->literalSerializer->serialize(RgbChannelScale::toNormalized($rgb)));
     }
 
     public function serializeRgbResult(RgbColor $rgb): AstNode

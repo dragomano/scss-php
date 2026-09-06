@@ -14,6 +14,7 @@ use Bugo\Iris\Spaces\RgbColor;
 use Bugo\Iris\Spaces\XyzColor;
 use Bugo\SCSS\Builtins\Color\Operations\ColorFunctionEvaluator;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
+use Bugo\SCSS\Builtins\Color\Support\RgbChannelScale;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
 use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\AstNode;
@@ -1103,7 +1104,9 @@ final class ColorSpaceConverter
             );
         }
 
-        return $this->runtime->spaceConverter->rgbToOklch($this->converter->toRgb($color));
+        return $this->runtime->spaceConverter->rgbToOklch(
+            RgbChannelScale::toNormalized($this->converter->toRgb($color)),
+        );
     }
 
     public function extractOklchColor(AstNode $color): OklchColor
@@ -1116,6 +1119,8 @@ final class ColorSpaceConverter
      */
     public function rgbToWorkingSpaceChannels(RgbColor $rgb, string $space): array
     {
+        $rgb = RgbChannelScale::toNormalized($rgb);
+
         /** @var array{0: float, 1: float, 2: float} $channels */
         $channels = match ($space) {
             'display-p3'   => $this->runtime->spaceConverter->rgbToP3Channels($rgb),
@@ -1187,7 +1192,7 @@ final class ColorSpaceConverter
         }
 
         $rgb = $this->converter->toRgb($color);
-        $lch = $this->runtime->spaceConverter->rgbToLch($rgb);
+        $lch = $this->runtime->spaceConverter->rgbToLch(RgbChannelScale::toNormalized($rgb));
 
         return [
             'l'         => $lch->lValue(),
@@ -2632,7 +2637,9 @@ final class ColorSpaceConverter
             }
         }
 
-        return $this->runtime->spaceConverter->rgbToXyzD65($this->converter->toRgb($color));
+        return $this->runtime->spaceConverter->rgbToXyzD65(
+            RgbChannelScale::toNormalized($this->converter->toRgb($color)),
+        );
     }
 
     /**

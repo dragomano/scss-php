@@ -9,6 +9,7 @@ use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
 use Bugo\SCSS\Builtins\Color\Support\LegacyColorMath;
+use Bugo\SCSS\Builtins\Color\Support\RgbChannelScale;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\UnknownColorChannelException;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
@@ -257,14 +258,18 @@ final readonly class ColorChannelInspector
 
         if ($space === 'lch') {
             if ($channelName === 'hue') {
-                $lch       = $this->runtime->spaceConverter->rgbToLch($this->converter->toRgb($color));
+                $lch       = $this->runtime->spaceConverter->rgbToLch(
+                    RgbChannelScale::toNormalized($this->converter->toRgb($color)),
+                );
                 $powerless = abs($lch->cValue()) < 0.000001;
             }
         }
 
         if ($space === 'oklch') {
             if ($channelName === 'hue') {
-                $oklch     = $this->runtime->spaceConverter->rgbToOklch($this->converter->toRgb($color));
+                $oklch     = $this->runtime->spaceConverter->rgbToOklch(
+                    RgbChannelScale::toNormalized($this->converter->toRgb($color)),
+                );
                 $powerless = abs($oklch->cValue()) < 0.000001;
             }
         }
@@ -432,7 +437,7 @@ final readonly class ColorChannelInspector
     private function resolveLchChannel(AstNode $color, string $channelName): NumberNode
     {
         $rgb = $this->converter->toRgb($color);
-        $lch = $this->runtime->spaceConverter->rgbToLch($rgb);
+        $lch = $this->runtime->spaceConverter->rgbToLch(RgbChannelScale::toNormalized($rgb));
 
         return match ($channelName) {
             'lightness' => new NumberNode($lch->lValue(), '%'),
@@ -459,7 +464,9 @@ final readonly class ColorChannelInspector
 
     private function resolveOklchChannel(AstNode $color, string $channelName): NumberNode
     {
-        $oklch = $this->runtime->spaceConverter->rgbToOklch($this->converter->toRgb($color));
+        $oklch = $this->runtime->spaceConverter->rgbToOklch(
+            RgbChannelScale::toNormalized($this->converter->toRgb($color)),
+        );
 
         return match ($channelName) {
             'lightness' => new NumberNode($oklch->lValue(), '%'),
@@ -487,7 +494,7 @@ final readonly class ColorChannelInspector
     private function resolveXyzD65Channel(AstNode $color, string $channelName): NumberNode
     {
         $rgb = $this->converter->toRgb($color);
-        $xyz = $this->runtime->spaceConverter->rgbToXyzD65($rgb);
+        $xyz = $this->runtime->spaceConverter->rgbToXyzD65(RgbChannelScale::toNormalized($rgb));
 
         return match ($channelName) {
             'x'     => new NumberNode((float) $xyz->x, null, false),
@@ -522,7 +529,7 @@ final readonly class ColorChannelInspector
         }
 
         $rgb = $this->converter->toRgb($color);
-        $xyz = $this->runtime->spaceConverter->rgbToXyzD50($rgb);
+        $xyz = $this->runtime->spaceConverter->rgbToXyzD50(RgbChannelScale::toNormalized($rgb));
 
         return match ($channelName) {
             'x'     => new NumberNode((float) $xyz->x, null, false),
