@@ -51,7 +51,7 @@ describe('CompilerContext', function () {
     });
 
     it('stores explicitly provided value factory as is', function () {
-        $valueFactory = new ValueFactory(outputHexColors: true);
+        $valueFactory = new ValueFactory(compressed: true);
         $ctx          = new CompilerContext(valueFactory: $valueFactory);
 
         expect($ctx->valueFactory)->toBe($valueFactory)

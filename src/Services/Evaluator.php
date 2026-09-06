@@ -424,7 +424,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             )->toCss();
 
             if (in_array($node->name, ['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'color'], true)) {
-                return $this->ctx->colorSerializer->serialize($formatted, $this->options->outputHexColors);
+                return $this->ctx->colorSerializer->serialize($formatted, $this->options->style === Style::COMPRESSED);
             }
 
             return $formatted;

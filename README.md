@@ -147,7 +147,6 @@ Notes:
 | `outputFile`      | `string`  | `'output.css'`    | Output file name used in source maps                           |
 | `sourceMapFile`   | `?string` | `null`            | Path to write the source map file; `null` disables source maps |
 | `includeSources`  | `bool`    | `false`           | Embed source content in source map (`sourcesContent`)          |
-| `outputHexColors` | `bool`    | `false`           | Normalize supported functional colors to hex on output         |
 | `verboseLogging`  | `bool`    | `false`           | Log all `@debug` messages (otherwise only `@warn`/`@error`)    |
 
 ### Logging `@debug`, `@warn`, `@error` with any PSR-3 logger

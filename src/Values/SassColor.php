@@ -16,7 +16,6 @@ final class SassColor extends AbstractSassValue
 {
     public function __construct(
         private readonly string $value,
-        private readonly bool $outputHexColors = false,
         private readonly Serializer $colorSerializer = new Serializer(),
         private readonly bool $compressed = false,
     ) {}
@@ -29,7 +28,7 @@ final class SassColor extends AbstractSassValue
             return $this->formatHex($trimmed);
         }
 
-        return $this->colorSerializer->serialize($this->value, $this->outputHexColors);
+        return $this->colorSerializer->serialize($this->value, $this->compressed);
     }
 
     public function isTruthy(): bool

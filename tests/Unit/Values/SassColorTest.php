@@ -54,8 +54,8 @@ describe('SassColor', function () {
         expect($color->toCss())->toBe('rgb(255, 0, 0)');
     });
 
-    it('converts rgb colors to hex when hex output is enabled', function () {
-        $color = new SassColor('rgb(102, 175.8, 255)', true);
+    it('converts rgb colors to hex when compressed', function () {
+        $color = new SassColor('rgb(102, 175.8, 255)', compressed: true);
 
         expect($color->toCss())->toBe('#66b0ff');
     });

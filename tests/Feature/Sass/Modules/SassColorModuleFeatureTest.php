@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Style;
 use Tests\Support\ArrayLogger;
 
 describe('Sass Color Module Feature', function () {
@@ -1386,17 +1387,11 @@ describe('Sass Color Module Feature', function () {
                 expect($css)->toEqualCss($expected);
             });
 
-            it('converts to hex when outputHexColors is enabled', function () {
-                $compiler = new Compiler(new CompilerOptions(outputHexColors: true));
+            it('converts to hex in compressed style', function () {
+                $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
                 $css = $compiler->compileString('.a { color: hwb(210 20% 30%); }');
 
-                $expected = /** @lang text */ <<<'CSS'
-                .a {
-                  color: #3373b3;
-                }
-                CSS;
-
-                expect($css)->toEqualCss($expected);
+                expect($css)->toBe('.a{color:#3373b3}');
             });
         });
 
@@ -1473,17 +1468,11 @@ describe('Sass Color Module Feature', function () {
                 expect($css)->toEqualCss($expected);
             });
 
-            it('converts to hex when outputHexColors is enabled', function () {
-                $compiler = new Compiler(new CompilerOptions(outputHexColors: true));
+            it('converts to hex in compressed style', function () {
+                $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
                 $css = $compiler->compileString('.a { color: hsl(210deg 40% 50%); }');
 
-                $expected = /** @lang text */ <<<'CSS'
-                .a {
-                  color: #4d80b3;
-                }
-                CSS;
-
-                expect($css)->toEqualCss($expected);
+                expect($css)->toBe('.a{color:#4d80b3}');
             });
         });
 
@@ -1526,17 +1515,11 @@ describe('Sass Color Module Feature', function () {
                 expect($css)->toEqualCss($expected);
             });
 
-            it('converts to hex when outputHexColors is enabled', function () {
-                $compiler = new Compiler(new CompilerOptions(outputHexColors: true));
+            it('converts to hex in compressed style', function () {
+                $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
                 $css = $compiler->compileString('.a { color: rgb(255, 0, 0); }');
 
-                $expected = /** @lang text */ <<<'CSS'
-                .a {
-                  color: #f00;
-                }
-                CSS;
-
-                expect($css)->toEqualCss($expected);
+                expect($css)->toBe('.a{color:#f00}');
             });
 
             it('applies percentage alpha with color constructor', function () {
@@ -1577,17 +1560,11 @@ describe('Sass Color Module Feature', function () {
                 expect($css)->toEqualCss($expected);
             });
 
-            it('converts to hex when outputHexColors is enabled', function () {
-                $compiler = new Compiler(new CompilerOptions(outputHexColors: true));
+            it('converts to hex in compressed style', function () {
+                $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
                 $css = $compiler->compileString('.a { color: rgba(17, 34, 51, 0.7019607843); }');
 
-                $expected = /** @lang text */ <<<'CSS'
-                .a {
-                  color: #112233b3;
-                }
-                CSS;
-
-                expect($css)->toEqualCss($expected);
+                expect($css)->toBe('.a{color:#112233b3}');
             });
 
             it('scales percentage channels to absolute values', function () {

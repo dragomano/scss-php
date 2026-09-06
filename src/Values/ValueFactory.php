@@ -24,7 +24,6 @@ use function substr;
 final readonly class ValueFactory
 {
     public function __construct(
-        private bool $outputHexColors = false,
         private Serializer $colorSerializer = new Serializer(),
         private bool $compressed = false,
     ) {}
@@ -49,7 +48,7 @@ final readonly class ValueFactory
         }
 
         if ($node instanceof ColorNode) {
-            return new SassColor($node->value, $this->outputHexColors, $this->colorSerializer, $this->compressed);
+            return new SassColor($node->value, $this->colorSerializer, $this->compressed);
         }
 
         if ($node instanceof StringNode) {

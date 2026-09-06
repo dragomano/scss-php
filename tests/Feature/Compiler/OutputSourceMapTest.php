@@ -294,8 +294,8 @@ describe('Compiler', function () {
             expect($css)->toBe('.test{--token:red;color:#f00}');
         });
 
-        it('converts legacy and wide-gamut color functions to hex when outputHexColors is enabled', function () {
-            $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED, outputHexColors: true));
+        it('converts legacy and wide-gamut color functions to hex in compressed style', function () {
+            $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
 
             $source = <<<'SCSS'
             .test {
@@ -324,7 +324,7 @@ describe('Compiler', function () {
             expect($css)->toBe('.test{a:#639;b:#639;c:#639;d:#639;e:#639;f:#20084e;g:#ac7ccd;h:#639;i:#639;j:#4c1387;k:#639;l:#639;m:#653499;n:lab(32.4% 38.4 -47.7);o:lch(32.4% 61.2 308.9deg);p:oklab(44% .088 -.134);q:oklch(44% .16 303.4deg)}');
         });
 
-        it('preserves non-lossless sass color function results in compressed style for oklch methods', function () {
+        it('converts sass color function results to hex in compressed style for oklch methods', function () {
             $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
 
             $source = <<<'SCSS'
@@ -340,31 +340,23 @@ describe('Compiler', function () {
 
             $css = $compiler->compileString($source);
 
-            expect($css)->toBe('.test{a:rgb(66.7264198057%,56.710619738%,66.7126514142%);b:rgb(37.622088384%,29.2426327658%,52.2385328393%)}');
+            expect($css)->toBe('.test{a:#aa91aa;b:#604b85}');
         });
 
-        it('preserves exact rgb colors in compressed style by default', function () {
+        it('converts exact rgb colors to hex in compressed style', function () {
             $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
-
-            $css = $compiler->compileString('.a { color: rgb(255, 0, 0); }');
-
-            expect($css)->toBe('.a{color:rgb(255,0,0)}');
-        });
-
-        it('still emits hex for exact rgb notation in compressed style when outputHexColors is enabled', function () {
-            $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED, outputHexColors: true));
 
             $css = $compiler->compileString('.a { color: rgb(255, 0, 0); }');
 
             expect($css)->toBe('.a{color:#f00}');
         });
 
-        it('preserves rgba values with inexact alpha in compressed style', function () {
+        it('converts rgba values with inexact alpha to hex in compressed style', function () {
             $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
 
             $css = $compiler->compileString('.a { color: rgba(0, 0, 0, 0.3); }');
 
-            expect($css)->toBe('.a{color:rgba(0,0,0,.3)}');
+            expect($css)->toBe('.a{color:#0000004d}');
         });
     });
 

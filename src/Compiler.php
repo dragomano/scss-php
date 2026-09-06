@@ -81,7 +81,6 @@ final readonly class Compiler implements CompilerInterface
     {
         return new CompilerContext(
             valueFactory: new ValueFactory(
-                $this->options->outputHexColors,
                 compressed: $this->options->style === Style::COMPRESSED,
             ),
         );

@@ -20,6 +20,8 @@ use function strtolower;
 
 final readonly class HexColorConverter
 {
+    private const ROUND_EPSILON = 1e-9;
+
     public function __construct(
         private HexEncoder $hexColorEncoder = new HexEncoder(),
         private CssColorFunctionConverter $cssColorFunctionConverter = new CssColorFunctionConverter(),
@@ -118,10 +120,10 @@ final readonly class HexColorConverter
 
     private function rgbaToHexColorNode(float $red, float $green, float $blue, float $alpha): ColorNode
     {
-        $rByte = (int) round($this->clampFloat($red) * 255.0);
-        $gByte = (int) round($this->clampFloat($green) * 255.0);
-        $bByte = (int) round($this->clampFloat($blue) * 255.0);
-        $aByte = (int) round($this->clampFloat($alpha) * 255.0);
+        $rByte = $this->roundAndClampByte($this->clampFloat($red) * 255.0);
+        $gByte = $this->roundAndClampByte($this->clampFloat($green) * 255.0);
+        $bByte = $this->roundAndClampByte($this->clampFloat($blue) * 255.0);
+        $aByte = $this->roundAndClampByte($this->clampFloat($alpha) * 255.0);
 
         $hex = $aByte < 255
             ? $this->hexColorEncoder->encodeRgba($rByte, $gByte, $bByte, $aByte)
@@ -133,5 +135,33 @@ final readonly class HexColorConverter
     private function clampFloat(float $value): float
     {
         return max(0.0, min(1.0, $value));
+    }
+
+    private function roundAndClampByte(float $value): int
+    {
+        $byte = $this->roundCssByte($value);
+
+        if ($byte < 0) {
+            return 0;
+        }
+
+        if ($byte > 255) {
+            return 255;
+        }
+
+        return $byte;
+    }
+
+    private function roundCssByte(float $value): int
+    {
+        if (abs($value - round($value)) < self::ROUND_EPSILON) {
+            $value = round($value);
+        }
+
+        if (abs(($value * 2.0) - round($value * 2.0)) < self::ROUND_EPSILON) {
+            $value += $value >= 0.0 ? self::ROUND_EPSILON : -self::ROUND_EPSILON;
+        }
+
+        return (int) round($value);
     }
 }

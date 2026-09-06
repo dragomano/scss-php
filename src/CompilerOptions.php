@@ -12,7 +12,6 @@ final readonly class CompilerOptions
         public string $outputFile = 'output.css',
         public ?string $sourceMapFile = null,
         public bool $includeSources = false,
-        public bool $outputHexColors = false,
         public bool $verboseLogging = false,
     ) {}
 }

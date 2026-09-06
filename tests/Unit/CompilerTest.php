@@ -6,11 +6,12 @@ use Bugo\SCSS\Compiler;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Exceptions\InvalidSyntaxException;
 use Bugo\SCSS\Exceptions\SassErrorException;
+use Bugo\SCSS\Style;
 use Bugo\SCSS\Syntax;
 
 describe('Compiler', function () {
-    it('compiles basic color to hex when outputHexColors is enabled', function () {
-        $compiler = new Compiler(options: new CompilerOptions(outputHexColors: true));
+    it('compiles basic color to hex in compressed style', function () {
+        $compiler = new Compiler(options: new CompilerOptions(style: Style::COMPRESSED));
         $css      = $compiler->compileString('.test { color: rgb(255, 0, 0); }');
 
         expect($css)->toContain('#f00');

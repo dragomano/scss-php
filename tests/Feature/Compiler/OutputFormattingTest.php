@@ -55,7 +55,7 @@ describe('Output Formatting', function () {
         expect($css)->toBe('.a{content:"#ff0000"}');
     });
 
-    it('preserves functional notation for non-lossless oklch results in compressed style', function () {
+    it('converts functional notation for oklch results to hex in compressed style', function () {
         $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
 
         $scss = <<<'SCSS'
@@ -69,10 +69,10 @@ describe('Output Formatting', function () {
 
         $css = $compiler->compileString($scss);
 
-        expect($css)->toBe('.color-oklch{scale:rgb(66.7264198057%,56.710619738%,66.7126514142%);mix:rgb(37.622088384%,29.2426327658%,52.2385328393%)}');
+        expect($css)->toBe('.color-oklch{scale:#aa91aa;mix:#604b85}');
     });
 
-    it('preserves fractional rgb functions in compressed style', function () {
+    it('converts fractional rgb functions to hex in compressed style', function () {
         $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
 
         $scss = <<<'SCSS'
@@ -86,7 +86,7 @@ describe('Output Formatting', function () {
 
         $css = $compiler->compileString($scss);
 
-        expect($css)->toBe('.a{mix:rgb(41.1764705882%,54.1176470588%,63.3333333333%);scale:rgb(50%,0%,0%);invert:rgb(40.5857918438%,24.0674867532%,23.306133858%)}');
+        expect($css)->toBe('.a{mix:#698aa2;scale:#800000;invert:#673d3b}');
     });
 
     it('passes through css relative color functions', function () {
