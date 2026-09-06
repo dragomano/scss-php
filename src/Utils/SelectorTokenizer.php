@@ -460,6 +460,66 @@ final readonly class SelectorTokenizer
         return $this->hasConsecutiveCombinatorsInParentheses($selector);
     }
 
+    public function normalizeAdjacentSelectorCompounds(string $selector): string
+    {
+        $length       = strlen($selector);
+        $result       = '';
+        $bracketDepth = 0;
+        $parenDepth   = 0;
+        $quote        = '';
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $selector[$i];
+
+            if ($quote !== '') {
+                $result .= $char;
+
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote   = $char;
+                $result .= $char;
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $bracketDepth++;
+
+                $result .= $char;
+
+                continue;
+            }
+
+            if ($char === ']' && $bracketDepth > 0) {
+                $bracketDepth--;
+
+                $result .= $char;
+
+                if ($bracketDepth === 0 && $i + 1 < $length && ctype_alpha($selector[$i + 1])) {
+                    $result .= ' ';
+                }
+
+                continue;
+            }
+
+            if ($char === '(') {
+                $parenDepth++;
+            } elseif ($char === ')' && $parenDepth > 0) {
+                $parenDepth--;
+            }
+
+            $result .= $char;
+        }
+
+        return $result;
+    }
+
     public function hasAdjacentCompoundSelectors(string $selector): bool
     {
         $length = strlen($selector);
@@ -496,6 +556,7 @@ final readonly class SelectorTokenizer
 
                     if ($c === '"' || $c === "'") {
                         $quote = $c;
+
                         $i++;
 
                         continue;
@@ -595,6 +656,7 @@ final readonly class SelectorTokenizer
 
             if ($char === '*') {
                 $seenNonTypeInCompound = true;
+
                 $i++;
 
                 continue;
@@ -624,7 +686,7 @@ final readonly class SelectorTokenizer
             $offset = 0;
 
             while (($start = strpos(strtolower($selector), $pseudo, $offset)) !== false) {
-                $end = $start + strlen($pseudo);
+                $end   = $start + strlen($pseudo);
                 $close = strpos($selector, ')', $end);
 
                 if ($close === false) {
@@ -2171,11 +2233,11 @@ final readonly class SelectorTokenizer
 
     private function normalizeAttributeToken(string $token): string
     {
-        $inner = substr($token, 1, -1);
+        $inner = trim(substr($token, 1, -1));
         $eq    = strpos($inner, '=');
 
         if ($eq === false) {
-            return $token;
+            return '[' . $inner . ']';
         }
 
         $operatorStart = $eq;
@@ -2191,9 +2253,35 @@ final readonly class SelectorTokenizer
         }
 
         $operator = substr($inner, $operatorStart, $eq - $operatorStart + 1);
-        $value    = ltrim(substr($inner, $eq + 1));
+        $value    = $this->normalizeAttributeValue(substr($inner, $eq + 1));
 
-        return '[' . $name . $operator . $this->unquoteIdentifierValue($value) . ']';
+        return '[' . $name . $operator . $value . ']';
+    }
+
+    private function normalizeAttributeValue(string $value): string
+    {
+        $length = strlen($value);
+
+        if ($length < 2) {
+            return trim($value);
+        }
+
+        $quote = $value[0];
+
+        if ($quote !== '"' && $quote !== "'") {
+            return trim($value);
+        }
+
+        $close = strpos($value, $quote, 1);
+
+        if ($close === false) {
+            return trim($value);
+        }
+
+        $unquoted = $this->unquoteIdentifierValue(substr($value, 0, $close + 1));
+        $rest     = trim(substr($value, $close + 1));
+
+        return $rest === '' ? $unquoted : $unquoted . ' ' . $rest;
     }
 
     private function normalizePseudoToken(string $token): string

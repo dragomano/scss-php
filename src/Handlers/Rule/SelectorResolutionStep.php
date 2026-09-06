@@ -44,6 +44,9 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
             : $node->selector;
         $selector = $this->selector->normalizeSelectorAttributes($selector);
 
+        $diagnosticSelector = $selector;
+        $selector           = $this->selector->normalizeAdjacentSelectorCompounds($selector);
+
         $ruleCtx->parentSelector = $selector;
 
         $isCssFunctionPrelude = str_starts_with(strtolower(trim($selector)), '@function ');
@@ -95,9 +98,9 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
                 );
             }
 
-            if ($this->selector->hasAdjacentCompoundSelectors($ruleCtx->selector)) {
+            if ($this->selector->hasAdjacentCompoundSelectors($diagnosticSelector)) {
                 $this->context->logWarning(
-                    "The selector \"{$ruleCtx->selector}\" uses adjacent compound selectors "
+                    "The selector \"{$diagnosticSelector}\" uses adjacent compound selectors "
                     . '(e.g. "[attr]a"). This is not valid CSS and will be an error in a future release. '
                     . 'Add a combinator or whitespace between the compound selectors.',
                     $node->line,

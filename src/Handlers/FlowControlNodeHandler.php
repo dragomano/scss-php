@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Handlers;
 
 use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
+use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\EachNode;
@@ -12,6 +13,7 @@ use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\ForNode;
 use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\NumberNode;
+use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\Visitable;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\Environment;
@@ -19,6 +21,7 @@ use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\LoopIterator;
 use Bugo\SCSS\Services\Render;
+use Bugo\SCSS\Services\Selector;
 
 use function is_numeric;
 use function str_ends_with;
@@ -30,6 +33,8 @@ final readonly class FlowControlNodeHandler
         private Evaluator $evaluation,
         private Render $render,
         private LoopIterator $loopIterator,
+        private DeferredChunkManager $chunks,
+        private Selector $selector,
     ) {}
 
     public function handleIf(IfNode $node, TraversalContext $ctx): string
@@ -162,6 +167,23 @@ final readonly class FlowControlNodeHandler
                     continue;
                 }
 
+                if ($child instanceof RuleNode) {
+                    $parentSelector = $ctx->env->getCurrentScope()->getStringVariable('__parent_selector');
+
+                    if ($parentSelector !== null && $parentSelector->value !== '') {
+                        $childSelector   = $this->chunks->resolveRuleSelector($child, $ctx);
+                        $isPropertyBlock = $this->selector->parseNestedPropertyBlockSelector($childSelector) !== null;
+
+                        if (! $isPropertyBlock) {
+                            $dummyOutput = '';
+
+                            $this->chunks->appendIncludedRuleChunk($dummyOutput, $first, $child, $ctx, false);
+
+                            continue;
+                        }
+                    }
+                }
+
                 /** @var Visitable $child */
                 $compiled = $this->dispatcher->compileWithContext($child, $ctx);
 
@@ -174,8 +196,7 @@ final readonly class FlowControlNodeHandler
                 }
 
                 $output .= $compiled;
-
-                $first = false;
+                $first   = false;
             }
         } finally {
             $scope->setVariableLocal('__flow_control_declaration_guard', $hadGuard ? $previousGuardSet : false);

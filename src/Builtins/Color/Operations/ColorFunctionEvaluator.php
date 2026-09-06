@@ -474,6 +474,7 @@ final readonly class ColorFunctionEvaluator
             return $this->emitModifiedLegacyColor(
                 $color,
                 fn(array $channels): array => $this->legacyMath->shiftChannel($channels, 'a', $amount),
+                true,
             );
         }
 
@@ -1385,7 +1386,7 @@ final readonly class ColorFunctionEvaluator
     /**
      * @param array<int, float|null> $channels rgb bytes
      */
-    private function serializeLegacyRgb(array $channels, ?float $alpha): AstNode
+    private function serializeLegacyRgb(array $channels, ?float $alpha, bool $hslDerived = false): AstNode
     {
         [$c0, $c1, $c2] = $channels;
 
@@ -1409,9 +1410,11 @@ final readonly class ColorFunctionEvaluator
             return $this->converter->fromRgb(new RgbColor(r: $c0, g: $c1, b: $c2, a: 1));
         }
 
-        $exactlyIntegral = $c0 === round($c0) && $c1 === round($c1) && $c2 === round($c2);
+        $canPrintBytes = $hslDerived
+            ? $this->hasBoundaryBytes($channels)
+            : ($c0 === round($c0) && $c1 === round($c1) && $c2 === round($c2));
 
-        if ($exactlyIntegral) {
+        if ($canPrintBytes) {
             $nodes = [new NumberNode(round($c0)), new NumberNode(round($c1)), new NumberNode(round($c2))];
             $name  = $opaque ? 'rgb' : 'rgba';
 
@@ -1481,6 +1484,20 @@ final readonly class ColorFunctionEvaluator
         return true;
     }
 
+    /**
+     * @param array<int, float|null> $channels
+     */
+    private function hasBoundaryBytes(array $channels): bool
+    {
+        foreach ($channels as $channel) {
+            if ($channel === null || ! ($channel === 0.0 || $channel === 255.0)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private function buildCommaHslNode(float $hue, float $saturation, float $lightness, float $alpha): FunctionNode
     {
         $arguments = [
@@ -1542,18 +1559,25 @@ final readonly class ColorFunctionEvaluator
     /**
      * @param callable(array{h: float, s: float, l: float, a: float}): array{h: float, s: float, l: float, a: float} $modify
      */
-    private function emitModifiedLegacyColor(AstNode $color, callable $modify): AstNode
+    private function emitModifiedLegacyColor(AstNode $color, callable $modify, bool $alphaOnly = false): AstNode
     {
+        $rgb       = $this->converter->toRgb($color);
         $legacyHsl = $this->extractLegacyHsl($color) ?? [
-            'channels' => $this->legacyMath->rgbToHsl($this->converter->toRgb($color)),
+            'channels' => $this->legacyMath->rgbToHsl($rgb),
             'origin'   => 'rgb',
         ];
 
         $modified = $modify($legacyHsl['channels']);
 
         if ($legacyHsl['origin'] === 'rgb') {
-            return $this->converter->serializeRgbResult(
-                $this->legacyMath->hslToRgb($modified['h'], $modified['s'], $modified['l'], $modified['a']),
+            if (! $alphaOnly) {
+                $rgb = $this->legacyMath->hslToRgb($modified['h'], $modified['s'], $modified['l'], $modified['a']);
+            }
+
+            return $this->serializeLegacyRgb(
+                [$rgb->rValue(), $rgb->gValue(), $rgb->bValue()],
+                $alphaOnly ? $modified['a'] : $rgb->a,
+                ! $alphaOnly,
             );
         }
 

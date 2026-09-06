@@ -9,6 +9,7 @@ use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DiagnosticNode;
 use Bugo\SCSS\Nodes\ExtendNode;
@@ -43,6 +44,8 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
         $selector    = $ruleCtx->parentSelector !== '' ? $ruleCtx->parentSelector : $ruleCtx->selector;
         $scope       = $ruleCtx->outerCtx->env->getCurrentScope();
         $outputState = $this->render->outputState();
+
+        $lastRenderedLine = $ruleCtx->node->line;
 
         foreach ($ruleCtx->node->children as $child) {
             $inlinesBody = $child instanceof IncludeNode || $child instanceof ImportNode;
@@ -131,11 +134,13 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
             }
 
             $deferredAtRootCount = null;
+            $atRootStackIndex    = count($outputState->deferral->atRootStack) - 1;
 
             if ($inlinesBody) {
                 $scope->setVariableLocal('__parent_rule_has_rendered_children', $ruleCtx->hasRenderedChildren);
+            }
 
-                $atRootStackIndex    = count($outputState->deferral->atRootStack) - 1;
+            if ($atRootStackIndex >= 0) {
                 $deferredAtRootCount = count($outputState->deferral->atRootStack[$atRootStackIndex]);
             }
 
@@ -153,11 +158,23 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
             );
 
             if ($compiled !== '' && ! $ruleCtx->omitOwnRuleOutput) {
-                if ($child instanceof DeclarationNode) {
+                if ($child instanceof CommentNode && $child->line === $lastRenderedLine) {
+                    $this->renderRuleOpeningIfNeeded($ruleCtx);
+
+                    if ($savedPosition !== null) {
+                        $this->render->restorePosition($savedPosition);
+                    }
+
+                    $this->render->appendChunk($ruleCtx->output, ' ' . ltrim($compiled), $child);
+
+                    $lastRenderedLine = $child->line;
+                } elseif ($child instanceof DeclarationNode) {
                     $this->renderRuleOpeningIfNeeded($ruleCtx);
 
                     $this->render->appendChunk($ruleCtx->output, "\n");
                     $this->render->appendChunk($ruleCtx->output, $compiled, $child);
+
+                    $lastRenderedLine = $child->line;
                 } else {
                     if ($savedPosition !== null) {
                         $deferredChunk = $this->render->createDeferredChunk($compiled, $savedPosition);
@@ -179,10 +196,13 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
             }
 
             if ($deferredAtRootCount !== null) {
-                $this->chunks->collectDeferredIncludeRootChunks(
-                    $ruleCtx->leadingRootChunks,
-                    $ruleCtx->trailingRootChunks,
+                $this->chunks->interleaveDeferredRootChunks(
+                    $ruleCtx->output,
+                    $ruleCtx->hasRenderedChildren,
+                    $ruleCtx->prefix,
+                    $ruleCtx->containsStandaloneNestedRuleChunks,
                     $deferredAtRootCount,
+                    $ruleCtx->leadingRootChunks,
                 );
             }
         }

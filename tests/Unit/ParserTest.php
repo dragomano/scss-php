@@ -60,7 +60,7 @@ describe('Parser', function () {
             $declaration = $rule->children[0];
             expect($declaration)->toBeInstanceOf(DeclarationNode::class)
                 ->and($declaration->property)->toBe('color')
-                ->and($declaration->value)->toBeInstanceOf(StringNode::class)
+                ->and($declaration->value)->toBeInstanceOf(ColorNode::class)
                 ->and($declaration->value->value)->toBe('red');
         });
 
@@ -850,7 +850,7 @@ describe('Parser', function () {
 
             // Second argument should be "transparent"
             $secondArg = $functionCall->arguments[1];
-            expect($secondArg)->toBeInstanceOf(StringNode::class)
+            expect($secondArg)->toBeInstanceOf(ColorNode::class)
                 ->and($secondArg->value)->toBe('transparent');
 
             // Third argument should be color

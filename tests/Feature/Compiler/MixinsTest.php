@@ -326,10 +326,12 @@ describe('Compiler', function () {
         .test {
           background-color: red;
           border-radius: 7px;
-          border-radius: 3px;
         }
         .test:hover {
           background-color: blue;
+        }
+        .test {
+          border-radius: 3px;
         }
         CSS;
 

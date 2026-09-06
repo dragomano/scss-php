@@ -835,7 +835,7 @@ describe('SassColorModule', function () {
             ->and($result->arguments[0]->value)->toBe(17.0)
             ->and($result->arguments[1]->value)->toBe(34.0)
             ->and($result->arguments[2]->value)->toBe(51.0)
-            ->and($result->arguments[3]->value)->toBe(0.6);
+            ->and($result->arguments[3]->value)->toBeCloseTo(0.6, 0.0000000001);
     });
 
     it('evaluates fade-out alias', function () {
@@ -846,7 +846,7 @@ describe('SassColorModule', function () {
             ->and($result->arguments[0]->value)->toBe(17.0)
             ->and($result->arguments[1]->value)->toBe(34.0)
             ->and($result->arguments[2]->value)->toBe(51.0)
-            ->and($result->arguments[3]->value)->toBe(0.6);
+            ->and($result->arguments[3]->value)->toBeCloseTo(0.6, 0.0000000001);
     });
 
     it('evaluates whiteness', function () {

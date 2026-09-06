@@ -450,7 +450,9 @@ final class SassSelectorModule extends AbstractModule
             throw new SassErrorException('expected more input.');
         }
 
-        return $this->tokenizer->parseSelectorList($text);
+        return $this->tokenizer->parseSelectorList(
+            $this->tokenizer->normalizeAdjacentSelectorCompounds($text),
+        );
     }
 
     private function selectorTextArgument(AstNode $value, string $context): string

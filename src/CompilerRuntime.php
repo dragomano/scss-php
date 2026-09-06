@@ -417,6 +417,8 @@ final class CompilerRuntime
             $this->evaluation(),
             $this->render(),
             new LoopIterator(),
+            $this->deferredChunks(),
+            $this->selector(),
         );
     }
 

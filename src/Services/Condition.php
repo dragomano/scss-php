@@ -493,11 +493,76 @@ final readonly class Condition
         foreach ($function->arguments as $argument) {
             if ($argument instanceof ListNode) {
                 foreach ($argument->items as $item) {
-                    if ($item instanceof StringNode && ! $item->quoted && strtolower(trim($item->value)) === 'none') {
+                    if ($this->isNoneChannelNode($item)) {
                         return true;
                     }
                 }
-            } elseif ($argument instanceof StringNode && ! $argument->quoted && strtolower(trim($argument->value)) === 'none') {
+            } elseif ($this->isNoneChannelNode($argument)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isNoneChannelNode(AstNode $node): bool
+    {
+        return $node instanceof StringNode
+            && ! $node->quoted
+            && strtolower(trim($node->value)) === 'none';
+    }
+
+    private function hasSignificantMissingChannel(FunctionNode $function): bool
+    {
+        $name = strtolower($function->name);
+
+        if (! in_array($name, ['hsl', 'hsla', 'hwb'], true)) {
+            return $name !== 'color' && $this->hasNoneChannel($function);
+        }
+
+        $arguments = $function->arguments;
+
+        if (count($arguments) !== 1 || ! $arguments[0] instanceof ListNode) {
+            return $this->hasNoneChannel($function);
+        }
+
+        $items = $arguments[0]->items;
+
+        $valueOf = static function (int $index) use ($items): ?float {
+            $item = $items[$index] ?? null;
+
+            if (! $item instanceof NumberNode) {
+                return null;
+            }
+
+            return (float) $item->value;
+        };
+
+        foreach ($items as $index => $item) {
+            if (! $this->isNoneChannelNode($item)) {
+                continue;
+            }
+
+            $isPowerless = false;
+
+            if ($name === 'hsl' || $name === 'hsla') {
+                $isPowerless = match ($index) {
+                    0       => $valueOf(1) === 0.0 || $valueOf(2) === 0.0 || $valueOf(2) === 100.0,
+                    1       => $valueOf(2) === 0.0 || $valueOf(2) === 100.0,
+                    2       => $valueOf(1) === 0.0,
+                    default => false,
+                };
+            } else {
+                $whiteness = $valueOf(1);
+                $blackness = $valueOf(2);
+
+                $isPowerless = match ($index) {
+                    0       => $whiteness !== null && $blackness !== null && $whiteness + $blackness >= 100.0,
+                    default => false,
+                };
+            }
+
+            if (! $isPowerless) {
                 return true;
             }
         }
@@ -520,6 +585,13 @@ final readonly class Condition
 
     private function areColorsCrossType(AstNode $left, AstNode $right): bool
     {
+        if (
+            ($left instanceof FunctionNode && $this->hasSignificantMissingChannel($left))
+            || ($right instanceof FunctionNode && $this->hasSignificantMissingChannel($right))
+        ) {
+            return false;
+        }
+
         $leftRgb  = $this->resolveNamedColorToRgb($left);
         $rightRgb = $this->resolveNamedColorToRgb($right);
 
@@ -532,7 +604,7 @@ final readonly class Condition
 
     private function resolveNamedColorToRgb(AstNode $node): ?RgbColor
     {
-        if ($node instanceof StringNode && ! $node->quoted) {
+        if ($node instanceof ColorNode) {
             $literalParser = new LiteralParser();
             $parsed        = $literalParser->toRgb($node->value);
 

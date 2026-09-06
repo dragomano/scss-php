@@ -471,6 +471,15 @@ final readonly class ExtendsResolver
 
                 $result[] = $candidate;
             }
+
+            if ($isPlaceholderPart) {
+                $cleaned = $this->stripPseudoPlaceholdersFromPart($part);
+
+                if ($cleaned !== null && $cleaned !== '') {
+                    $result[] = $cleaned;
+                    $exact[]  = $cleaned;
+                }
+            }
         }
 
         $unique      = array_values(array_unique($result));
@@ -1781,6 +1790,119 @@ final readonly class ExtendsResolver
         }
 
         return $allResults;
+    }
+
+    /**
+     * Strips placeholder selectors that appear inside selector pseudos such as
+     * `:is()`, `:where()`, `:matches()` and `:not()`. Returns null when a
+     * placeholder remains outside of them, in which case the rule is not emitted.
+     */
+    private function stripPseudoPlaceholdersFromPart(string $part): ?string
+    {
+        $parts = $this->tokenizer->splitAtTopLevel($part, [' ', '>', '+', '~']);
+
+        $kept = [];
+
+        foreach ($parts as $raw) {
+            if ($raw === '') {
+                continue;
+            }
+
+            $compound = $this->stripPseudoPlaceholdersFromCompound($raw);
+
+            if ($compound === null) {
+                return null;
+            }
+
+            if ($compound === '') {
+                continue;
+            }
+
+            $kept[] = $compound;
+        }
+
+        if ($kept === []) {
+            return '*';
+        }
+
+        return implode(' ', $kept);
+    }
+
+    private function stripPseudoPlaceholdersFromCompound(string $compound): ?string
+    {
+        $tokens = $this->tokenizeSelectorCompound($compound);
+
+        $kept = [];
+
+        foreach ($tokens as $token) {
+            if (str_contains($token, '%')) {
+                if (! str_starts_with($token, ':')) {
+                    return null;
+                }
+
+                $stripped = $this->stripPseudoTokenPlaceholders($token);
+
+                if ($stripped === null) {
+                    return null;
+                }
+
+                if ($stripped !== '') {
+                    $kept[] = $stripped;
+                }
+
+                continue;
+            }
+
+            $kept[] = $token;
+        }
+
+        return implode('', $kept);
+    }
+
+    private function stripPseudoTokenPlaceholders(string $token): ?string
+    {
+        $parsed = $this->tokenizer->parsePseudoToken($token);
+
+        if ($parsed === null || $parsed['selector'] === null) {
+            return null;
+        }
+
+        $list = $this->stripPseudoArgumentList($parsed['selector']);
+
+        if (trim($list) === '') {
+            if (strtolower($parsed['name']) === 'not') {
+                return '';
+            }
+
+            return null;
+        }
+
+        $prefix = str_starts_with($token, '::') ? '::' : ':';
+
+        return $prefix . $parsed['name'] . '(' . $list . ')';
+    }
+
+    private function stripPseudoArgumentList(string $listText): string
+    {
+        $parts = $this->splitTopLevelSelectorList($listText);
+
+        $kept = [];
+
+        foreach ($parts as $raw) {
+            if (trim($raw) === '') {
+                continue;
+            }
+
+            $cleaned = $this->stripPseudoPlaceholdersFromPart($raw);
+
+            if ($cleaned === null || $cleaned === '*') {
+                continue;
+            }
+
+            $kept[] = $cleaned;
+        }
+
+        return implode(', ', $kept);
     }
 
     /**

@@ -17,6 +17,7 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
+use Bugo\SCSS\Utils\CssNamedColors;
 
 use function array_key_last;
 use function implode;
@@ -96,6 +97,10 @@ final readonly class FunctionCallParser
 
         if ($normalizedIdentifier === 'null') {
             return new NullNode();
+        }
+
+        if (isset(CssNamedColors::NAMED_HEX[$normalizedIdentifier])) {
+            return new ColorNode($identifier, $startToken->line, $startToken->column);
         }
 
         return new StringNode($identifier, false, $startToken->line, $startToken->column);

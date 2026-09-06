@@ -58,7 +58,7 @@ it('starts a new rule block after standalone nested rule output without source m
         new RuleNode('.child', [
             new DeclarationNode('color', new StringNode('red')),
         ]),
-        new CommentNode('keep', true),
+        new CommentNode('keep', true, line: 3),
     ]), $context);
 
     $expected = /** @lang text */ <<<'CSS'

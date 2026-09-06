@@ -644,7 +644,7 @@ describe('Sass Color Module Feature', function () {
         it('compiles color.is-missing()', function () {
             $scss = <<<'SCSS'
             @use "sass:color";
-            .color-is-missing { value: color.is-missing(#336699, red); }
+            .color-is-missing { value: color.is-missing(#336699, "red"); }
             SCSS;
 
             $css = $this->compiler->compileString($scss);
@@ -661,7 +661,7 @@ describe('Sass Color Module Feature', function () {
         it('compiles color.is-missing() for hue after color.to-space() lch conversion', function () {
             $scss = <<<'SCSS'
             @use "sass:color";
-            .color-is-missing { value: color.is-missing(color.to-space(grey, lch), hue); }
+            .color-is-missing { value: color.is-missing(color.to-space(grey, lch), "hue"); }
             SCSS;
 
             $css = $this->compiler->compileString($scss);

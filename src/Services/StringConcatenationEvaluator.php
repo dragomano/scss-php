@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Services;
 
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -64,6 +65,10 @@ final readonly class StringConcatenationEvaluator
                     return null;
                 }
             } else {
+                if ($item instanceof ColorNode) {
+                    continue;
+                }
+
                 if ($item instanceof StringNode) {
                     $hasQuoted = $hasQuoted || $item->quoted;
                 } else {

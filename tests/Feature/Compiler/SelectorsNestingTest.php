@@ -65,10 +65,12 @@ describe('Compiler', function () {
             $expected = /** @lang text */ <<<'CSS'
             .card .title {
               color: red;
-              font-weight: bold;
             }
             .card .title:hover {
               color: blue;
+            }
+            .card .title {
+              font-weight: bold;
             }
             CSS;
 

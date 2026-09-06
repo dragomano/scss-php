@@ -10,6 +10,7 @@ use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\ForNode;
@@ -39,6 +40,7 @@ use function ctype_digit;
 use function implode;
 use function in_array;
 use function is_numeric;
+use function ltrim;
 use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
@@ -85,6 +87,11 @@ final readonly class Selector
     public function normalizeSelectorAttributes(string $selector): string
     {
         return $this->tokenizer->normalizeSelectorAttributes($selector);
+    }
+
+    public function normalizeAdjacentSelectorCompounds(string $selector): string
+    {
+        return $this->tokenizer->normalizeAdjacentSelectorCompounds($selector);
     }
 
     /**
@@ -578,9 +585,10 @@ final readonly class Selector
         string $baseProperty,
         ?string $baseValue,
     ): string {
-        $output    = '';
-        $prefix    = $this->render->indentPrefix($indent);
-        $hasOutput = false;
+        $output           = '';
+        $prefix           = $this->render->indentPrefix($indent);
+        $hasOutput        = false;
+        $lastRenderedLine = null;
 
         if ($baseValue !== null) {
             $this->render->appendChunk($output, $prefix . $baseProperty . ': ' . $baseValue . ';');
@@ -630,7 +638,8 @@ final readonly class Selector
 
                 $this->render->appendChunk($output, $line, $child);
 
-                $hasOutput = true;
+                $hasOutput         = true;
+                $lastRenderedLine = $child->line;
 
                 continue;
             }
@@ -721,6 +730,14 @@ final readonly class Selector
             }
 
             if ($chunk === '') {
+                continue;
+            }
+
+            if ($child instanceof CommentNode && $lastRenderedLine !== null && $child->line === $lastRenderedLine) {
+                $this->render->appendChunk($output, ' ' . ltrim($chunk), $child);
+
+                $lastRenderedLine = $child->line;
+
                 continue;
             }
 

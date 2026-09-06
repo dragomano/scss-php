@@ -6,6 +6,7 @@ use Bugo\SCSS\Lexer\Token;
 use Bugo\SCSS\Lexer\TokenStream;
 use Bugo\SCSS\Lexer\TokenType;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
@@ -120,7 +121,7 @@ describe('RuleParser', function () {
             /** @var VariableDeclarationNode $node */
             expect($node)->toBeInstanceOf(VariableDeclarationNode::class)
                 ->and($node->name)->toBe('color')
-                ->and($node->value)->toBeInstanceOf(StringNode::class)
+                ->and($node->value)->toBeInstanceOf(ColorNode::class)
                 ->and($node->global)->toBeFalse()
                 ->and($node->default)->toBeFalse();
         });

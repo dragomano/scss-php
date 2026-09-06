@@ -94,7 +94,7 @@ final readonly class DeclarationNodeHandler
         $valueOrigin = null;
         if ($this->render->collectSourceMappings()
             && $node->value instanceof VariableReferenceNode
-            && $evaluatedValue instanceof StringNode
+            && ($evaluatedValue instanceof StringNode || $evaluatedValue instanceof ColorNode)
             && $evaluatedValue->line > 0
         ) {
             $valueOrigin = $evaluatedValue;

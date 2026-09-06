@@ -483,6 +483,11 @@ final readonly class AtRuleNodeHandler
             }
 
             if ($atRuleStack === []) {
+                $childScope->setVariableLocal(
+                    '__parent_rule_has_rendered_children',
+                    $this->render->outputState()->deferral->currentRuleHasOutput,
+                );
+
                 $output = $this->chunks->compileBodyChunks($contentBlock, $contentCtx, $contentScope);
             } else {
                 /**

@@ -725,7 +725,7 @@ describe('Compiler', function () {
             $css = $compiler->compileString($source);
 
             $expected = /** @lang text */ <<<'CSS'
-            [class]a {
+            [class] a {
               color: red;
             }
 
@@ -757,7 +757,7 @@ describe('Compiler', function () {
             $css = $compiler->compileString($source);
 
             $expected = /** @lang text */ <<<'CSS'
-            [class]a {
+            [class] a {
               color: green;
             }
             CSS;

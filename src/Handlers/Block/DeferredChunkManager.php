@@ -233,12 +233,14 @@ final readonly class DeferredChunkManager
 
     /**
      * @param list<OutputChunk> $leadingRootChunks
-     * @param list<OutputChunk> $trailingRootChunks
      */
-    public function collectDeferredIncludeRootChunks(
-        array &$leadingRootChunks,
-        array &$trailingRootChunks,
+    public function interleaveDeferredRootChunks(
+        string &$output,
+        bool &$hasRenderedChildren,
+        string $prefix,
+        bool &$containsStandaloneNestedRuleChunks,
         int $deferredAtRootCount,
+        array &$leadingRootChunks,
     ): void {
         $outputState      = $this->render->outputState();
         $atRootStackIndex = count($outputState->deferral->atRootStack) - 1;
@@ -247,17 +249,15 @@ final readonly class DeferredChunkManager
             return;
         }
 
-        $deferred      = $outputState->deferral->atRootStack[$atRootStackIndex];
-        $deferredCount = count($deferred);
-
-        if ($deferredCount <= $deferredAtRootCount) {
-            return;
-        }
+        /** @var list<OutputChunk> $stack */
+        $stack = $outputState->deferral->atRootStack[$atRootStackIndex];
 
         /** @var list<OutputChunk> $newChunks */
-        $newChunks = array_splice($deferred, $deferredAtRootCount);
+        $newChunks = array_splice($stack, $deferredAtRootCount);
 
-        $outputState->deferral->atRootStack[$atRootStackIndex] = $deferred;
+        $outputState->deferral->atRootStack[$atRootStackIndex] = $stack;
+
+        $interleaved = [];
 
         foreach ($newChunks as $chunk) {
             if ($chunk instanceof GroupStartChunk && $chunk->isEarly) {
@@ -266,8 +266,32 @@ final readonly class DeferredChunkManager
                 continue;
             }
 
-            $trailingRootChunks[] = $chunk;
+            $interleaved[] = $chunk;
         }
+
+        if ($interleaved === []) {
+            return;
+        }
+
+        if ($hasRenderedChildren) {
+            $output = $this->render->trimTrailingNewlines($output);
+
+            $this->render->appendChunk($output, "\n" . $prefix . '}');
+
+            $hasRenderedChildren = false;
+        }
+
+        foreach ($interleaved as $chunk) {
+            if ($output !== '') {
+                $this->render->appendChunk($output, "\n" . Render::CONTINUATION_MARK);
+            }
+
+            $this->appendResolvedChunk($output, $chunk);
+        }
+
+        $containsStandaloneNestedRuleChunks = true;
+
+        $this->render->outputState()->deferral->currentRuleHasOutput = true;
     }
 
     public function appendIncludeAtRootChunk(
@@ -311,6 +335,7 @@ final readonly class DeferredChunkManager
         AstNode $child,
         TraversalContext $ctx,
         bool $hasRenderedChildren = false,
+        bool $flushToOutput = false,
     ): void {
         /** @var StatementNode $child */
         $parentSelector = $this->selector->getCurrentParentSelector($ctx->env);
@@ -327,7 +352,7 @@ final readonly class DeferredChunkManager
 
         $stackIndex = count($this->render->outputState()->deferral->bubblingStack) - 1;
 
-        if ($stackIndex >= 0) {
+        if ($stackIndex >= 0 && ! $flushToOutput) {
             if ($this->shouldDeferBubblingChunkToTrailingRoot($child, $hasRenderedChildren)) {
                 $this->render->restorePosition($preparedChunk['saved']);
 
@@ -353,6 +378,7 @@ final readonly class DeferredChunkManager
         bool &$first,
         RuleNode $child,
         TraversalContext $ctx,
+        bool $flushToOutput = false,
     ): void {
         $parentSelector = $this->selector->getCurrentParentSelector($ctx->env);
         $childSelector  = $this->resolveRuleSelector($child, $ctx);
@@ -387,7 +413,7 @@ final readonly class DeferredChunkManager
             return;
         }
 
-        if ($this->appendDeferredRootChunk($preparedChunk['deferredChunk'])) {
+        if (! $flushToOutput && $this->appendDeferredRootChunk($preparedChunk['deferredChunk'])) {
             $this->render->restorePosition($preparedChunk['saved']);
 
             return;
@@ -616,8 +642,13 @@ final readonly class DeferredChunkManager
      */
     public function compileBodyChunks(array $body, TraversalContext $ctx, Scope $callScope): string
     {
-        $output = '';
-        $first  = true;
+        $output       = '';
+        $first        = true;
+        $parentOpened = $callScope->hasVariable('__parent_rule_has_rendered_children')
+            && $callScope->getVariable('__parent_rule_has_rendered_children') === true;
+        $parentReopen = false;
+        $blockSplit   = false;
+        $parentPrefix = $this->render->indentPrefix(max(0, $ctx->indent - 1));
 
         foreach ($body as $child) {
             if ($this->evaluation->applyVariableDeclaration($child, $ctx->env)) {
@@ -634,15 +665,44 @@ final readonly class DeferredChunkManager
                 $parentHasRendered = $callScope->hasVariable('__parent_rule_has_rendered_children')
                     && $callScope->getVariable('__parent_rule_has_rendered_children') === true;
 
-                $this->appendIncludeBubblingChunk($output, $first, $child, $ctx, $parentHasRendered);
+                if ($parentOpened && $output !== '') {
+                    $this->closeParentRuleBlock($output, $parentPrefix);
+
+                    $parentOpened = false;
+                    $parentReopen = true;
+                    $blockSplit   = true;
+                }
+
+                $this->appendIncludeBubblingChunk($output, $first, $child, $ctx, $parentHasRendered, $blockSplit);
 
                 continue;
             }
 
             if ($child instanceof RuleNode) {
-                $this->appendIncludedRuleChunk($output, $first, $child, $ctx);
+                if ($parentOpened && $output !== '') {
+                    $this->closeParentRuleBlock($output, $parentPrefix);
+
+                    $parentOpened = false;
+                    $parentReopen = true;
+                    $blockSplit   = true;
+                }
+
+                $this->appendIncludedRuleChunk($output, $first, $child, $ctx, $blockSplit);
 
                 continue;
+            }
+
+            if ($parentReopen && $output !== '') {
+                $parentSelector = $this->selector->getCurrentParentSelector($ctx->env);
+
+                if ($parentSelector !== null && $parentSelector !== '') {
+                    $formattedSelector = str_replace("\n", "\n" . $parentPrefix, $parentSelector);
+
+                    $this->render->appendChunk($output, "\n" . $parentPrefix . $formattedSelector . ' {');
+
+                    $parentReopen = false;
+                    $parentOpened = true;
+                }
             }
 
             $savedPosition = null;
@@ -690,6 +750,13 @@ final readonly class DeferredChunkManager
         }
 
         return $output;
+    }
+
+    private function closeParentRuleBlock(string &$output, string $parentPrefix): void
+    {
+        $output = $this->render->trimTrailingNewlines($output);
+
+        $this->render->appendChunk($output, "\n" . $parentPrefix . '}');
     }
 
     /**
