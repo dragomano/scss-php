@@ -362,26 +362,18 @@ final readonly class ColorConstructorEvaluator
         $blackness = $this->parser->asPercentage($arguments[2], 'hwb');
         $alpha     = $this->parser->parseAlphaOrDefault($arguments, 3, 'hwb');
 
-        if (! is_finite($hue)) {
-            return new FunctionNode('hsla', [
-                new NumberNode(0),
-                new NumberNode(0, '%'),
-                new NumberNode($whiteness, '%'),
-                new NumberNode($alpha),
-            ]);
-        }
-
-        if (! is_finite($whiteness) || ! is_finite($blackness)) {
-            $nan           = new StringNode('calc(NaN)');
-            $nanPercentage = new StringNode('calc(NaN * 1%)');
-
-            return new FunctionNode('hsla', [$nan, $nanPercentage, $nanPercentage, new NumberNode($alpha)]);
-        }
-
         $sum = $whiteness + $blackness;
+
         if ($sum > 100.0) {
             $whiteness = ($whiteness / $sum) * 100.0;
             $blackness = ($blackness / $sum) * 100.0;
+
+            $whiteness = is_nan($whiteness) ? 0.0 : $whiteness;
+            $blackness = is_nan($blackness) ? 0.0 : $blackness;
+        }
+
+        if (! is_finite($whiteness) || ! is_finite($blackness)) {
+            return $this->converter->buildHslFunctionNode(0.0, 0.0, 0.0, $alpha);
         }
 
         [$red, $green, $blue] = $this->colorMath->hwbToSrgb($hue, $whiteness, $blackness);

@@ -488,12 +488,18 @@ final readonly class ColorArgumentParser
 
         $v = (float) $value->value;
 
-        return $this->normalizeChannelValue(match ($value->unit) {
+        $result = match ($value->unit) {
             'turn'  => $v * 360.0,
             'rad'   => $v * (180.0 / M_PI),
             'grad'  => $v * 0.9,
             default => $v,
-        });
+        };
+
+        if (! is_finite($result)) {
+            return 0.0;
+        }
+
+        return $this->normalizeChannelValue($result);
     }
 
     public function asAbsoluteChannel(?AstNode $value, string $context, float $range): float
@@ -519,15 +525,21 @@ final readonly class ColorArgumentParser
             );
         }
 
-        if (! is_finite((float) $value->value)) {
+        if ($value->unit === '%') {
+            $result = (float) $value->value / 100.0;
+        } else {
+            $result = (float) $value->value;
+        }
+
+        if (is_nan($result)) {
+            return 0.0;
+        }
+
+        if (! is_finite($result)) {
             throw new DeferToCssFunctionException($this->context->errorCtx('color'));
         }
 
-        if ($value->unit === '%') {
-            return $this->normalizeChannelValue((float) $value->value / 100.0);
-        }
-
-        return $this->normalizeChannelValue((float) $value->value);
+        return $this->normalizeChannelValue($result);
     }
 
     public function asString(?AstNode $value, string $context): string
@@ -812,6 +824,10 @@ final readonly class ColorArgumentParser
 
     private function normalizeChannelValue(float $value): float
     {
+        if (is_nan($value)) {
+            return 0.0;
+        }
+
         return $value === 0.0 ? 0.0 : $value;
     }
 }

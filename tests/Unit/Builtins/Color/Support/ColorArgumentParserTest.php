@@ -46,7 +46,9 @@ describe('ColorArgumentParser', function () {
             ->toThrow(MissingFunctionArgumentsException::class, 'scale() expects number arguments.')
             ->and(fn() => $this->parser->asHueAngle(new StringNode('10'), 'spin'))
             ->toThrow(MissingFunctionArgumentsException::class, 'spin() expects number arguments.')
-            ->and($this->parser->asHueAngle(new NumberNode(INF), 'spin'))->toBe(INF)
+            ->and($this->parser->asHueAngle(new NumberNode(INF), 'spin'))->toBe(0.0)
+            ->and($this->parser->asHueAngle(new NumberNode(-INF), 'spin'))->toBe(0.0)
+            ->and($this->parser->asHueAngle(new NumberNode(NAN), 'spin'))->toBe(0.0)
             ->and($this->parser->asHueAngle(new NumberNode(1, 'rad'), 'spin'))->toBe((float) (180.0 / M_PI))
             ->and($this->parser->asHueAngle(new NumberNode(100, 'grad'), 'spin'))->toBe(90.0);
     });
