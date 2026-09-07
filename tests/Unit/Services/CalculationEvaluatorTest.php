@@ -229,4 +229,19 @@ describe('CalculationEvaluator', function () {
             new ListNode([new StringNode('-'), new NumberNode(1, 'px')]),
         ], $this->env))->toBeNull();
     });
+
+    it('formats non-finite calc operands without a nested calc wrapper', function () {
+        $evaluator = createCalculationEvaluator();
+
+        $argument = new ListNode([
+            new FunctionNode('var', [new StringNode('--c')]),
+            new StringNode('+'),
+            new NumberNode(INF, '%'),
+        ], 'space');
+
+        expect($evaluator->formatCalculationFunction(
+            new FunctionNode('calc', [$argument]),
+            $this->env,
+        ))->toBe('calc(var(--c) + infinity * 1%)');
+    });
 });

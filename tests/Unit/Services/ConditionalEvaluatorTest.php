@@ -8,6 +8,7 @@ use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
+use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
@@ -128,6 +129,26 @@ describe('ConditionalEvaluator', function () {
 
         expect($result)->toBeInstanceOf(StringNode::class)
             ->and($result->value)->toBe('yes');
+    });
+
+    it('expands spread arguments when decoding legacy if() clauses', function () {
+        $spreadValue = new ListNode([new NumberNode(5)], 'space');
+
+        $singleSpread = $this->evaluator->evaluateInlineIfFunction('if', [
+            new BooleanNode(true),
+            new SpreadArgumentNode($spreadValue),
+        ], $this->env);
+
+        $nullSpread = $this->evaluator->evaluateInlineIfFunction('if', [
+            new BooleanNode(true),
+            new NumberNode(7),
+            new SpreadArgumentNode(new NullNode()),
+        ], $this->env);
+
+        expect($singleSpread)->toBeInstanceOf(NumberNode::class)
+            ->and($singleSpread->value)->toBe(5)
+            ->and($nullSpread)->toBeInstanceOf(NumberNode::class)
+            ->and($nullSpread->value)->toBe(7);
     });
 
     it('returns css expressions for unquoted inline if strings and functions', function () {

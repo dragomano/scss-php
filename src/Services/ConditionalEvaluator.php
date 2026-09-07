@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Services;
 
+use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\FunctionNode;
@@ -11,6 +12,7 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
+use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\NameNormalizer;
@@ -58,7 +60,7 @@ final readonly class ConditionalEvaluator
     private function evaluateInlineIfFunctionInner(string $name, array $arguments, Environment $env): AstNode
     {
 
-        $decoded  = $this->decodeIfArguments($arguments);
+        $decoded  = $this->decodeIfArguments($arguments, $env);
         $clauses  = $decoded['clauses'];
         $else     = $decoded['else'];
         $cssParts = [];
@@ -109,10 +111,60 @@ final readonly class ConditionalEvaluator
 
     /**
      * @param array<int, AstNode> $arguments
+     * @return array<int, AstNode>
+     */
+    private function expandSpreadArguments(array $arguments, Environment $env): array
+    {
+        $containsSpread = false;
+
+        foreach ($arguments as $argument) {
+            if ($argument instanceof SpreadArgumentNode) {
+                $containsSpread = true;
+
+                break;
+            }
+        }
+
+        if (! $containsSpread) {
+            return $arguments;
+        }
+
+        $expanded = [];
+
+        foreach ($arguments as $argument) {
+            if (! $argument instanceof SpreadArgumentNode) {
+                $expanded[] = $argument;
+
+                continue;
+            }
+
+            $value = $this->valueEvaluator->evaluate($argument->value, $env);
+
+            if ($value instanceof ListNode || $value instanceof ArgumentListNode) {
+                foreach ($value->items as $item) {
+                    $expanded[] = $item instanceof NamedArgumentNode
+                        ? $item
+                        : $this->valueEvaluator->evaluate($item, $env);
+                }
+
+                continue;
+            }
+
+            $expanded[] = $this->valueEvaluator->evaluate($value, $env);
+        }
+
+        return $expanded;
+    }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     * @param Environment $env
      * @return array{clauses: array<array{0: AstNode, 1: AstNode}>, else: AstNode|null}
      */
-    private function decodeIfArguments(array $arguments): array
+    private function decodeIfArguments(array $arguments, Environment $env): array
     {
+        $arguments = $this->expandSpreadArguments($arguments, $env);
+
         $named      = [];
         $positional = [];
 
@@ -324,7 +376,7 @@ final readonly class ConditionalEvaluator
     private function normalizeRawConnectorIfs(AstNode $node, Environment $env): AstNode
     {
         if ($node instanceof FunctionNode && strtolower($node->name) === 'if') {
-            $decoded = $this->decodeIfArguments($node->arguments);
+            $decoded = $this->decodeIfArguments($node->arguments, $env);
 
             if (count($decoded['clauses']) === 0 && $decoded['else'] !== null) {
                 return new StringNode(

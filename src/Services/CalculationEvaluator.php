@@ -159,6 +159,12 @@ final readonly class CalculationEvaluator
             return (string) new SassCalculation($node->name, [$inner]);
         }
 
+        if ($argument instanceof ListNode && $this->containsNonFiniteOperand($argument)) {
+            return (string) new SassCalculation($node->name, [
+                $this->formatList($argument, $env),
+            ]);
+        }
+
         return $this->sassValueConverter->convert($node, $env)->toCss();
     }
 
@@ -543,6 +549,17 @@ final readonly class CalculationEvaluator
         }
 
         return (new SassNumber($item->value, $item->unit))->toCalcOperandCss();
+    }
+
+    private function containsNonFiniteOperand(ListNode $list): bool
+    {
+        foreach ($list->items as $item) {
+            if ($this->formatNonFiniteOperand($item) !== null) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function extractLeadingOperatorContext(ListNode $list): ?string

@@ -261,6 +261,14 @@ final class TokenStreamHelper
         $buffer = '';
 
         while ($stream->match(TokenType::IDENTIFIER, TokenType::DOT)) {
+            if (
+                $stream->is(TokenType::DOT)
+                && $stream->peek()->type === TokenType::DOT
+                && $stream->peek(2)->type === TokenType::DOT
+            ) {
+                break;
+            }
+
             $buffer .= $stream->current()->value;
 
             $stream->advance();

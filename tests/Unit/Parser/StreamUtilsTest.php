@@ -317,6 +317,13 @@ describe('TokenStreamHelper', function () {
             expect(TokenStreamHelper::parseQualifiedIdentifier($stream))->toBe('sass.color');
         });
 
+        it('stops before ellipsis so the spread stays in the stream', function () {
+            $stream = makeStream('null...');
+
+            expect(TokenStreamHelper::parseQualifiedIdentifier($stream))->toBe('null');
+            expect(TokenStreamHelper::consumeEllipsis($stream))->toBeTrue();
+        });
+
         it('returns empty string when not at identifier', function () {
             $stream = makeStream('123');
 
