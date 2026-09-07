@@ -76,6 +76,9 @@ final class ExtendsState
     /** @var array<string, ExtendsScope> */
     public array $moduleScopes = [];
 
+    /** @var array<string, array<string, ExtendsScope>> */
+    public array $moduleScopesImport = [];
+
     /**
      * @return ExtendsScope
      */
@@ -128,6 +131,26 @@ final class ExtendsState
         $this->applyScope($previous);
     }
 
+    /**
+     * @return ExtendsScope|null
+     */
+    public function enterImportModuleScope(string $importRoot, string $moduleId): ?array
+    {
+        $scope = $this->moduleScopesImport[$importRoot][$moduleId]
+            ?? $this->moduleScopes[$moduleId]
+            ?? null;
+
+        if ($scope === null) {
+            return null;
+        }
+
+        $previous = $this->captureScope();
+
+        $this->applyScope($scope);
+
+        return $previous;
+    }
+
     public function resetCollection(): void
     {
         $this->extendMap        = [];
@@ -145,6 +168,7 @@ final class ExtendsState
     {
         $this->resetCollection();
 
-        $this->moduleScopes = [];
+        $this->moduleScopes       = [];
+        $this->moduleScopesImport = [];
     }
 }

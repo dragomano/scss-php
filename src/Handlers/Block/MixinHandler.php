@@ -147,10 +147,19 @@ final readonly class MixinHandler
             }
         }
 
-        $result = $this->module->loadAndEvaluateModule(
-            $path,
-            $configuration,
-        );
+        $moduleState = $this->module->state();
+
+        $previousImportRoot             = $moduleState->currentImportRoot;
+        $moduleState->currentImportRoot = $path;
+
+        try {
+            $result = $this->module->loadAndEvaluateModule(
+                $path,
+                $configuration,
+            );
+        } finally {
+            $moduleState->currentImportRoot = $previousImportRoot;
+        }
 
         $css = $result['css'];
 

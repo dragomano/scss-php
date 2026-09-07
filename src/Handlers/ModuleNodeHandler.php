@@ -140,7 +140,9 @@ final readonly class ModuleNodeHandler
                 $this->module->extractAstVariables($ctx->env->getCurrentScope()->getVariables()),
             );
 
-            $this->module->mergeScopeExports($data['scope'], $ctx->env->getCurrentScope(), trackImportedVariables: true);
+            if (! ($data['cached'] ?? false)) {
+                $this->module->mergeScopeExports($data['scope'], $ctx->env->getCurrentScope(), trackImportedVariables: true);
+            }
 
             $css = $data['css'];
 
@@ -190,6 +192,18 @@ final readonly class ModuleNodeHandler
 
         if ($loaded === null) {
             return '';
+        }
+
+        $importRoot = $moduleState->currentImportRoot;
+
+        if ($importRoot !== '' && isset($this->render->outputState()->extends->moduleScopesImport[$importRoot][$loaded->id])) {
+            if (isset($moduleState->branchEmittedCss[$importRoot][$loaded->id])) {
+                return '';
+            }
+
+            $moduleState->branchEmittedCss[$importRoot][$loaded->id] = true;
+
+            return $this->module->moduleCssInBranch($loaded->id, $importRoot);
         }
 
         if (isset($moduleState->emittedUseCss[$loaded->id]) || isset($moduleState->emittedModuleCss[$loaded->id])) {

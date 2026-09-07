@@ -8,7 +8,9 @@ use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\LoaderInterface;
 use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\ImportNode;
+use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\RootNode;
+use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
@@ -26,6 +28,8 @@ use function str_starts_with;
  *     post: list<string>,
  *     seen: array<string, true>,
  *     upstream: array<string, array<string, true>>,
+ *     importEdges: array<string, array<string, true>>,
+ *     loadCssRoots: array<string, true>,
  *     asts: array<string, RootNode>,
  *     stores: array<string, ExtensionStore>,
  *     metas: array<string, BoxMeta>,
@@ -88,16 +92,91 @@ final readonly class ExtendsGraphResolver
 
         $rootBuilt = $this->extends->buildExtensionStore();
 
+        $rootStore             = $rootBuilt['store'];
+        $rootHasOwnExtensions  = $rootStore['extensions'] !== [];
+
         $stores                = $graph['stores'];
-        $stores[self::ROOT_ID] = $rootBuilt['store'];
+        $stores[self::ROOT_ID] = $rootStore;
 
         $metas                = $graph['metas'];
         $metas[self::ROOT_ID] = $rootBuilt['meta'];
+
+        $branches     = $this->resolveImportBranches($graph);
+        $useReachable = $this->transitiveClosure(self::ROOT_ID, $graph['upstream'], []);
+
+        foreach (array_keys($graph['loadCssRoots']) as $target) {
+            $inUseReachable = isset($useReachable[$target]);
+            $hasOwnExtends  = isset($graph['stores'][$target]) && $graph['stores'][$target]['extensions'] !== [];
+
+            if (! $inUseReachable && ! $hasOwnExtends) {
+                continue;
+            }
+
+            if (isset($branches[$target]) || ! isset($graph['stores'][$target])) {
+                continue;
+            }
+
+            $nodes     = $this->transitiveClosure($target, $graph['upstream'], $graph['importEdges']);
+            $upstream  = [];
+            $exclusive = [];
+
+            foreach ($nodes as $moduleId => $_) {
+                if (! isset($useReachable[$moduleId])) {
+                    $exclusive[$moduleId] = true;
+                }
+
+                $edges = $graph['upstream'][$moduleId] ?? [];
+
+                foreach ($graph['importEdges'][$moduleId] ?? [] as $dependency => $_) {
+                    $edges[$dependency] = true;
+                }
+
+                foreach ($edges as $dependency => $_) {
+                    if (isset($nodes[$dependency])) {
+                        $upstream[$moduleId][$dependency] = true;
+                    }
+                }
+            }
+
+            $branches[$target] = [
+                'nodes'     => $nodes,
+                'upstream'  => $upstream,
+                'post'      => $this->collectBranchOrder($target, $upstream),
+                'exclusive' => $exclusive,
+            ];
+        }
+
+        $skip = [];
+
+        foreach ($branches as $branch) {
+            foreach ($branch['exclusive'] as $moduleId => $_) {
+                $skip[$moduleId] = true;
+            }
+        }
+
+        $branchStores = [];
+
+        foreach ($branches as $branchRoot => $branch) {
+            foreach ($branch['nodes'] as $moduleId => $_) {
+                $branchStores[$branchRoot][$moduleId] = $graph['stores'][$moduleId];
+            }
+        }
+
+        $rootHasOwnExtensions = $rootStore['extensions'] !== [];
+
+        foreach ($this->collectRootDirectChain($graph) as $moduleId) {
+            if ($graph['stores'][$moduleId]['extensions'] !== []) {
+                $this->extends->addForeignExtensionsToStore($stores[self::ROOT_ID], [$graph['stores'][$moduleId]]);
+
+                $rootHasOwnExtensions = true;
+            }
+        }
 
         $this->propagateExtensions(
             $stores,
             $graph['upstream'],
             array_reverse([...$graph['post'], self::ROOT_ID]),
+            $skip,
         );
 
         foreach ($graph['asts'] as $moduleId => $_) {
@@ -111,7 +190,26 @@ final readonly class ExtendsGraphResolver
             ];
         }
 
-        if ($snapshot['events'] === []) {
+        foreach ($branches as $branchRoot => $branch) {
+            $branchStore = $branchStores[$branchRoot];
+
+            $this->propagateExtensions($branchStore, $branch['upstream'], array_reverse($branch['post']));
+
+            foreach ($branch['nodes'] as $moduleId => $_) {
+                $materialized = $this->extends->materializeExtensionStore($branchStore[$moduleId], $metas[$moduleId]);
+
+                $state->moduleScopesImport[$branchRoot][$moduleId] = [
+                    'extendMap'        => $materialized['extendMap'],
+                    'selectorContexts' => $graph['contexts'][$moduleId],
+                    'partLineBreaks'   => $graph['breaks'][$moduleId],
+                    'boxes'            => $materialized['boxes'],
+                ];
+            }
+        }
+
+        $rootStore = $stores[self::ROOT_ID];
+
+        if ($snapshot['events'] === [] && ! $rootHasOwnExtensions) {
             $this->extends->finalizeCollectedExtends();
 
             return;
@@ -127,15 +225,17 @@ final readonly class ExtendsGraphResolver
     {
         /** @var ModuleGraph $graph */
         $graph = [
-            'post'      => [],
-            'seen'      => [],
-            'upstream'  => [],
-            'asts'      => [],
-            'stores'    => [],
-            'metas'     => [],
-            'contexts'  => [],
-            'breaks'    => [],
-            'hasExtend' => $rootHasExtends,
+            'post'         => [],
+            'seen'         => [],
+            'upstream'     => [],
+            'importEdges'  => [],
+            'loadCssRoots' => [],
+            'asts'         => [],
+            'stores'       => [],
+            'metas'        => [],
+            'contexts'     => [],
+            'breaks'       => [],
+            'hasExtend'    => $rootHasExtends,
         ];
 
         try {
@@ -174,7 +274,7 @@ final readonly class ExtendsGraphResolver
             return;
         }
 
-        foreach ($this->moduleDependencies($ast) as [$path, $fromImport]) {
+        foreach ($this->moduleDependencies($ast) as [$path, $fromImport, $isLoadCss]) {
             $file = $this->tryLoad($path, $fromImport);
 
             if ($file === null) {
@@ -183,8 +283,14 @@ final readonly class ExtendsGraphResolver
 
             $dependency = $file['path'];
 
-            if (! $fromImport) {
+            if ($isLoadCss) {
+                if ($moduleId === self::ROOT_ID) {
+                    $graph['loadCssRoots'][$dependency] = true;
+                }
+            } elseif (! $fromImport) {
                 $graph['upstream'][$moduleId][$dependency] = true;
+            } else {
+                $graph['importEdges'][$moduleId][$dependency] = true;
             }
 
             if (isset($graph['seen'][$dependency])) {
@@ -244,7 +350,7 @@ final readonly class ExtendsGraphResolver
     }
 
     /**
-     * @return list<array{0: string, 1: bool}>
+     * @return list<array{0: string, 1: bool, 2: bool}>
      */
     private function moduleDependencies(RootNode $ast): array
     {
@@ -252,6 +358,19 @@ final readonly class ExtendsGraphResolver
         $seen  = [];
 
         foreach ($ast->children as $child) {
+            if ($child instanceof IncludeNode) {
+                if ($this->isLoadCssInclude($child)) {
+                    $target = $this->resolveLoadCssTarget($child);
+
+                    if ($target !== null && ! isset($seen[$target])) {
+                        $seen[$target] = true;
+                        $paths[]       = [$target, false, true];
+                    }
+                }
+
+                continue;
+            }
+
             if ($child instanceof ImportNode) {
                 foreach ($child->imports as $import) {
                     $resolved = $this->module->resolveImport($import);
@@ -268,7 +387,7 @@ final readonly class ExtendsGraphResolver
                     }
 
                     $seen[$importedPath] = true;
-                    $paths[]             = [$importedPath, true];
+                    $paths[]             = [$importedPath, true, false];
                 }
 
                 continue;
@@ -283,10 +402,25 @@ final readonly class ExtendsGraphResolver
             }
 
             $seen[$child->path] = true;
-            $paths[]            = [$child->path, false];
+            $paths[]            = [$child->path, false, false];
         }
 
         return $paths;
+    }
+
+    private function isLoadCssInclude(IncludeNode $node): bool
+    {
+        return ($node->namespace === null || $node->namespace === 'meta')
+            && $node->name === 'load-css'
+            && $node->arguments[0] instanceof StringNode;
+    }
+
+    private function resolveLoadCssTarget(IncludeNode $node): ?string
+    {
+        /** @var StringNode $first */
+        $first = $node->arguments[0];
+
+        return $this->module->resolveModulePath($first->value);
     }
 
     /**
@@ -316,18 +450,176 @@ final readonly class ExtendsGraphResolver
     }
 
     /**
+     * @param ModuleGraph $graph
+     * @return array<string, array{nodes: array<string, true>, upstream: array<string, array<string, true>>, post: list<string>, exclusive: array<string, true>}>
+     */
+    private function resolveImportBranches(array $graph): array
+    {
+        $importEdges = $graph['importEdges'];
+
+        if ($importEdges === []) {
+            return [];
+        }
+
+        $useReachable    = $this->transitiveClosure(self::ROOT_ID, $graph['upstream'], []);
+        $branches        = [];
+        $seenBranchRoots = [];
+
+        foreach ($importEdges as $children) {
+            foreach ($children as $branchRoot => $_) {
+                if (isset($seenBranchRoots[$branchRoot])) {
+                    continue;
+                }
+
+                $seenBranchRoots[$branchRoot] = true;
+
+                if (! isset($graph['upstream'][$branchRoot])) {
+                    continue;
+                }
+
+                $nodes     = $this->transitiveClosure($branchRoot, $graph['upstream'], $importEdges);
+                $upstream  = [];
+                $exclusive = [];
+
+                foreach ($nodes as $moduleId => $_) {
+                    if (! isset($useReachable[$moduleId])) {
+                        $exclusive[$moduleId] = true;
+                    }
+
+                    $edges = $graph['upstream'][$moduleId] ?? [];
+
+                    foreach ($importEdges[$moduleId] ?? [] as $dependency => $_) {
+                        $edges[$dependency] = true;
+                    }
+
+                    foreach ($edges as $dependency => $_) {
+                        if (isset($nodes[$dependency])) {
+                            $upstream[$moduleId][$dependency] = true;
+                        }
+                    }
+                }
+
+                $branches[$branchRoot] = [
+                    'nodes'     => $nodes,
+                    'upstream'  => $upstream,
+                    'post'      => $this->collectBranchOrder($branchRoot, $upstream),
+                    'exclusive' => $exclusive,
+                ];
+            }
+        }
+
+        return $branches;
+    }
+
+    /**
+     * Modules reachable from the root through @import edges only. Their extends
+     * behave as if they were declared in the root stylesheet.
+     *
+     * @param ModuleGraph $graph
+     * @return list<string>
+     */
+    private function collectRootDirectChain(array $graph): array
+    {
+        $chain   = [];
+        $visited = [];
+        $queue   = [];
+
+        foreach ($graph['importEdges'][self::ROOT_ID] ?? [] as $dependency => $_) {
+            if (! isset($visited[$dependency])) {
+                $visited[$dependency] = true;
+                $queue[]              = $dependency;
+            }
+        }
+
+        while ($queue !== []) {
+            $moduleId = array_shift($queue);
+
+            $chain[] = $moduleId;
+
+            foreach ($graph['importEdges'][$moduleId] ?? [] as $dependency => $_) {
+                if (! isset($visited[$dependency])) {
+                    $visited[$dependency] = true;
+                    $queue[]              = $dependency;
+                }
+            }
+        }
+
+        return $chain;
+    }
+
+    /**
+     * @param array<string, array<string, true>> $edges
+     * @param array<string, array<string, true>> $extraEdges
+     * @return array<string, true>
+     */
+    private function transitiveClosure(string $start, array $edges, array $extraEdges): array
+    {
+        $visited = [$start => true];
+        $queue   = [$start];
+
+        while ($queue !== []) {
+            $moduleId = array_shift($queue);
+
+            foreach ($edges[$moduleId] ?? [] as $dependency => $_) {
+                if (! isset($visited[$dependency])) {
+                    $visited[$dependency] = true;
+                    $queue[]              = $dependency;
+                }
+            }
+
+            foreach ($extraEdges[$moduleId] ?? [] as $dependency => $_) {
+                if (! isset($visited[$dependency])) {
+                    $visited[$dependency] = true;
+                    $queue[]              = $dependency;
+                }
+            }
+        }
+
+        return $visited;
+    }
+
+    /**
+     * @param array<string, array<string, true>> $upstream
+     * @return list<string>
+     */
+    private function collectBranchOrder(string $branchRoot, array $upstream): array
+    {
+        $post    = [];
+        $visited = [];
+
+        $visit = function (string $moduleId) use (&$visit, &$post, &$visited, $upstream): void {
+            if (isset($visited[$moduleId])) {
+                return;
+            }
+
+            $visited[$moduleId] = true;
+
+            foreach ($upstream[$moduleId] ?? [] as $dependency => $_) {
+                $visit($dependency);
+            }
+
+            $post[] = $moduleId;
+        };
+
+        $visit($branchRoot);
+
+        return $post;
+    }
+
+    /**
      * @param array<string, ExtensionStore> $stores
      * @param-out array<string, ExtensionStore> $stores
      * @param array<string, array<string, true>> $upstream
      * @param list<string> $order
+     * @param array<string, true> $skip
      */
-    private function propagateExtensions(array &$stores, array $upstream, array $order): void
+    private function propagateExtensions(array &$stores, array $upstream, array $order, array $skip = []): void
     {
         /** @var array<string, list<ExtensionStore>> $downstream */
         $downstream = [];
 
         foreach ($order as $moduleId) {
-            if (! isset($stores[$moduleId])) {
+            if (! isset($stores[$moduleId]) || isset($skip[$moduleId])) {
                 continue;
             }
 

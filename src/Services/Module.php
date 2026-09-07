@@ -385,7 +385,12 @@ final readonly class Module
                     'css'   => $existing->css,
                 ];
             } else {
-                $moduleData = $this->loadAndEvaluateModule($path, $resolvedConfiguration);
+                $evaluated = $this->loadAndEvaluateModule($path, $resolvedConfiguration);
+
+                $moduleData = [
+                    'scope' => $evaluated['scope'],
+                    'css'   => $evaluated['css'],
+                ];
             }
 
             $state->forwardedModules[$forwardKey] = $moduleData;
@@ -486,7 +491,7 @@ final readonly class Module
     /**
      * @param array<string, AstNode> $configuration
      * @param array<string, AstNode> $initialVariables
-     * @return array{scope: Scope, css: string}
+     * @return array{scope: Scope, css: string, cached?: bool}
      */
     public function loadAndEvaluateModule(
         string $path,
@@ -498,6 +503,14 @@ final readonly class Module
         $file = $fromImport ? $this->loader->load($path, true) : $this->loadModuleFile($path);
 
         $this->loader->addPath(dirname($file['path']));
+
+        if ($fromImport && $this->isImportOnlyFile($file['path'])) {
+            $cached = $this->ctx->moduleState->importedModules[$file['path']] ?? null;
+
+            if ($cached !== null) {
+                return ['scope' => $cached->scope, 'css' => $cached->css, 'cached' => true];
+            }
+        }
 
         $syntax       = Syntax::fromPath($file['path'], $file['content']);
         $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
@@ -518,7 +531,9 @@ final readonly class Module
 
         $moduleEnv->getCurrentScope()->setIncomingConfiguration(array_merge($initialVariables, $configuration));
 
-        $emittedCss = null;
+        $emittedCss              = null;
+        $previousImportRoot      = '';
+        $previousEmittedSnapshot = null;
 
         if ($fromImport) {
             $resolvedPath = $file['path'];
@@ -530,12 +545,27 @@ final readonly class Module
             $this->ctx->moduleState->loadingFiles[$resolvedPath] = true;
             $this->ctx->moduleState->importEvaluationDepth++;
 
-            $emittedCss = $this->ctx->moduleState->takeEmittedCssState();
+            $emittedCss         = $this->ctx->moduleState->takeEmittedCssState();
+            $previousImportRoot = $this->ctx->moduleState->currentImportRoot;
+
+            $this->ctx->moduleState->currentImportRoot = $file['path'];
+
+            $previousEmittedSnapshot = $this->ctx->moduleState->importEmittedSnapshot;
+
+            $this->ctx->moduleState->importEmittedSnapshot = $emittedCss;
         }
+
+        $importRoot       = $this->ctx->moduleState->currentImportRoot;
+        $hasBranchScope   = $importRoot === $file['path']
+            && isset($this->ctx->outputState->extends->moduleScopesImport[$importRoot][$file['path']]);
 
         $previousExtends = $fromImport
             ? null
-            : $this->ctx->outputState->extends->enterModuleScope($file['path']);
+            : ($importRoot === $file['path']
+                ? ($hasBranchScope
+                    ? $this->ctx->outputState->extends->enterImportModuleScope($importRoot, $file['path'])
+                    : null)
+                : $this->ctx->outputState->extends->enterModuleScope($file['path']));
 
         $previousModuleId = $this->ctx->moduleState->currentModuleId;
 
@@ -561,13 +591,77 @@ final readonly class Module
                 unset($this->ctx->moduleState->loadingFiles[$file['path']]);
 
                 $this->ctx->moduleState->restoreEmittedCssState($emittedCss);
+
+                $this->ctx->moduleState->currentImportRoot = $previousImportRoot;
+
+                $this->ctx->moduleState->importEmittedSnapshot = $previousEmittedSnapshot;
             }
+        }
+
+        if ($fromImport && $this->isImportOnlyFile($file['path'])) {
+            $this->ctx->moduleState->importedModules[$file['path']] = new LoadedModule(
+                $file['path'],
+                $moduleEnv->getCurrentScope(),
+                $css,
+            );
         }
 
         return [
             'scope' => $moduleEnv->getCurrentScope(),
             'css'   => $css,
         ];
+    }
+
+    public function moduleCssInBranch(string $moduleId, string $branchRoot): string
+    {
+        $state = $this->state();
+
+        if (isset($state->branchModuleCss[$branchRoot][$moduleId])) {
+            return $state->branchModuleCss[$branchRoot][$moduleId];
+        }
+
+        if (isset($state->branchCompileFiles[$branchRoot][$moduleId])) {
+            return '';
+        }
+
+        $state->branchCompileFiles[$branchRoot][$moduleId] = true;
+
+        $isSessionRoot = $state->branchSessionDepth === 0;
+
+        if ($isSessionRoot) {
+            $state->branchEmittedCss[$branchRoot] = [];
+        }
+
+        $state->branchSessionDepth++;
+
+        $file   = $this->loadModuleFile($moduleId);
+        $syntax = Syntax::fromPath($file['path'], $file['content']);
+        $ast    = $this->parseModuleAst($file['path'], $this->ctx->normalizerPipeline->process($file['content'], $syntax));
+
+        $moduleEnv = new Environment();
+
+        $moduleEnv->getCurrentScope()->markAsModuleRootScope();
+
+        $previousImportRoot = $state->currentImportRoot;
+        $previousModuleId   = $state->currentModuleId;
+        $previousExtends    = $this->ctx->outputState->extends->enterImportModuleScope($branchRoot, $moduleId);
+
+        $state->currentImportRoot = $branchRoot;
+        $state->currentModuleId   = $moduleId;
+
+        try {
+            $css = $syntax === Syntax::CSS
+                ? $this->plainCssRenderer->render($ast, $moduleEnv)
+                : $this->dispatcher->compile($ast, $moduleEnv);
+        } finally {
+            $state->branchSessionDepth--;
+            $state->currentImportRoot = $previousImportRoot;
+            $state->currentModuleId   = $previousModuleId;
+
+            $this->ctx->outputState->extends->leaveModuleScope($previousExtends);
+        }
+
+        return $state->branchModuleCss[$branchRoot][$moduleId] = $css;
     }
 
     /**
@@ -951,6 +1045,13 @@ final readonly class Module
         }
 
         return str_ends_with($lower, '.css');
+    }
+
+    private function isImportOnlyFile(string $path): bool
+    {
+        $normalized = strtolower($path);
+
+        return str_ends_with($normalized, '.import.scss') || str_ends_with($normalized, '.import.sass');
     }
 
     /** @return array{path: string, content: string} */

@@ -15,7 +15,7 @@ final class ModuleState
     /** @var array<string, string> */
     private array $idToNamespace = [];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, LoadedModule> */
     public array $importedModules = [];
 
     /** @var array<string, array{id?: string, scope: Scope, css: string}> */
@@ -47,9 +47,30 @@ final class ModuleState
 
     public string $currentModuleId = '';
 
+    public string $currentImportRoot = '';
+
+    /** @var array<string, array<string, string>> */
+    public array $branchModuleCss = [];
+
+    /** @var array<string, array<string, bool>> */
+    public array $branchCompileFiles = [];
+
+    /** @var array<string, array<string, bool>> */
+    public array $branchEmittedCss = [];
+
+    /**
+     * Emitted-CSS snapshot taken when the current @import evaluation started.
+     *
+     * @var array{forward: array<string, bool>, use: array<string, bool>, module: array<string, bool>}|null
+     */
+    public ?array $importEmittedSnapshot = null;
+
+    public int $branchSessionDepth = 0;
+
     public function registerModule(string $namespace, string $id, Scope $scope, string $css): void
     {
         $module = new LoadedModule($id, $scope, $css);
+
         $this->loadedModules[$namespace] = $module;
         $this->idToNamespace[$id]        = $namespace;
     }
@@ -80,7 +101,8 @@ final class ModuleState
     public function prefetchModule(string $parentId, string $url, string $path, string $content, RootNode $ast): void
     {
         $this->prefetchedFiles[$parentId . "\0" . $url] = ['path' => $path, 'content' => $content];
-        $this->prefetchedAsts[$path]                    = $ast;
+
+        $this->prefetchedAsts[$path] = $ast;
     }
 
     /**
@@ -140,5 +162,11 @@ final class ModuleState
         $this->prefetchedFiles       = [];
         $this->prefetchedAsts        = [];
         $this->currentModuleId       = '';
+        $this->currentImportRoot     = '';
+        $this->branchModuleCss       = [];
+        $this->branchCompileFiles    = [];
+        $this->branchEmittedCss      = [];
+        $this->importEmittedSnapshot = null;
+        $this->branchSessionDepth    = 0;
     }
 }
