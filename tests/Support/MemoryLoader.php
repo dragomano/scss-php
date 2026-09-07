@@ -39,9 +39,17 @@ final class MemoryLoader implements LoaderInterface
     {
         $path = $this->normalizePath($path);
 
-        if (! in_array($path, $this->searchPaths, true)) {
-            array_unshift($this->searchPaths, $path);
+        $others = [];
+
+        foreach ($this->searchPaths as $searchPath) {
+            if ($searchPath !== $path) {
+                $others[] = $searchPath;
+            }
         }
+
+        $this->searchPaths = $others;
+
+        array_unshift($this->searchPaths, $path);
     }
 
     /**

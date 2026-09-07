@@ -8,6 +8,7 @@ use Bugo\SCSS\Nodes\FunctionDeclarationNode;
 use Bugo\SCSS\Nodes\MixinNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
+use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Context;
 use Bugo\SCSS\Services\Evaluator;
@@ -80,7 +81,10 @@ final readonly class DefinitionNodeHandler
 
         $origin = $scope->findImportedVariableOrigin($node->name);
 
-        if ($origin !== null) {
+        $isForwardedOrigin = $origin !== null
+            && $scope->findForwardedVariableOrigin($node->name) !== null;
+
+        if ($origin !== null && ($this->isGlobalAssignment($node, $scope) || $isForwardedOrigin)) {
             /** @psalm-var mixed $value */
             $value       = $scope->getVariable($node->name);
             $originScope = $origin['scope'];
@@ -101,6 +105,21 @@ final readonly class DefinitionNodeHandler
         }
 
         return '';
+    }
+
+    private function isGlobalAssignment(VariableDeclarationNode $node, Scope $scope): bool
+    {
+        if ($node->global) {
+            return true;
+        }
+
+        $global = $scope->getGlobalScope();
+
+        if ($scope === $global) {
+            return true;
+        }
+
+        return $scope->isFlowControlScope() && $scope->getParent() === $global;
     }
 
     private function isDeprecatedName(string $name): bool

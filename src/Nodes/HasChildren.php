@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Nodes;
 
-use function array_filter;
+use function array_keys;
 use function is_array;
 
 trait HasChildren
@@ -18,13 +18,17 @@ trait HasChildren
         $children = [];
 
         foreach ($this->childProperties as $property) {
+            /** @var mixed $value */
             $value = $this->$property ?? null;
 
             if (! is_array($value)) {
                 continue;
             }
 
-            foreach (array_filter($value, is_object(...)) as $item) {
+            foreach (array_keys($value) as $key) {
+                /** @var mixed $item */
+                $item = $value[$key];
+
                 if ($item instanceof AstNode) {
                     $children[] = $item;
                 }

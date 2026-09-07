@@ -39,11 +39,16 @@ final class Scope
     /** @var array<string, AstNode> */
     private array $incomingConfiguration = [];
 
+    /** @var array<string, AstNode> */
+    private array $configuredVariables = [];
+
     private ?Scope $globalScope = null;
 
     private bool $insideCssFunctionBody = false;
 
     private bool $flowControlScope = false;
+
+    private bool $moduleRootScope = false;
 
     public function __construct(private readonly ?Scope $parent = null)
     {
@@ -70,6 +75,21 @@ final class Scope
         $this->flowControlScope = true;
     }
 
+    public function isFlowControlScope(): bool
+    {
+        return $this->flowControlScope;
+    }
+
+    public function markAsModuleRootScope(): void
+    {
+        $this->moduleRootScope = true;
+    }
+
+    public function isModuleRootScope(): bool
+    {
+        return $this->moduleRootScope;
+    }
+
     /** @param array<string, AstNode> $configuration */
     public function setIncomingConfiguration(array $configuration): void
     {
@@ -80,6 +100,42 @@ final class Scope
     public function getIncomingConfiguration(): array
     {
         return $this->incomingConfiguration;
+    }
+
+    /** @param array<string, AstNode> $configured */
+    public function setConfiguredVariables(array $configured): void
+    {
+        $normalized = [];
+
+        foreach ($configured as $name => $value) {
+            $normalized[$this->normalizeName($name)] = $value;
+        }
+
+        $this->configuredVariables = $normalized;
+    }
+
+    public function getConfiguredVariable(string $name): ?AstNode
+    {
+        $normalized = $this->normalizeName($name);
+        $scope      = $this;
+
+        do {
+            $value = $scope->configuredVariables[$normalized] ?? null;
+
+            if ($value !== null) {
+                return $value;
+            }
+
+            $scope = $scope->parent;
+        } while ($scope !== null);
+
+        return null;
+    }
+
+    /** @return array<string, AstNode> */
+    public function getConfiguredVariables(): array
+    {
+        return $this->configuredVariables;
     }
 
     public function getGlobalScope(): Scope
@@ -118,6 +174,8 @@ final class Scope
             if ($existingScope !== null && ! $this->isSassNull($existingScope->variables->get($name))) {
                 return;
             }
+
+            $value = $this->configuredValueFor($name) ?? $value;
         }
 
         $this->variables->set($name, $value, $line);
@@ -143,6 +201,12 @@ final class Scope
             if ($existingScope !== null && ! $this->isSassNull($existingScope->variables->get($name))) {
                 return;
             }
+
+            /** @var AstNode|null $configured */
+            $configured = $this->configuredValueFor($name);
+
+            /** @var mixed $value */
+            $value = $configured ?? $value;
         }
 
         $this->variables->set($name, $value, $line);
@@ -404,6 +468,17 @@ final class Scope
         return null;
     }
 
+    private function configuredValueFor(string $name): ?AstNode
+    {
+        $value = $this->getConfiguredVariable($name);
+
+        if ($value === null || $this->isSassNull($value)) {
+            return null;
+        }
+
+        return $value;
+    }
+
     private function getVariableNormalized(string $name): mixed
     {
         $scope = $this->findScopeForVariable($name);
@@ -505,6 +580,14 @@ final class Scope
             if (! $this->isSassNull($this->variables->get($name))) {
                 return;
             }
+        }
+
+        if ($default) {
+            /** @var AstNode|null $configured */
+            $configured = $this->configuredValueFor($name);
+
+            /** @var mixed $value */
+            $value = $configured ?? $value;
         }
 
         $this->variables->set($name, $value, $line);

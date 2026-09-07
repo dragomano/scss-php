@@ -233,14 +233,11 @@ final readonly class Module
         $incomingConfig = [];
 
         foreach ($node->configuration as $name => $valueNode) {
-            $value = $this->evaluation->evaluateValueWithSlashDivision($valueNode, $env);
-
-            $moduleEnv->getCurrentScope()->setVariable($name, $value);
-
-            $incomingConfig[$name] = $value;
+            $incomingConfig[$name] = $this->evaluation->evaluateValueWithSlashDivision($valueNode, $env);
         }
 
         if ($incomingConfig !== []) {
+            $moduleEnv->getCurrentScope()->setConfiguredVariables($incomingConfig);
             $moduleEnv->getCurrentScope()->setIncomingConfiguration($incomingConfig);
         }
 
@@ -324,6 +321,14 @@ final readonly class Module
         $path  = $node->path;
         $state = $this->state();
 
+        if (! str_starts_with($path, 'sass:')) {
+            $resolvedPath = $this->resolveModulePath($path);
+
+            if ($resolvedPath !== null) {
+                $path = $resolvedPath;
+            }
+        }
+
         $resolvedConfiguration = $this->resolveForwardConfiguration($node, $env);
 
         $incomingConfig = $this->collectIncomingConfiguration($env);
@@ -345,7 +350,7 @@ final readonly class Module
 
             $prefix = $node->prefix ?? '';
 
-            if ($prefix === '' && $resolvedConfiguration === []) {
+            if ($prefix === '' && $resolvedConfiguration === [] && ! $env->getCurrentScope()->isModuleRootScope()) {
                 $defaultKey = $this->forwardCacheKey($path, [], $env);
 
                 if (! isset($state->forwardedModules[$defaultKey])) {
@@ -370,7 +375,18 @@ final readonly class Module
         }
 
         if (! isset($state->forwardedModules[$forwardKey])) {
-            $moduleData = $this->loadAndEvaluateModule($path, $resolvedConfiguration);
+            $existing = $resolvedConfiguration === []
+                ? $this->findLoadedByPath($path)
+                : null;
+
+            if ($existing !== null) {
+                $moduleData = [
+                    'scope' => $existing->scope,
+                    'css'   => $existing->css,
+                ];
+            } else {
+                $moduleData = $this->loadAndEvaluateModule($path, $resolvedConfiguration);
+            }
 
             $state->forwardedModules[$forwardKey] = $moduleData;
 
@@ -384,14 +400,16 @@ final readonly class Module
 
         $moduleData = $state->forwardedModules[$forwardKey];
 
-        $this->mergeScopeExports(
-            $moduleData['scope'],
-            $env->getCurrentScope(),
-            $node->prefix,
-            $node->visibility,
-            $node->members,
-            $this->importEvaluationDepth() > 0,
-        );
+        if (! ($this->importEvaluationDepth() === 0 && $this->ctx->moduleState->currentModuleId === '')) {
+            $this->mergeScopeExports(
+                $moduleData['scope'],
+                $env->getCurrentScope(),
+                $node->prefix,
+                $node->visibility,
+                $node->members,
+                $this->importEvaluationDepth() > 0,
+            );
+        }
 
         return $forwardKey;
     }
@@ -456,6 +474,15 @@ final readonly class Module
         return ['type' => 'sass', 'path' => $raw];
     }
 
+    public function resolveModulePath(string $path): ?string
+    {
+        try {
+            return $this->loadModuleFile($path)['path'];
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
     /**
      * @param array<string, AstNode> $configuration
      * @param array<string, AstNode> $initialVariables
@@ -479,15 +506,17 @@ final readonly class Module
             : $this->parseModuleAst($file['path'], $moduleSource);
         $moduleEnv    = new Environment();
 
+        $moduleEnv->getCurrentScope()->markAsModuleRootScope();
+
         foreach ($initialVariables as $name => $value) {
             $moduleEnv->getCurrentScope()->setVariableLocal($name, $value);
         }
 
-        foreach ($configuration as $name => $value) {
-            $moduleEnv->getCurrentScope()->setVariable($name, $value);
+        if ($configuration !== []) {
+            $moduleEnv->getCurrentScope()->setConfiguredVariables($configuration);
         }
 
-        $moduleEnv->getCurrentScope()->setIncomingConfiguration($configuration);
+        $moduleEnv->getCurrentScope()->setIncomingConfiguration(array_merge($initialVariables, $configuration));
 
         $emittedCss = null;
 
@@ -653,7 +682,10 @@ final readonly class Module
         foreach ($node->configuration as $name => $entry) {
             $valueNode    = $entry['value'];
             $isDefault    = $entry['default'];
-            $currentValue = $isDefault ? $env->getCurrentScope()->getAstVariable($name) : null;
+            $currentValue = $isDefault
+                ? ($env->getCurrentScope()->getAstVariable($name)
+                    ?? $env->getCurrentScope()->getConfiguredVariable($name))
+                : null;
 
             if ($currentValue !== null && ! $currentValue instanceof NullNode) {
                 $resolved[$name] = $currentValue;
@@ -925,6 +957,17 @@ final readonly class Module
     private function loadModuleFile(string $path): array
     {
         return $this->ctx->moduleState->prefetchedFile($path) ?? $this->loader->load($path);
+    }
+
+    private function findLoadedByPath(string $path): ?LoadedModule
+    {
+        try {
+            $moduleId = $this->loader->load($path)['path'];
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $this->state()->getById($moduleId);
     }
 
     private function parseModuleAst(string $path, string $source): RootNode

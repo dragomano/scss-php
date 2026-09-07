@@ -53,6 +53,8 @@ final readonly class ModuleDirectiveParser
             $configuration = $this->parseUseConfiguration();
         }
 
+        $this->stream->skipWhitespaceAndComments();
+
         TokenStreamHelper::consumeSemicolonFromStream($this->stream);
 
         return new UseNode($path, $namespace, $configuration);

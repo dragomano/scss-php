@@ -134,7 +134,7 @@ final readonly class ModuleNodeHandler
 
             $data = $this->module->loadAndEvaluateModule(
                 $path,
-                [],
+                $ctx->env->getCurrentScope()->getConfiguredVariables(),
                 true,
                 true,
                 $this->module->extractAstVariables($ctx->env->getCurrentScope()->getVariables()),

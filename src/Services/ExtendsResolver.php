@@ -2375,6 +2375,18 @@ final readonly class ExtendsResolver
 
                 $boxId = $state->ruleStack !== [] ? $state->ruleStack[count($state->ruleStack) - 1] : null;
 
+                $sourceParts = [];
+
+                foreach ($this->splitTopLevelSelectorList($selector) as $sourcePart) {
+                    if ($sourcePart !== '' && ! $this->tokenizer->hasBogusTrailingCombinator($sourcePart)) {
+                        $sourceParts[] = $sourcePart;
+                    }
+                }
+
+                if ($sourceParts === []) {
+                    continue;
+                }
+
                 foreach ($this->extractSimpleExtendTargetSelectors($extendTargetSelector) as $extendTarget) {
                     if ($boxId !== null) {
                         $state->events[] = [
@@ -2387,11 +2399,7 @@ final readonly class ExtendsResolver
                         ];
                     }
 
-                    foreach ($this->splitTopLevelSelectorList($selector) as $sourcePart) {
-                        if ($sourcePart === '') {
-                            continue;
-                        }
-
+                    foreach ($sourceParts as $sourcePart) {
                         $state->pendingExtends[] = [
                             'target'   => $extendTarget,
                             'source'   => $sourcePart,

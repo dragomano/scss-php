@@ -460,6 +460,29 @@ final readonly class SelectorTokenizer
         return $this->hasConsecutiveCombinatorsInParentheses($selector);
     }
 
+    public function hasBogusTrailingCombinator(string $selector): bool
+    {
+        $components = $this->parseComplexComponents($selector);
+
+        if ($components === []) {
+            return true;
+        }
+
+        $last = $components[count($components) - 1];
+
+        if ($last['comb'] !== '') {
+            return true;
+        }
+
+        foreach ($components as $component) {
+            if ($component['sel'] !== '') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public function normalizeAdjacentSelectorCompounds(string $selector): string
     {
         $length       = strlen($selector);

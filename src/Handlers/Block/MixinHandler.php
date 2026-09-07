@@ -23,6 +23,7 @@ use Bugo\SCSS\Utils\RawChunk;
 
 use function array_slice;
 use function str_contains;
+use function str_starts_with;
 
 final readonly class MixinHandler
 {
@@ -128,23 +129,34 @@ final readonly class MixinHandler
     {
         [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
 
-        if ($resolvedPositional === [] || ! ($resolvedPositional[0] instanceof StringNode)) {
+        $urlNode = $resolvedPositional[0] ?? $resolvedNamed['url'] ?? null;
+
+        if (! ($urlNode instanceof StringNode)) {
             return '';
         }
 
         $configuration = $this->metaLoadCssConfiguration($resolvedNamed['with'] ?? null);
 
+        $path = $urlNode->value;
+
+        if (! str_starts_with($path, 'sass:')) {
+            $resolvedPath = $this->module->resolveModulePath($path);
+
+            if ($resolvedPath !== null) {
+                $path = $resolvedPath;
+            }
+        }
+
         $result = $this->module->loadAndEvaluateModule(
-            $resolvedPositional[0]->value,
+            $path,
             $configuration,
         );
 
-        $path = $resolvedPositional[0]->value;
-        $css  = $result['css'];
+        $css = $result['css'];
 
         if ($configuration !== []) {
             $state     = $this->module->state();
-            $namespace = $this->module->deriveNamespaceFromUsePath($path);
+            $namespace = $this->module->deriveNamespaceFromUsePath($urlNode->value);
 
             if (! $state->hasNamespace($namespace)) {
                 $state->registerModule($namespace, $path, $result['scope'], $css);

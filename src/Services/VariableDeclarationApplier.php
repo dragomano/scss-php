@@ -49,6 +49,14 @@ final readonly class VariableDeclarationApplier implements VariableDeclarationAp
                 return true;
             }
 
+            $forwardedOrigin = $currentScope->findForwardedVariableOrigin($node->name);
+
+            if ($forwardedOrigin !== null) {
+                $forwardedOrigin['scope']->setVariableLocal($forwardedOrigin['name'], $evaluatedValue, $node->default);
+
+                return true;
+            }
+
             $currentScope->setVariableLocal(
                 $node->name,
                 $evaluatedValue,
