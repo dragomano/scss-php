@@ -139,6 +139,7 @@ final readonly class DeferredChunkManager
         Scope $scope,
         AstNode $child,
         TraversalContext $ctx,
+        bool $hasStandaloneNestedRuleChunks = false,
     ): void {
         /** @var StatementNode $child */
         $bubblingNode = $this->evaluation->normalizeBubblingNodeForSelector($child, $selector);
@@ -166,7 +167,7 @@ final readonly class DeferredChunkManager
                         return;
                     }
 
-                    if ($hasRenderedChildren) {
+                    if ($hasRenderedChildren || $hasStandaloneNestedRuleChunks) {
                         $trailingRootChunks[] = $deferredChunk;
                     } else {
                         $leadingRootChunks[] = $deferredChunk;
@@ -184,7 +185,7 @@ final readonly class DeferredChunkManager
         if ($chunk !== '') {
             $deferredChunk = $this->render->createDeferredChunk($chunk, $saved);
 
-            if ($hasRenderedChildren) {
+            if ($hasRenderedChildren || $hasStandaloneNestedRuleChunks) {
                 $this->render->restorePosition($saved);
 
                 $trailingRootChunks[] = $deferredChunk;

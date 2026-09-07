@@ -541,6 +541,38 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('keeps bubbled media after nested rules already emitted from the parent', function () {
+            $source = <<<'SCSS'
+            .toolbar {
+              margin: 1px;
+
+              form {
+                display: flex;
+              }
+
+              @media print {
+                display: block;
+              }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .toolbar {
+              margin: 1px;
+            }
+            .toolbar form {
+              display: flex;
+            }
+            @media print {
+              .toolbar {
+                display: block;
+              }
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
         it('bubbles nested @container at-rules out of style rules', function () {
             $source = <<<'SCSS'
             .article_alt3_view {

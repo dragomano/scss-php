@@ -111,6 +111,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
                         $scope,
                         $child,
                         $ruleCtx->outerCtx,
+                        $ruleCtx->containsStandaloneNestedRuleChunks || $ruleCtx->output !== '',
                     );
                 }
 
