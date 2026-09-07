@@ -79,9 +79,29 @@ final readonly class Selector
         return $this->text->normalizeMediaQueryPrelude($prelude);
     }
 
+    public function evaluateMediaFeatureOperands(string $prelude, Environment $env): string
+    {
+        return $this->text->evaluateMediaFeatureOperands($prelude, $env);
+    }
+
     public function stripAllComments(string $text): string
     {
         return $this->text->stripAllComments($text);
+    }
+
+    public function stripLeadingComments(string $text): string
+    {
+        return $this->text->stripLeadingComments($text);
+    }
+
+    public function stripCommentsExceptTrailing(string $text): string
+    {
+        return $this->text->stripCommentsExceptTrailing($text);
+    }
+
+    public function canonicalizeSelectorEscapes(string $selector): string
+    {
+        return $this->tokenizer->canonicalizeSelectorEscapes($selector);
     }
 
     public function normalizeSelectorAttributes(string $selector): string

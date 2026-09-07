@@ -268,6 +268,37 @@ final class StringEscapeDecoder
         return $index;
     }
 
+    public static function decodeUnquotedUrlEscapes(string $url): string
+    {
+        $result = '';
+        $length = strlen($url);
+        $index  = 0;
+
+        while ($index < $length) {
+            if ($url[$index] !== '\\' || $index + 1 >= $length || ! ctype_xdigit($url[$index + 1])) {
+                $result .= $url[$index];
+
+                $index++;
+
+                continue;
+            }
+
+            $cursor = $index + 1;
+            $hex    = '';
+
+            while ($cursor < $length && strlen($hex) < self::MAX_HEX_DIGITS && ctype_xdigit($url[$cursor])) {
+                $hex .= $url[$cursor];
+
+                $cursor++;
+            }
+
+            $result .= self::hexToUtf8($hex);
+            $index   = $cursor;
+        }
+
+        return $result;
+    }
+
     private static function decodeEscapeAt(string $text, int &$index): string
     {
         $length = strlen($text);

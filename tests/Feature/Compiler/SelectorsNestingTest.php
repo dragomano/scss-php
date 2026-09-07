@@ -789,7 +789,8 @@ describe('Compiler', function () {
             SCSS;
 
             $expected = <<<'CSS'
-            #lp_layout h3:hover, #lp_layout h4:hover {
+            #lp_layout h3:hover,
+            #lp_layout h4:hover {
               white-space: normal;
             }
             CSS;

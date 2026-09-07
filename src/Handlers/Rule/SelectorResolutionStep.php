@@ -43,6 +43,7 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
             ? $this->evaluation->interpolateText($node->selector, $env)
             : $node->selector;
         $selector = $this->selector->normalizeSelectorAttributes($selector);
+        $selector = $this->selector->canonicalizeSelectorEscapes($selector);
 
         $diagnosticSelector = $selector;
         $selector           = $this->selector->normalizeAdjacentSelectorCompounds($selector);

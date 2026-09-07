@@ -98,6 +98,212 @@ final readonly class Text
         return $this->padMediaQueryOperators($prelude);
     }
 
+    public function evaluateMediaFeatureOperands(string $prelude, Environment $env): string
+    {
+        $length = strlen($prelude);
+        $result = '';
+        $index  = 0;
+
+        while ($index < $length) {
+            if ($prelude[$index] !== '(') {
+                $result .= $prelude[$index];
+
+                $index++;
+
+                continue;
+            }
+
+            $start = $index + 1;
+            $depth = 1;
+            $close = -1;
+
+            for ($i = $start; $i < $length; $i++) {
+                if ($prelude[$i] === '(') {
+                    $depth++;
+
+                    continue;
+                }
+
+                if ($prelude[$i] === ')') {
+                    $depth--;
+
+                    if ($depth === 0) {
+                        $close = $i;
+
+                        break;
+                    }
+                }
+            }
+
+            if ($close === -1) {
+                $result .= substr($prelude, $index);
+
+                break;
+            }
+
+            $inner   = substr($prelude, $start, $close - $start);
+            $result .= '(' . $this->evaluateFeatureGroup($inner, $env) . ')';
+            $index   = $close + 1;
+        }
+
+        return $result;
+    }
+
+    private function evaluateFeatureGroup(string $inner, Environment $env): string
+    {
+        $inner = trim($inner);
+
+        foreach (['<=', '>=', '<', '>', '='] as $operator) {
+            [$parts, $ops] = $this->splitMediaFeatureByOperator($inner, $operator);
+
+            if (count($parts) < 2) {
+                continue;
+            }
+
+            $result = $this->evaluateFeatureOperand($parts[0], $env);
+
+            for ($i = 1, $n = count($parts); $i < $n; $i++) {
+                $result .= ' ' . $ops[$i - 1] . ' ' . $this->evaluateFeatureOperand($parts[$i], $env);
+            }
+
+            return $result;
+        }
+
+        $colonPos = $this->findTopLevelColon($inner);
+
+        if ($colonPos !== null) {
+            $name  = trim(substr($inner, 0, $colonPos));
+            $value = trim(substr($inner, $colonPos + 1));
+
+            return $name . ': ' . $this->evaluateFeatureOperand($value, $env);
+        }
+
+        return $inner;
+    }
+
+    private function evaluateFeatureOperand(string $operand, Environment $env): string
+    {
+        $trimmed = trim($operand);
+
+        if (! $this->shouldEvaluateFeatureOperand($trimmed)) {
+            return $trimmed;
+        }
+
+        $valueNode = $this->parser->parseInlineExpression($trimmed);
+        $evaluated = $this->valueEvaluator->evaluate($valueNode, $env);
+        $formatted = $this->valueFormatter->format($evaluated, $env);
+
+        if (trim($formatted) !== '') {
+            return $formatted;
+        }
+
+        return $trimmed;
+    }
+
+    private function shouldEvaluateFeatureOperand(string $operand): bool
+    {
+        if ($operand === '' || ctype_digit($operand)) {
+            return false;
+        }
+
+        if (str_starts_with($operand, 'if(')) {
+            return true;
+        }
+
+        if ($operand[0] === '(' || $operand[0] === '[') {
+            return true;
+        }
+
+        return str_contains($operand, '+') || str_contains($operand, '*');
+    }
+
+    /**
+     * @return array{0: list<string>, 1: list<string>}
+     */
+    private function splitMediaFeatureByOperator(string $text, string $operator): array
+    {
+        $length   = strlen($text);
+        $parts    = [];
+        $ops      = [];
+        $depth    = 0;
+        $brackets = 0;
+        $quote    = '';
+        $start    = 0;
+        $opLength = strlen($operator);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $text[$i];
+
+            if ($quote !== '') {
+                if ($char === '\\') {
+                    $i++;
+
+                    continue;
+                }
+
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                continue;
+            }
+
+            if ($char === '(') {
+                $depth++;
+
+                continue;
+            }
+
+            if ($char === ')') {
+                $depth = max(0, $depth - 1);
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $brackets++;
+
+                continue;
+            }
+
+            if ($char === ']') {
+                $brackets = max(0, $brackets - 1);
+
+                continue;
+            }
+
+            if ($depth !== 0 || $brackets !== 0) {
+                continue;
+            }
+
+            if (substr($text, $i, $opLength) === $operator) {
+                $before = $i > 0 ? $text[$i - 1] : ' ';
+                $after  = $text[$i + $opLength] ?? '';
+
+                if ((ctype_space($before) || $before === '(') && ($after === ' ' || $after === '(')) {
+                    $parts[] = trim(substr($text, $start, $i - $start));
+                    $ops[]   = $operator;
+                    $start   = $i + $opLength;
+                    $i       = $start - 1;
+                }
+            }
+        }
+
+        if ($parts === []) {
+            return [[$text], []];
+        }
+
+        $parts[] = trim(substr($text, $start));
+
+        return [$parts, $ops];
+    }
+
     public function normalizePlainCssMediaQueryPrelude(string $prelude): string
     {
         return $this->normalizeMediaQueryPrelude($this->normalizeCssLogicalOperators($prelude));
@@ -127,6 +333,95 @@ final readonly class Text
         }
 
         return trim($result);
+    }
+
+    public function stripLeadingComments(string $text): string
+    {
+        $text = ltrim($text);
+
+        while (str_starts_with($text, '/*')) {
+            $end = strpos($text, '*/', 2);
+
+            if ($end === false) {
+                $text = '';
+
+                break;
+            }
+
+            $text = ltrim(substr($text, $end + 2));
+        }
+
+        return $text;
+    }
+
+    public function stripCommentsExceptTrailing(string $text): string
+    {
+        $trimmed = rtrim($text);
+
+        if (str_ends_with($trimmed, '*/')) {
+            $open = $this->findLoudCommentOpen($trimmed, strlen($trimmed));
+
+            if ($open !== false) {
+                $head   = substr($trimmed, 0, $open);
+                $tail   = substr($trimmed, $open);
+                $result = '';
+                $length = strlen($head);
+                $i      = 0;
+
+                while ($i < $length) {
+                    if ($head[$i] === '/' && ($head[$i + 1] ?? '') === '*') {
+                        $close = strpos($head, '*/', $i + 2);
+
+                        if ($close === false) {
+                            break;
+                        }
+
+                        $i = $close + 2;
+
+                        continue;
+                    }
+
+                    $result .= $head[$i];
+
+                    $i++;
+                }
+
+                if (trim($result) !== '') {
+                    return $result . $tail;
+                }
+            }
+        }
+
+        return $this->stripAllComments($text);
+    }
+
+    private function findLoudCommentOpen(string $text, int $end): int|false
+    {
+        $open   = false;
+        $i      = 0;
+        $length = strlen($text);
+
+        while ($i < $length) {
+            if ($text[$i] === '/' && ($text[$i + 1] ?? '') === '*') {
+                $close = strpos($text, '*/', $i + 2);
+
+                if ($close === false) {
+                    break;
+                }
+
+                if ($close + 2 <= $end && ltrim(substr($text, $close + 2, $end - $close - 2)) === '') {
+                    $open = $i;
+                }
+
+                $i = $close + 2;
+
+                continue;
+            }
+
+            $i++;
+        }
+
+        return $open;
     }
 
     public function replaceInterpolations(string $value, Environment $env): string

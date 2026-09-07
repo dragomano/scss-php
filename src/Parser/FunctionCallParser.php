@@ -18,6 +18,7 @@ use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Utils\CssNamedColors;
+use Bugo\SCSS\Utils\StringEscapeDecoder;
 
 use function array_key_last;
 use function implode;
@@ -213,6 +214,16 @@ final readonly class FunctionCallParser
         }
 
         if ($this->isPlainCssUrlArgument($argument)) {
+            $quote = $argument[0];
+
+            if (
+                $quote !== '"' && $quote !== "'"
+                && str_contains($argument, '\\')
+                && ! str_contains($argument, '#')
+            ) {
+                $argument = StringEscapeDecoder::decodeUnquotedUrlEscapes($argument);
+            }
+
             return new FunctionNode('url', [new StringNode($argument)]);
         }
 

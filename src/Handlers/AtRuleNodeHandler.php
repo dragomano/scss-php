@@ -126,7 +126,10 @@ final readonly class AtRuleNodeHandler
 
                 if ($lowerName === 'media') {
                     $resolvedPrelude = $this->selector->normalizeMediaQueryPrelude(
-                        $this->selector->resolveDirectivePrelude($node->prelude, $ctx->env),
+                        $this->selector->evaluateMediaFeatureOperands(
+                            $this->selector->resolveDirectivePrelude($node->prelude, $ctx->env),
+                            $ctx->env,
+                        ),
                     );
                 } elseif ($lowerName === '-moz-document') {
                     $resolvedPrelude = $this->selector->stripAllComments(
@@ -136,7 +139,9 @@ final readonly class AtRuleNodeHandler
                     $resolvedPrelude = $this->interpolatePreludeOnly($node->prelude, $ctx->env);
 
                     if ($node->hasBlock) {
-                        $resolvedPrelude = $this->selector->stripAllComments($resolvedPrelude);
+                        $resolvedPrelude = $this->selector->stripCommentsExceptTrailing($resolvedPrelude);
+                    } else {
+                        $resolvedPrelude = $this->selector->stripLeadingComments($resolvedPrelude);
                     }
                 }
             }
@@ -178,7 +183,7 @@ final readonly class AtRuleNodeHandler
              */
             $body = $node->body;
 
-            // For keyframes and at-rules with empty loud comment body, output compact format { /**/ }
+            // For keyframes with comment-only body, output compact format { /**/ }
             if (
                 $this->isCommentOnlyBody($body)
                 && (

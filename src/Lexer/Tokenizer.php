@@ -284,7 +284,7 @@ final class Tokenizer
 
         $type = $isPreserved ? TokenType::COMMENT_PRESERVED : TokenType::COMMENT_LOUD;
 
-        return new Token($type, $value, $line, $column, $start);
+        return new Token($type, str_replace(["\r\n", "\r", "\f"], "\n", $value), $line, $column, $start);
     }
 
     private function tokenizeHashOrColor(): Token
