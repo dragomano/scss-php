@@ -13,10 +13,12 @@ use Bugo\SCSS\LoaderInterface;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ForwardNode;
+use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\RootNode;
+use Bugo\SCSS\Nodes\StatementNode;
 use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\ParserInterface;
@@ -32,13 +34,13 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_unique;
+use function count;
 use function dirname;
 use function explode;
 use function implode;
 use function in_array;
 use function ksort;
 use function ltrim;
-use function pathinfo;
 use function serialize;
 use function str_contains;
 use function str_ends_with;
@@ -49,8 +51,6 @@ use function strtolower;
 use function substr;
 use function substr_count;
 use function trim;
-
-use const PATHINFO_FILENAME;
 
 final readonly class Module
 {
@@ -233,7 +233,7 @@ final readonly class Module
         $incomingConfig = [];
 
         foreach ($node->configuration as $name => $valueNode) {
-            $value = $this->evaluation->evaluateValue($valueNode, $env);
+            $value = $this->evaluation->evaluateValueWithSlashDivision($valueNode, $env);
 
             $moduleEnv->getCurrentScope()->setVariable($name, $value);
 
@@ -243,6 +243,8 @@ final readonly class Module
         if ($incomingConfig !== []) {
             $moduleEnv->getCurrentScope()->setIncomingConfiguration($incomingConfig);
         }
+
+        $this->prescanGlobalNullSlots($moduleAst->children, $moduleEnv->getCurrentScope());
 
         $state->loadingFiles[$moduleId] = true;
 
@@ -334,6 +336,10 @@ final readonly class Module
             }
         }
 
+        if (str_starts_with($path, 'sass:')) {
+            $env->getCurrentScope()->addForwardedBuiltin(substr($path, 5), $node->prefix);
+        }
+
         if ($this->importEvaluationDepth() > 0) {
             $resolvedConfiguration = $this->resolveImportForwardConfiguration($node, $env, $resolvedConfiguration);
 
@@ -392,7 +398,13 @@ final readonly class Module
 
     public function deriveNamespaceFromUsePath(string $path): string
     {
-        return ltrim(pathinfo($path, PATHINFO_FILENAME), '_');
+        $segments = explode('/', $path);
+        $basename = $segments[count($segments) - 1];
+        $segments = explode('\\', $basename);
+        $basename = $segments[count($segments) - 1];
+        $stem     = explode('.', $basename)[0];
+
+        return ltrim($stem, '_');
     }
 
     /**
@@ -501,6 +513,8 @@ final readonly class Module
         if (! $fromImport) {
             $this->ctx->moduleState->currentModuleId = $file['path'];
         }
+
+        $this->prescanGlobalNullSlots($moduleAst->children, $moduleEnv->getCurrentScope());
 
         try {
             $css = $compileCss
@@ -647,7 +661,7 @@ final readonly class Module
                 continue;
             }
 
-            $resolved[$name] = $this->evaluation->evaluateValue($valueNode, $env);
+            $resolved[$name] = $this->evaluation->evaluateValueWithSlashDivision($valueNode, $env);
         }
 
         return $resolved;
@@ -918,6 +932,32 @@ final readonly class Module
         return $this->ctx->moduleState->prefetchedAst($path) ?? $this->parser->parse($source);
     }
 
+    /**
+     * @param array<int, AstNode> $statements
+     */
+    private function prescanGlobalNullSlots(array $statements, Scope $scope): void
+    {
+        foreach ($statements as $statement) {
+            if ($statement instanceof VariableDeclarationNode) {
+                if ($statement->global && ! $scope->hasVariable($statement->name)) {
+                    $scope->setVariable($statement->name, new NullNode());
+                }
+
+                continue;
+            }
+
+            if ($statement instanceof StatementNode) {
+                $this->prescanGlobalNullSlots($statement->getChildren(), $scope);
+            }
+
+            if ($statement instanceof IfNode) {
+                foreach ($statement->elseIfBranches as $branch) {
+                    $this->prescanGlobalNullSlots($branch->body, $scope);
+                }
+            }
+        }
+    }
+
     /** @return array<string, true> */
     private function collectDefaultVariableNames(RootNode $ast, int $depth = 0): array
     {
@@ -940,7 +980,18 @@ final readonly class Module
                 }
 
                 $forwardedDefaults = $this->collectDefaultVariableNamesFromForward($node, $depth + 1);
-                $defaults          = array_merge($defaults, $forwardedDefaults);
+
+                if ($node->prefix !== null && $node->prefix !== '') {
+                    $prefixed = [];
+
+                    foreach ($forwardedDefaults as $name => $value) {
+                        $prefixed[NameNormalizer::normalize($node->prefix . $name)] = $value;
+                    }
+
+                    $forwardedDefaults = $prefixed;
+                }
+
+                $defaults = array_merge($defaults, $forwardedDefaults);
             }
 
             if ($node instanceof ImportNode) {

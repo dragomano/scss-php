@@ -8,6 +8,7 @@ use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Runtime\Scope;
+use Bugo\SCSS\Utils\NameNormalizer;
 
 use function array_filter;
 use function array_slice;
@@ -30,12 +31,17 @@ final readonly class CallableParameterBinder
         callable $resolveDefault,
     ): void {
         $parameterNameSet = null;
+        $normalizedNamed  = [];
+
+        foreach ($resolvedNamed as $name => $value) {
+            $normalizedNamed[NameNormalizer::normalize($name)] = $value;
+        }
 
         foreach ($parameters as $index => $parameter) {
-            $parameterName = $parameter->name;
+            $parameterName = NameNormalizer::normalize($parameter->name);
 
-            if (! $parameter->rest && isset($resolvedNamed[$parameterName])) {
-                $scope->setVariableLocal($parameterName, $resolvedNamed[$parameterName]);
+            if (! $parameter->rest && isset($normalizedNamed[$parameterName])) {
+                $scope->setVariableLocal($parameterName, $normalizedNamed[$parameterName]);
 
                 continue;
             }
@@ -56,7 +62,7 @@ final readonly class CallableParameterBinder
                         'comma',
                         false,
                         array_filter(
-                            $resolvedNamed,
+                            $normalizedNamed,
                             fn(string $name): bool => ! isset($parameterNameSet[$name]),
                             ARRAY_FILTER_USE_KEY,
                         ),
@@ -80,7 +86,7 @@ final readonly class CallableParameterBinder
 
         foreach ($parameters as $parameter) {
             if (! $parameter->rest) {
-                $names[$parameter->name] = true;
+                $names[NameNormalizer::normalize($parameter->name)] = true;
             }
         }
 

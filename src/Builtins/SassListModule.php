@@ -19,6 +19,7 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Utils\AstValueComparator;
+use Bugo\SCSS\Utils\UnitConverter;
 use Bugo\SCSS\Values\AstValueSuggestionDescriber;
 
 use function abs;
@@ -168,12 +169,33 @@ final class SassListModule extends AbstractModule
         $needle = $positional[1];
 
         foreach ($list->items as $index => $item) {
+            if ($item instanceof NumberNode
+                && $needle instanceof NumberNode
+                && $item->unit !== $needle->unit
+                && $this->convertedNumbersEqual($item, $needle)
+            ) {
+                return new NumberNode($index + 1);
+            }
+
             if (AstValueComparator::equals($item, $needle)) {
                 return new NumberNode($index + 1);
             }
         }
 
         return $this->nullNode();
+    }
+
+    private function convertedNumbersEqual(NumberNode $left, NumberNode $right): bool
+    {
+        if ($left->unit === null || $right->unit === null) {
+            return false;
+        }
+
+        if (! UnitConverter::compatible($left->unit, $right->unit)) {
+            return false;
+        }
+
+        return abs((float) $left->value - UnitConverter::convert((float) $right->value, $right->unit, $left->unit)) < 0.00000000001;
     }
 
     /**

@@ -19,13 +19,18 @@ use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\NameHelper;
+use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Values\AstValueInspector;
+use Throwable;
 
 use function count;
 use function implode;
 use function in_array;
 use function str_contains;
+use function str_starts_with;
+use function strlen;
 use function strtolower;
+use function substr;
 
 final readonly class FunctionCallEvaluator
 {
@@ -55,7 +60,77 @@ final readonly class FunctionCallEvaluator
             return $this->executeUserFunction($node, $resolvedUserFunction, $env);
         }
 
+        $forwardedBuiltin = $this->resolveForwardedBuiltin($node, $env);
+
+        if ($forwardedBuiltin !== null) {
+            return $forwardedBuiltin;
+        }
+
         return $this->evaluateBuiltinOrCssFunction($node, $env);
+    }
+
+    private function resolveForwardedBuiltin(FunctionNode $node, Environment $env): ?AstNode
+    {
+        if (! NameHelper::hasNamespace($node->name)) {
+            return null;
+        }
+
+        $parts     = NameHelper::splitQualifiedName($node->name);
+        $namespace = $parts['namespace'];
+        $member    = $parts['member'] ?? '';
+
+        if ($member === '') {
+            return null;
+        }
+
+        $moduleScope = $env->getCurrentScope()->getModule($namespace);
+
+        if ($moduleScope === null) {
+            return null;
+        }
+
+        $normalizedMember = NameNormalizer::normalize($member);
+
+        foreach ($moduleScope->getForwardedBuiltins() as $forwarded) {
+            $prefix = $forwarded['prefix'] ?? null;
+            $prefix = $prefix === null ? null : NameNormalizer::normalize($prefix);
+
+            $candidate = $normalizedMember;
+
+            if ($prefix !== null && $prefix !== '') {
+                if (! str_starts_with($normalizedMember, $prefix)) {
+                    continue;
+                }
+
+                $candidate = substr($normalizedMember, strlen($prefix));
+
+                if ($candidate === '') {
+                    continue;
+                }
+            }
+
+            $context = new BuiltinCallContext(
+                $env,
+                $this->ctx->functionRegistry,
+                fn(string $message) => $this->diagnosticHandler->handle('warn', new StringNode($message), $env, $node),
+                null,
+                $node->arguments,
+                $node->line,
+            );
+
+            $result = $this->ctx->functionRegistry->tryCallForwardedBuiltin(
+                $forwarded['module'],
+                $candidate,
+                $node->arguments,
+                $context,
+            );
+
+            if ($result !== null) {
+                return $result;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -213,7 +288,20 @@ final readonly class FunctionCallEvaluator
         if ($isModernIf) {
             $arguments = $node->arguments;
         } else {
-            $arguments = $this->callArguments->expandCallArguments($node->arguments, $env);
+            try {
+                $arguments = $this->callArguments->expandCallArguments($node->arguments, $env);
+            } catch (Throwable $expandFailure) {
+                if (strtolower($node->name) === 'if' && ! $node->modernSyntax) {
+                    $inlineFallback = $this->conditional->evaluateInlineIfFunction($node->name, $node->arguments, $env);
+
+                    if ($inlineFallback !== null) {
+                        return $inlineFallback;
+                    }
+                }
+
+                throw $expandFailure;
+            }
+
             $arguments = $this->calculation->normalizeArguments($node->name, $arguments);
 
             $this->restoreCalcParenthesized($arguments, $node->arguments);

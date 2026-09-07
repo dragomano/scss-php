@@ -737,7 +737,7 @@ describe('Compiler', function () {
             $expected = /** @lang text */ <<<'CSS'
             .test {
               min-value: 2px;
-              abs-value: 2px;
+              abs-value: 8px;
               round-value: 2px;
             }
             CSS;

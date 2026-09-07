@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Services;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
+use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\SupportsNode;
@@ -59,8 +60,25 @@ final readonly class PlainCssRenderer
             return $this->renderCssDirective($child, $env, $indent);
         }
 
-        if ($child instanceof DirectiveNode && $child->hasBlock) {
-            return $this->renderCssDirective($child, $env, $indent);
+        if ($child instanceof DirectiveNode) {
+            if ($child->hasBlock) {
+                return $this->renderCssDirective($child, $env, $indent);
+            }
+
+            if (strtolower($child->name) === 'import') {
+                return $this->render->indentPrefix($indent) . '@import' . ($child->prelude === '' ? '' : ' ' . $child->prelude) . ';';
+            }
+        }
+
+        if ($child instanceof ImportNode) {
+            $prefix = $this->render->indentPrefix($indent);
+            $out    = '';
+
+            foreach ($child->imports as $import) {
+                $out .= ($out === '' ? '' : "\n") . $prefix . '@import ' . $import . ';';
+            }
+
+            return $out;
         }
 
         if (! $child instanceof Visitable) {

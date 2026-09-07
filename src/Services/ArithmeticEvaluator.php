@@ -54,9 +54,11 @@ final readonly class ArithmeticEvaluator
                 return null;
             }
 
-            if (count($node->items) % 2 !== 0) {
+            $items = $this->mergeUnarySigns($node->items);
+
+            if (count($items) % 2 !== 0) {
                 try {
-                    $strictResult = $this->evaluateStrictList($node->items, $node->bracketed, $insideCalc);
+                    $strictResult = $this->evaluateStrictList($items, $node->bracketed, $insideCalc, $strict);
                 } catch (IncompatibleUnitsException $exception) {
                     if (! $insideCalc) {
                         throw $exception;
@@ -70,7 +72,7 @@ final readonly class ArithmeticEvaluator
                 }
             }
 
-            $items = $this->evaluateSegments($node->items, $node->bracketed, $insideCalc);
+            $items = $this->evaluateSegments($items, $node->bracketed, $insideCalc);
 
             if ($items === null) {
                 if (! $strict && $onUnsupportedOperation !== null) {
@@ -172,6 +174,44 @@ final readonly class ArithmeticEvaluator
         return new NumberNode((float) $left->value / (float) $right->value * $conversionFactor, $unit, false);
     }
 
+    /**
+     * @param array<int, AstNode> $items
+     * @return array<int, AstNode>
+     */
+    private function mergeUnarySigns(array $items): array
+    {
+        $merged = [];
+        $count  = count($items);
+
+        for ($i = 0; $i < $count; $i++) {
+            $item     = $items[$i];
+            $next     = $items[$i + 1] ?? null;
+            $previous = $items[$i - 1] ?? null;
+
+            $sign = $item instanceof StringNode ? trim($item->value) : null;
+
+            if ($sign !== null
+                && ($sign === '+' || $sign === '-')
+                && $next instanceof NumberNode
+                && ($i === 0 || ($previous instanceof StringNode && isset(self::ARITHMETIC_OPERATORS[$previous->value])))
+            ) {
+                $merged[] = new NumberNode(
+                    $sign === '-' ? -$next->value : $next->value,
+                    $next->unit,
+                    false,
+                );
+
+                $i++;
+
+                continue;
+            }
+
+            $merged[] = $item;
+        }
+
+        return $merged;
+    }
+
     private function applyDegenerateDivision(NumberNode $left, string $operator, NumberNode $right): NumberNode
     {
         if ($operator === '%') {
@@ -250,7 +290,7 @@ final readonly class ArithmeticEvaluator
     /**
      * @param array<int, AstNode> $items
      */
-    private function evaluateStrictList(array $items, bool $bracketed, bool $insideCalc = false): ?AstNode
+    private function evaluateStrictList(array $items, bool $bracketed, bool $insideCalc = false, bool $strict = true): ?AstNode
     {
         $first = $items[0] ?? null;
         $mid   = $items[1] ?? null;
@@ -305,7 +345,17 @@ final readonly class ArithmeticEvaluator
                     || $operator->value === '%')
                 && $current instanceof NumberNode
             ) {
-                $current = $this->applyOperator($current, $operator->value, $next, $insideCalc);
+                $leftOperand = $current;
+
+                try {
+                    $current = $this->applyOperator($current, $operator->value, $next, $insideCalc);
+                } catch (DivisionByZeroException $divisionByZero) {
+                    if ($strict) {
+                        throw $divisionByZero;
+                    }
+
+                    return $this->applyDegenerateDivision($leftOperand, $operator->value, $next);
+                }
 
                 continue;
             }

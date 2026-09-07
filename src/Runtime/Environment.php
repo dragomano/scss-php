@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Runtime;
 
+use Bugo\SCSS\Nodes\AstNode;
+
 use function array_pop;
+use function count;
 
 final class Environment
 {
@@ -42,6 +45,19 @@ final class Environment
     public function getGlobalScope(): Scope
     {
         return $this->currentScope->getGlobalScope();
+    }
+
+    public function findAstVariableInStackGlobals(string $name): ?AstNode
+    {
+        for ($i = count($this->scopeStack) - 1; $i >= 0; $i--) {
+            $value = $this->scopeStack[$i]->getGlobalScope()->getAstVariable($name);
+
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     private function createChildScope(?Scope $parent): Scope

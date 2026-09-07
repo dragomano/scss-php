@@ -255,31 +255,42 @@ final readonly class CalculationEvaluator
         }
 
         /** @var NumberNode[] $arguments */
-        $first        = $arguments[0];
-        $unit         = $first->unit;
-        $extremeValue = (float) $first->value;
+        $first = $arguments[0];
+
+        $comparisonUnit = null;
+
+        foreach ($arguments as $argument) {
+            if ($argument->unit !== null) {
+                $comparisonUnit = $argument->unit;
+
+                break;
+            }
+        }
+
+        $extremeNode  = $first;
+        $extremeValue = UnitConverter::convert((float) $first->value, $first->unit, $comparisonUnit);
 
         for ($i = 1; $i < count($arguments); $i++) {
             $current = $arguments[$i];
 
-            if (! UnitConverter::compatible($unit, $current->unit)) {
+            if (! UnitConverter::potentiallyCompatible($comparisonUnit, $current->unit)) {
                 return null;
             }
 
-            $currentValue = (float) $current->value;
+            $currentValue = UnitConverter::convert((float) $current->value, $current->unit, $comparisonUnit);
 
             if ($lowerName === 'max' && $currentValue > $extremeValue) {
                 $extremeValue = $currentValue;
-                $unit         = $current->unit ?? $unit;
+                $extremeNode  = $current;
             }
 
             if ($lowerName === 'min' && $currentValue < $extremeValue) {
                 $extremeValue = $currentValue;
-                $unit         = $current->unit ?? $unit;
+                $extremeNode  = $current;
             }
         }
 
-        return new NumberNode($extremeValue, $unit);
+        return new NumberNode((float) $extremeNode->value, $extremeNode->unit);
     }
 
     /**
@@ -841,7 +852,7 @@ final readonly class CalculationEvaluator
             $value < 0.0            => -1.0,
             fdiv(1.0, $value) < 0.0 => -0.0,
             default                 => 0.0,
-        });
+        }, $number->unit);
     }
 
     private function simplifyExp(AstNode $argument): ?AstNode

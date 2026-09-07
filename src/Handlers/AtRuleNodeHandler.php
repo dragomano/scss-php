@@ -114,8 +114,8 @@ final readonly class AtRuleNodeHandler
         $resolvedPrelude = '';
 
         if ($node->prelude !== '') {
-            // For @keyframes, only interpolate #{} but don't resolve $var references
-            if ($this->isKeyframesDirective($node)) {
+            // For @keyframes and interpolated names, only interpolate #{} but don't resolve $var references
+            if ($this->isKeyframesDirective($node) || str_contains($node->name, '#{')) {
                 $resolvedPrelude = str_contains($node->prelude, '#{')
                     ? $this->evaluation->interpolateText($node->prelude, $ctx->env)
                     : $node->prelude;

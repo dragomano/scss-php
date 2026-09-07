@@ -24,6 +24,9 @@ final class Scope
     /** @var array<string, Scope> */
     private array $modules = [];
 
+    /** @var array<int, array{module: string, prefix: ?string}> */
+    private array $forwardedBuiltins = [];
+
     /** @var array<string, true> */
     private array $importedMembers = [];
 
@@ -326,6 +329,17 @@ final class Scope
     public function getModule(string $namespace): ?Scope
     {
         return $this->modules[$namespace] ?? $this->parent?->getModule($namespace);
+    }
+
+    public function addForwardedBuiltin(string $module, ?string $prefix): void
+    {
+        $this->forwardedBuiltins[] = ['module' => $module, 'prefix' => $prefix];
+    }
+
+    /** @return array<int, array{module: string, prefix: ?string}> */
+    public function getForwardedBuiltins(): array
+    {
+        return $this->forwardedBuiltins;
     }
 
     public function markImportedMember(string $name): void

@@ -107,12 +107,12 @@ final readonly class CallArgumentResolver
 
                 foreach ($this->cssArgument->expandSpreadValue($spread) as $spreadArgument) {
                     if ($spreadArgument instanceof NamedArgumentNode) {
-                        $named[$spreadArgument->name] = $spreadArgument->value;
+                        $named[$spreadArgument->name] = $this->valueEvaluator->evaluate($spreadArgument->value, $env);
 
                         continue;
                     }
 
-                    $positional[] = $spreadArgument;
+                    $positional[] = $this->valueEvaluator->evaluate($spreadArgument, $env);
                 }
 
                 continue;

@@ -13,6 +13,7 @@ use Bugo\SCSS\Exceptions\SassThrowable;
 use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -190,7 +191,7 @@ final class SassMathModule extends AbstractModule
                 'clamp'       => $this->clamp($positional),
                 'compatible'  => $this->compatible($positional, $context),
                 'cos'         => $this->cos($positional),
-                'div'         => $this->div($positional),
+                'div'         => $this->div($positional, $context),
                 'floor'       => $this->floor($positional, $context),
                 'hypot'       => $this->hypot($positional),
                 'is-unitless' => $this->isUnitless($positional, $context),
@@ -379,6 +380,10 @@ final class SassMathModule extends AbstractModule
             $valueComparable = $this->convertNumberValue($number, $comparisonUnit);
             $maxComparable   = $this->convertNumberValue($maxValue, $comparisonUnit);
 
+            if ($this->compareNumbers($minComparable, $maxComparable) > 0) {
+                return new NumberNode($minValue->value, $minValue->unit);
+            }
+
             if ($this->compareNumbers($valueComparable, $minComparable) <= 0) {
                 return new NumberNode($minValue->value, $minValue->unit);
             }
@@ -433,10 +438,25 @@ final class SassMathModule extends AbstractModule
     /**
      * @param array<int, AstNode> $positional
      */
-    private function div(array $positional): AstNode
+    private function div(array $positional, ?BuiltinCallContext $context): AstNode
     {
-        $a = $this->requireNumber($positional, 0, 'math.div');
-        $b = $this->requireNumber($positional, 1, 'math.div');
+        try {
+            $a = $this->requireNumber($positional, 0, 'math.div');
+            $b = $this->requireNumber($positional, 1, 'math.div');
+        } catch (InvalidArgumentTypeException $invalidArgumentTypeException) {
+            $first  = $positional[0] ?? null;
+            $second = $positional[1] ?? null;
+
+            if ($first instanceof NumberNode || $first instanceof StringNode) {
+                if ($second instanceof NumberNode || $second instanceof StringNode) {
+                    $context?->warn('math.div() will only support number arguments in a future release. Use list.slash() instead for a slash separator.');
+
+                    return new StringNode((string) $first . '/' . (string) $second);
+                }
+            }
+
+            throw $invalidArgumentTypeException;
+        }
 
         $aFloat = (float) $a->value;
         $bFloat = (float) $b->value;
@@ -493,9 +513,8 @@ final class SassMathModule extends AbstractModule
 
         $sum = 0.0;
         foreach ($numbers as $number) {
-            $value = (float) $number->value;
-
-            $sum += $value * $value;
+            $value = $this->convertNumberValue($number, $unit);
+            $sum  += $value * $value;
         }
 
         return new NumberNode(sqrt($sum), $unit);
@@ -528,18 +547,14 @@ final class SassMathModule extends AbstractModule
             throw $sassThrowable;
         }
 
-        if (isset($positional[1])) {
+        if (isset($positional[1]) && ! ($positional[1] instanceof NullNode)) {
             $base = $this->ensureUnitlessNumber($positional[1], 'math.log');
 
-            if ($base === 0.0) {
+            if ($base < 0.0) {
                 return new NumberNode(fdiv(0.0, 0.0));
             }
 
-            if ($base === 1.0) {
-                return new NumberNode(fdiv(0.0, 0.0));
-            }
-
-            return new NumberNode($base < 0.0 ? fdiv(0.0, 0.0) : log($number) / log($base));
+            return new NumberNode(fdiv(log($number), log($base)));
         }
 
         return new NumberNode(log($number));
@@ -624,7 +639,7 @@ final class SassMathModule extends AbstractModule
      */
     private function random(array $positional, ?BuiltinCallContext $context): AstNode
     {
-        if (! isset($positional[0])) {
+        if (! isset($positional[0]) || $positional[0] instanceof NullNode) {
             $this->warnAboutDeprecatedMathFunction($context, 'random', $positional);
 
             return new NumberNode(mt_rand() / mt_getrandmax());
@@ -795,20 +810,36 @@ final class SassMathModule extends AbstractModule
                 }
             }
 
-            $result = $numbers[0];
+            $comparisonUnit = null;
+
             foreach ($numbers as $number) {
-                if ($wantMax && (float) $number->value > (float) $result->value) {
-                    $result = $number;
+                if ($number->unit !== null) {
+                    $comparisonUnit = $number->unit;
+
+                    break;
+                }
+            }
+
+            $result         = $numbers[0];
+            $bestComparable = $this->convertNumberValue($numbers[0], $comparisonUnit);
+
+            foreach ($numbers as $number) {
+                $comparable = $this->convertNumberValue($number, $comparisonUnit);
+
+                if ($wantMax && $comparable > $bestComparable) {
+                    $result         = $number;
+                    $bestComparable = $comparable;
                 }
 
-                if (! $wantMax && (float) $number->value < (float) $result->value) {
-                    $result = $number;
+                if (! $wantMax && $comparable < $bestComparable) {
+                    $result         = $number;
+                    $bestComparable = $comparable;
                 }
             }
 
             $this->warnAboutDeprecatedMathFunction($context, $wantMax ? 'max' : 'min', $positional);
 
-            return new NumberNode($result->value, $unit);
+            return new NumberNode($result->value, $result->unit);
         } catch (SassThrowable $sassThrowable) {
             if ($this->shouldDeferToCss($sassThrowable)) {
                 throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);

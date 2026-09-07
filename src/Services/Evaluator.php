@@ -7,6 +7,8 @@ namespace Bugo\SCSS\Services;
 use Bugo\SCSS\Builtins\Color\Conversion\HexColorConverter;
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Exceptions\DivisionByZeroException;
+use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Exceptions\SassArgumentException;
 use Bugo\SCSS\Exceptions\SassException;
@@ -251,7 +253,25 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
                 && $evalMid->value === '/'
                 && $evalLast instanceof NumberNode
             ) {
-                return $this->arithmetic->applyOperator($evalFirst, '/', $evalLast);
+                try {
+                    return $this->arithmetic->applyOperator($evalFirst, '/', $evalLast);
+                } catch (DivisionByZeroException) {
+                    return $this->arithmetic->applyOperator($evalFirst, '/', $evalLast, true);
+                }
+            }
+
+            if ($evalFirst instanceof NumberNode
+                && $evalMid instanceof StringNode
+                && $evalMid->value === '%'
+                && $evalLast instanceof NumberNode
+            ) {
+                try {
+                    return $this->arithmetic->applyOperator($evalFirst, '%', $evalLast);
+                } catch (DivisionByZeroException) {
+                    return $this->arithmetic->applyOperator($evalFirst, '%', $evalLast, true);
+                } catch (IncompatibleUnitsException) {
+                    return $evaluated;
+                }
             }
         }
 
@@ -649,7 +669,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             return $moduleValue;
         }
 
-        $value = $currentScope->getAstVariable($name);
+        $value = $currentScope->getAstVariable($name) ?? $env->findAstVariableInStackGlobals($name);
 
         if ($value === null) {
             throw UndefinedSymbolException::variable($name);
@@ -672,7 +692,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
 
     private function createStringConcatenationEvaluator(): StringConcatenationEvaluator
     {
-        return new StringConcatenationEvaluator($this);
+        return new StringConcatenationEvaluator($this, $this->arithmetic);
     }
 
     private function createUserFunctionExecutor(): UserFunctionExecutor

@@ -7,6 +7,7 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\ArithmeticEvaluator;
 use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\StringConcatenationEvaluator;
 
@@ -23,6 +24,7 @@ describe('StringConcatenationEvaluator', function () {
                     };
                 }
             },
+            new ArithmeticEvaluator(),
         );
     });
 

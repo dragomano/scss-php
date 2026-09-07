@@ -9,9 +9,11 @@ use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Utils\StringHelper;
 use Bugo\SCSS\Values\ValueFactory;
 use Throwable;
@@ -56,10 +58,9 @@ final readonly class ConditionalEvaluator
     private function evaluateInlineIfFunctionInner(string $name, array $arguments, Environment $env): AstNode
     {
 
-        $decoded = $this->decodeIfArguments($arguments);
-        $clauses = $decoded['clauses'];
-        $else    = $decoded['else'];
-
+        $decoded  = $this->decodeIfArguments($arguments);
+        $clauses  = $decoded['clauses'];
+        $else     = $decoded['else'];
         $cssParts = [];
         $isCss    = false;
 
@@ -112,6 +113,32 @@ final readonly class ConditionalEvaluator
      */
     private function decodeIfArguments(array $arguments): array
     {
+        $named      = [];
+        $positional = [];
+
+        foreach ($arguments as $argument) {
+            if ($argument instanceof NamedArgumentNode) {
+                $named[NameNormalizer::normalize($argument->name)] = $argument->value;
+            } else {
+                $positional[] = $argument;
+            }
+        }
+
+        if ($named !== []) {
+            $condition          = $named['condition'] ?? $positional[0] ?? null;
+            $conditionFromNamed = isset($named['condition']);
+            $remaining          = $conditionFromNamed ? $positional : array_slice($positional, 1);
+            $ifTrue             = $named['if-true'] ?? $remaining[0] ?? null;
+            $ifFalse            = $named['if-false'] ?? $remaining[1] ?? null;
+
+            if ($condition !== null && $ifTrue !== null) {
+                return [
+                    'clauses' => [[$condition, $ifTrue]],
+                    'else'    => $ifFalse,
+                ];
+            }
+        }
+
         $hasSentinel = false;
 
         foreach ($arguments as $argument) {
@@ -198,8 +225,7 @@ final readonly class ConditionalEvaluator
      */
     private function evaluateInlineIfCondition(AstNode $condition, Environment $env, bool $forceBoolean = false): array
     {
-        $condition = $this->normalizeRawConnectorIfs($condition, $env);
-
+        $condition       = $this->normalizeRawConnectorIfs($condition, $env);
         $isParenthesized = ($condition instanceof ListNode || $condition instanceof FunctionNode) && $condition->parenthesized;
 
         if (

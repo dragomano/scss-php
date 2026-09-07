@@ -67,6 +67,19 @@ final class UnitConverter
         return $unit !== null && isset(self::CONVERSIONS[$unit]);
     }
 
+    public static function potentiallyCompatible(?string $left, ?string $right): bool
+    {
+        if (self::compatible($left, $right)) {
+            return true;
+        }
+
+        if ($left === null || $right === null) {
+            return true;
+        }
+
+        return ! self::isKnownUnit($left) && ! self::isKnownUnit($right);
+    }
+
     public static function convert(float $value, ?string $fromUnit, ?string $toUnit): float
     {
         if ($toUnit === null || $fromUnit === null || $fromUnit === $toUnit) {

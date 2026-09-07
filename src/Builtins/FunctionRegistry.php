@@ -31,6 +31,9 @@ final class FunctionRegistry
     /** @var array<string, array{0: string, 1: string}> */
     private array $globalAliases = [];
 
+    /** @var array<int, string> */
+    private array $starModules = [];
+
     private const DEFAULT_MODULE_CLASSES = [
         'color'    => SassColorModule::class,
         'list'     => SassListModule::class,
@@ -69,6 +72,7 @@ final class FunctionRegistry
     public function reset(): void
     {
         $this->moduleAliases = [];
+        $this->starModules   = [];
     }
 
     public function registerUse(string $path, ?string $namespace): void
@@ -86,6 +90,10 @@ final class FunctionRegistry
         $alias = $namespace ?? $moduleName;
 
         if ($alias === '*') {
+            if (! in_array($moduleName, $this->starModules, true)) {
+                $this->starModules[] = $moduleName;
+            }
+
             return;
         }
 
@@ -131,7 +139,7 @@ final class FunctionRegistry
             }
         }
 
-        $target = $this->resolveGlobalAlias($name);
+        $target = $this->resolveGlobalAlias($name) ?? $this->resolveStarModuleFunction($name);
 
         if ($target === null) {
             return null;
@@ -143,6 +151,45 @@ final class FunctionRegistry
 
         try {
             return $module->call($function, $positional, $named, $callContext);
+        } catch (DeferToCssFunctionException) {
+            return null;
+        }
+    }
+
+    /**
+     * @param array<int, AstNode|NamedArgumentNode> $arguments
+     */
+    public function tryCallForwardedBuiltin(
+        string $moduleName,
+        string $function,
+        array $arguments,
+        ?BuiltinCallContext $context = null,
+    ): ?AstNode {
+        $module = $this->getModule($moduleName);
+
+        if ($module === null) {
+            return null;
+        }
+
+        $normalizedFunction = $this->normalizeName($function);
+        $matchedFunction    = null;
+
+        foreach ($module->getFunctions() as $candidate) {
+            if ($this->normalizeName($candidate) === $normalizedFunction) {
+                $matchedFunction = $candidate;
+
+                break;
+            }
+        }
+
+        if ($matchedFunction === null) {
+            return null;
+        }
+
+        [$positional, $named] = $this->splitArguments($arguments);
+
+        try {
+            return $module->call($matchedFunction, $positional, $named, $this->withBuiltinDisplayName($context, $matchedFunction));
         } catch (DeferToCssFunctionException) {
             return null;
         }
@@ -259,6 +306,30 @@ final class FunctionRegistry
     private function resolveModuleByAlias(string $alias): ?ModuleInterface
     {
         return $this->getModule($this->moduleAliases[$alias] ?? $alias);
+    }
+
+    /**
+     * @return array{0: string, 1: string}|null
+     */
+    private function resolveStarModuleFunction(string $functionName): ?array
+    {
+        $normalizedName = $this->normalizeName($functionName);
+
+        foreach ($this->starModules as $moduleName) {
+            $module = $this->getModule($moduleName);
+
+            if ($module === null) {
+                continue;
+            }
+
+            foreach ($module->getFunctions() as $function) {
+                if ($this->normalizeName($function) === $normalizedName) {
+                    return [$moduleName, $function];
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -68,7 +68,12 @@ final readonly class CssArgumentEvaluator
                 $spread = $this->valueEvaluator->evaluate($argument->value, $env);
 
                 foreach ($this->expandSpreadValue($spread) as $spreadArgument) {
-                    $expanded[] = $spreadArgument;
+                    $expanded[] = $spreadArgument instanceof NamedArgumentNode
+                        ? new NamedArgumentNode(
+                            $spreadArgument->name,
+                            $this->valueEvaluator->evaluate($spreadArgument->value, $env),
+                        )
+                        : $this->valueEvaluator->evaluate($spreadArgument, $env);
                 }
 
                 continue;

@@ -10,7 +10,7 @@ use Bugo\SCSS\Visitor;
 final class DirectiveNode extends StatementNode
 {
     /**
-     * @param AstNode[] $body
+     * @param array<int, AstNode> $body
      */
     public function __construct(
         public string $name,

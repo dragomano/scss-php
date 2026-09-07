@@ -74,6 +74,10 @@ final class SassNumber extends AbstractSassValue
 
         $text = $this->removeExponent(str_replace('E', 'e', var_export($value, true)));
 
+        if (str_contains($text, '.')) {
+            $text = rtrim(rtrim($text, '0'), '.');
+        }
+
         if (strlen($text) >= 12) {
             $text = $this->roundDecimalString($text);
         }
@@ -168,6 +172,12 @@ final class SassNumber extends AbstractSassValue
 
         if ($this->unit === null || $this->unit === '') {
             return $keyword;
+        }
+
+        [$numerator, $denominator] = UnitConverter::parseParts($this->unit);
+
+        if ($numerator === [] && $denominator !== []) {
+            return $keyword . $this->formatCompoundUnitSuffix($this->unit);
         }
 
         return $keyword . ' * ' . $this->formatUnitFactor($this->unit);

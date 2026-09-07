@@ -193,8 +193,9 @@ describe('SassMathModule', function () {
         $baseOne  = $this->module->call('log', [new NumberNode(8), new NumberNode(1)], []);
         $natural  = $this->module->call('log', [new NumberNode(8)], []);
 
-        expect(is_nan($baseZero->value))->toBeTrue()
-            ->and(is_nan($baseOne->value))->toBeTrue()
+        expect($baseZero->value)->toBe(-0.0)
+            ->and(fdiv(1.0, $baseZero->value))->toBe(-INF)
+            ->and($baseOne->value)->toBe(INF)
             ->and($natural->value)->toBeCloseTo(log(8), 0.000001);
     });
 

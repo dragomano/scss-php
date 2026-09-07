@@ -744,6 +744,12 @@ final readonly class FunctionCallParser
             return null;
         }
 
+        if ($this->stream->is(TokenType::COMMA)) {
+            $this->stream->setPosition($savedPosition);
+
+            return null;
+        }
+
         $arguments = [];
 
         foreach ($clauses as [$condition, $value]) {

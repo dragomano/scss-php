@@ -38,6 +38,7 @@ final class SassCalculation extends AbstractSassValue
         'sqrt',
         'tan',
         'calc',
+        'calc-size',
     ];
 
     /** @var array<int, string> */

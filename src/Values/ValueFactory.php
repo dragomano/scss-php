@@ -19,6 +19,7 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 
 use function strrpos;
+use function strtolower;
 use function substr;
 
 final readonly class ValueFactory
@@ -92,7 +93,11 @@ final readonly class ValueFactory
                 $arguments[] = $this->fromAst($argument, $formatter);
             }
 
-            return new SassCalculation($node->name, $arguments);
+            $name = SassCalculation::isCalculationFunctionName($node->name)
+                ? strtolower($node->name)
+                : $node->name;
+
+            return new SassCalculation($name, $arguments);
         }
 
         if ($node instanceof MixinRefNode) {
