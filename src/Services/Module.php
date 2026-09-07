@@ -514,9 +514,7 @@ final readonly class Module
 
         $syntax       = Syntax::fromPath($file['path'], $file['content']);
         $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
-        $moduleAst    = $fromImport
-            ? $this->parser->parse($moduleSource)
-            : $this->parseModuleAst($file['path'], $moduleSource);
+        $moduleAst    = $this->parseModuleAstWithSyntax($moduleSource, $syntax);
         $moduleEnv    = new Environment();
 
         $moduleEnv->getCurrentScope()->markAsModuleRootScope();
@@ -1071,9 +1069,34 @@ final readonly class Module
         return $this->state()->getById($moduleId);
     }
 
-    private function parseModuleAst(string $path, string $source): RootNode
+    private function parseModuleAst(string $path, string $source, ?Syntax $syntax = null): RootNode
     {
-        return $this->ctx->moduleState->prefetchedAst($path) ?? $this->parser->parse($source);
+        $prefetched = $this->ctx->moduleState->prefetchedAst($path);
+
+        if ($prefetched instanceof RootNode) {
+            return $prefetched;
+        }
+
+        $isCss = ($syntax ?? Syntax::fromPath($path, $source)) === Syntax::CSS;
+
+        $this->parser->setPlainCss($isCss);
+
+        try {
+            return $this->parser->parse($source);
+        } finally {
+            $this->parser->setPlainCss(false);
+        }
+    }
+
+    private function parseModuleAstWithSyntax(string $source, Syntax $syntax): RootNode
+    {
+        $this->parser->setPlainCss($syntax === Syntax::CSS);
+
+        try {
+            return $this->parser->parse($source);
+        } finally {
+            $this->parser->setPlainCss(false);
+        }
     }
 
     /**

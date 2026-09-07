@@ -71,6 +71,12 @@ final readonly class DirectiveParser
 
         if ($name === '' && $this->stream->is(TokenType::HASH) && $this->stream->peek()->type === TokenType::LBRACE) {
             $name = $this->readInterpolatedDirectiveName();
+        } elseif (
+            $name !== ''
+            && $this->stream->is(TokenType::HASH)
+            && $this->stream->peek()->type === TokenType::LBRACE
+        ) {
+            $name = $this->readInterpolatedDirectiveName($name);
         }
 
         if (strtolower($name) === 'function') {
@@ -430,58 +436,11 @@ final readonly class DirectiveParser
 
     public function parseGenericDirective(string $name, int $line = 0, int $column = 0): AstNode
     {
-        $prelude            = '';
-        $parenDepth         = 0;
-        $bracketDepth       = 0;
-        $interpolationDepth = 0;
+        $this->stream->skipWhitespace();
 
-        while (! $this->stream->isEof()) {
-            $token = $this->stream->current();
-
-            if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $prelude, $interpolationDepth, $token)) {
-                continue;
-            }
-
-            if (
-                $interpolationDepth === 0
-                && $parenDepth === 0
-                && $bracketDepth === 0
-                && in_array($token->type, [
-                    TokenType::SEMICOLON,
-                    TokenType::LBRACE,
-                    TokenType::RBRACE,
-                    TokenType::EOF,
-                ], true)
-            ) {
-                break;
-            }
-
-            TokenStreamHelper::updateNestingDepth($token, $parenDepth, $bracketDepth);
-
-            if ($token->type === TokenType::COMMENT_SILENT) {
-                $this->stream->advance();
-                $this->stream->skipWhitespace();
-
-                continue;
-            }
-
-            if (in_array($token->type, [
-                TokenType::COMMENT_LOUD,
-                TokenType::COMMENT_PRESERVED,
-            ], true)) {
-                $prelude .= TokenStreamHelper::wrapComment($token) ?? '';
-
-                $this->stream->advance();
-
-                continue;
-            }
-
-            TokenStreamHelper::appendTokenToBuffer($prelude, $token, true);
-
-            $this->stream->advance();
-        }
-
-        $prelude = trim($prelude);
+        $prelude = $this->stream->getSource() !== ''
+            ? $this->readPreludeVerbatim()
+            : $this->readPreludeTokenized();
 
         if ($this->stream->consume(TokenType::SEMICOLON)) {
             return new DirectiveNode($name, $prelude, [], false, $line, $column);
@@ -588,9 +547,118 @@ final readonly class DirectiveParser
         return $isCssFunctionName;
     }
 
-    private function readInterpolatedDirectiveName(): string
+    private function readPreludeVerbatim(): string
     {
-        $buffer             = '';
+        if ($this->stream->isEof()) {
+            return '';
+        }
+
+        $startPos = $this->stream->current()->start;
+
+        $parenDepth         = 0;
+        $bracketDepth       = 0;
+        $interpolationDepth = 0;
+        $silentSpans        = [];
+
+        while (! $this->stream->isEof()) {
+            $token = $this->stream->current();
+
+            if (
+                $interpolationDepth === 0
+                && $parenDepth === 0
+                && $bracketDepth === 0
+                && $token->type !== TokenType::EOF
+                && in_array($token->type, [
+                    TokenType::SEMICOLON,
+                    TokenType::LBRACE,
+                    TokenType::RBRACE,
+                ], true)
+            ) {
+                break;
+            }
+
+            TokenStreamHelper::updateNestingDepth($token, $parenDepth, $bracketDepth);
+
+            if ($token->type === TokenType::COMMENT_SILENT) {
+                $silentSpans[] = [$token->start - $startPos, strlen($token->value) + 2];
+            }
+
+            if (TokenStreamHelper::consumeInterpolationFragmentOnly($this->stream, $interpolationDepth, $token)) {
+                continue;
+            }
+
+            $this->stream->advance();
+        }
+
+        $source  = $this->stream->getSource();
+        $endPos  = $this->stream->current()->start;
+        $prelude = substr($source, $startPos, $endPos - $startPos);
+
+        foreach (array_reverse($silentSpans) as [$offset, $length]) {
+            $prelude = substr($prelude, 0, $offset) . substr($prelude, $offset + $length);
+        }
+
+        return trim($prelude);
+    }
+
+    private function readPreludeTokenized(): string
+    {
+        $prelude            = '';
+        $parenDepth         = 0;
+        $bracketDepth       = 0;
+        $interpolationDepth = 0;
+
+        while (! $this->stream->isEof()) {
+            $token = $this->stream->current();
+
+            if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $prelude, $interpolationDepth, $token)) {
+                continue;
+            }
+
+            if (
+                $parenDepth === 0
+                && $bracketDepth === 0
+                && in_array($token->type, [
+                    TokenType::SEMICOLON,
+                    TokenType::LBRACE,
+                    TokenType::RBRACE,
+                    TokenType::EOF,
+                ], true)
+            ) {
+                break;
+            }
+
+            TokenStreamHelper::updateNestingDepth($token, $parenDepth, $bracketDepth);
+
+            if ($token->type === TokenType::COMMENT_SILENT) {
+                $this->stream->advance();
+                $this->stream->skipWhitespace();
+
+                continue;
+            }
+
+            if (in_array($token->type, [
+                TokenType::COMMENT_LOUD,
+                TokenType::COMMENT_PRESERVED,
+            ], true)) {
+                $prelude .= TokenStreamHelper::wrapComment($token) ?? '';
+
+                $this->stream->advance();
+
+                continue;
+            }
+
+            TokenStreamHelper::appendTokenToBuffer($prelude, $token, true);
+
+            $this->stream->advance();
+        }
+
+        return trim($prelude);
+    }
+
+    private function readInterpolatedDirectiveName(string $initial = ''): string
+    {
+        $buffer             = $initial;
         $interpolationDepth = 0;
 
         while (! $this->stream->isEof()) {
@@ -601,6 +669,14 @@ final readonly class DirectiveParser
             }
 
             if ($interpolationDepth === 0) {
+                if ($buffer !== '' && $token->type === TokenType::IDENTIFIER) {
+                    $buffer .= $token->value;
+
+                    $this->stream->advance();
+
+                    continue;
+                }
+
                 break;
             }
 

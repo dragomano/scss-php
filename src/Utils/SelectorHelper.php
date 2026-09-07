@@ -78,7 +78,7 @@ final class SelectorHelper
                 if (str_contains($selectorPart, '&')) {
                     $resolved[] = str_replace('&', $parentPart, $selectorPart);
                 } else {
-                    $resolved[] = $selectorPart;
+                    $resolved[] = $parentPart . ' ' . $selectorPart;
                 }
             }
         }

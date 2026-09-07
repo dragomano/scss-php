@@ -551,6 +551,8 @@ it('returns null when reparsing formatted declaration expressions fails or does 
     $badParser = new class implements ParserInterface {
         public function setTrackSourceLocations(bool $track): void {}
 
+        public function setPlainCss(bool $plainCss): void {}
+
         public function parse(string $source): RootNode
         {
             throw new SassErrorException('bad parse');
@@ -572,6 +574,8 @@ it('returns null when reparsing formatted declaration expressions fails or does 
 
     $nonDeclarationParser = new class implements ParserInterface {
         public function setTrackSourceLocations(bool $track): void {}
+
+        public function setPlainCss(bool $plainCss): void {}
 
         public function parse(string $source): RootNode
         {
@@ -601,6 +605,8 @@ it('returns null when reparsing formatted declaration expressions fails or does 
 it('returns null when reparsed formatted declarations do not start with a rule node', function () {
     $parser = new class implements ParserInterface {
         public function setTrackSourceLocations(bool $track): void {}
+
+        public function setPlainCss(bool $plainCss): void {}
 
         public function parse(string $source): RootNode
         {
@@ -759,6 +765,8 @@ it('formats unsupported ast nodes as an empty string', function () {
 it('returns null when reparsed formatted declarations do not yield a declaration node', function () {
     $parser = new class implements ParserInterface {
         public function setTrackSourceLocations(bool $track): void {}
+
+        public function setPlainCss(bool $plainCss): void {}
 
         public function parse(string $source): RootNode
         {

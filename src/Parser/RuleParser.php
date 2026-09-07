@@ -121,7 +121,11 @@ final class RuleParser
             $token = $this->stream->current();
 
             if (str_starts_with($token->value, '--')) {
-                return $this->parseCssVariableDeclaration($token->value, $token->line, $token->column);
+                $continuedByInterpolation = $this->isVariableNameContinuedByInterpolation();
+
+                if (str_contains($token->value, ':') || ! $continuedByInterpolation) {
+                    return $this->parseCssVariableDeclaration($token->value, $token->line, $token->column);
+                }
             }
         }
 
@@ -327,6 +331,14 @@ final class RuleParser
                 }
 
                 if ($this->context->isInsideBraces()) {
+                    if ($buffer === '' && $nextToken->type === TokenType::IDENTIFIER) {
+                        $buffer .= ':';
+
+                        $this->stream->advance();
+
+                        continue;
+                    }
+
                     break;
                 }
 
@@ -475,6 +487,23 @@ final class RuleParser
         $this->stream->setPosition($savedPosition);
 
         return false;
+    }
+
+    private function isVariableNameContinuedByInterpolation(): bool
+    {
+        $saved = $this->stream->getPosition();
+
+        $this->stream->advance();
+
+        while ($this->stream->is(TokenType::WHITESPACE)) {
+            $this->stream->advance();
+        }
+
+        $isInterpolated = $this->stream->is(TokenType::HASH) && $this->stream->peek()->type === TokenType::LBRACE;
+
+        $this->stream->setPosition($saved);
+
+        return $isInterpolated;
     }
 
     private function parseCssVariableDeclaration(string $tokenValue, int $line = 1, int $column = 1): DeclarationNode

@@ -224,8 +224,7 @@ final readonly class ValueParser implements
             $token = $this->stream->current();
 
             $this->stream->advance();
-
-            if (in_array(strlen($token->value), [3, 4, 6, 8], true)) {
+            if (($token->value !== '' && ctype_xdigit($token->value)) && in_array(strlen($token->value), [3, 4, 6, 8], true)) {
                 return new ColorNode('#' . $token->value);
             }
 

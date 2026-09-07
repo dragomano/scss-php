@@ -114,20 +114,30 @@ final readonly class AtRuleNodeHandler
         $resolvedPrelude = '';
 
         if ($node->prelude !== '') {
-            // For @keyframes and interpolated names, only interpolate #{} but don't resolve $var references
-            if ($this->isKeyframesDirective($node) || str_contains($node->name, '#{')) {
+            $isKeyframes = $this->isKeyframesName($directiveName);
+
+            if ($isKeyframes || str_contains($node->name, '#{')) {
+                // For @keyframes and interpolated names, only interpolate #{} but don't resolve $var references
                 $resolvedPrelude = str_contains($node->prelude, '#{')
                     ? $this->evaluation->interpolateText($node->prelude, $ctx->env)
                     : $node->prelude;
             } else {
-                $resolvedPrelude = $this->selector->resolveDirectivePrelude($node->prelude, $ctx->env);
-
                 $lowerName = strtolower($node->name);
 
                 if ($lowerName === 'media') {
-                    $resolvedPrelude = $this->selector->normalizeMediaQueryPrelude($resolvedPrelude);
+                    $resolvedPrelude = $this->selector->normalizeMediaQueryPrelude(
+                        $this->selector->resolveDirectivePrelude($node->prelude, $ctx->env),
+                    );
                 } elseif ($lowerName === '-moz-document') {
-                    $resolvedPrelude = $this->selector->stripAllComments($resolvedPrelude);
+                    $resolvedPrelude = $this->selector->stripAllComments(
+                        $this->interpolatePreludeOnly($node->prelude, $ctx->env),
+                    );
+                } else {
+                    $resolvedPrelude = $this->interpolatePreludeOnly($node->prelude, $ctx->env);
+
+                    if ($node->hasBlock) {
+                        $resolvedPrelude = $this->selector->stripAllComments($resolvedPrelude);
+                    }
                 }
             }
 
@@ -152,7 +162,7 @@ final readonly class AtRuleNodeHandler
 
         $currentAtRuleStack   = $parentAtRuleStack;
         $currentAtRuleStack[] = AtRuleContextEntry::directive(
-            strtolower($node->name),
+            $this->isKeyframesName($directiveName) ? strtolower($directiveName) : strtolower($node->name),
             trim($resolvedPrelude),
         );
 
@@ -168,8 +178,14 @@ final readonly class AtRuleNodeHandler
              */
             $body = $node->body;
 
-            // For keyframes with comment-only body, output compact format { /**/ }
-            if ($this->isKeyframesDirective($node) && $this->isCommentOnlyBody($body)) {
+            // For keyframes and at-rules with empty loud comment body, output compact format { /**/ }
+            if (
+                $this->isCommentOnlyBody($body)
+                && (
+                    $this->isKeyframesName($directiveName)
+                    || $this->isOnlyEmptyLoudCommentBody($body)
+                )
+            ) {
                 $this->render->appendChunk(
                     $output,
                     $prefix . '@' . $directiveName . $prelude . ' { /**/ }',
@@ -379,9 +395,16 @@ final readonly class AtRuleNodeHandler
         $this->render->appendOutputChunk($output, $chunk);
     }
 
-    private function isKeyframesDirective(DirectiveNode $node): bool
+    private function interpolatePreludeOnly(string $prelude, \Bugo\SCSS\Runtime\Environment $env): string
     {
-        $name = strtolower($node->name);
+        return str_contains($prelude, '#{')
+            ? $this->evaluation->interpolateText($prelude, $env)
+            : $prelude;
+    }
+
+    private function isKeyframesName(string $name): bool
+    {
+        $name = strtolower($name);
 
         return $name === 'keyframes'
             || str_ends_with($name, '-keyframes');
@@ -398,6 +421,24 @@ final readonly class AtRuleNodeHandler
 
         foreach ($body as $child) {
             if (! $child instanceof CommentNode) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, AstNode> $body
+     */
+    private function isOnlyEmptyLoudCommentBody(array $body): bool
+    {
+        if ($body === [] || count($body) > 1) {
+            return false;
+        }
+
+        foreach ($body as $child) {
+            if (! $child instanceof CommentNode || $child->value !== '') {
                 return false;
             }
         }

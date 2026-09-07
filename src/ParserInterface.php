@@ -11,6 +11,8 @@ interface ParserInterface
 {
     public function setTrackSourceLocations(bool $track): void;
 
+    public function setPlainCss(bool $plainCss): void;
+
     public function parse(string $source): RootNode;
 
     public function parseInlineExpression(string $expr): AstNode;

@@ -51,8 +51,16 @@ final readonly class Compiler implements CompilerInterface
         try {
             $this->ctx->outputState->hoistCssImports = true;
 
-            $source      = $this->normalizeSource($source, $syntax);
-            $ast         = $this->parse($source);
+            $source = $this->normalizeSource($source, $syntax);
+
+            $this->parser->setPlainCss($syntax === Syntax::CSS);
+
+            try {
+                $ast = $this->parse($source);
+            } finally {
+                $this->parser->setPlainCss(false);
+            }
+
             $environment = $this->buildEnvironment($ast, str_contains($source, '@extend'));
             $compiled    = $this->compileAst($ast, $environment);
 

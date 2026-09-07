@@ -144,6 +144,30 @@ final class TokenStreamHelper
         return false;
     }
 
+    public static function consumeInterpolationFragmentOnly(
+        TokenStream $stream,
+        int &$interpolationDepth,
+        Token $token,
+    ): bool {
+        if ($token->type === TokenType::HASH && $stream->peek()->type === TokenType::LBRACE) {
+            $interpolationDepth++;
+
+            $stream->advance(2);
+
+            return true;
+        }
+
+        if ($interpolationDepth > 0 && $token->type === TokenType::RBRACE) {
+            $interpolationDepth--;
+
+            $stream->advance();
+
+            return true;
+        }
+
+        return false;
+    }
+
     public static function readRawUntil(TokenStream $stream, Closure $shouldStop): string
     {
         $result       = '';

@@ -74,6 +74,11 @@ final class Parser implements
         $this->rules->setTrackSourceLocations($track);
     }
 
+    public function setPlainCss(bool $plainCss): void
+    {
+        $this->tokenizer->setPlainCss($plainCss);
+    }
+
     public function parse(string $source): RootNode
     {
         $tokens = $this->tokenizer->tokenize($source);

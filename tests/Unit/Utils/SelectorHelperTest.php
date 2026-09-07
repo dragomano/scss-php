@@ -47,9 +47,9 @@ describe('SelectorHelper', function () {
             expect(SelectorHelper::resolveNested('.child, .icon', ', ,'))->toBe('.child, .icon');
         });
 
-        it('keeps selector parts without ampersand when resolving selector lists', function () {
+        it('prefixes family-parent selectors and replaces ampersand when resolving selector lists', function () {
             expect(SelectorHelper::resolveNested('&:hover, .icon', '.button, .link'))
-                ->toBe('.button:hover, .icon, .link:hover');
+                ->toBe('.button:hover, .button .icon, .link:hover, .link .icon');
         });
 
         it('returns selector unchanged when no ampersand and no commas', function () {

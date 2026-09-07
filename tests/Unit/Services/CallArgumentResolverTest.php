@@ -31,6 +31,8 @@ describe('CallArgumentResolver', function () {
             new class implements ParserInterface {
                 public function setTrackSourceLocations(bool $track): void {}
 
+                public function setPlainCss(bool $plainCss): void {}
+
                 public function parse(string $source): RootNode
                 {
                     return new RootNode([new StringNode('not-a-rule')]);
@@ -59,6 +61,8 @@ describe('CallArgumentResolver', function () {
         $resolver = new CallArgumentResolver(
             new class implements ParserInterface {
                 public function setTrackSourceLocations(bool $track): void {}
+
+                public function setPlainCss(bool $plainCss): void {}
 
                 public function parse(string $source): RootNode
                 {

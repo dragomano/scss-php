@@ -16,6 +16,7 @@ use function ctype_space;
 use function ctype_xdigit;
 use function dechex;
 use function hexdec;
+use function in_array;
 use function min;
 use function ord;
 use function str_replace;
@@ -43,6 +44,8 @@ final class Tokenizer
 
     private bool $trackPositions = true;
 
+    private bool $plainCss = false;
+
     public static function normalizeLineEndings(string $source): string
     {
         return str_replace(["\r\n", "\r"], "\n", $source);
@@ -51,6 +54,11 @@ final class Tokenizer
     public function setTrackPositions(bool $trackPositions): void
     {
         $this->trackPositions = $trackPositions;
+    }
+
+    public function setPlainCss(bool $plainCss): void
+    {
+        $this->plainCss = $plainCss;
     }
 
     /**
@@ -97,11 +105,11 @@ final class Tokenizer
         if ($char === '/') {
             $next = $this->peekChar();
 
-            if ($next === '/' && $this->isSingleLineCommentStart()) {
+            if (! $this->plainCss && $next === '/' && $this->isSingleLineCommentStart()) {
                 return $this->tokenizeSingleLineComment();
             }
 
-            if ($next === '*') {
+            if (! $this->plainCss && $next === '*') {
                 return $this->tokenizeMultiLineComment();
             }
 
@@ -295,6 +303,20 @@ final class Tokenizer
         }
 
         if ($this->position > $start) {
+            // If hex digits are followed by more name characters, the whole run is one CSS ID
+            // token; the value parser decides color vs plain text.
+            while ($this->position < $this->length) {
+                $c = $this->source[$this->position];
+
+                if (! ctype_alnum($c) && $c !== '_' && $c !== '-') {
+                    break;
+                }
+
+                $this->position++;
+            }
+        }
+
+        if ($this->position > $start) {
             $count = $this->position - $start;
 
             $this->column += $count;
@@ -333,8 +355,18 @@ final class Tokenizer
 
         $this->advance();
 
-        while ($this->position < $this->length && $this->isUnicodeRangePartChar($this->source[$this->position])) {
-            $value .= $this->source[$this->position];
+        $sawWildcard = false;
+
+        while ($this->position < $this->length) {
+            $char = $this->source[$this->position];
+
+            if ($char === '?') {
+                $sawWildcard = true;
+            } elseif ($sawWildcard || ! $this->isUnicodeRangePartChar($char)) {
+                break;
+            }
+
+            $value .= $char;
 
             $this->advance();
         }
@@ -964,11 +996,21 @@ final class Tokenizer
             return true;
         }
 
-        if ($this->source[$this->position - 1] !== ':') {
+        $prev = $this->source[$this->position - 1];
+
+        if ($prev !== ':') {
             return true;
         }
 
-        return ! ctype_alnum($this->source[$this->position - 2]);
+        if ($this->position >= 2) {
+            $beforeColon = $this->source[$this->position - 2];
+
+            if (ctype_alnum($beforeColon) || in_array($beforeColon, ['}', '"', "'"], true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function isUnicodeRangePartChar(string $char): bool
