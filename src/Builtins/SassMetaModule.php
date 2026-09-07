@@ -683,7 +683,13 @@ final class SassMetaModule extends AbstractModule
             );
         }
 
-        return new StringNode($this->astType($positional[0]));
+        $value = $positional[0];
+
+        if ($value instanceof MapNode && $value->isEmptyList) {
+            return new StringNode(AstValueType::List->value);
+        }
+
+        return new StringNode($this->astType($value));
     }
 
     /**

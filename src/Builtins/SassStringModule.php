@@ -238,7 +238,7 @@ final class SassStringModule extends AbstractModule
             $startOffset = 0;
         }
 
-        $endOffset = $end > 0 ? $end : $length + $end + 1;
+        $endOffset = $end >= 0 ? $end : $length + $end + 1;
 
         if ($endOffset < 0) {
             $endOffset = 0;

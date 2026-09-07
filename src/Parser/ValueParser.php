@@ -340,7 +340,7 @@ final readonly class ValueParser implements
         $this->stream->skipWhitespace();
 
         if ($this->stream->consume(TokenType::RPAREN)) {
-            return new MapNode([]);
+            return new MapNode([], true);
         }
 
         $items = [];

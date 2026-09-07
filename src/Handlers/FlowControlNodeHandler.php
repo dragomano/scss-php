@@ -22,6 +22,7 @@ use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\LoopIterator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
+use Bugo\SCSS\Utils\UnitConverter;
 
 use function is_numeric;
 use function str_ends_with;
@@ -102,7 +103,7 @@ final readonly class FlowControlNodeHandler
         $toNode   = $this->toLoopNumber($node->to, $ctx->env);
         $unit     = $fromNode->unit;
         $from     = (int) $fromNode->value;
-        $to       = (int) $toNode->value;
+        $to       = (int) UnitConverter::convert((float) $toNode->value, $toNode->unit, $unit);
 
         $ctx->env->enterScope();
 
