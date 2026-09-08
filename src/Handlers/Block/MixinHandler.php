@@ -64,6 +64,7 @@ final readonly class MixinHandler
             $resolvedNamed,
             $node->contentBlock,
             $node->contentArguments,
+            $node->hasContent,
             $ctx,
         );
     }
@@ -121,6 +122,7 @@ final readonly class MixinHandler
             $restNamed,
             $node->contentBlock,
             $node->contentArguments,
+            $node->hasContent,
             $ctx,
         );
     }
@@ -204,6 +206,7 @@ final readonly class MixinHandler
         array $resolvedNamed,
         array $contentBlock,
         array $contentArguments,
+        bool $hasContent,
         TraversalContext $ctx,
     ): string {
         $this->module->incrementCallDepth();
@@ -237,7 +240,7 @@ final readonly class MixinHandler
 
             $executionScope->setVariableLocal(
                 '__meta_content_exists',
-                $this->evaluation->createBooleanNode($contentBlock !== []),
+                $this->evaluation->createBooleanNode($hasContent),
             );
 
             $executionScope->setVariableLocal('__meta_content_block', $contentBlock);

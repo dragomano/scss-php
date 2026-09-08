@@ -240,6 +240,10 @@ final readonly class ValueParser implements
 
             $this->stream->advance();
 
+            if ($this->stream->is(TokenType::LPAREN)) {
+                return $this->functions->parseFunctionFromName($token->value);
+            }
+
             return new StringNode($token->value);
         }
 

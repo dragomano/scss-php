@@ -78,7 +78,6 @@ it('interpolates formatted declaration values that still contain interpolation m
     $evaluation->shouldReceive('evaluateDeclarationValue')->once()->with($value, 'color', $env)->andReturn($evaluated);
     $evaluation->shouldReceive('isSassNullValue')->once()->with($evaluated)->andReturn(false);
     $evaluation->shouldReceive('shouldCompressNamedColorForProperty')->once()->with('color')->andReturn(false);
-    $evaluation->shouldReceive('tryEvaluateFormattedDeclarationExpression')->once()->with('color', $evaluated, $env)->andReturn(null);
     $evaluation->shouldReceive('format')->once()->with($evaluated, $env)->andReturn('#{$name}');
     $evaluation->shouldReceive('normalizeDeclarationSlashSpacing')->once()->with('color', '#{$name}')->andReturn('#{$name}');
 

@@ -59,6 +59,7 @@ final readonly class CallableDirectiveParser
 
         $contentBlock     = [];
         $contentArguments = [];
+        $hasContent       = false;
 
         $this->stream->skipWhitespaceAndComments();
 
@@ -71,6 +72,7 @@ final readonly class CallableDirectiveParser
         if ($this->stream->consume(TokenType::LBRACE)) {
             $this->parsingContext->incrementBlockDepth();
 
+            $hasContent   = true;
             $contentBlock = $this->parsingContext->parseStatementsInsideBlock();
 
             $this->parsingContext->decrementBlockDepth();
@@ -79,7 +81,7 @@ final readonly class CallableDirectiveParser
             TokenStreamHelper::consumeSemicolonFromStream($this->stream);
         }
 
-        return new IncludeNode($namespace, $mixin, $arguments, $contentBlock, $contentArguments);
+        return new IncludeNode($namespace, $mixin, $arguments, $contentBlock, $contentArguments, $hasContent);
     }
 
     public function parseMixinDirective(int $line = 1): AstNode

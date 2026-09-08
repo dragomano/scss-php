@@ -33,7 +33,6 @@ use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Runtime\ScopedCallableDefinition;
 use Bugo\SCSS\Runtime\VariableDefinition;
 use Bugo\SCSS\Utils\NameHelper;
-use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Values\AstValueType;
 use Bugo\SCSS\Values\SassCalculation;
 use LogicException;
@@ -287,6 +286,16 @@ final class SassMetaModule extends AbstractModule
 
         $arguments = array_slice($positional, 1);
 
+        if ($original instanceof FunctionRefNode && $original->css) {
+            $parts = [];
+
+            foreach ($arguments as $argument) {
+                $parts[] = $this->formatValue($argument);
+            }
+
+            return new StringNode($name . '(' . implode(', ', $parts) . ')');
+        }
+
         foreach ($named as $argumentName => $value) {
             $arguments[] = new NamedArgumentNode($argumentName, $value);
         }
@@ -344,7 +353,7 @@ final class SassMetaModule extends AbstractModule
         $this->warnAboutDeprecatedMetaFunction($context, 'feature-exists', $positional);
 
         return $this->boolNode(in_array(
-            NameNormalizer::normalize($positional[0]->value),
+            $positional[0]->value,
             self::SUPPORTED_FEATURES,
             true,
         ));
@@ -389,7 +398,14 @@ final class SassMetaModule extends AbstractModule
      */
     private function getFunction(array $positional, array $named, ?BuiltinCallContext $context): AstNode
     {
-        $name   = $this->requiredString($positional, 'meta.get-function');
+        $name = $this->requiredString($positional, 'meta.get-function');
+
+        $cssValue = $named['css'] ?? null;
+
+        if ($cssValue instanceof BooleanNode && $cssValue->value) {
+            return new FunctionRefNode($name, css: true);
+        }
+
         $module = $this->optionalModuleName($named['module'] ?? null);
         $scope  = $this->scopeFromContext($context);
 

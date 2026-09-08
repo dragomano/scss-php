@@ -14,6 +14,7 @@ use Psr\Log\NullLogger;
 
 use function basename;
 use function file_put_contents;
+use function implode;
 use function str_contains;
 use function str_replace;
 

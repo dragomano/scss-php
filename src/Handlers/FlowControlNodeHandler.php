@@ -25,6 +25,7 @@ use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Utils\UnitConverter;
 
 use function is_numeric;
+use function round;
 use function str_ends_with;
 
 final readonly class FlowControlNodeHandler
@@ -103,7 +104,7 @@ final readonly class FlowControlNodeHandler
         $toNode   = $this->toLoopNumber($node->to, $ctx->env);
         $unit     = $fromNode->unit;
         $from     = (int) $fromNode->value;
-        $to       = (int) UnitConverter::convert((float) $toNode->value, $toNode->unit, $unit);
+        $to       = (int) round(UnitConverter::convert((float) $toNode->value, $toNode->unit, $unit));
 
         $ctx->env->enterScope();
 

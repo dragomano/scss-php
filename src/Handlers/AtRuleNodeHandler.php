@@ -512,6 +512,12 @@ final readonly class AtRuleNodeHandler
 
         $contentVarsBefore = $contentScope->getVariables();
 
+        $contentParameterNames = [];
+
+        foreach ($contentArguments as $argument) {
+            $contentParameterNames[] = $argument->name;
+        }
+
         $output     = '';
         $first      = true;
         $contentCtx = $ctx;
@@ -569,6 +575,10 @@ final readonly class AtRuleNodeHandler
         foreach ($childSnapshotAfter as $name => $value) {
             if (isset($contentVarsBefore[$name]) && $contentVarsBefore[$name] !== $value) {
                 if ($name !== '' && $name[0] === '-') {
+                    continue;
+                }
+
+                if (in_array($name, $contentParameterNames, true)) {
                     continue;
                 }
 

@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Utils;
 
+use function in_array;
 use function str_contains;
+use function str_starts_with;
 use function strpos;
+use function strrpos;
+use function strtolower;
 use function substr;
+use function substr_count;
 
 final class NameHelper
 {
@@ -33,6 +38,25 @@ final class NameHelper
     public static function hasNamespace(string $name): bool
     {
         return str_contains($name, '.');
+    }
+
+    public static function isSpecialCssFunctionName(string $name): bool
+    {
+        $name = strtolower($name);
+
+        if (str_starts_with($name, '-') && substr_count($name, '-') >= 2) {
+            $pos = strrpos($name, '-');
+
+            if ($pos === false) {
+                return false;
+            }
+
+            $tail = substr($name, $pos + 1);
+
+            return in_array($tail, ['calc', 'element', 'expression'], true);
+        }
+
+        return in_array($name, ['element', 'expression', 'type'], true);
     }
 
     /**

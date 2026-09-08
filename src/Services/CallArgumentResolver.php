@@ -15,6 +15,7 @@ use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 
 use function array_filter;
+use function array_merge;
 use function array_values;
 use function str_ends_with;
 use function str_starts_with;
@@ -99,20 +100,21 @@ final readonly class CallArgumentResolver
     public function resolveCallArguments(array $arguments, Environment $env): array
     {
         $positional = [];
+        $spread     = [];
         $named      = [];
 
         foreach ($arguments as $argument) {
             if ($argument instanceof SpreadArgumentNode) {
-                $spread = $this->valueEvaluator->evaluate($argument->value, $env);
+                $expanded = $this->cssArgument->expandSpreadValue($this->valueEvaluator->evaluate($argument->value, $env));
 
-                foreach ($this->cssArgument->expandSpreadValue($spread) as $spreadArgument) {
+                foreach ($expanded as $spreadArgument) {
                     if ($spreadArgument instanceof NamedArgumentNode) {
                         $named[$spreadArgument->name] = $this->valueEvaluator->evaluate($spreadArgument->value, $env);
 
                         continue;
                     }
 
-                    $positional[] = $this->valueEvaluator->evaluate($spreadArgument, $env);
+                    $spread[] = $this->valueEvaluator->evaluate($spreadArgument, $env);
                 }
 
                 continue;
@@ -127,7 +129,7 @@ final readonly class CallArgumentResolver
             $positional[] = $this->valueEvaluator->evaluate($argument, $env);
         }
 
-        return [$positional, $named];
+        return [array_merge($positional, $spread), $named];
     }
 
     /**

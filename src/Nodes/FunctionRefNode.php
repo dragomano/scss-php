@@ -14,5 +14,6 @@ final class FunctionRefNode extends AstNode
         public readonly ?string $module = null,
         public readonly ?CallableDefinition $lockedDefinition = null,
         public readonly ?Scope $capturedScope = null,
+        public readonly bool $css = false,
     ) {}
 }

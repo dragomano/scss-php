@@ -124,11 +124,13 @@ final readonly class DeclarationNodeHandler
             $evaluatedValue = $this->evaluation->compressNamedColorsForOutput($evaluatedValue);
         }
 
-        $reparsedValue = $this->evaluation->tryEvaluateFormattedDeclarationExpression(
-            $property,
-            $evaluatedValue,
-            $ctx->env,
-        );
+        $reparsedValue = ! $evaluatedValue instanceof StringNode
+            ? $this->evaluation->tryEvaluateFormattedDeclarationExpression(
+                $property,
+                $evaluatedValue,
+                $ctx->env,
+            )
+            : null;
 
         if ($reparsedValue instanceof AstNode) {
             $evaluatedValue = $reparsedValue;

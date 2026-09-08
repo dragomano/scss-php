@@ -418,11 +418,7 @@ final class SassStringModule extends AbstractModule
     {
         $this->warnAboutDeprecatedStringFunction($context, 'unquote', $positional);
 
-        return new StringNode(
-            StringHelper::unescapeQuotedContent(
-                $this->stripQuotes($this->requireStringArg($positional, 0, 'string.unquote')),
-            ),
-        );
+        return new StringNode($this->requireStringArg($positional, 0, 'string.unquote'));
     }
 
     /**

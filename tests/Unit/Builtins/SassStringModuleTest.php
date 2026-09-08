@@ -137,9 +137,10 @@ describe('SassStringModule', function () {
     });
 
     it('evaluates unquote', function () {
-        $result = $this->module->call('unquote', [new StringNode('"x"')], []);
+        $result = $this->module->call('unquote', [new StringNode('"x"', true)], []);
 
-        expect($result->value)->toBe('x');
+        expect($result->value)->toBe('"x"')
+            ->and($result->quoted)->toBeFalse();
     });
 
     it('accepts numbers where string coercion is supported and rejects other value types', function () {

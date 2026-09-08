@@ -20,6 +20,7 @@ final class IncludeNode extends StatementNode
         public array $arguments = [],
         public array $contentBlock = [],
         public array $contentArguments = [],
+        public bool $hasContent = false,
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

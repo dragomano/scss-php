@@ -18,6 +18,7 @@ use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Utils\CssNamedColors;
+use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\StringEscapeDecoder;
 
 use function array_key_last;
@@ -620,21 +621,7 @@ final readonly class FunctionCallParser
 
     private function isSpecialGeneralName(string $identifier): bool
     {
-        $name = strtolower($identifier);
-
-        if (str_contains($name, '-')) {
-            $pos = strrpos($name, '-');
-
-            if ($pos === false) {
-                return false;
-            }
-
-            $tail = substr($name, $pos + 1);
-
-            return in_array($tail, ['calc', 'element', 'expression'], true);
-        }
-
-        return in_array($name, ['element', 'expression', 'type'], true);
+        return NameHelper::isSpecialCssFunctionName($identifier);
     }
 
     private function isSpecialProgidName(string $identifier): bool

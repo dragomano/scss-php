@@ -19,6 +19,7 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\CssNamedColors;
 use Bugo\SCSS\Values\AstValueTransformer;
 
+use function array_merge;
 use function in_array;
 use function str_contains;
 use function strtolower;
@@ -53,22 +54,24 @@ final readonly class CssArgumentEvaluator
             }
         }
 
-        $expanded = [];
+        $positional = [];
+        $spread     = [];
+        $named      = [];
 
         if ($allPositional) {
             foreach ($arguments as $argument) {
-                $expanded[] = $this->valueEvaluator->evaluate($argument, $env);
+                $positional[] = $this->valueEvaluator->evaluate($argument, $env);
             }
 
-            return $expanded;
+            return $positional;
         }
 
         foreach ($arguments as $argument) {
             if ($argument instanceof SpreadArgumentNode) {
-                $spread = $this->valueEvaluator->evaluate($argument->value, $env);
+                $spreadValue = $this->valueEvaluator->evaluate($argument->value, $env);
 
-                foreach ($this->expandSpreadValue($spread) as $spreadArgument) {
-                    $expanded[] = $spreadArgument instanceof NamedArgumentNode
+                foreach ($this->expandSpreadValue($spreadValue) as $spreadArgument) {
+                    $spread[] = $spreadArgument instanceof NamedArgumentNode
                         ? new NamedArgumentNode(
                             $spreadArgument->name,
                             $this->valueEvaluator->evaluate($spreadArgument->value, $env),
@@ -80,7 +83,7 @@ final readonly class CssArgumentEvaluator
             }
 
             if ($argument instanceof NamedArgumentNode) {
-                $expanded[] = new NamedArgumentNode(
+                $named[] = new NamedArgumentNode(
                     $argument->name,
                     $this->valueEvaluator->evaluate($argument->value, $env),
                 );
@@ -88,10 +91,10 @@ final readonly class CssArgumentEvaluator
                 continue;
             }
 
-            $expanded[] = $this->valueEvaluator->evaluate($argument, $env);
+            $positional[] = $this->valueEvaluator->evaluate($argument, $env);
         }
 
-        return $expanded;
+        return array_merge($positional, $spread, $named);
     }
 
     /**

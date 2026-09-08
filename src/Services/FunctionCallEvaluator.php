@@ -54,6 +54,10 @@ final readonly class FunctionCallEvaluator
             return $node;
         }
 
+        if (str_starts_with($node->name, '--') || NameHelper::isSpecialCssFunctionName($node->name)) {
+            return $this->evaluateBuiltinOrCssFunction($node, $env);
+        }
+
         $resolvedUserFunction = $this->resolveUserFunction($node, $env);
 
         if ($resolvedUserFunction !== null) {
