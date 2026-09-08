@@ -81,12 +81,12 @@ final readonly class Text
 
     public function resolveDirectivePrelude(string $prelude, Environment $env): string
     {
+        $prelude  = $this->normalizeCssLogicalOperators($prelude);
         $resolved = str_contains($prelude, '#{')
             ? $this->interpolateText($prelude, $env)
             : $prelude;
 
         $resolved = $this->replaceVariableReferencesInText($resolved, $env);
-        $resolved = $this->normalizeCssLogicalOperators($resolved);
 
         return $this->stripPreludeComments($resolved);
     }
@@ -829,7 +829,7 @@ final readonly class Text
         if ($this->isWrappedBySingleOuterParentheses($prelude)) {
             $inner = trim(substr($prelude, 1, -1));
 
-            if (str_starts_with(strtolower($inner), 'not ')) {
+            if (str_starts_with($inner, 'not ')) {
                 return $inner;
             }
         }
@@ -1787,15 +1787,39 @@ final readonly class Text
 
     private function normalizeCssLogicalOperators(string $value): string
     {
-        $result = '';
-        $length = strlen($value);
-        $index  = 0;
+        $result             = '';
+        $length             = strlen($value);
+        $index              = 0;
+        $interpolationDepth = 0;
 
         while ($index < $length) {
             $char = $value[$index];
 
+            if ($char === '"' || $char === "'") {
+                $end     = $this->findQuotedLiteralEnd($value, $index);
+                $result .= substr($value, $index, $end - $index);
+                $index   = $end;
+
+                continue;
+            }
+
+            if ($char === '{' && ($interpolationDepth > 0 || ($index > 0 && $value[$index - 1] === '#'))) {
+                $interpolationDepth++;
+            } elseif ($char === '}' && $interpolationDepth > 0) {
+                $interpolationDepth--;
+            }
+
+            if ($interpolationDepth > 0) {
+                $result .= $char;
+
+                $index++;
+
+                continue;
+            }
+
             if (! ctype_alpha($char)) {
                 $result .= $char;
+
                 $index++;
 
                 continue;

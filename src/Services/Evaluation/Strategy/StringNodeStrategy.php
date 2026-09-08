@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Services\Evaluation\Strategy;
 
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Services\Evaluation\EvaluationStrategyInterface;
+use Bugo\SCSS\Utils\SelectorHelper;
 use Closure;
 
 use function str_contains;
@@ -38,7 +40,13 @@ final readonly class StringNodeStrategy implements EvaluationStrategyInterface
             $selectorValue = ($this->getCurrentParentSelector)($env);
 
             if ($selectorValue !== null) {
-                return $selectorValue;
+                $items = [];
+
+                foreach (SelectorHelper::splitList($selectorValue->value) as $selector) {
+                    $items[] = new StringNode($selector, isSelectorValue: true);
+                }
+
+                return new ListNode($items, 'comma', isComputed: true);
             }
 
             return ($this->createNullNode)();

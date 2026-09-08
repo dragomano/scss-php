@@ -213,7 +213,10 @@ final readonly class ModuleNodeHandler
         $moduleState->emittedUseCss[$loaded->id] = true;
         $moduleState->emittedModuleCss[$loaded->id] = true;
 
-        return $loaded->css;
+        return $this->qualifyCssWithinParentSelector(
+            $loaded->css,
+            $this->selector->getCurrentParentSelector($ctx->env),
+        ) ?? '';
     }
 
     private function qualifyCssWithinParentSelector(string $css, ?string $parentSelector): ?string

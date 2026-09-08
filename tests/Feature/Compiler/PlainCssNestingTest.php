@@ -21,6 +21,16 @@ describe('plain CSS nesting', function () {
     });
 
     describe('via top-level @use', function () {
+        it('preserves adjacent slashes in a prefetched CSS module', function () {
+            $css = compilePlainCss('@use "plain";', ['plain' => 'a {b: 1///bar;}'], $this->tmpDir);
+
+            expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+            a {
+              b: 1 / / / bar;
+            }
+            CSS);
+        });
+
         it('preserves one level of nesting', function () {
             $css = compilePlainCss('@use "plain";', ['plain' => 'a {b {c: d}}'], $this->tmpDir);
 

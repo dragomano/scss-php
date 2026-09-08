@@ -371,6 +371,25 @@ final class Tokenizer
             $this->advance();
         }
 
+        if ($sawWildcard && ($this->source[$this->position] ?? '') === '-' && ctype_digit($this->peekChar())) {
+            $value .= '-';
+
+            $this->advance();
+
+            while ($this->position < $this->length && ctype_digit($this->source[$this->position])) {
+                $value .= $this->source[$this->position];
+
+                $this->advance();
+            }
+        }
+
+        if ($sawWildcard && (
+            ctype_alpha($this->source[$this->position] ?? '')
+            || (($this->source[$this->position] ?? '') === '-' && ctype_alpha($this->peekChar()))
+        )) {
+            $value .= ' ';
+        }
+
         return new Token(TokenType::IDENTIFIER, $value, $line, $column, $start);
     }
 

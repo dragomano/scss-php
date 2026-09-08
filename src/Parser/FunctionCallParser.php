@@ -25,6 +25,7 @@ use function implode;
 use function in_array;
 use function str_contains;
 use function str_ends_with;
+use function str_replace;
 use function strlen;
 use function strpos;
 use function strtolower;
@@ -215,6 +216,10 @@ final readonly class FunctionCallParser
 
         if ($this->isPlainCssUrlArgument($argument)) {
             $quote = $argument[0];
+
+            if ($quote !== '"' && $quote !== "'") {
+                $argument = str_replace('\\#{', '\\' . StringEscapeDecoder::PROTECTED_HASH . '{', $argument);
+            }
 
             if (
                 $quote !== '"' && $quote !== "'"

@@ -311,9 +311,15 @@ final readonly class ExtendsGraphResolver
 
             $syntax = Syntax::fromPath($dependency, $file['content']);
 
-            $dependencyAst = $this->parser->parse(
-                $this->ctx->normalizerPipeline->process($file['content'], $syntax),
-            );
+            $this->parser->setPlainCss($syntax === Syntax::CSS);
+
+            try {
+                $dependencyAst = $this->parser->parse(
+                    $this->ctx->normalizerPipeline->process($file['content'], $syntax),
+                );
+            } finally {
+                $this->parser->setPlainCss(false);
+            }
 
             $graph['asts'][$dependency] = $dependencyAst;
 

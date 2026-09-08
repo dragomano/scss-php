@@ -2,10 +2,16 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Lexer\Tokenizer;
 use Bugo\SCSS\Lexer\TokenType;
 
 describe('Tokenizer', function () {
+    it('preserves unicode wildcard suffix boundaries in declarations', function () {
+        expect((new Compiler())->compileString('a { b: U+A?BCDE; c: U+A?-BCDE; d: U+A?-1234; }'))
+            ->toEqualCss("a {\n  b: U+A? BCDE;\n  c: U+A? -BCDE;\n  d: U+A?-1234;\n}");
+    });
+
     beforeEach(function () {
         $this->tokenizer = new Tokenizer();
     });

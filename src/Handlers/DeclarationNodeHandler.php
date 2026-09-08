@@ -26,9 +26,11 @@ use Bugo\SCSS\Services\Text;
 
 use function array_key_last;
 use function array_map;
+use function explode;
 use function implode;
 use function in_array;
 use function is_array;
+use function max;
 use function str_contains;
 use function str_ends_with;
 use function strlen;
@@ -142,7 +144,7 @@ final readonly class DeclarationNodeHandler
         $important = $node->important ? ' !important' : '';
 
         if (str_starts_with($property, '--') && $node->value instanceof StringNode) {
-            $value = $node->value->value;
+            $value = $this->reindentCustomPropertyValue($node->value->value, $node->column - 1, $prefix);
 
             if (str_contains($value, '#{')) {
                 $value = $this->text->interpolateText($value, $ctx->env);
@@ -173,6 +175,31 @@ final readonly class DeclarationNodeHandler
         }
 
         return $prefix . $property . ': ' . $val . $important . ';';
+    }
+
+    private function reindentCustomPropertyValue(string $value, int $propertyColumn, string $prefix): string
+    {
+        $lines   = explode("\n", $value);
+        $minimum = max(0, $propertyColumn);
+
+        foreach (array_slice($lines, 1) as $line) {
+            if (trim($line) === '') {
+                continue;
+            }
+
+            $indent  = strlen($line) - strlen(ltrim($line, " \t"));
+            $minimum = min($minimum, $indent);
+        }
+
+        foreach ($lines as $index => $line) {
+            if ($index === 0 || trim($line) === '') {
+                continue;
+            }
+
+            $lines[$index] = $prefix . substr($line, $minimum);
+        }
+
+        return implode("\n", $lines);
     }
 
     private function shouldRejectBareDeclarationInCurrentContext(TraversalContext $ctx): bool

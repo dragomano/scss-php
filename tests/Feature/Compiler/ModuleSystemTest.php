@@ -9,6 +9,7 @@ use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 use Bugo\SCSS\Loader;
 use Bugo\SCSS\LoaderInterface;
 use Tests\Support\ArrayLogger;
+use Tests\Support\MemoryLoader;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -17,6 +18,32 @@ describe('Compiler', function () {
     });
 
     describe('compileString()', function () {
+        it('qualifies CSS from used modules inside imported rules', function () {
+            $loader = new MemoryLoader([
+                '/_imported.scss' => '@use "sass:meta"; @use "nested-used"; in-imported { parent: meta.inspect(&); }',
+                '/_nested-used.scss' => '@use "sass:meta"; in-used { value: true; parent: meta.inspect(&); plain: meta.inspect(in-used); quoted: meta.inspect("in-used"); }',
+            ]);
+            $compiler = new Compiler(loader: $loader);
+
+            $source = <<<'SCSS'
+            outer { @import "imported"; }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            outer in-used {
+              value: true;
+              parent: (in-used,);
+              plain: in-used;
+              quoted: "in-used";
+            }
+            outer in-imported {
+              parent: (outer in-imported,);
+            }
+            CSS;
+
+            expect($compiler->compileString($source))->toEqualCss($expected);
+        });
+
         it('compiles external mixins via @use', function () {
             $loader   = new Loader([__DIR__ . '/../../fixtures']);
             $compiler = new Compiler(loader: $loader);

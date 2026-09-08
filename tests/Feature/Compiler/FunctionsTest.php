@@ -13,6 +13,22 @@ describe('Compiler', function () {
         $this->compiler = new Compiler(logger: $this->logger);
     });
 
+    it('preserves escaped interpolation in unquoted urls', function () {
+        $source = <<<'SCSS'
+        a { b: url(\#{}); c: url("\#{literal}"); d: url(#{"file"}.png); }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        a {
+          b: url(\#{});
+          c: url("#{literal}");
+          d: url(file.png);
+        }
+        CSS;
+
+        expect($this->compiler->compileString($source))->toEqualCss($expected);
+    });
+
     it('evaluates user-defined functions', function () {
         $source = <<<'SCSS'
         @function double($value) { @return $value * 2; }
