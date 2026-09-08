@@ -658,7 +658,7 @@ final class SassMathModule extends AbstractModule
 
         $this->warnAboutDeprecatedMathFunction($context, 'random', $positional);
 
-        return new NumberNode(mt_rand(1, (int) $rounded), $limit->unit);
+        return new NumberNode(mt_rand(1, (int) $rounded));
     }
 
     /**

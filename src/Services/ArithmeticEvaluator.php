@@ -410,6 +410,15 @@ final readonly class ArithmeticEvaluator
             return null;
         }
 
+        $first = $items[0] ?? null;
+
+        if ($first instanceof StringNode
+            && ! $first->quoted
+            && strtolower(trim($first->value)) === 'not'
+        ) {
+            return null;
+        }
+
         $changed = false;
         $pass1   = $this->foldMultiplicativeSegments($items, $changed, $insideCalc);
         $result  = $this->foldAdditiveSegments($pass1, $changed);

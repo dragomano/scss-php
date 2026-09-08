@@ -29,6 +29,7 @@ final readonly class CallableParameterBinder
         array $resolvedNamed,
         Scope $scope,
         callable $resolveDefault,
+        string $restSeparator = 'comma',
     ): void {
         $parameterNameSet = null;
         $normalizedNamed  = [];
@@ -59,7 +60,7 @@ final readonly class CallableParameterBinder
                     $parameterName,
                     new ArgumentListNode(
                         array_slice($resolvedPositional, $index),
-                        'comma',
+                        $restSeparator,
                         false,
                         array_filter(
                             $normalizedNamed,

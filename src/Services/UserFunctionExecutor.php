@@ -45,6 +45,7 @@ final readonly class UserFunctionExecutor
         array $positional,
         array $named,
         Environment $env,
+        string $restSeparator = 'comma',
     ): AstNode {
         $env->enterScope($function->closureScope);
 
@@ -65,6 +66,7 @@ final readonly class UserFunctionExecutor
 
                     throw MissingFunctionArgumentsException::required($name, $argName);
                 },
+                $restSeparator,
             );
 
             $result = $this->runStatements($function->body, $env);
@@ -90,6 +92,7 @@ final readonly class UserFunctionExecutor
         array $resolvedNamed,
         Scope $scope,
         Environment $env,
+        string $restSeparator = 'comma',
     ): void {
         $this->parameterBinder->bind(
             $parameters,
@@ -101,6 +104,7 @@ final readonly class UserFunctionExecutor
                     $scope->setVariableLocal($name, $this->slashDivisionValueEvaluator->evaluate($defaultValue, $env));
                 }
             },
+            $restSeparator,
         );
     }
 

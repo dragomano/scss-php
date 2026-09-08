@@ -803,13 +803,15 @@ final readonly class ConditionalEvaluator
                 return $this->valueFactory->createBooleanNode(false);
             }
 
-            $result = $this->evaluateLogicalItems($rest, $env);
+            $operand = $this->evaluateSingleLogicalOperand($rest[0], $env, count($rest) === 1);
 
-            if ($result === null) {
-                return null;
+            $inverted = $this->valueFactory->createBooleanNode(! $this->condition->isTruthy($operand));
+
+            if (count($rest) === 1) {
+                return $inverted;
             }
 
-            return $this->valueFactory->createBooleanNode(! $this->condition->isTruthy($result));
+            return $this->evaluateLogicalItems([$inverted, ...array_slice($rest, 1)], $env);
         }
 
         if (count($items) === 1) {
@@ -827,6 +829,23 @@ final readonly class ConditionalEvaluator
         }
 
         return $this->comparisonListEvaluator->evaluate(new ListNode(array_values($items), 'space'), $env);
+    }
+
+    private function evaluateSingleLogicalOperand(AstNode $item, Environment $env, bool $evaluateFully): AstNode
+    {
+        if ($evaluateFully) {
+            return $this->valueEvaluator->evaluate($item, $env);
+        }
+
+        if (
+            $item instanceof FunctionNode
+            && strtolower($item->name) === 'sass'
+            && count($item->arguments) >= 1
+        ) {
+            return $this->valueEvaluator->evaluate($item->arguments[0], $env);
+        }
+
+        return $item;
     }
 
     /**

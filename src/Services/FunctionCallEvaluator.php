@@ -21,6 +21,7 @@ use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Values\AstValueInspector;
+use Bugo\SCSS\Values\SassCalculation;
 use Throwable;
 
 use function count;
@@ -52,6 +53,15 @@ final readonly class FunctionCallEvaluator
     {
         if ($node->capturedScope !== null && $node->arguments === []) {
             return $node;
+        }
+
+        if ($node->dynamicName !== null) {
+            $node = new FunctionNode(
+                name: $this->valueFormatter->format($node->dynamicName, $env),
+                arguments: $node->arguments,
+                line: $node->line,
+                capturedScope: $node->capturedScope,
+            );
         }
 
         if (str_starts_with($node->name, '--') || NameHelper::isSpecialCssFunctionName($node->name)) {
@@ -188,7 +198,7 @@ final readonly class FunctionCallEvaluator
      */
     private function executeUserFunction(FunctionNode $node, array $resolvedUserFunction, Environment $env): AstNode
     {
-        [$positionalArguments, $namedArguments] = $this->callArguments->resolveCallArguments($node->arguments, $env);
+        [$positionalArguments, $namedArguments, $restSeparator] = $this->callArguments->resolveCallArguments($node->arguments, $env);
 
         if (++$this->ctx->moduleState->callDepth > 100) {
             $this->ctx->moduleState->callDepth--;
@@ -203,6 +213,7 @@ final readonly class FunctionCallEvaluator
                 $positionalArguments,
                 $namedArguments,
                 $env,
+                $restSeparator,
             );
         } finally {
             $this->ctx->moduleState->callDepth--;
@@ -293,7 +304,11 @@ final readonly class FunctionCallEvaluator
             $arguments = $node->arguments;
         } else {
             try {
-                $arguments = $this->callArguments->expandCallArguments($node->arguments, $env);
+                $arguments = $this->callArguments->expandCallArguments(
+                    $node->arguments,
+                    $env,
+                    SassCalculation::isCalculationFunctionName($node->name),
+                );
             } catch (Throwable $expandFailure) {
                 if (strtolower($node->name) === 'if' && ! $node->modernSyntax) {
                     $inlineFallback = $this->conditional->evaluateInlineIfFunction($node->name, $node->arguments, $env);
@@ -396,7 +411,11 @@ final readonly class FunctionCallEvaluator
             return $simplifiedFunction;
         }
 
-        $fallbackArguments = $this->callArguments->expandCssCallArguments($node->arguments, $env);
+        $fallbackArguments = $this->callArguments->expandCssCallArguments(
+            $node->arguments,
+            $env,
+            SassCalculation::isCalculationFunctionName($node->name),
+        );
 
         $cssName = NameHelper::hasNamespace($node->name)
             ? NameHelper::splitNamespacedName($node->name)['member']

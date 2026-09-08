@@ -119,14 +119,15 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return $this->text->interpolateText($text, $env);
     }
 
-    public function evaluateValue(AstNode $node, Environment $env, bool $skipSlashArithmetic = false): AstNode
+    public function evaluateValue(AstNode $node, Environment $env, bool $skipSlashArithmetic = false, ?EvaluationOptions $options = null): AstNode
     {
         return $this->registry->evaluate(
             $node,
             $env,
-            $skipSlashArithmetic
-                ? EvaluationOptions::default()->withSkipSlashArithmetic()
-                : EvaluationOptions::default(),
+            $options
+                ?? ($skipSlashArithmetic
+                    ? EvaluationOptions::default()->withSkipSlashArithmetic()
+                    : EvaluationOptions::default()),
         );
     }
 
@@ -238,9 +239,9 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return $this->evaluateValue($node, $env, true);
     }
 
-    public function evaluateValueWithSlashDivision(AstNode $node, Environment $env): AstNode
+    public function evaluateValueWithSlashDivision(AstNode $node, Environment $env, ?EvaluationOptions $options = null): AstNode
     {
-        $evaluated = $this->evaluateValue($node, $env);
+        $evaluated = $this->evaluateValue($node, $env, false, $options);
 
         if ($evaluated instanceof ListNode
             && ($evaluated->separator === 'space' || $evaluated->separator === '/')
@@ -491,18 +492,45 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             return null;
         }
 
-        $leftItems  = array_slice($list->items, 0, $comparisonIndex);
-        $rightItems = array_slice($list->items, $comparisonIndex + 1);
+        $left = $this->evaluateSpaceSeparatedItems(
+            array_slice($list->items, 0, $comparisonIndex),
+            $env,
+        );
 
-        $left   = $this->evaluateSpaceSeparatedItems($leftItems, $env);
-        $right  = $this->evaluateSpaceSeparatedItems($rightItems, $env);
-        $result = $this->condition->compare($left, $operator, $right, $env);
+        $rightEnd = $comparisonIndex + 2;
+        $count    = count($list->items);
 
-        return $this->createBooleanNode($result);
+        while ($rightEnd + 1 < $count
+            && $list->items[$rightEnd] instanceof StringNode
+            && ! $list->items[$rightEnd]->quoted
+            && in_array(trim($list->items[$rightEnd]->value), ['+', '-', '*', '/', '%'], true)
+        ) {
+            $rightEnd += 2;
+        }
+
+        $right = $this->evaluateSpaceSeparatedItems(
+            array_slice($list->items, $comparisonIndex + 1, $rightEnd - $comparisonIndex - 1),
+            $env,
+        );
+        $result = $this->createBooleanNode($this->condition->compare($left, $operator, $right, $env));
+
+        $remaining = array_slice($list->items, $rightEnd);
+
+        if ($remaining === []) {
+            return $result;
+        }
+
+        $chained = $this->evaluateComparisonList(new ListNode([$result, ...$remaining], 'space'), $env);
+
+        return $chained ?? new ListNode([$result, ...$remaining], 'space');
     }
 
-    public function evaluateStringConcatenationList(ListNode $list, ?Environment $env = null): ?AstNode
+    public function evaluateStringConcatenationList(ListNode $list, ?Environment $env = null, ?EvaluationOptions $options = null): ?AstNode
     {
+        if ($options !== null && $options->skipConcatenation) {
+            return null;
+        }
+
         return $this->concatenation->evaluate($list, $env);
     }
 
@@ -534,7 +562,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
 
     /**
      * @param array<int, AstNode> $arguments
-     * @return array{0: array<int, AstNode>, 1: array<string, AstNode>}
+     * @return array{0: array<int, AstNode>, 1: array<string, AstNode>, 2: string}
      */
     public function resolveCallArguments(array $arguments, Environment $env): array
     {
@@ -692,7 +720,11 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
 
     private function createStringConcatenationEvaluator(): StringConcatenationEvaluator
     {
-        return new StringConcatenationEvaluator($this, $this->arithmetic);
+        return new StringConcatenationEvaluator(
+            $this,
+            $this->arithmetic,
+            fn(AstNode $value): bool => $this->condition->isTruthy($value),
+        );
     }
 
     private function createUserFunctionExecutor(): UserFunctionExecutor
@@ -748,7 +780,24 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return new CssArgumentEvaluator(
             $this->createSlashDivisionValueEvaluator(),
             new CalculationArgumentNormalizer($this),
+            $this->createSkipConcatenationValueEvaluator(),
         );
+    }
+
+    private function createSkipConcatenationValueEvaluator(): AstValueEvaluatorInterface
+    {
+        return new class ($this) implements AstValueEvaluatorInterface {
+            public function __construct(private readonly Evaluator $evaluator) {}
+
+            public function evaluate(AstNode $node, Environment $env): AstNode
+            {
+                return $this->evaluator->evaluateValueWithSlashDivision(
+                    $node,
+                    $env,
+                    EvaluationOptions::default()->withSkipConcatenation(),
+                );
+            }
+        };
     }
 
     private function createCallArgumentResolver(): CallArgumentResolver
@@ -813,7 +862,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
                 $evaluateValueClosure,
                 fn(ListNode $list, Environment $env): ?AstNode => $this->conditional->evaluateLogicalList($list, $env),
                 fn(ListNode $list, bool $strict, Environment $env): ?AstNode => $this->evaluateArithmeticList($list, $strict, $env),
-                fn(ListNode $list, ?Environment $env): ?AstNode => $this->evaluateStringConcatenationList($list, $env),
+                fn(ListNode $list, ?Environment $env, EvaluationOptions $opts): ?AstNode => $this->evaluateStringConcatenationList($list, $env, $opts),
             ),
             new ArgumentListNodeStrategy($evaluateValueClosure),
             new MapNodeStrategy($evaluateValueClosure),

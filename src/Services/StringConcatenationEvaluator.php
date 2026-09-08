@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Services;
 use Bugo\SCSS\Exceptions\DivisionByZeroException;
 use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
@@ -14,6 +15,7 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Values\SassCalculation;
+use Closure;
 
 use function count;
 use function ctype_alpha;
@@ -24,9 +26,15 @@ use function trim;
 
 final readonly class StringConcatenationEvaluator
 {
+    private const OPERATOR_WORDS = ['+', '-', '*', '/', '%', 'and', 'or', 'not'];
+
+    /**
+     * @param (Closure(AstNode): bool)|null $isTruthy
+     */
     public function __construct(
         private AstValueFormatterInterface $valueFormatter,
         private ArithmeticEvaluator $arithmetic,
+        private ?Closure $isTruthy = null,
     ) {}
 
     public function evaluate(ListNode $list, ?Environment $env = null): ?AstNode
@@ -38,7 +46,6 @@ final readonly class StringConcatenationEvaluator
         $count = count($list->items);
         $env ??= new Environment();
 
-        // Handle unary prefix: ['-' | '/', value] → '-value' or '/value'
         if ($count === 2
             && $list->items[0] instanceof StringNode
             && in_array($list->items[0]->value, ['-', '/'], true)
@@ -54,86 +61,202 @@ final readonly class StringConcatenationEvaluator
             }
         }
 
-        if ($count < 3 || $count % 2 === 0) {
+        if ($count < 3) {
             return null;
         }
 
         $list = $this->unwrapParenthesizedOperands($list);
         $list = $this->foldIsolatedDivisions($list);
 
-        $hasQuoted        = false;
-        $allStrings       = true;
-        $hasCssFunction   = false;
-        $hasCalcStructure = false;
+        $items   = $list->items;
+        $anyFold = false;
 
-        foreach ($list->items as $index => $item) {
-            if ($index % 2 === 1) {
-                if (
-                    ! ($item instanceof StringNode)
-                    || $item->quoted
-                    || ! in_array($item->value, ['+', '-'], true)
-                ) {
-                    return null;
-                }
-            } else {
-                if ($item instanceof ColorNode) {
+        for ($pass = 0; $pass < 16; $pass++) {
+            [$items, $foldedNot] = $this->foldNotOperators($items);
+            [$items, $foldedPairs] = $this->foldBinaryPairs($items, $env);
+
+            if (! $foldedNot && ! $foldedPairs) {
+                break;
+            }
+
+            $anyFold = true;
+        }
+
+        if (! $anyFold) {
+            return null;
+        }
+
+        if ($this->isBareOperator($items[0]) || $this->isBareOperator($items[count($items) - 1])) {
+            return null;
+        }
+
+        if (count($items) === 1) {
+            return $items[0];
+        }
+
+        return new ListNode($items, $list->separator, $list->bracketed, $list->parenthesized);
+    }
+
+    private function isBareOperator(AstNode $node): bool
+    {
+        return $node instanceof StringNode
+            && ! $node->quoted
+            && in_array(strtolower(trim($node->value)), self::OPERATOR_WORDS, true);
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     * @return array{0: array<int, AstNode>, 1: bool}
+     */
+    private function foldNotOperators(array $items): array
+    {
+        $result  = [];
+        $changed = false;
+        $count   = count($items);
+
+        for ($index = 0; $index < $count; $index++) {
+            $item = $items[$index];
+            $next = $items[$index + 1] ?? null;
+
+            if ($this->isNotOperator($item) && $next !== null && $this->isFoldableOperand($next)) {
+                if ($this->isTruthy !== null) {
+                    $result[] = new BooleanNode(! ($this->isTruthy)($next));
+                    $changed  = true;
+
+                    $index++;
+
                     continue;
                 }
+            }
 
-                if ($item instanceof FunctionNode) {
-                    if (SassCalculation::isCalculationFunctionName($item->name)
-                        || in_array(strtolower($item->name), ['var', 'env'], true)
-                    ) {
-                        $hasCalcStructure = true;
-                    } else {
-                        $hasCssFunction = true;
-                    }
+            $result[] = $item;
+        }
+
+        return [$result, $changed];
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     * @return array{0: array<int, AstNode>, 1: bool}
+     */
+    private function foldBinaryPairs(array $items, Environment $env): array
+    {
+        $result  = [];
+        $changed = false;
+        $count   = count($items);
+
+        for ($index = 0; $index < $count; $index++) {
+            $left     = $items[$index];
+            $operator = $items[$index + 1] ?? null;
+            $right    = $items[$index + 2] ?? null;
+
+            if ($this->canFoldPair($left, $operator, $right)) {
+                if ($operator instanceof StringNode && $right instanceof AstNode) {
+                    $result[] = $this->concatPair($left, $operator->value, $right, $env);
+                    $changed  = true;
+
+                    $index += 2;
 
                     continue;
                 }
+            }
 
-                if ($item instanceof StringNode) {
-                    $hasQuoted = $hasQuoted || $item->quoted;
-                } else {
-                    $allStrings = false;
-                }
+            $result[] = $left;
+        }
+
+        return [$result, $changed];
+    }
+
+    private function canFoldPair(?AstNode $left, ?AstNode $operator, ?AstNode $right): bool
+    {
+        if (! $operator instanceof StringNode
+            || $operator->quoted
+            || ! in_array($operator->value, ['+', '-'], true)
+        ) {
+            return false;
+        }
+
+        if ($left === null || $right === null || ! $this->isFoldableOperand($right) || ! $this->isFoldableOperand($left)) {
+            return false;
+        }
+
+        if ($this->isCalculationFamilyOperand($left) || $this->isCalculationFamilyOperand($right)) {
+            $other = $this->isCalculationFamilyOperand($left) ? $right : $left;
+
+            return $other instanceof StringNode;
+        }
+
+        return ! ($left instanceof NumberNode && $right instanceof NumberNode);
+    }
+
+    private function isFoldableOperand(?AstNode $node): bool
+    {
+        if ($node instanceof StringNode) {
+            if ($node->quoted) {
+                return true;
+            }
+
+            return ! in_array(strtolower(trim($node->value)), self::OPERATOR_WORDS, true);
+        }
+
+        return $node instanceof NumberNode
+            || $node instanceof BooleanNode
+            || $node instanceof ColorNode
+            || $node instanceof ListNode
+            || $node instanceof FunctionNode;
+    }
+
+    private function isCalculationFamilyOperand(AstNode $node): bool
+    {
+        return $node instanceof FunctionNode && SassCalculation::isCalculationFunctionName($node->name);
+    }
+
+    private function isNotOperator(?AstNode $node): bool
+    {
+        return $node instanceof StringNode
+            && ! $node->quoted
+            && strtolower(trim($node->value)) === 'not';
+    }
+
+    private function concatPair(AstNode $left, string $operator, AstNode $right, Environment $env): StringNode
+    {
+        $leftIsString  = $left instanceof StringNode;
+        $rightIsString = $right instanceof StringNode;
+
+        /** @var bool $quoted */
+        $quoted = false;
+        if ($operator === '+') {
+            if ($leftIsString) {
+                /** @var StringNode $left */
+                $quoted = $left->quoted;
+            } elseif ($rightIsString) {
+                /** @var StringNode $right */
+                $quoted = $right->quoted;
             }
         }
 
-        if (! $hasQuoted && $hasCalcStructure) {
-            return null;
+        $result = $this->formatOperand($left, $leftIsString, $operator, $env);
+
+        if ($operator !== '+') {
+            $result .= $operator;
         }
 
-        if (! $hasQuoted && ! $allStrings && ! $hasCssFunction) {
-            return null;
-        }
+        $result .= $this->formatOperand($right, $rightIsString, $operator, $env);
 
-        if (! $hasQuoted && $this->containsNumericLikeStringOperand($list)) {
-            return null;
-        }
+        return new StringNode($result, $quoted);
+    }
 
-        $result = '';
-        $quoted = null;
-
-        foreach ($list->items as $index => $item) {
-            if ($index % 2 === 1) {
-                /** @var StringNode $item */
-                if ($item->value === '-') {
-                    $result .= '-';
-                }
-
-                continue;
+    private function formatOperand(AstNode $node, bool $isString, string $operator, Environment $env): string
+    {
+        if ($isString && $node instanceof StringNode) {
+            if ($node->quoted && $operator !== '+') {
+                return $this->valueFormatter->format($node, $env);
             }
 
-            if ($item instanceof StringNode) {
-                $quoted ??= $item->quoted;
-                $result .= $item->value;
-            } else {
-                $result .= $this->valueFormatter->format($item, $env);
-            }
+            return $node->value;
         }
 
-        return new StringNode($result, $quoted ?? false);
+        return $this->valueFormatter->format($node, $env);
     }
 
     private function foldIsolatedDivisions(ListNode $list): ListNode
@@ -234,21 +357,6 @@ final readonly class StringConcatenationEvaluator
         return new NumberNode($left->value, trim($right->value), $left->isLiteral);
     }
 
-    private function containsNumericLikeStringOperand(ListNode $list): bool
-    {
-        foreach ($list->items as $index => $item) {
-            if ($index % 2 === 1 || ! $item instanceof StringNode || $item->quoted) {
-                continue;
-            }
-
-            if ($this->isNumericLikeString($item->value)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private function isUnitSuffix(string $value): bool
     {
         $value = trim($value);
@@ -270,42 +378,5 @@ final readonly class StringConcatenationEvaluator
         }
 
         return true;
-    }
-
-    private function isNumericLikeString(string $value): bool
-    {
-        $value = trim($value);
-
-        if ($value === '') {
-            return false;
-        }
-
-        $first = $value[0];
-
-        if ($first >= '0' && $first <= '9') {
-            return true;
-        }
-
-        if (
-            $first === '.'
-            && isset($value[1])
-            && $value[1] >= '0'
-            && $value[1] <= '9'
-        ) {
-            return true;
-        }
-
-        if (
-            ($first === '+' || $first === '-')
-            && isset($value[1])
-            && (
-                ($value[1] >= '0' && $value[1] <= '9')
-                || ($value[1] === '.' && isset($value[2]) && $value[2] >= '0' && $value[2] <= '9')
-            )
-        ) {
-            return true;
-        }
-
-        return false;
     }
 }

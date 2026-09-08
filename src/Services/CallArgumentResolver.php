@@ -8,6 +8,7 @@ use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
@@ -95,17 +96,27 @@ final readonly class CallArgumentResolver
 
     /**
      * @param array<int, AstNode> $arguments
-     * @return array{0: array<int, AstNode>, 1: array<string, AstNode>}
+     * @return array{0: array<int, AstNode>, 1: array<string, AstNode>, 2: string}
      */
     public function resolveCallArguments(array $arguments, Environment $env): array
     {
-        $positional = [];
-        $spread     = [];
-        $named      = [];
+        $positional  = [];
+        $spread      = [];
+        $named       = [];
+        $separator   = 'comma';
+        $spreadCount = 0;
 
         foreach ($arguments as $argument) {
             if ($argument instanceof SpreadArgumentNode) {
-                $expanded = $this->cssArgument->expandSpreadValue($this->valueEvaluator->evaluate($argument->value, $env));
+                $spreadValue = $this->valueEvaluator->evaluate($argument->value, $env);
+
+                $spreadCount++;
+
+                if ($spreadCount === 1 && $spreadValue instanceof ListNode) {
+                    $separator = $spreadValue->separator;
+                }
+
+                $expanded = $this->cssArgument->expandSpreadValue($spreadValue);
 
                 foreach ($expanded as $spreadArgument) {
                     if ($spreadArgument instanceof NamedArgumentNode) {
@@ -129,24 +140,28 @@ final readonly class CallArgumentResolver
             $positional[] = $this->valueEvaluator->evaluate($argument, $env);
         }
 
-        return [array_merge($positional, $spread), $named];
+        if ($spreadCount !== 1) {
+            $separator = 'comma';
+        }
+
+        return [array_merge($positional, $spread), $named, $separator];
     }
 
     /**
      * @param array<int, AstNode> $arguments
      * @return array<int, AstNode>
      */
-    public function expandCallArguments(array $arguments, Environment $env): array
+    public function expandCallArguments(array $arguments, Environment $env, bool $skipConcatenation = false): array
     {
-        return $this->cssArgument->expandCallArguments($arguments, $env);
+        return $this->cssArgument->expandCallArguments($arguments, $env, $skipConcatenation);
     }
 
     /**
      * @param array<int, AstNode> $arguments
      * @return array<int, AstNode>
      */
-    public function expandCssCallArguments(array $arguments, Environment $env): array
+    public function expandCssCallArguments(array $arguments, Environment $env, bool $skipConcatenation = false): array
     {
-        return $this->cssArgument->expandCssCallArguments($arguments, $env);
+        return $this->cssArgument->expandCssCallArguments($arguments, $env, $skipConcatenation);
     }
 }

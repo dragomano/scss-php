@@ -256,7 +256,28 @@ final readonly class FunctionCallParser
             }
         }
 
-        $arguments = [];
+        $arguments = $this->parseFunctionArguments($name);
+
+        return new FunctionNode($name, $arguments, $line);
+    }
+
+    public function parseFunctionFromInterpolatedName(StringNode $dynamicName): FunctionNode
+    {
+        $line = $this->stream->current()->line;
+
+        $this->stream->advance();
+
+        $arguments = $this->parseFunctionArguments($dynamicName->value);
+
+        return new FunctionNode(name: '', arguments: $arguments, line: $line, dynamicName: $dynamicName);
+    }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     * @return array<int, AstNode>
+     */
+    private function parseFunctionArguments(string $rawName, array $arguments = []): array
+    {
         $loopCount = 0;
 
         while (! $this->stream->isEof()) {
@@ -289,7 +310,6 @@ final readonly class FunctionCallParser
             if ($potentialArg !== null) {
                 $this->stream->skipWhitespace();
 
-                // Legacy = operator for IE compatibility (creates unquoted string)
                 if ($this->stream->is(TokenType::ASSIGN)) {
                     $this->stream->advance();
                     $this->stream->skipWhitespace();
@@ -297,7 +317,6 @@ final readonly class FunctionCallParser
                     $rightSide = $this->parseSingleValueNode();
 
                     if ($rightSide !== null) {
-                        // Convert both sides to strings and combine with =
                         $leftStr  = $this->nodeToString($potentialArg);
                         $rightStr = $this->nodeToString($rightSide);
 
@@ -347,15 +366,11 @@ final readonly class FunctionCallParser
 
                 if ($arg !== null) {
                     $arguments[] = $arg;
-
-                    continue;
                 }
-
-                break;
             }
         }
 
-        return new FunctionNode($name, $arguments, $line);
+        return $arguments;
     }
 
     private function parseSingleValueNode(): ?AstNode
@@ -639,11 +654,23 @@ final readonly class FunctionCallParser
             return true;
         }
 
+        if (str_starts_with($argument, '//')) {
+            return true;
+        }
+
+        if (str_starts_with($argument, '/*')) {
+            return true;
+        }
+
         if (str_contains($argument, '#{')) {
             return true;
         }
 
         if (str_contains($argument, '$')) {
+            return false;
+        }
+
+        if (str_starts_with(strtolower($argument), 'if(')) {
             return false;
         }
 

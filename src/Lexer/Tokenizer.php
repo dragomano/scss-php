@@ -109,7 +109,7 @@ final class Tokenizer
                 return $this->tokenizeSingleLineComment();
             }
 
-            if (! $this->plainCss && $next === '*') {
+            if (! $this->plainCss && $next === '*' && $this->isMultiLineCommentStart()) {
                 return $this->tokenizeMultiLineComment();
             }
 
@@ -1017,6 +1017,14 @@ final class Tokenizer
 
         $prev = $this->source[$this->position - 1];
 
+        if ($prev === '(') {
+            return false;
+        }
+
+        if ($prev === '}' || $prev === '/' || $prev === '_' || ctype_alnum($prev)) {
+            return false;
+        }
+
         if ($prev !== ':') {
             return true;
         }
@@ -1027,6 +1035,21 @@ final class Tokenizer
             if (ctype_alnum($beforeColon) || in_array($beforeColon, ['}', '"', "'"], true)) {
                 return false;
             }
+        }
+
+        return true;
+    }
+
+    private function isMultiLineCommentStart(): bool
+    {
+        if ($this->position === 0) {
+            return true;
+        }
+
+        $prev = $this->source[$this->position - 1];
+
+        if ($prev === '(') {
+            return false;
         }
 
         return true;

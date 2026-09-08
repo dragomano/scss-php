@@ -194,9 +194,29 @@ final readonly class ValueParser implements
             return null;
         }
 
+        if (
+            $this->stream->is(TokenType::PLUS)
+            && $this->stream->peek()->type === TokenType::IDENTIFIER
+            && $this->stream->peek(2)->type === TokenType::LPAREN
+        ) {
+            $this->stream->advance();
+
+            $identifier = $this->functions->parseIdentifierOrFunction();
+
+            if ($identifier instanceof FunctionNode) {
+                return new FunctionNode('+' . $identifier->name, $identifier->arguments, $identifier->line);
+            }
+
+            return new StringNode('+', false, 0, 0);
+        }
+
         $interpolatedIdentifier = $this->tryParseInterpolatedIdentifierString();
 
         if ($interpolatedIdentifier !== null) {
+            if ($this->stream->is(TokenType::LPAREN)) {
+                return $this->functions->parseFunctionFromInterpolatedName($interpolatedIdentifier);
+            }
+
             return $interpolatedIdentifier;
         }
 
@@ -914,6 +934,7 @@ final readonly class ValueParser implements
             TokenType::IDENTIFIER,
             TokenType::MINUS,
             TokenType::HASH,
+            TokenType::CSS_VARIABLE,
         ], true)) {
             return null;
         }
@@ -938,11 +959,31 @@ final readonly class ValueParser implements
                 continue;
             }
 
+            if ($token->type === TokenType::CSS_VARIABLE) {
+                $result .= $token->value;
+
+                $consumedAny = true;
+
+                $this->stream->advance();
+
+                continue;
+            }
+
             if ($token->type === TokenType::HASH && $this->stream->peek()->type === TokenType::LBRACE) {
                 $result .= $this->parseHashInterpolationString()->value;
 
                 $sawInterpolation = true;
                 $consumedAny      = true;
+
+                continue;
+            }
+
+            if ($token->type === TokenType::NUMBER && $sawInterpolation) {
+                $result .= $token->value;
+
+                $consumedAny = true;
+
+                $this->stream->advance();
 
                 continue;
             }

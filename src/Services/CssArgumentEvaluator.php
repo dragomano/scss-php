@@ -32,13 +32,14 @@ final readonly class CssArgumentEvaluator
     public function __construct(
         private AstValueEvaluatorInterface $valueEvaluator,
         private CalculationArgumentNormalizerInterface $calculationArgumentNormalizer,
+        private ?AstValueEvaluatorInterface $skipConcatenationEvaluator = null,
     ) {}
 
     /**
      * @param array<int, AstNode> $arguments
      * @return array<int, AstNode>
      */
-    public function expandCallArguments(array $arguments, Environment $env): array
+    public function expandCallArguments(array $arguments, Environment $env, bool $skipConcatenation = false): array
     {
         if ($arguments === []) {
             return [];
@@ -60,7 +61,7 @@ final readonly class CssArgumentEvaluator
 
         if ($allPositional) {
             foreach ($arguments as $argument) {
-                $positional[] = $this->valueEvaluator->evaluate($argument, $env);
+                $positional[] = $this->evaluateArgument($argument, $env, $skipConcatenation);
             }
 
             return $positional;
@@ -68,15 +69,15 @@ final readonly class CssArgumentEvaluator
 
         foreach ($arguments as $argument) {
             if ($argument instanceof SpreadArgumentNode) {
-                $spreadValue = $this->valueEvaluator->evaluate($argument->value, $env);
+                $spreadValue = $this->evaluateArgument($argument->value, $env, $skipConcatenation);
 
                 foreach ($this->expandSpreadValue($spreadValue) as $spreadArgument) {
                     $spread[] = $spreadArgument instanceof NamedArgumentNode
                         ? new NamedArgumentNode(
                             $spreadArgument->name,
-                            $this->valueEvaluator->evaluate($spreadArgument->value, $env),
+                            $this->evaluateArgument($spreadArgument->value, $env, $skipConcatenation),
                         )
-                        : $this->valueEvaluator->evaluate($spreadArgument, $env);
+                        : $this->evaluateArgument($spreadArgument, $env, $skipConcatenation);
                 }
 
                 continue;
@@ -85,37 +86,46 @@ final readonly class CssArgumentEvaluator
             if ($argument instanceof NamedArgumentNode) {
                 $named[] = new NamedArgumentNode(
                     $argument->name,
-                    $this->valueEvaluator->evaluate($argument->value, $env),
+                    $this->evaluateArgument($argument->value, $env, $skipConcatenation),
                 );
 
                 continue;
             }
 
-            $positional[] = $this->valueEvaluator->evaluate($argument, $env);
+            $positional[] = $this->evaluateArgument($argument, $env, $skipConcatenation);
         }
 
         return array_merge($positional, $spread, $named);
+    }
+
+    private function evaluateArgument(AstNode $node, Environment $env, bool $skipConcatenation): AstNode
+    {
+        if ($skipConcatenation && $this->skipConcatenationEvaluator !== null) {
+            return $this->skipConcatenationEvaluator->evaluate($node, $env);
+        }
+
+        return $this->valueEvaluator->evaluate($node, $env);
     }
 
     /**
      * @param array<int, AstNode> $arguments
      * @return array<int, AstNode>
      */
-    public function expandCssCallArguments(array $arguments, Environment $env): array
+    public function expandCssCallArguments(array $arguments, Environment $env, bool $skipConcatenation = false): array
     {
         $expanded = [];
 
         foreach ($arguments as $argument) {
             if ($argument instanceof SpreadArgumentNode) {
-                $spread = $this->valueEvaluator->evaluate($argument->value, $env);
+                $spread = $this->evaluateArgument($argument->value, $env, $skipConcatenation);
 
                 foreach ($this->expandSpreadValue($spread) as $spreadArgument) {
                     $expanded[] = $spreadArgument instanceof NamedArgumentNode
                         ? new NamedArgumentNode(
                             $spreadArgument->name,
-                            $this->evaluateFallbackCssArgument($spreadArgument->value, $env),
+                            $this->evaluateFallbackCssArgument($spreadArgument->value, $env, $skipConcatenation),
                         )
-                        : $this->evaluateFallbackCssArgument($spreadArgument, $env);
+                        : $this->evaluateFallbackCssArgument($spreadArgument, $env, $skipConcatenation);
                 }
 
                 continue;
@@ -124,13 +134,13 @@ final readonly class CssArgumentEvaluator
             if ($argument instanceof NamedArgumentNode) {
                 $expanded[] = new NamedArgumentNode(
                     $argument->name,
-                    $this->evaluateFallbackCssArgument($argument->value, $env),
+                    $this->evaluateFallbackCssArgument($argument->value, $env, $skipConcatenation),
                 );
 
                 continue;
             }
 
-            $expanded[] = $this->evaluateFallbackCssArgument($argument, $env);
+            $expanded[] = $this->evaluateFallbackCssArgument($argument, $env, $skipConcatenation);
         }
 
         return $expanded;
@@ -174,10 +184,10 @@ final readonly class CssArgumentEvaluator
         return [$spread];
     }
 
-    private function evaluateFallbackCssArgument(AstNode $node, Environment $env): AstNode
+    private function evaluateFallbackCssArgument(AstNode $node, Environment $env, bool $skipConcatenation = false): AstNode
     {
         if (! $this->shouldPreserveCssArgument($node)) {
-            return $this->valueEvaluator->evaluate($node, $env);
+            return $this->evaluateArgument($node, $env, $skipConcatenation);
         }
 
         if ($node instanceof ListNode) {
@@ -204,7 +214,7 @@ final readonly class CssArgumentEvaluator
         }
 
         if ($node instanceof NamedArgumentNode) {
-            $value = $this->evaluateFallbackCssArgument($node->value, $env);
+            $value = $this->evaluateFallbackCssArgument($node->value, $env, $skipConcatenation);
 
             return $value === $node->value
                 ? $node
@@ -212,7 +222,7 @@ final readonly class CssArgumentEvaluator
         }
 
         /** @var FunctionNode $node */
-        $arguments = $this->expandCssCallArguments($node->arguments, $env);
+        $arguments = $this->expandCssCallArguments($node->arguments, $env, $skipConcatenation);
 
         return new FunctionNode(
             name: $node->name,

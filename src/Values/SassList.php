@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Values;
 
-use function ctype_alnum;
 use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
@@ -38,19 +37,9 @@ final class SassList extends AbstractSassValue
 
                 if (
                     $this->separator === 'space'
-                    && (
-                        (
-                            str_ends_with($previous, '-')
-                            && $previous !== '-'
-                            && $formatted !== ''
-                            && (str_starts_with($formatted, '#{') || ctype_alnum($formatted[0]))
-                        )
-                        || (
-                            str_ends_with($previous, '}')
-                            && str_contains($previous, '#{')
-                            && str_starts_with($formatted, '-')
-                        )
-                    )
+                    && str_ends_with($previous, '}')
+                    && str_contains($previous, '#{')
+                    && str_starts_with($formatted, '-')
                 ) {
                     $joiner = '';
                 }

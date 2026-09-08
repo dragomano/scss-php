@@ -24,6 +24,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Utils\StringHelper;
 use Bugo\SCSS\Utils\UnitConverter;
 use Bugo\SCSS\Values\SassNumber;
 use Bugo\SCSS\Values\SassValue;
@@ -753,6 +754,15 @@ final readonly class Condition
 
         if ($this->isHexColorLiteral($value)) {
             $literal = new ColorNode($value);
+
+            $this->ctx->conditionCacheState->literalValue[$value] = $literal;
+
+            return $literal;
+        }
+
+        if (StringHelper::isQuoted($value)) {
+            $unquoted = StringHelper::unquote($value);
+            $literal  = new StringNode($unquoted, true);
 
             $this->ctx->conditionCacheState->literalValue[$value] = $literal;
 

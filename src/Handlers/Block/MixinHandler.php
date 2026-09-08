@@ -55,7 +55,7 @@ final readonly class MixinHandler
             throw UndefinedSymbolException::mixin($node->name);
         }
 
-        [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
+        [$resolvedPositional, $resolvedNamed, $restSeparator] = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
 
         return $this->compileMixin(
             $mixin,
@@ -66,6 +66,7 @@ final readonly class MixinHandler
             $node->contentArguments,
             $node->hasContent,
             $ctx,
+            $restSeparator,
         );
     }
 
@@ -208,6 +209,7 @@ final readonly class MixinHandler
         array $contentArguments,
         bool $hasContent,
         TraversalContext $ctx,
+        string $restSeparator = 'comma',
     ): string {
         $this->module->incrementCallDepth();
 

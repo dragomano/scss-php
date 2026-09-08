@@ -14,6 +14,8 @@ use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\ForNode;
+use Bugo\SCSS\Nodes\IfNode;
+use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
@@ -610,6 +612,13 @@ final readonly class Selector
         $hasOutput        = false;
         $lastRenderedLine = null;
 
+        $s = $env->getCurrentScope();
+        if (! $s->hasVariable('__parent_selector')) {
+            $s->setVariableLocal('__parent_selector', new StringNode(''));
+        }
+
+        $s->setVariableLocal('__flow_control_declaration_guard', true);
+
         if ($baseValue !== null) {
             $this->render->appendChunk($output, $prefix . $baseProperty . ': ' . $baseValue . ';');
 
@@ -744,6 +753,15 @@ final readonly class Selector
                     $nestedProperty['value'],
                 );
             } elseif ($child instanceof Visitable) {
+                if ($child instanceof IfNode || $child instanceof IncludeNode) {
+                    $ss = $env->getCurrentScope();
+                    if (! $ss->hasVariable('__parent_selector')) {
+                        $ss->setVariableLocal('__parent_selector', new StringNode(''));
+                    }
+
+                    $ss->setVariableLocal('__flow_control_declaration_guard', true);
+                }
+
                 $chunk = $this->compileNestedPropertyBlockChild($child, $env, $indent, $baseProperty);
             } else {
                 continue;

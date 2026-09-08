@@ -24,7 +24,7 @@ final readonly class ListNodeStrategy implements EvaluationStrategyInterface
      * @param Closure(AstNode, Environment, EvaluationOptions): AstNode $evaluateValue
      * @param Closure(ListNode, Environment): ?AstNode $evaluateLogicalList
      * @param Closure(ListNode, bool, Environment): ?AstNode $evaluateArithmeticList
-     * @param Closure(ListNode, ?Environment): ?AstNode $evaluateStringConcatenationList
+     * @param Closure(ListNode, ?Environment, EvaluationOptions): ?AstNode $evaluateStringConcatenationList
      */
     public function __construct(
         private Closure $evaluateValue,
@@ -97,7 +97,7 @@ final readonly class ListNodeStrategy implements EvaluationStrategyInterface
             }
         }
 
-        $concatenation = ($this->evaluateStringConcatenationList)($evaluated, $env);
+        $concatenation = ($this->evaluateStringConcatenationList)($evaluated, $env, $options);
 
         return $concatenation ?? $evaluated;
     }

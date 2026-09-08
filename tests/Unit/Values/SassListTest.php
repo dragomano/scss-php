@@ -11,10 +11,10 @@ describe(SassList::class, function () {
         expect($list->toCss())->toBe('10px 20px');
     });
 
-    it('omits separator when hyphenated fragments should stay adjacent', function () {
+    it('keeps separator after hyphenated fragments like the reference compiler', function () {
         $list = new SassList(['foo-', 'bar'], 'space');
 
-        expect($list->toCss())->toBe('foo-bar');
+        expect($list->toCss())->toBe('foo- bar');
     });
 
     it('keeps equal items instead of collapsing box shorthand', function () {
