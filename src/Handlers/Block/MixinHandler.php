@@ -255,6 +255,7 @@ final readonly class MixinHandler
                 $resolvedNamed,
                 $executionScope,
                 $ctx->env,
+                $restSeparator,
             );
 
             $output = $this->chunks->compileBodyChunks($mixin->body, $childCtx, $includeCallScope);

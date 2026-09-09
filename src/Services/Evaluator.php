@@ -151,6 +151,18 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
 
         if ($value instanceof ListNode
             && $value->separator === 'space'
+            && $this->isMultiSlashChain($value)
+            && ($value->parenthesized > 0 || $this->containsVariableReference($value->items))
+        ) {
+            $evaluatedChain = $this->evaluateMultiSlashChain($value, $env);
+
+            if ($evaluatedChain instanceof NumberNode) {
+                return $evaluatedChain;
+            }
+        }
+
+        if ($value instanceof ListNode
+            && $value->separator === 'space'
             && $this->isSlashDivisionCandidate($value)
         ) {
             return $this->evaluateValueWithSlashDivision($value, $env);
@@ -227,6 +239,77 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         $lastLiteral  = $last instanceof NumberNode && $last->isLiteral;
 
         return ! ($firstLiteral && $lastLiteral);
+    }
+
+    private function isMultiSlashChain(ListNode $value): bool
+    {
+        $items = $value->items;
+        $count = count($items);
+
+        if ($count < 5 || $count % 2 !== 1) {
+            return false;
+        }
+
+        foreach ($items as $index => $item) {
+            if ($index % 2 === 0) {
+                if (! $item instanceof NumberNode && ! $item instanceof VariableReferenceNode) {
+                    return false;
+                }
+            } elseif (! $item instanceof StringNode || $item->value !== '/') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     */
+    private function containsVariableReference(array $items): bool
+    {
+        foreach ($items as $item) {
+            if ($item instanceof VariableReferenceNode) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function evaluateMultiSlashChain(ListNode $value, Environment $env): ?AstNode
+    {
+        $operands = [];
+
+        foreach ($value->items as $index => $item) {
+            if ($index % 2 === 0) {
+                $operand = $this->evaluateValue($item, $env);
+
+                if (! $operand instanceof NumberNode) {
+                    return null;
+                }
+
+                $operands[] = $operand;
+
+                continue;
+            }
+
+            if (! $item instanceof StringNode || $item->value !== '/') {
+                return null;
+            }
+        }
+
+        $result = $operands[0];
+
+        for ($i = 1, $count = count($operands); $i < $count; $i++) {
+            if (! $result instanceof NumberNode) {
+                return $result;
+            }
+
+            $result = $this->arithmetic->applyOperator($result, '/', $operands[$i]);
+        }
+
+        return $result;
     }
 
     public function isSassNullValue(AstNode $value): bool
@@ -407,7 +490,15 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             return $this->ctx->valueFactory->fromAst($node)->toCss();
         }
 
-        if ($node instanceof ListNode || $node instanceof ArgumentListNode) {
+        if ($node instanceof ListNode) {
+            if ($this->calculation->isSlashChain($node)) {
+                return $this->calculation->formatSlashChain($node, $env);
+            }
+
+            return $this->calculation->formatListValue($node->items, $node->separator, $node->bracketed, $env);
+        }
+
+        if ($node instanceof ArgumentListNode) {
             return $this->calculation->formatListValue($node->items, $node->separator, $node->bracketed, $env);
         }
 
@@ -492,13 +583,20 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             return null;
         }
 
+        $count = count($list->items);
+
+        $leftStart = $comparisonIndex - 1;
+
+        while ($leftStart >= 2 && $this->isArithmeticOperatorItem($list->items[$leftStart - 1])) {
+            $leftStart -= 2;
+        }
+
         $left = $this->evaluateSpaceSeparatedItems(
-            array_slice($list->items, 0, $comparisonIndex),
+            array_slice($list->items, $leftStart, $comparisonIndex - $leftStart),
             $env,
         );
 
         $rightEnd = $comparisonIndex + 2;
-        $count    = count($list->items);
 
         while ($rightEnd + 1 < $count
             && $list->items[$rightEnd] instanceof StringNode
@@ -512,17 +610,40 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             array_slice($list->items, $comparisonIndex + 1, $rightEnd - $comparisonIndex - 1),
             $env,
         );
+
         $result = $this->createBooleanNode($this->condition->compare($left, $operator, $right, $env));
 
-        $remaining = array_slice($list->items, $rightEnd);
+        $leading   = [];
+        $remaining = [];
 
-        if ($remaining === []) {
-            return $result;
+        if ($leftStart > 0) {
+            $leading = array_slice($list->items, 0, $leftStart);
         }
 
-        $chained = $this->evaluateComparisonList(new ListNode([$result, ...$remaining], 'space'), $env);
+        if ($rightEnd < $count) {
+            $remaining = array_slice($list->items, $rightEnd);
+        }
 
-        return $chained ?? new ListNode([$result, ...$remaining], 'space');
+        if ($leading === []) {
+            if ($remaining === []) {
+                return $result;
+            }
+
+            $chained = $this->evaluateComparisonList(new ListNode([$result, ...$remaining], 'space'), $env);
+
+            return $chained ?? new ListNode([$result, ...$remaining], 'space');
+        }
+
+        $tail = $remaining === [] ? [$result] : [$result, ...$remaining];
+
+        return new ListNode([...$leading, ...$tail], 'space');
+    }
+
+    private function isArithmeticOperatorItem(AstNode $node): bool
+    {
+        return $node instanceof StringNode
+            && ! $node->quoted
+            && in_array(trim($node->value), ['+', '-', '*', '/', '%'], true);
     }
 
     public function evaluateStringConcatenationList(ListNode $list, ?Environment $env = null, ?EvaluationOptions $options = null): ?AstNode
@@ -580,8 +701,16 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         array $resolvedNamed,
         Scope $scope,
         Environment $env,
+        string $restSeparator = 'comma',
     ): void {
-        $this->userFunction->bindParametersToCurrentScope($parameters, $resolvedPositional, $resolvedNamed, $scope, $env);
+        $this->userFunction->bindParametersToCurrentScope(
+            $parameters,
+            $resolvedPositional,
+            $resolvedNamed,
+            $scope,
+            $env,
+            $restSeparator,
+        );
     }
 
     /**

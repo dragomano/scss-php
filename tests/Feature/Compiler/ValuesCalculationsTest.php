@@ -325,8 +325,8 @@ describe('Compiler', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .child {
-              grid-row: 2 / 4;
-              grid-column: 1 / 4;
+              grid-row: 2/4;
+              grid-column: 1/4;
               font: 16px/1.4 Arial;
               margin: 0.5;
             }
@@ -347,7 +347,7 @@ describe('Compiler', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             body {
-              width: 6 / 2px;
+              width: 6/2px;
               height: calc(3 / 1px);
             }
             CSS;
@@ -365,7 +365,7 @@ describe('Compiler', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             body {
-              width: 6px / 2;
+              width: 6px/2;
               height: 3px;
             }
             CSS;

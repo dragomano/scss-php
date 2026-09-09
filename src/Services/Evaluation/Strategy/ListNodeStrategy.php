@@ -6,6 +6,7 @@ namespace Bugo\SCSS\Services\Evaluation\Strategy;
 
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
@@ -80,6 +81,10 @@ final readonly class ListNodeStrategy implements EvaluationStrategyInterface
         }
 
         if (count($evaluated->items) === 1) {
+            if ($evaluated->parenthesized > 0 && $evaluated->items[0] instanceof NullNode) {
+                return $evaluated->items[0];
+            }
+
             return $evaluated;
         }
 

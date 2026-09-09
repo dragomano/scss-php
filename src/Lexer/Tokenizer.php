@@ -191,7 +191,7 @@ final class Tokenizer
             }
 
             if ($next !== '' && (ctype_alpha($next) || $next === '_' || $next === '\\')) {
-                return $this->tokenizeIdentifier();
+                return $this->tokenizeIdentifier($lastToken);
             }
 
             return $this->makeToken(TokenType::MINUS, '-', 1);
@@ -205,12 +205,12 @@ final class Tokenizer
             return $this->tokenizeNumber();
         }
 
-        if (ctype_alpha($char) || $char === '_') {
-            return $this->tokenizeIdentifier();
+        if (ctype_alpha($char) || $char === '_' || $char >= "\x80") {
+            return $this->tokenizeIdentifier($lastToken);
         }
 
         if ($char === '\\') {
-            return $this->tokenizeIdentifier();
+            return $this->tokenizeIdentifier($lastToken);
         }
 
         $this->advance();
@@ -616,12 +616,32 @@ final class Tokenizer
             }
         }
 
-        // Unit: % or alpha chars (px, em, rem, …)
         if ($this->position < $this->length && $this->source[$this->position] === '%') {
             $this->position++;
         } else {
+            $hasUnitChars = false;
+
             while ($this->position < $this->length && ctype_alpha($this->source[$this->position])) {
                 $this->position++;
+
+                $hasUnitChars = true;
+            }
+
+            while (
+                $hasUnitChars
+                && $this->position < $this->length
+                && $this->source[$this->position] === '-'
+                && ($this->position + 1 >= $this->length || ! ctype_digit($this->source[$this->position + 1]))
+            ) {
+                $this->position++;
+
+                $hasUnitChars = false;
+
+                while ($this->position < $this->length && ctype_alpha($this->source[$this->position])) {
+                    $this->position++;
+
+                    $hasUnitChars = true;
+                }
             }
         }
 
@@ -665,7 +685,7 @@ final class Tokenizer
         return false;
     }
 
-    private function tokenizeIdentifier(): Token
+    private function tokenizeIdentifier(?Token $lastToken = null): Token
     {
         $line   = $this->line;
         $column = $this->column;
@@ -703,7 +723,10 @@ final class Tokenizer
                 break;
             }
 
-            $normalizedEscape = $this->tokenizeIdentifierEscape($value === '');
+            $isNameStartEscape = $value === ''
+                && ($lastToken === null || $lastToken->type !== TokenType::RBRACE);
+
+            $normalizedEscape = $this->tokenizeIdentifierEscape($isNameStartEscape);
 
             $value .= $normalizedEscape;
         }
@@ -726,10 +749,20 @@ final class Tokenizer
                 return '\\' . strtolower(dechex($codePoint)) . ' ';
             }
 
+            if ($isFirst && $codePoint === 0x2D) {
+                return '\\-';
+            }
+
             return $this->normalizeIdentifierEscapedCodePoint($codePoint);
         }
 
-        return $this->normalizeIdentifierEscapedCodePoint($this->decodeUtf8CodePoint(substr($escapeResult, 1)));
+        $codePoint = $this->decodeUtf8CodePoint(substr($escapeResult, 1));
+
+        if ($isFirst && $codePoint === 0x2D) {
+            return '\\-';
+        }
+
+        return $this->normalizeIdentifierEscapedCodePoint($codePoint);
     }
 
     private function utf8SequenceWidth(): int
@@ -999,7 +1032,7 @@ final class Tokenizer
                 continue;
             }
 
-            if (ctype_alnum($ch) || $ch === '_' || $ch === ')' || $ch === ']' || $ch === '%') {
+            if (ctype_alnum($ch) || $ch === '_' || $ch === ')' || $ch === ']' || $ch === '%' || $ch === '}') {
                 return false;
             }
 

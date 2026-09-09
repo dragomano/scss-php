@@ -70,4 +70,29 @@ final class StringHelper
 
         return in_array($first, self::QUOTE_CHARS, true) && $first === $last;
     }
+
+    public static function trimPreservingEscapeTerminator(string $value): string
+    {
+        $trimmed = rtrim(ltrim($value));
+
+        if ($trimmed === $value || $trimmed === '') {
+            return $trimmed;
+        }
+
+        $length = strlen($trimmed);
+        $index  = $length;
+        $hex    = 0;
+
+        while ($index > 0 && $hex < 6 && ctype_xdigit($trimmed[$index - 1])) {
+            $index--;
+
+            $hex++;
+        }
+
+        if ($hex > 0 && $index > 0 && $trimmed[$index - 1] === '\\') {
+            return $trimmed . ' ';
+        }
+
+        return $trimmed;
+    }
 }

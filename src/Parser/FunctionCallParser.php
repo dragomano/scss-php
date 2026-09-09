@@ -317,10 +317,19 @@ final readonly class FunctionCallParser
                     $rightSide = $this->parseSingleValueNode();
 
                     if ($rightSide !== null) {
-                        $leftStr  = $this->nodeToString($potentialArg);
-                        $rightStr = $this->nodeToString($rightSide);
+                        $leftStr = $this->nodeToString($potentialArg);
 
-                        $arguments[] = new StringNode($leftStr . '=' . $rightStr, false);
+                        if ($this->containsDynamicValue($rightSide)) {
+                            $arguments[] = new ListNode([
+                                new StringNode($leftStr . '='),
+                                new StringNode('+'),
+                                $rightSide,
+                            ], 'space');
+                        } else {
+                            $rightStr = $this->nodeToString($rightSide);
+
+                            $arguments[] = new StringNode($leftStr . '=' . $rightStr, false);
+                        }
 
                         continue;
                     }
@@ -805,6 +814,27 @@ final readonly class FunctionCallParser
         $this->stream->consume(TokenType::RPAREN);
 
         return $arguments;
+    }
+
+    private function containsDynamicValue(AstNode $node): bool
+    {
+        if ($node instanceof VariableReferenceNode) {
+            return true;
+        }
+
+        if ($node instanceof StringNode) {
+            return str_contains($node->value, '#{');
+        }
+
+        if ($node instanceof ListNode) {
+            foreach ($node->items as $item) {
+                if ($this->containsDynamicValue($item)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function nodeToString(AstNode $node): string

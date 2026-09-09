@@ -25,6 +25,7 @@ use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Nodes\WhileNode;
+use Bugo\SCSS\Utils\StringHelper;
 
 use function ctype_alnum;
 use function in_array;
@@ -598,7 +599,7 @@ final readonly class DirectiveParser
             $prelude = substr($prelude, 0, $offset) . substr($prelude, $offset + $length);
         }
 
-        return trim($prelude);
+        return StringHelper::trimPreservingEscapeTerminator($prelude);
     }
 
     private function readPreludeTokenized(): string
@@ -653,7 +654,7 @@ final readonly class DirectiveParser
             $this->stream->advance();
         }
 
-        return trim($prelude);
+        return StringHelper::trimPreservingEscapeTerminator($prelude);
     }
 
     private function readInterpolatedDirectiveName(string $initial = ''): string

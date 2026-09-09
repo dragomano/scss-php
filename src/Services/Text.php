@@ -12,7 +12,9 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Utils\MediaQuery;
 use Bugo\SCSS\Utils\StringEscapeDecoder;
+use Bugo\SCSS\Utils\StringHelper;
 
 use function count;
 use function ctype_alpha;
@@ -95,7 +97,15 @@ final readonly class Text
     {
         $prelude = $this->unwrapRedundantNotParentheses($prelude);
 
-        return $this->padMediaQueryOperators($prelude);
+        $padded = $this->padMediaQueryOperators($prelude);
+
+        $queries = MediaQuery::parseList($padded);
+
+        if ($queries === null) {
+            return $padded;
+        }
+
+        return MediaQuery::serializeList($queries);
     }
 
     public function evaluateMediaFeatureOperands(string $prelude, Environment $env): string
@@ -661,7 +671,7 @@ final readonly class Text
 
     private function stripPreludeComments(string $text): string
     {
-        $text   = trim($text);
+        $text   = StringHelper::trimPreservingEscapeTerminator($text);
         $length = strlen($text);
 
         if ($length === 0) {
@@ -734,8 +744,8 @@ final readonly class Text
                     continue;
                 }
 
-                $kept[]     = trim($chunk['text']);
-                $valueSeen  = true;
+                $kept[]    = StringHelper::trimPreservingEscapeTerminator($chunk['text']);
+                $valueSeen = true;
 
                 continue;
             }
@@ -824,7 +834,7 @@ final readonly class Text
 
     private function unwrapRedundantNotParentheses(string $prelude): string
     {
-        $prelude = trim($prelude);
+        $prelude = StringHelper::trimPreservingEscapeTerminator($prelude);
 
         if ($this->isWrappedBySingleOuterParentheses($prelude)) {
             $inner = trim(substr($prelude, 1, -1));
@@ -894,7 +904,7 @@ final readonly class Text
             $result .= ' ' . $word;
         }
 
-        return trim($result);
+        return StringHelper::trimPreservingEscapeTerminator($result);
     }
 
     private function normalizeSupportsFeatureDeclarations(string $condition, Environment $env): string

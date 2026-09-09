@@ -14,6 +14,7 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -454,6 +455,10 @@ final readonly class ValueParser implements
             }
 
             if (! $singleItem instanceof ListNode) {
+                if ($singleItem instanceof NullNode) {
+                    return $singleItem;
+                }
+
                 if ($singleItem instanceof NumberNode || $singleItem instanceof FunctionNode) {
                     $singleItem->parenthesized++;
                 } else {
@@ -978,7 +983,7 @@ final readonly class ValueParser implements
                 continue;
             }
 
-            if ($token->type === TokenType::NUMBER && $sawInterpolation) {
+            if ($token->type === TokenType::NUMBER && $sawInterpolation && ! str_starts_with($token->value, '+')) {
                 $result .= $token->value;
 
                 $consumedAny = true;

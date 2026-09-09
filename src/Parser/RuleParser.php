@@ -15,6 +15,7 @@ use Bugo\SCSS\Nodes\VariableDeclarationNode;
 
 use function in_array;
 use function max;
+use function rtrim;
 use function str_contains;
 use function str_starts_with;
 use function strlen;
@@ -202,6 +203,7 @@ final class RuleParser
         $startColumn        = $this->trackSourceLocations ? $startToken->column : 1;
         $selector           = '';
         $interpolationDepth = 0;
+        $pendingBreak       = false;
 
         while (! $this->stream->isEof()) {
             $token = $this->stream->current();
@@ -241,6 +243,9 @@ final class RuleParser
             if ($token->type === TokenType::WHITESPACE) {
                 if (str_contains($token->value, "\n") && $selector !== '' && $selector[-1] === ',') {
                     $selector .= "\n";
+                } elseif (str_contains($token->value, "\n") && $selector !== '') {
+                    $pendingBreak = true;
+                    $selector    .= ' ';
                 } else {
                     $selector .= ' ';
                 }
@@ -249,7 +254,16 @@ final class RuleParser
             } elseif ($token->type === TokenType::HASH) {
                 $selector .= '#' . $token->value;
             } else {
-                $selector .= $token->value;
+                if ($token->value === ',' && $pendingBreak) {
+                    $selector     = rtrim($selector) . "\n,";
+                    $pendingBreak = false;
+                } else {
+                    $selector .= $token->value;
+                }
+
+                if ($token->value !== ',') {
+                    $pendingBreak = false;
+                }
             }
 
             $this->stream->advance();
@@ -283,6 +297,7 @@ final class RuleParser
         $depth              = 0;
         $bracketDepth       = 0;
         $interpolationDepth = 0;
+        $pendingBreak       = false;
 
         while (! $this->stream->isEof()) {
             $token = $this->stream->current();
@@ -294,6 +309,9 @@ final class RuleParser
             if ($token->type === TokenType::WHITESPACE) {
                 if (str_contains($token->value, "\n") && $buffer !== '' && $buffer[-1] === ',') {
                     $buffer .= "\n";
+                } elseif (str_contains($token->value, "\n") && $buffer !== '') {
+                    $pendingBreak = true;
+                    $buffer      .= ' ';
                 } else {
                     $buffer .= ' ';
                 }
@@ -413,7 +431,16 @@ final class RuleParser
                 break;
             }
 
-            $buffer .= $token->value;
+            if ($token->value === ',' && $pendingBreak) {
+                $buffer        = rtrim($buffer) . "\n,";
+                $pendingBreak  = false;
+            } else {
+                $buffer .= $token->value;
+            }
+
+            if ($token->value !== ',') {
+                $pendingBreak = false;
+            }
 
             $this->stream->advance();
         }

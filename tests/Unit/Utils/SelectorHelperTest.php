@@ -68,11 +68,11 @@ describe('SelectorHelper', function () {
             expect(SelectorHelper::resolveNested('.child', ''))->toBe('.child');
         });
 
-        it('reindexes resolved parts after deduplication', function () {
+        it('preserves duplicate parent parts like dart sass', function () {
             $result = SelectorHelper::resolveNested('&, &', '.btn');
 
-            expect($result)->toBe('.btn')
-                ->and(array_values(explode(', ', $result)))->toBe(['.btn']);
+            expect($result)->toBe('.btn, .btn')
+                ->and(array_values(explode(', ', $result)))->toBe(['.btn', '.btn']);
         });
     });
 });

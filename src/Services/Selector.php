@@ -30,8 +30,10 @@ use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Style;
+use Bugo\SCSS\Utils\MediaQuery;
 use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\SelectorTokenizer;
+use Bugo\SCSS\Utils\StringHelper;
 
 use function array_map;
 use function array_unique;
@@ -169,6 +171,33 @@ final readonly class Selector
         }
 
         return $this->implodeUniqueSelectorList($combined);
+    }
+
+    /**
+     * @return string|null merged prelude; empty string when the intersection is empty
+     * (the rule is removed); null when the intersection can't be represented
+     * (the rule stays nested)
+     */
+    public function mergeMediaQueryPreludes(string $outer, string $inner): ?string
+    {
+        $outerQueries = MediaQuery::parseList($outer);
+        $innerQueries = MediaQuery::parseList($inner);
+
+        if ($outerQueries === null || $innerQueries === null) {
+            return $this->combineMediaQueryPreludes($outer, $inner);
+        }
+
+        $merged = MediaQuery::mergeLists($outerQueries, $innerQueries);
+
+        if ($merged === null) {
+            return null;
+        }
+
+        if ($merged === []) {
+            return '';
+        }
+
+        return MediaQuery::serializeList($merged);
     }
 
     public function isBubblingAtRuleNode(AstNode $node): bool
@@ -448,25 +477,11 @@ final readonly class Selector
             }
         }
 
-        // Remove duplicates while preserving break information
-        $uniqueCombined = [];
-        $uniqueBreaks   = [];
-        $seen           = [];
-
-        foreach ($combined as $i => $part) {
-            if (! isset($seen[$part])) {
-                $seen[$part]      = true;
-                $uniqueCombined[] = $part;
-                $uniqueBreaks[]   = $breaks[$i];
-            }
-        }
-
-        // Join with appropriate separators
         $result = '';
 
-        foreach ($uniqueCombined as $i => $part) {
+        foreach ($combined as $i => $part) {
             if ($i > 0) {
-                $result .= $uniqueBreaks[$i] ? ",\n" : ', ';
+                $result .= $breaks[$i] ? ",\n" : ', ';
             }
 
             $result .= $part;
@@ -504,7 +519,7 @@ final readonly class Selector
             return $selector;
         }
 
-        $result = trim($parts[$keepIndices[0]]);
+        $result = StringHelper::trimPreservingEscapeTerminator($parts[$keepIndices[0]]);
         $count  = count($keepIndices);
 
         for ($idx = 1; $idx < $count; $idx++) {
@@ -520,6 +535,10 @@ final readonly class Selector
                 }
             }
 
+            if (! $hasNewline && str_ends_with($parts[$prev], "\n")) {
+                $hasNewline = true;
+            }
+
             if (! $hasNewline) {
                 $currPart    = $parts[$curr];
                 $currTrimmed = ltrim($currPart);
@@ -532,7 +551,7 @@ final readonly class Selector
             }
 
             $result .= $hasNewline ? ",\n" : ', ';
-            $result .= trim($parts[$curr]);
+            $result .= StringHelper::trimPreservingEscapeTerminator($parts[$curr]);
         }
 
         return $result;

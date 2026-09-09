@@ -28,7 +28,6 @@ use function count;
 use function in_array;
 use function str_contains;
 use function str_ends_with;
-use function str_starts_with;
 use function strtolower;
 use function trim;
 
@@ -236,49 +235,60 @@ final readonly class AtRuleNodeHandler
                     strtolower($node->name) === 'media'
                     && $child instanceof DirectiveNode
                     && strtolower($child->name) === 'media'
-                    && ! str_starts_with(trim($resolvedPrelude), 'not ')
                 ) {
-                    if ($hasParentContent) {
-                        $this->render->appendChunk($output, "\n" . $prefix . '}');
-
-                        $orderedChunks[] = [
-                            'chunk'    => $this->render->createDeferredChunk($output, $parentSegmentSaved),
-                            'isMerged' => false,
-                        ];
-
-                        $this->render->restorePosition($parentSegmentSaved);
-
-                        $output             = '';
-                        $hasParentContent   = false;
-                        $parentSegmentSaved = $this->render->savePosition();
-                    }
-
-                    $childPrelude  = $this->selector->resolveDirectivePrelude($child->prelude, $ctx->env);
-                    $parentPrelude = trim($resolvedPrelude);
-                    $mergedPrelude = $this->selector->combineMediaQueryPreludes($parentPrelude, $childPrelude);
-                    $mergedNode    = new DirectiveNode('media', $mergedPrelude, $child->body, true);
-                    $saved         = $this->render->savePosition();
-
-                    $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $parentAtRuleStack);
-
-                    $mergedChunk = $this->render->trimTrailingNewlines(
-                        $this->dispatcher->compileWithContext($mergedNode, $mergedCtx),
+                    $childPrelude = $this->selector->normalizeMediaQueryPrelude(
+                        $this->selector->evaluateMediaFeatureOperands(
+                            $this->selector->resolveDirectivePrelude($child->prelude, $ctx->env),
+                            $ctx->env,
+                        ),
                     );
 
-                    $deferredMergedChunk = $this->render->createDeferredChunk($mergedChunk, $saved);
+                    $mergedPrelude = $this->selector->mergeMediaQueryPreludes(trim($resolvedPrelude), $childPrelude);
 
-                    $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $currentAtRuleStack);
-
-                    $this->render->restorePosition($saved);
-
-                    if ($mergedChunk !== '') {
-                        $orderedChunks[] = [
-                            'chunk'    => $deferredMergedChunk,
-                            'isMerged' => true,
-                        ];
+                    if ($mergedPrelude === '') {
+                        continue;
                     }
 
-                    continue;
+                    if ($mergedPrelude !== null) {
+                        if ($hasParentContent) {
+                            $this->render->appendChunk($output, "\n" . $prefix . '}');
+
+                            $orderedChunks[] = [
+                                'chunk'    => $this->render->createDeferredChunk($output, $parentSegmentSaved),
+                                'isMerged' => false,
+                            ];
+
+                            $this->render->restorePosition($parentSegmentSaved);
+
+                            $output             = '';
+                            $hasParentContent   = false;
+                            $parentSegmentSaved = $this->render->savePosition();
+                        }
+
+                        $mergedNode = new DirectiveNode('media', $mergedPrelude, $child->body, true);
+                        $saved      = $this->render->savePosition();
+
+                        $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $parentAtRuleStack);
+
+                        $mergedChunk = $this->render->trimTrailingNewlines(
+                            $this->dispatcher->compileWithContext($mergedNode, $mergedCtx),
+                        );
+
+                        $deferredMergedChunk = $this->render->createDeferredChunk($mergedChunk, $saved);
+
+                        $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $currentAtRuleStack);
+
+                        $this->render->restorePosition($saved);
+
+                        if ($mergedChunk !== '') {
+                            $orderedChunks[] = [
+                                'chunk'    => $deferredMergedChunk,
+                                'isMerged' => true,
+                            ];
+                        }
+
+                        continue;
+                    }
                 }
 
                 if (! $hasParentContent) {

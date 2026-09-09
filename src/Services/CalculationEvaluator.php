@@ -8,6 +8,7 @@ use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
@@ -25,6 +26,7 @@ use function exp;
 use function fdiv;
 use function floor;
 use function fmod;
+use function implode;
 use function in_array;
 use function is_finite;
 use function is_int;
@@ -105,6 +107,41 @@ final readonly class CalculationEvaluator
         }
 
         return (string) new SassList($formattedItems, $separator, $bracketed);
+    }
+
+    public function isSlashChain(ListNode $node): bool
+    {
+        $items = $node->items;
+        $count = count($items);
+
+        if ($node->separator !== 'space' || $count < 3 || $count % 2 !== 1) {
+            return false;
+        }
+
+        foreach ($items as $index => $item) {
+            if ($index % 2 === 0) {
+                if (! $item instanceof NumberNode) {
+                    return false;
+                }
+            } elseif (! $item instanceof StringNode || $item->value !== '/') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public function formatSlashChain(ListNode $node, Environment $env): string
+    {
+        $chunks = [];
+
+        foreach ($node->items as $index => $item) {
+            if ($index % 2 === 0) {
+                $chunks[] = $this->valueFormatter->format($item, $env);
+            }
+        }
+
+        return implode('/', $chunks);
     }
 
     public function formatCalculationFunction(FunctionNode $node, Environment $env): string
@@ -636,7 +673,21 @@ final readonly class CalculationEvaluator
     private function formatListItem(AstNode $item, string $parentSeparator, Environment $env): string
     {
         if ($item instanceof ListNode && $item->bracketed) {
+            if ($item->items === []) {
+                return '[]';
+            }
+
             return '[' . $this->formatListValue($item->items, $item->separator, false, $env) . ']';
+        }
+
+        if (($item instanceof ListNode && $item->items === [])
+            || ($item instanceof MapNode && $item->isEmptyList)
+        ) {
+            return '';
+        }
+
+        if ($item instanceof ListNode && $this->isSlashChain($item)) {
+            return $this->formatSlashChain($item, $env);
         }
 
         if ($parentSeparator === 'space' && $item instanceof ListNode) {

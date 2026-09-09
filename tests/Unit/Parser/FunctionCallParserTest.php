@@ -289,7 +289,7 @@ describe('FunctionCallParser', function () {
             ->and($interpolatedUrl->arguments[0]->value)->toBe('#{asset}');
     });
 
-    it('converts variable references and lists back to strings', function () {
+    it('keeps dynamic right-hand sides of name=value arguments for runtime evaluation', function () {
         $stream = null;
         $call   = 0;
 
@@ -320,8 +320,11 @@ describe('FunctionCallParser', function () {
 
         expect($node)->toBeInstanceOf(FunctionNode::class)
             ->and($node->arguments)->toHaveCount(1)
-            ->and($node->arguments[0])->toBeInstanceOf(StringNode::class)
-            ->and($node->arguments[0]->value)->toBe('$theme.color solid=$fallback');
+            ->and($node->arguments[0])->toBeInstanceOf(ListNode::class)
+            ->and($node->arguments[0]->items)->toHaveCount(3)
+            ->and($node->arguments[0]->items[0])->toBeInstanceOf(StringNode::class)
+            ->and($node->arguments[0]->items[0]->value)->toBe('$theme.color solid=')
+            ->and($node->arguments[0]->items[2])->toBeInstanceOf(VariableReferenceNode::class);
     });
 
     it('returns an empty string for unsupported node types', function () {

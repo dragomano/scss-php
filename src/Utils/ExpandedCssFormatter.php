@@ -210,6 +210,12 @@ final readonly class ExpandedCssFormatter
                     continue;
                 }
 
+                if ($char === '#' && $i + 1 < $length && $css[$i + 1] === '{') {
+                    $i = StringEscapeDecoder::skipInterpolation($css, $i + 1);
+
+                    continue;
+                }
+
                 if ($char === $quote) {
                     $inString = false;
                 }
@@ -304,6 +310,12 @@ final readonly class ExpandedCssFormatter
             if ($inString) {
                 if ($char === '\\') {
                     $i += 2;
+
+                    continue;
+                }
+
+                if ($char === '#' && $i + 1 < $length && $css[$i + 1] === '{') {
+                    $i = StringEscapeDecoder::skipInterpolation($css, $i + 1);
 
                     continue;
                 }
