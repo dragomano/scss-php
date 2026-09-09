@@ -222,7 +222,7 @@ final readonly class DirectiveParser
         while ($iterations < $maxIterations) {
             $iterations++;
 
-            $this->stream->skipWhitespaceAndComments();
+            $this->stream->skipWhitespace();
 
             if (! $this->stream->is(TokenType::AT)) {
                 break;

@@ -116,6 +116,11 @@ final readonly class Selector
         return $this->tokenizer->normalizeSelectorAttributes($selector);
     }
 
+    public function normalizePseudoArguments(string $selector): string
+    {
+        return $this->tokenizer->normalizePseudoArguments($selector);
+    }
+
     public function normalizeAdjacentSelectorCompounds(string $selector): string
     {
         return $this->tokenizer->normalizeAdjacentSelectorCompounds($selector);

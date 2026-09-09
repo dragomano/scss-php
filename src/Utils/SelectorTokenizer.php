@@ -21,7 +21,9 @@ use function ctype_alpha;
 use function end;
 use function implode;
 use function in_array;
+use function ltrim;
 use function max;
+use function rtrim;
 use function str_contains;
 use function str_starts_with;
 use function strlen;
@@ -787,6 +789,78 @@ final readonly class SelectorTokenizer
 
             $result .= $selector[$index];
             $index++;
+        }
+
+        return $result;
+    }
+
+    public function normalizePseudoArguments(string $selector): string
+    {
+        if (! str_contains($selector, '(')) {
+            return $selector;
+        }
+
+        $result = '';
+        $length = strlen($selector);
+        $index  = 0;
+
+        while ($index < $length) {
+            $char = $selector[$index];
+
+            if ($char === '"' || $char === "'") {
+                $end = $this->findQuotedStringEnd($selector, $index);
+
+                $result .= substr($selector, $index, $end - $index);
+                $index   = $end;
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $result .= $this->readBracketGroup($selector, $index, '[', ']');
+
+                continue;
+            }
+
+            if ($char !== ':') {
+                $result .= $char;
+
+                $index++;
+
+                continue;
+            }
+
+            $pseudoStart = $index;
+
+            $index++;
+
+            if ($index < $length && $selector[$index] === ':') {
+                $index++;
+            }
+
+            $nameStart = $index;
+
+            while ($index < $length && $this->isIdentifierChar($selector[$index])) {
+                $index++;
+            }
+
+            if ($index === $nameStart || $index >= $length || $selector[$index] !== '(') {
+                $result .= substr($selector, $pseudoStart, $index - $pseudoStart);
+
+                continue;
+            }
+
+            $name = substr($selector, $nameStart, $index - $nameStart);
+
+            $argumentStart = $index;
+
+            $this->readBracketGroup($selector, $index, '(', ')');
+
+            $inner = substr($selector, $argumentStart + 1, $index - $argumentStart - 2);
+
+            $result .= substr($selector, $pseudoStart, $nameStart - $pseudoStart)
+                . $name
+                . '(' . $this->trimPseudoArgumentEdges($this->normalizePseudoArguments($inner)) . ')';
         }
 
         return $result;
@@ -3292,6 +3366,31 @@ final readonly class SelectorTokenizer
     private function isIdentifierChar(string $char): bool
     {
         return $char !== '' && (ctype_alnum($char) || $char === '-' || $char === '_');
+    }
+
+    private function findQuotedStringEnd(string $text, int $start): int
+    {
+        $length = strlen($text);
+        $quote  = $text[$start];
+
+        for ($i = $start + 1; $i < $length; $i++) {
+            if ($text[$i] === '\\') {
+                $i++;
+
+                continue;
+            }
+
+            if ($text[$i] === $quote) {
+                return $i + 1;
+            }
+        }
+
+        return $length;
+    }
+
+    private function trimPseudoArgumentEdges(string $inner): string
+    {
+        return rtrim(ltrim($inner), " \t\n\r\0\x0B");
     }
 
     private function hasConsecutiveCombinatorsInParentheses(string $selector): bool

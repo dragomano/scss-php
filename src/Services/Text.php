@@ -933,9 +933,11 @@ final readonly class Text
 
             $inner = substr($condition, $openPos + 1, $closePos - $openPos - 1);
 
-            $result .= $before . '(' . ($this->isSupportsFunctionCall($condition, $openPos)
-                ? $inner
-                : $this->normalizeSupportsGroup($inner, $env)) . ')';
+            if ($this->isSupportsFunctionCall($condition, $openPos)) {
+                $result .= $before . '(' . $this->stripLeadingSilentComment($inner) . ')';
+            } else {
+                $result .= $before . '(' . $this->normalizeSupportsGroup($inner, $env) . ')';
+            }
 
             $offset = $closePos + 1;
         }
@@ -1007,6 +1009,16 @@ final readonly class Text
     {
         $ltrimmed = ltrim($text);
 
+        if (str_starts_with($ltrimmed, '//')) {
+            $newlinePos = strpos($ltrimmed, "\n");
+
+            if ($newlinePos === false) {
+                return '';
+            }
+
+            $ltrimmed = ltrim(substr($ltrimmed, $newlinePos + 1));
+        }
+
         // Strip leading /* ... */
         if (str_starts_with($ltrimmed, '/*')) {
             $endPos = strpos($ltrimmed, '*/');
@@ -1017,6 +1029,21 @@ final readonly class Text
         }
 
         return $ltrimmed;
+    }
+
+    private function stripLeadingSilentComment(string $inner): string
+    {
+        if (! str_starts_with($inner, '//')) {
+            return $inner;
+        }
+
+        $newlinePos = strpos($inner, "\n");
+
+        if ($newlinePos === false) {
+            return '';
+        }
+
+        return substr($inner, $newlinePos);
     }
 
     private function normalizeSupportsDeclarationInner(string $inner, Environment $env): ?string
