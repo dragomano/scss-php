@@ -35,6 +35,7 @@ final readonly class ValueFactory
     public function fromAst(
         AstNode $node,
         ?callable $formatter = null,
+        bool $compactSlash = true,
     ): SassValue {
         if ($node instanceof BooleanNode) {
             return SassBoolean::fromBool($node->value);
@@ -64,10 +65,16 @@ final readonly class ValueFactory
             $items = [];
 
             foreach ($node->items as $item) {
-                $items[] = $this->fromAst($item, $formatter)->toCss();
+                $items[] = $this->fromAst($item, $formatter, $compactSlash)->toCss();
             }
 
-            return new SassList($items, $node->separator, $node->bracketed);
+            $separator = $node->separator;
+
+            if ($separator === 'space' && $compactSlash) {
+                $items = $this->compactSlashOperatorItems($node->items, $items);
+            }
+
+            return new SassList(array_values($items), $separator, $node->bracketed);
         }
 
         if ($node instanceof MapNode) {
@@ -88,14 +95,24 @@ final readonly class ValueFactory
                 return new SassFunctionRef($this->callableDisplayName($node->name));
             }
 
-            $arguments = [];
-            foreach ($node->arguments as $argument) {
-                $arguments[] = $this->fromAst($argument, $formatter);
+            $isCalculation = SassCalculation::isCalculationFunctionName($node->name);
+            $arguments     = [];
+
+            $compactSlashArguments = $compactSlash && ! $isCalculation;
+
+            if (
+                $compactSlashArguments
+                && strtolower($node->name) === 'color'
+                && ! $this->isColorFromSyntax($node)
+            ) {
+                $compactSlashArguments = false;
             }
 
-            $name = SassCalculation::isCalculationFunctionName($node->name)
-                ? strtolower($node->name)
-                : $node->name;
+            foreach ($node->arguments as $argument) {
+                $arguments[] = $this->fromAst($argument, $formatter, $compactSlashArguments);
+            }
+
+            $name = $isCalculation ? strtolower($node->name) : $node->name;
 
             return new SassCalculation($name, $arguments);
         }
@@ -133,5 +150,77 @@ final readonly class ValueFactory
         }
 
         return substr($name, $offset + 1);
+    }
+
+    private function isColorFromSyntax(FunctionNode $node): bool
+    {
+        $first = $node->arguments[0] ?? null;
+
+        if ($first instanceof ListNode) {
+            $first = $first->items[0] ?? null;
+        }
+
+        return $first instanceof StringNode
+            && ! $first->quoted
+            && strtolower(trim($first->value)) === 'from';
+    }
+
+    /**
+     * Merges preserved-division slash operators (parsed `/` tokens) with their
+     * neighbouring items so `a / b` renders as `a/b`, matching Dart Sass.
+     *
+     * @param array<int, AstNode> $nodes
+     * @param list<string> $items
+     * @return array<int, string>
+     */
+    private function compactSlashOperatorItems(array $nodes, array $items): array
+    {
+        $count = count($items);
+
+        if ($count < 3) {
+            return $items;
+        }
+
+        $isOperator = [];
+
+        foreach ($nodes as $index => $node) {
+            $isOperator[$index] = $node instanceof StringNode
+                && ! $node->quoted
+                && $node->isSlashOperator
+                && $node->value === '/';
+        }
+
+        $hasOperator = false;
+
+        foreach ($isOperator as $isSlashOperator) {
+            if ($isSlashOperator) {
+                $hasOperator = true;
+
+                break;
+            }
+        }
+
+        if (! $hasOperator) {
+            return $items;
+        }
+
+        $result   = [];
+        $previous = null;
+
+        foreach ($items as $index => $item) {
+            if ($previous !== null) {
+                if ($isOperator[$index] || $isOperator[$previous]) {
+                    $result[count($result) - 1] .= $item;
+                } else {
+                    $result[] = $item;
+                }
+            } else {
+                $result[] = $item;
+            }
+
+            $previous = $index;
+        }
+
+        return $result;
     }
 }

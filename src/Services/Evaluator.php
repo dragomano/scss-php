@@ -417,6 +417,12 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             return null;
         }
 
+        if ($value instanceof FunctionNode && in_array(strtolower($value->name), [
+            'rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'color', 'lab', 'lch', 'oklab', 'oklch',
+        ], true)) {
+            return null;
+        }
+
         if ($this->shouldUseCompactSlashSpacing($property)) {
             return null;
         }

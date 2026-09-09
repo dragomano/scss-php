@@ -137,7 +137,7 @@ final readonly class ValueParser implements
                         ];
                     }
 
-                    $currentGroup[] = new StringNode($word);
+                    $currentGroup[] = new StringNode($word, isSlashOperator: $word === '/');
                 } else {
                     break;
                 }

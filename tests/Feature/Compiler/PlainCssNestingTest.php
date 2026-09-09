@@ -26,7 +26,7 @@ describe('plain CSS nesting', function () {
 
             expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
             a {
-              b: 1 / / / bar;
+              b: 1///bar;
             }
             CSS);
         });

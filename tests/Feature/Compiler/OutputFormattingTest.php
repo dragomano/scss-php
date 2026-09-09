@@ -110,15 +110,15 @@ describe('Output Formatting', function () {
         $expected = /** @lang text */ <<<'CSS'
         body {
           rgb: rgb(from currentcolor r g b);
-          rgba: rgba(from currentcolor r g b / alpha);
+          rgba: rgba(from currentcolor r g b/alpha);
           hsl: hsl(from currentcolor h s l);
-          hsla: hsla(from currentcolor h s l / alpha);
+          hsla: hsla(from currentcolor h s l/alpha);
           hwb: hwb(from currentcolor h w b);
           lab: lab(from currentcolor l a b);
           lch: lch(from currentcolor l c h);
           oklab: oklab(from currentcolor l a b);
           oklch: oklch(from currentcolor l c h);
-          color: color(from currentcolor srgb r g b / alpha);
+          color: color(from currentcolor srgb r g b/alpha);
         }
         CSS;
 

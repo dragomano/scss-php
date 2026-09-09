@@ -1670,7 +1670,9 @@ final readonly class Text
                 default => ' ',
             };
 
-            $formatted = implode($separator, $parts);
+            $formatted = $separator === ' '
+                ? $this->joinInterpolationParts($value->items, $parts)
+                : implode($separator, $parts);
 
             if ($value->bracketed) {
                 return '[' . $formatted . ']';
@@ -1680,6 +1682,37 @@ final readonly class Text
         }
 
         return $this->valueFormatter->format($value, $env);
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     * @param list<string> $parts
+     */
+    private function joinInterpolationParts(array $items, array $parts): string
+    {
+        $formatted = '';
+        $previous  = null;
+
+        foreach ($parts as $index => $part) {
+            $current = $items[$index] ?? null;
+
+            if ($previous !== null && ! $this->isPreservedSlashDivision($previous) && ! $this->isPreservedSlashDivision($current)) {
+                $formatted .= ' ';
+            }
+
+            $formatted .= $part;
+            $previous   = $current;
+        }
+
+        return $formatted;
+    }
+
+    private function isPreservedSlashDivision(?AstNode $node): bool
+    {
+        return $node instanceof StringNode
+            && ! $node->quoted
+            && $node->value === '/'
+            && $node->isSlashOperator;
     }
 
     private function collapsePlusConcatenation(string $value): string

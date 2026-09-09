@@ -14,6 +14,7 @@ final class StringNode extends AstNode implements Stringable
         public int $line = 0,
         public int $column = 0,
         public bool $isSelectorValue = false,
+        public bool $isSlashOperator = false,
     ) {}
 
     public function __toString(): string

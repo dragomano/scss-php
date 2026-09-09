@@ -309,14 +309,37 @@ final readonly class ColorConstructorEvaluator
 
         $firstPositional = $positional[0] ?? null;
 
-        if ($firstPositional instanceof ListNode && $firstPositional->separator === 'slash') {
+        $hasSlashItem = $firstPositional instanceof ListNode
+            && $firstPositional->separator === 'space'
+            && array_filter(
+                $firstPositional->items,
+                static fn(AstNode $item): bool => $item instanceof StringNode
+                    && ! $item->quoted
+                    && trim($item->value) === '/',
+            ) !== [];
+
+        if (($firstPositional instanceof ListNode && $firstPositional->separator === 'slash') || $hasSlashItem) {
             $channelList = $this->parser->parseChannelList($firstPositional);
 
             if ($channelList !== null && $channelList['components'] instanceof ListNode) {
+                $channels = $channelList['components']->items;
+                $alpha    = $channelList['alpha'];
+
+                if ($alpha !== null && $this->parser->isMissingChannelNode($alpha)) {
+                    return new FunctionNode('hwb', [new ListNode([
+                        $channels[0] instanceof NumberNode && $channels[0]->value == 0
+                            ? new StringNode('0deg')
+                            : $channels[0],
+                        ...array_slice($channels, 1),
+                        new StringNode('/'),
+                        $alpha,
+                    ], 'space')]);
+                }
+
                 $positional = [
-                    ...$channelList['components']->items,
+                    ...$channels,
                     new StringNode('/'),
-                    ...($channelList['alpha'] === null ? [] : [$channelList['alpha']]),
+                    ...($alpha === null ? [] : [$alpha]),
                 ];
             }
         }
@@ -326,7 +349,7 @@ final readonly class ColorConstructorEvaluator
         if (isset($arguments[3]) && $this->parser->isMissingChannelNode($arguments[3])) {
             return new FunctionNode('hwb', [new ListNode([
                 $arguments[0] instanceof NumberNode && $arguments[0]->value == 0
-                    ? new StringNode('0.0deg')
+                    ? new StringNode('0deg')
                     : $arguments[0],
                 $arguments[1],
                 $arguments[2],
@@ -345,7 +368,9 @@ final readonly class ColorConstructorEvaluator
             || $this->parser->isMissingChannelNode($arguments[2])
         ) {
             $channels = [
-                new StringNode('0.0deg'),
+                $arguments[0] instanceof NumberNode && $arguments[0]->value == 0
+                    ? new StringNode('0deg')
+                    : $arguments[0],
                 $arguments[1],
                 $arguments[2],
             ];
