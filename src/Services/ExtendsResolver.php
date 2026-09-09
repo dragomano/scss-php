@@ -1991,6 +1991,8 @@ final readonly class ExtendsResolver
                 continue;
             }
 
+            $selectorPart = $this->tokenizer->normalizeSelectorAttributes($selectorPart);
+
             $resolvedParts[] = $selectorPart;
 
             $outputState->extends->selectorContexts[$selectorPart] ??= [];

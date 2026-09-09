@@ -671,15 +671,15 @@ final readonly class FunctionCallParser
             return true;
         }
 
+        if (str_starts_with(strtolower($argument), 'if(')) {
+            return false;
+        }
+
         if (str_contains($argument, '#{')) {
             return true;
         }
 
         if (str_contains($argument, '$')) {
-            return false;
-        }
-
-        if (str_starts_with(strtolower($argument), 'if(')) {
             return false;
         }
 

@@ -309,6 +309,7 @@ final class CompilerRuntime
             $this->cssArgumentEvaluator(),
             $this->createAstValueEvaluator(),
             $this->createAstValueFormatter(),
+            $this->parser,
         );
     }
 

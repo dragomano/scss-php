@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Services;
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
+use Bugo\SCSS\Exceptions\SassThrowable;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
@@ -25,6 +26,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\Visitable;
+use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
 use Bugo\SCSS\Runtime\Environment;
@@ -69,6 +71,7 @@ final readonly class Selector
         private CssArgumentEvaluator $cssArgumentEvaluator,
         private AstValueEvaluatorInterface $valueEvaluator,
         private AstValueFormatterInterface $valueFormatter,
+        private ParserInterface $parser,
     ) {
         $this->optimizer = new SelectorRuleOptimizer();
     }
@@ -639,7 +642,9 @@ final readonly class Selector
         $s->setVariableLocal('__flow_control_declaration_guard', true);
 
         if ($baseValue !== null) {
-            $this->render->appendChunk($output, $prefix . $baseProperty . ': ' . $baseValue . ';');
+            $evaluatedBaseValue = $this->evaluateNestedPropertyBaseValue($baseValue, $env);
+
+            $this->render->appendChunk($output, $prefix . $baseProperty . ': ' . $evaluatedBaseValue . ';');
 
             $hasOutput = true;
         }
@@ -1134,5 +1139,26 @@ final readonly class Selector
         }
 
         return AtRuleContextEntry::supports($this->normalizeAtRuleText($entry['condition']));
+    }
+
+    private function evaluateNestedPropertyBaseValue(string $value, Environment $env): string
+    {
+        try {
+            $evaluated = $this->valueEvaluator->evaluate($this->parser->parseInlineExpression($value), $env);
+        } catch (SassThrowable) {
+            return $value;
+        }
+
+        if ($evaluated instanceof NullNode) {
+            return '';
+        }
+
+        $formatted = $this->valueFormatter->format($evaluated, $env);
+
+        if (str_contains($formatted, '#{')) {
+            $formatted = $this->text->interpolateText($formatted, $env);
+        }
+
+        return $formatted;
     }
 }
