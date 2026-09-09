@@ -550,7 +550,7 @@ final readonly class ValueParser implements
             if ($this->stream->consume(TokenType::DOLLAR)) {
                 $name = $this->consumeIdentifier();
 
-                $this->stream->skipWhitespace();
+                $this->stream->skipWhitespaceAndComments();
 
                 if ($this->stream->consume(TokenType::COLON)) {
                     $this->stream->skipWhitespace();

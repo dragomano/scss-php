@@ -9,12 +9,15 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
+use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StatementNode;
 use Bugo\SCSS\Nodes\SupportsNode;
+use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\Visitable;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
+use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Context;
@@ -27,6 +30,7 @@ use Bugo\SCSS\Utils\GroupStartChunk;
 use Bugo\SCSS\Utils\OutputChunk;
 use Bugo\SCSS\Utils\RawChunk;
 
+use function array_slice;
 use function array_splice;
 use function array_values;
 use function count;
@@ -651,7 +655,7 @@ final readonly class DeferredChunkManager
         $blockSplit   = false;
         $parentPrefix = $this->render->indentPrefix(max(0, $ctx->indent - 1));
 
-        foreach ($body as $child) {
+        foreach ($body as $childIndex => $child) {
             if ($this->evaluation->applyVariableDeclaration($child, $ctx->env)) {
                 continue;
             }
@@ -666,7 +670,7 @@ final readonly class DeferredChunkManager
                 $parentHasRendered = $callScope->hasVariable('__parent_rule_has_rendered_children')
                     && $callScope->getVariable('__parent_rule_has_rendered_children') === true;
 
-                if ($parentOpened && $output !== '') {
+                if ($this->shouldSplitParentRuleBlock($body, $childIndex, $output, $parentOpened, $ctx->env)) {
                     $this->closeParentRuleBlock($output, $parentPrefix);
 
                     $parentOpened = false;
@@ -680,7 +684,7 @@ final readonly class DeferredChunkManager
             }
 
             if ($child instanceof RuleNode) {
-                if ($parentOpened && $output !== '') {
+                if ($this->shouldSplitParentRuleBlock($body, $childIndex, $output, $parentOpened, $ctx->env)) {
                     $this->closeParentRuleBlock($output, $parentPrefix);
 
                     $parentOpened = false;
@@ -758,6 +762,51 @@ final readonly class DeferredChunkManager
         $output = $this->render->trimTrailingNewlines($output);
 
         $this->render->appendChunk($output, "\n" . $parentPrefix . '}');
+    }
+
+    /**
+     * @param array<int, AstNode> $body
+     */
+    private function shouldSplitParentRuleBlock(
+        array $body,
+        int $childIndex,
+        string $output,
+        bool $parentOpened,
+        Environment $env,
+    ): bool {
+        if ($output === '') {
+            return false;
+        }
+
+        if ($parentOpened) {
+            return true;
+        }
+
+        $parentSelector = $this->selector->getCurrentParentSelector($env);
+
+        if ($parentSelector === null || $parentSelector === '') {
+            return false;
+        }
+
+        return $this->hasRenderableSiblingAfter($body, $childIndex);
+    }
+
+    /**
+     * @param array<int, AstNode> $body
+     */
+    private function hasRenderableSiblingAfter(array $body, int $childIndex): bool
+    {
+        $siblings = array_slice($body, $childIndex + 1, null, true);
+
+        foreach ($siblings as $sibling) {
+            if ($sibling instanceof VariableDeclarationNode || $sibling instanceof ModuleVarDeclarationNode) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
