@@ -30,6 +30,9 @@ final class ModuleState
     /** @var array<string, bool> */
     public array $emittedModuleCss = [];
 
+    /** @var array<string, LoadedModule> */
+    public array $anonymousUseModules = [];
+
     public int $importEvaluationDepth = 0;
 
     public int $callDepth = 0;
@@ -155,6 +158,7 @@ final class ModuleState
         $this->emittedForwardCss     = [];
         $this->emittedUseCss         = [];
         $this->emittedModuleCss      = [];
+        $this->anonymousUseModules   = [];
         $this->importEvaluationDepth = 0;
         $this->callDepth             = 0;
         $this->loadingFiles          = [];

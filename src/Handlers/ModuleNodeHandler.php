@@ -174,7 +174,7 @@ final readonly class ModuleNodeHandler
 
     public function handleUse(UseNode $node, TraversalContext $ctx): string
     {
-        $this->module->handleUse($node, $ctx->env);
+        $css = $this->module->handleUse($node, $ctx->env);
 
         if (str_starts_with($node->path, 'sass:')) {
             return '';
@@ -183,7 +183,7 @@ final readonly class ModuleNodeHandler
         $namespace = $node->namespace ?? $this->module->deriveNamespaceFromUsePath($node->path);
 
         if ($namespace === '*') {
-            return '';
+            return $css;
         }
 
         $moduleState = $this->module->state();

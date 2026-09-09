@@ -128,7 +128,7 @@ final readonly class Module
         $this->state()->callDepth--;
     }
 
-    public function handleUse(UseNode $node, Environment $env): void
+    public function handleUse(UseNode $node, Environment $env): string
     {
         $state = $this->state();
 
@@ -147,7 +147,7 @@ final readonly class Module
             $alias      = $node->namespace ?? $moduleName;
 
             if ($alias === '*') {
-                return;
+                return '';
             }
 
             $variables   = $this->ctx->functionRegistry->moduleVariablesByAlias($alias) ?? [];
@@ -160,7 +160,7 @@ final readonly class Module
             $env->getCurrentScope()->addModule($alias, $moduleScope);
             $env->getGlobalScope()->addModule($alias, $moduleScope);
 
-            return;
+            return '';
         }
 
         $namespace = $node->namespace ?? $this->deriveNamespaceFromUsePath($node->path);
@@ -170,7 +170,7 @@ final readonly class Module
             $env->getCurrentScope()->addModule($namespace, $loaded->scope);
             $env->getGlobalScope()->addModule($namespace, $loaded->scope);
 
-            return;
+            return '';
         }
 
         if ($namespace !== '*' && $env->getCurrentScope()->hasModuleLocal($namespace)) {
@@ -182,6 +182,11 @@ final readonly class Module
         $this->loader->addPath(dirname($file['path']));
 
         $moduleId   = $file['path'];
+
+        if ($namespace === '*' && $node->configuration === [] && isset($state->anonymousUseModules[$moduleId])) {
+            return '';
+        }
+
         $loadedById = $state->getById($moduleId);
 
         if ($node->configuration === [] && $loadedById !== null) {
@@ -190,7 +195,7 @@ final readonly class Module
             $env->getCurrentScope()->addModule($namespace, $loadedById->scope);
             $env->getGlobalScope()->addModule($namespace, $loadedById->scope);
 
-            return;
+            return '';
         }
 
         if ($node->configuration === []) {
@@ -206,7 +211,7 @@ final readonly class Module
                 $env->getCurrentScope()->addModule($namespace, $moduleData['scope']);
                 $env->getGlobalScope()->addModule($namespace, $moduleData['scope']);
 
-                return;
+                return '';
             }
         }
 
@@ -303,7 +308,16 @@ final readonly class Module
                 $env->getCurrentScope()->markImportedMember($name);
             }
 
-            return;
+            $state->anonymousUseModules[$moduleId] = new LoadedModule($moduleId, $moduleEnv->getCurrentScope(), $compiledCss);
+
+            if (isset($state->emittedUseCss[$moduleId]) || isset($state->emittedModuleCss[$moduleId])) {
+                return '';
+            }
+
+            $state->emittedUseCss[$moduleId]    = true;
+            $state->emittedModuleCss[$moduleId] = true;
+
+            return $compiledCss;
         }
 
         if ($node->configuration === []) {
@@ -314,6 +328,8 @@ final readonly class Module
 
         $env->getCurrentScope()->addModule($namespace, $moduleEnv->getCurrentScope());
         $env->getGlobalScope()->addModule($namespace, $moduleEnv->getCurrentScope());
+
+        return '';
     }
 
     public function handleForward(ForwardNode $node, Environment $env): string
