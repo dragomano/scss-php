@@ -148,6 +148,7 @@ final readonly class BlockNodeHandler
                         $this->evaluation->evaluateValue($child->value, $ctx->env),
                         $child->global,
                         $child->default,
+                        $child->line,
                     );
 
                     continue;

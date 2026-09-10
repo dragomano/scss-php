@@ -106,7 +106,7 @@ describe('ExtendsResolver', function () {
                 new class ($this) implements FunctionConditionEvaluatorInterface {
                     public function __construct(private readonly object $testCase) {}
 
-                    public function evaluate(string $condition, Environment $env): bool
+                    public function evaluate(string $condition, Environment $env, ?int $line = null): bool
                     {
                         return $this->testCase->conditionResults[$condition] ?? false;
                     }
@@ -330,7 +330,7 @@ describe('ExtendsResolver', function () {
                 }
             },
             new class implements FunctionConditionEvaluatorInterface {
-                public function evaluate(string $condition, Environment $env): bool
+                public function evaluate(string $condition, Environment $env, ?int $line = null): bool
                 {
                     return false;
                 }

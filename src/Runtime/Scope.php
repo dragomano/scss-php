@@ -12,6 +12,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Utils\NameNormalizer;
 
 use function array_key_exists;
+use function str_starts_with;
 
 final class Scope
 {
@@ -183,12 +184,18 @@ final class Scope
 
     public function setVariableLocal(string $name, mixed $value, bool $default = false, int $line = 1): void
     {
+        $isInternal = str_starts_with($name, '__');
+
         $name = $this->normalizeName($name);
 
-        if ($this->flowControlScope && ! $default) {
+        if (! $default) {
             $existingScope = $this->findScopeForVariable($name);
 
-            if ($existingScope !== null && $existingScope !== $this) {
+            if ($existingScope !== null
+                && $existingScope !== $this
+                && ! $isInternal
+                && $this->isWriteThroughTarget($existingScope)
+            ) {
                 $existingScope->setVariableLocal($name, $value, false, $line);
 
                 return;
@@ -451,6 +458,30 @@ final class Scope
         $normalized = NameNormalizer::normalize($name);
 
         return $this->forwardedVariables[$normalized] ?? null;
+    }
+
+    private function isWriteThroughTarget(Scope $target): bool
+    {
+        if ($target === $this->getGlobalScope()) {
+            return $this->flowControlScope && $this->isSemiGlobalPath($target);
+        }
+
+        return true;
+    }
+
+    private function isSemiGlobalPath(Scope $target): bool
+    {
+        $scope = $this->parent;
+
+        while ($scope !== null && $scope !== $target) {
+            if (! $scope->flowControlScope) {
+                return false;
+            }
+
+            $scope = $scope->parent;
+        }
+
+        return $scope === $target;
     }
 
     private function findScopeForVariable(string $name): ?Scope

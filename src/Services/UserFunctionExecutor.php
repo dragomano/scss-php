@@ -122,14 +122,22 @@ final readonly class UserFunctionExecutor
                 $iterableValue = $this->valueEvaluator->evaluate($statement->list, $env);
                 $items         = $this->eachLoopBinder->items($iterableValue);
 
-                foreach ($items as $item) {
-                    $this->eachLoopBinder->assign($statement->variables, $item, $env);
+                $env->enterScope();
 
-                    $result = $this->runStatements($statement->body, $env);
+                try {
+                    $env->getCurrentScope()->markAsFlowControlScope();
 
-                    if ($result !== null) {
-                        return $result;
+                    foreach ($items as $item) {
+                        $this->eachLoopBinder->assign($statement->variables, $item, $env);
+
+                        $result = $this->runStatements($statement->body, $env);
+
+                        if ($result !== null) {
+                            return $result;
+                        }
                     }
+                } finally {
+                    $env->exitScope();
                 }
 
                 continue;
@@ -144,18 +152,26 @@ final readonly class UserFunctionExecutor
 
                 $result = null;
 
-                $this->loopIterator->forLoop(
-                    $from,
-                    $to,
-                    $statement->inclusive,
-                    function (int $i) use ($statement, $unit, $env, &$result) {
-                        $env->getCurrentScope()->setVariable($statement->variable, new NumberNode($i, $unit));
+                $env->enterScope();
 
-                        $result = $this->runStatements($statement->body, $env);
+                try {
+                    $env->getCurrentScope()->markAsFlowControlScope();
 
-                        return $result === null;
-                    },
-                );
+                    $this->loopIterator->forLoop(
+                        $from,
+                        $to,
+                        $statement->inclusive,
+                        function (int $i) use ($statement, $unit, $env, &$result) {
+                            $env->getCurrentScope()->setVariable($statement->variable, new NumberNode($i, $unit));
+
+                            $result = $this->runStatements($statement->body, $env);
+
+                            return $result === null;
+                        },
+                    );
+                } finally {
+                    $env->exitScope();
+                }
 
                 if ($result !== null) {
                     return $result;
@@ -166,25 +182,6 @@ final readonly class UserFunctionExecutor
 
             if ($statement instanceof ReturnNode) {
                 return $this->slashDivisionValueEvaluator->evaluate($statement->value, $env);
-            }
-
-            if ($statement instanceof WhileNode) {
-                $iterations = 0;
-                $result     = null;
-
-                while ($result === null && $this->condition->evaluate($statement->condition, $env)) {
-                    if (++$iterations > LoopIterator::MAX_ITERATIONS) {
-                        throw new MaxIterationsExceededException('@while');
-                    }
-
-                    $result = $this->runStatements($statement->body, $env);
-                }
-
-                if ($result !== null) {
-                    return $result;
-                }
-
-                continue;
             }
 
             if ($statement instanceof DebugNode) {
@@ -203,9 +200,36 @@ final readonly class UserFunctionExecutor
                 $this->diagnosticHandler->handle('error', $statement->message, $env, $statement);
             }
 
+            if ($statement instanceof WhileNode) {
+                $iterations = 0;
+                $result     = null;
+
+                $env->enterScope();
+
+                try {
+                    $env->getCurrentScope()->markAsFlowControlScope();
+
+                    while ($result === null && $this->condition->evaluate($statement->condition, $env)) {
+                        if (++$iterations > LoopIterator::MAX_ITERATIONS) {
+                            throw new MaxIterationsExceededException('@while');
+                        }
+
+                        $result = $this->runStatements($statement->body, $env);
+                    }
+                } finally {
+                    $env->exitScope();
+                }
+
+                if ($result !== null) {
+                    return $result;
+                }
+
+                continue;
+            }
+
             if ($statement instanceof IfNode) {
                 if ($this->condition->evaluate($statement->condition, $env)) {
-                    $result = $this->runStatements($statement->body, $env);
+                    $result = $this->runIfBody($statement->body, $env);
 
                     if ($result !== null) {
                         return $result;
@@ -223,7 +247,7 @@ final readonly class UserFunctionExecutor
                     if ($this->condition->evaluate($condition, $env)) {
                         $executedElseIf = true;
 
-                        $result = $this->runStatements($body, $env);
+                        $result = $this->runIfBody($body, $env);
 
                         if ($result !== null) {
                             return $result;
@@ -237,7 +261,7 @@ final readonly class UserFunctionExecutor
                     continue;
                 }
 
-                $result = $this->runStatements($statement->elseBody, $env);
+                $result = $this->runIfBody($statement->elseBody, $env);
 
                 if ($result !== null) {
                     return $result;
@@ -246,6 +270,22 @@ final readonly class UserFunctionExecutor
         }
 
         return null;
+    }
+
+    /**
+     * @param array<int, AstNode> $body
+     */
+    private function runIfBody(array $body, Environment $env): ?AstNode
+    {
+        $env->enterScope();
+
+        try {
+            $env->getCurrentScope()->markAsFlowControlScope();
+
+            return $this->runStatements($body, $env);
+        } finally {
+            $env->exitScope();
+        }
     }
 
     private function loopBoundary(AstNode $node, Environment $env): NumberNode

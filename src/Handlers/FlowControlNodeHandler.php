@@ -45,14 +45,14 @@ final readonly class FlowControlNodeHandler
         $first  = true;
         $branch = null;
 
-        if ($this->evaluation->evaluateFunctionCondition($node->condition, $ctx->env)) {
+        if ($this->evaluation->evaluateFunctionCondition($node->condition, $ctx->env, $node->line)) {
             $branch = $node->body;
         } else {
             foreach ($node->elseIfBranches as $elseIfBranch) {
                 $condition = $elseIfBranch->condition;
                 $body      = $elseIfBranch->body;
 
-                if ($this->evaluation->evaluateFunctionCondition($condition, $ctx->env)) {
+                if ($this->evaluation->evaluateFunctionCondition($condition, $ctx->env, $elseIfBranch->line)) {
                     $branch = $body;
 
                     break;
@@ -62,7 +62,17 @@ final readonly class FlowControlNodeHandler
             $branch ??= $node->elseBody;
         }
 
-        $this->compileBody($branch, $ctx, $output, $first);
+        $ctx->env->enterScope();
+
+        try {
+            $ctx->env->getCurrentScope()->markAsFlowControlScope();
+
+            $bodyCtx = new TraversalContext($ctx->env, $ctx->indent);
+
+            $this->compileBody($branch, $bodyCtx, $output, $first);
+        } finally {
+            $ctx->env->exitScope();
+        }
 
         return $output;
     }
@@ -134,16 +144,25 @@ final readonly class FlowControlNodeHandler
 
     public function handleWhile(WhileNode $node, TraversalContext $ctx): string
     {
-        $output  = '';
-        $first   = true;
-        $bodyCtx = new TraversalContext($ctx->env, $ctx->indent);
+        $output = '';
+        $first  = true;
 
-        $this->loopIterator->whileLoop(
-            fn(): bool => $this->evaluation->evaluateFunctionCondition($node->condition, $ctx->env),
-            function () use ($node, $bodyCtx, &$output, &$first): void {
-                $this->compileBody($node->body, $bodyCtx, $output, $first);
-            },
-        );
+        $ctx->env->enterScope();
+
+        try {
+            $ctx->env->getCurrentScope()->markAsFlowControlScope();
+
+            $bodyCtx = new TraversalContext($ctx->env, $ctx->indent);
+
+            $this->loopIterator->whileLoop(
+                fn(): bool => $this->evaluation->evaluateFunctionCondition($node->condition, $ctx->env, $node->line),
+                function () use ($node, $bodyCtx, &$output, &$first): void {
+                    $this->compileBody($node->body, $bodyCtx, $output, $first);
+                },
+            );
+        } finally {
+            $ctx->env->exitScope();
+        }
 
         return $output;
     }

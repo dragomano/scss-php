@@ -101,10 +101,10 @@ final readonly class DirectiveParser
             'warn'      => $this->parseWarnDirective($atToken->line, $atToken->column),
             'error'     => $this->parseErrorDirective($atToken->line, $atToken->column),
             'return'    => $this->parseReturnDirective(),
-            'if'        => $this->parseIfDirective(),
+            'if'        => $this->parseIfDirective($atToken->line),
             'each'      => $this->parseEachDirective(),
             'for'       => $this->parseForDirective(),
-            'while'     => $this->parseWhileDirective(),
+            'while'     => $this->parseWhileDirective($atToken->line),
             'supports'  => $this->parseSupportsDirective(),
             default     => $this->parseGenericDirective($name, $atToken->line, $atToken->column),
         };
@@ -207,7 +207,7 @@ final readonly class DirectiveParser
         return new ErrorNode($this->parseDiagnosticDirectiveMessage(), $line, $column);
     }
 
-    public function parseIfDirective(): IfNode
+    public function parseIfDirective(int $line = 1): IfNode
     {
         $this->stream->skipWhitespaceAndComments();
 
@@ -228,7 +228,8 @@ final readonly class DirectiveParser
                 break;
             }
 
-            $savedPos = $this->stream->getPosition();
+            $savedPos  = $this->stream->getPosition();
+            $elseToken = $this->stream->current();
 
             $this->stream->advance();
             $this->stream->skipWhitespaceAndComments();
@@ -256,7 +257,7 @@ final readonly class DirectiveParser
                 $elseIfCondition = $this->parseCondition();
                 $elseIfBody      = $this->parsingContext->parseBlock();
 
-                $elseIfBranches[] = new ElseIfNode($elseIfCondition, $elseIfBody);
+                $elseIfBranches[] = new ElseIfNode($elseIfCondition, $elseIfBody, $elseToken->line);
             } else {
                 $elseBody = $this->parsingContext->parseBlock();
 
@@ -264,7 +265,7 @@ final readonly class DirectiveParser
             }
         }
 
-        return new IfNode($condition, $ifBody, $elseIfBranches, $elseBody);
+        return new IfNode($condition, $ifBody, $elseIfBranches, $elseBody, $line);
     }
 
     public function parseForDirective(): AstNode
@@ -352,11 +353,11 @@ final readonly class DirectiveParser
         return new EachNode($variables, $this->inlineValueParser->parseInlineValue($listExpr), $body);
     }
 
-    public function parseWhileDirective(): AstNode
+    public function parseWhileDirective(int $line = 1): AstNode
     {
         [$condition, $body] = $this->parseConditionAndBlock();
 
-        return new WhileNode($condition, $body);
+        return new WhileNode($condition, $body, $line);
     }
 
     public function parseSupportsDirective(): AstNode

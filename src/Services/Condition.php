@@ -58,11 +58,11 @@ final readonly class Condition
         private AstValueFormatterInterface $valueFormatter,
     ) {}
 
-    public function evaluate(string $condition, Environment $env): bool
+    public function evaluate(string $condition, Environment $env, ?int $line = null): bool
     {
         $parsed = $this->parse($condition);
 
-        return $this->evaluateParsed($parsed, $env);
+        return $this->evaluateParsed($parsed, $env, $line);
     }
 
     public function isTruthy(AstNode $value): bool
@@ -243,7 +243,7 @@ final readonly class Condition
     /**
      * @param array<string, mixed> $condition
      */
-    private function evaluateParsed(array $condition, Environment $env): bool
+    private function evaluateParsed(array $condition, Environment $env, ?int $line = null): bool
     {
         $type = 'empty';
 
@@ -259,7 +259,7 @@ final readonly class Condition
             $orItems = $this->text->extractStringKeyedArrayItems($condition['items'] ?? null);
 
             foreach ($orItems as $item) {
-                if ($this->evaluateParsed($item, $env)) {
+                if ($this->evaluateParsed($item, $env, $line)) {
                     return true;
                 }
             }
@@ -271,7 +271,7 @@ final readonly class Condition
             $andItems = $this->text->extractStringKeyedArrayItems($condition['items'] ?? null);
 
             foreach ($andItems as $item) {
-                if (! $this->evaluateParsed($item, $env)) {
+                if (! $this->evaluateParsed($item, $env, $line)) {
                     return false;
                 }
             }
@@ -287,7 +287,7 @@ final readonly class Condition
                 $innerCondition = $condition['item'];
             }
 
-            return ! $this->evaluateParsed($innerCondition, $env);
+            return ! $this->evaluateParsed($innerCondition, $env, $line);
         }
 
         if ($type === 'comparison') {
@@ -307,8 +307,8 @@ final readonly class Condition
                 $operator = $condition['operator'];
             }
 
-            $left  = $this->resolveValue($leftRaw, $env);
-            $right = $this->resolveValue($rightRaw, $env);
+            $left  = $this->resolveValue($leftRaw, $env, $line);
+            $right = $this->resolveValue($rightRaw, $env, $line);
 
             return $this->compare($left, $operator, $right, $env);
         }
@@ -319,7 +319,7 @@ final readonly class Condition
             $rawValue = $condition['raw'];
         }
 
-        $value = $this->resolveValue($rawValue, $env);
+        $value = $this->resolveValue($rawValue, $env, $line);
 
         return $this->isTruthy($value);
     }
@@ -776,7 +776,7 @@ final readonly class Condition
         return $literal;
     }
 
-    private function resolveValue(string $raw, Environment $env): AstNode
+    private function resolveValue(string $raw, Environment $env, ?int $line = null): AstNode
     {
         $value = trim($raw);
 
@@ -786,6 +786,10 @@ final readonly class Condition
 
         if (str_contains($value, '(')) {
             $valueNode = $this->parser->parseInlineExpression($value);
+
+            if ($line !== null && $valueNode instanceof FunctionNode) {
+                $valueNode = $valueNode->withLine($line);
+            }
 
             if (! ($valueNode instanceof StringNode && $valueNode->value === $value)) {
                 return $this->valueEvaluator->evaluate($valueNode, $env);

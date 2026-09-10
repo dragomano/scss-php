@@ -1459,7 +1459,11 @@ final readonly class Text
 
         $valueNode = $this->parser->parseInlineExpression($expr);
 
-        if ($valueNode instanceof StringNode && $valueNode->value === $expr) {
+        $isBareAmpersand = $valueNode instanceof StringNode
+            && $valueNode->value === '&'
+            && ! $valueNode->isSelectorValue;
+
+        if ($valueNode instanceof StringNode && $valueNode->value === $expr && ! $isBareAmpersand) {
             return $expr;
         }
 

@@ -367,9 +367,9 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return $this->variableDeclarationApplier->apply($node, $env);
     }
 
-    public function evaluateFunctionCondition(string $condition, Environment $env): bool
+    public function evaluateFunctionCondition(string $condition, Environment $env, ?int $line = null): bool
     {
-        return $this->condition->evaluate($condition, $env);
+        return $this->condition->evaluate($condition, $env, $line);
     }
 
     /**

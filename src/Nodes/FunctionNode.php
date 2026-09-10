@@ -25,4 +25,20 @@ final class FunctionNode extends AstNode
         public ?array $originSrgbChannels = null,
         public ?StringNode $dynamicName = null,
     ) {}
+
+    public function withLine(int $line): self
+    {
+        return new self(
+            $this->name,
+            $this->arguments,
+            $line,
+            $this->modernSyntax,
+            $this->capturedScope,
+            $this->lockedDefinition,
+            $this->parenthesized,
+            $this->originColorSpace,
+            $this->originSrgbChannels,
+            $this->dynamicName,
+        );
+    }
 }

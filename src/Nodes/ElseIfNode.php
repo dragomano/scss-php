@@ -9,5 +9,9 @@ final class ElseIfNode extends AstNode
     /**
      * @param array<int, AstNode> $body
      */
-    public function __construct(public string $condition, public array $body) {}
+    public function __construct(
+        public string $condition,
+        public array $body,
+        public int $line = 1,
+    ) {}
 }

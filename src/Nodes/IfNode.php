@@ -19,6 +19,7 @@ final class IfNode extends StatementNode
         public array $body,
         public array $elseIfBranches = [],
         public array $elseBody = [],
+        public int $line = 1,
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

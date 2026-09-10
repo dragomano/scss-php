@@ -12,7 +12,11 @@ final class WhileNode extends StatementNode
     /**
      * @param array<int, AstNode> $body
      */
-    public function __construct(public string $condition, public array $body = []) {}
+    public function __construct(
+        public string $condition,
+        public array $body = [],
+        public int $line = 1,
+    ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string
     {

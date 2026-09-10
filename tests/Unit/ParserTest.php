@@ -693,7 +693,7 @@ describe('Parser', function () {
                             new StringNode('solid', line: 10, column: 22),
                             new VariableReferenceNode('color'),
                         ]), 10, 9),
-                    ]),
+                    ], 7),
                 ], 4),
                 new RuleNode('.color_tests', [
                     new DeclarationNode('hex-3', new ColorNode('#f00'), 15, 5),

@@ -71,13 +71,13 @@ final readonly class DefinitionNodeHandler
     {
         $scope = $ctx->env->getCurrentScope();
 
-        $scope->setVariable(
-            $node->name,
-            $this->evaluation->evaluateValueWithSlashDivision($node->value, $ctx->env),
-            $node->global,
-            $node->default,
-            $node->line,
-        );
+        $value = $this->evaluation->evaluateValueWithSlashDivision($node->value, $ctx->env);
+
+        if ($node->global) {
+            $scope->setVariable($node->name, $value, true, $node->default, $node->line);
+        } else {
+            $scope->setVariableLocal($node->name, $value, $node->default, $node->line);
+        }
 
         $origin = $scope->findImportedVariableOrigin($node->name);
 
