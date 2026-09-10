@@ -43,7 +43,15 @@ final readonly class StringNodeStrategy implements EvaluationStrategyInterface
                 $items = [];
 
                 foreach (SelectorHelper::splitList($selectorValue->value) as $selector) {
-                    $items[] = new StringNode($selector, isSelectorValue: true);
+                    $components = [];
+
+                    foreach (SelectorHelper::splitComponents($selector) as $component) {
+                        $components[] = new StringNode($component, isSelectorValue: true);
+                    }
+
+                    $complex = new ListNode($components, 'space', isComputed: true);
+
+                    $items[] = $complex;
                 }
 
                 return new ListNode($items, 'comma', isComputed: true);

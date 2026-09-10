@@ -353,7 +353,10 @@ final readonly class AtRuleNodeHandler
             ];
 
             $this->render->restorePosition($parentSegmentSaved);
-        } elseif (! in_array(strtolower($node->name), ['media', 'supports'], true)) {
+        } elseif (
+            ! in_array(strtolower($node->name), ['media', 'supports'], true)
+            && $outsideChunks === []
+        ) {
             $emptyOutput = $prefix . '@' . $directiveName . $prelude . ' {}';
 
             $orderedChunks[] = [

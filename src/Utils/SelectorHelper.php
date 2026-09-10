@@ -54,6 +54,75 @@ final class SelectorHelper
         return self::computeNested($selector, $parentSelector);
     }
 
+    /**
+     * @return array<int, string>
+     */
+    public static function splitComponents(string $selector): array
+    {
+        $parts    = [];
+        $buffer   = '';
+        $depth    = 0;
+        $brackets = 0;
+        $quote    = '';
+        $length   = strlen($selector);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $selector[$i];
+
+            if ($quote !== '') {
+                $buffer .= $char;
+
+                if ($char === '\\' && $i + 1 < $length) {
+                    $buffer .= $selector[$i + 1];
+
+                    $i++;
+
+                    continue;
+                }
+
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                $buffer .= $char;
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $brackets++;
+            } elseif ($char === ']' && $brackets > 0) {
+                $brackets--;
+            } elseif ($char === '(') {
+                $depth++;
+            } elseif ($char === ')' && $depth > 0) {
+                $depth--;
+            } elseif ($depth === 0 && $brackets === 0 && self::isWhitespace($char)) {
+                if ($buffer !== '') {
+                    $parts[] = $buffer;
+
+                    $buffer = '';
+                }
+
+                continue;
+            }
+
+            $buffer .= $char;
+        }
+
+        if ($buffer !== '') {
+            $parts[] = $buffer;
+        }
+
+        return $parts;
+    }
+
     private static function computeNested(string $selector, string $parentSelector): string
     {
         if (! str_contains($selector, ',') && ! str_contains($parentSelector, ',')) {

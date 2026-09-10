@@ -411,7 +411,10 @@ final readonly class DeferredChunkManager
             );
         }
 
-        $outerCtx = new TraversalContext($ctx->env, max(0, $ctx->indent - 1));
+        $outerCtx = new TraversalContext($ctx->env, $parentSelector !== null && $parentSelector !== ''
+            ? max(0, $ctx->indent - 1)
+            : $ctx->indent);
+
         $preparedChunk = $this->prepareCompiledChunk($ruleNode, $outerCtx);
 
         if ($preparedChunk === null) {

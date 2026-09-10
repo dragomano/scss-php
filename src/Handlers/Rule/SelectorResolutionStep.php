@@ -140,7 +140,7 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
 
         /** @var list<AtRuleContextEntry|array<string, mixed>> $atRuleStack */
         foreach ($atRuleStack as $entry) {
-            if ($entry instanceof AtRuleContextEntry && $entry->name === 'keyframes') {
+            if ($entry instanceof AtRuleContextEntry && $entry->name !== null && str_ends_with($entry->name, 'keyframes')) {
                 return true;
             }
         }

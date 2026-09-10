@@ -499,9 +499,26 @@ final readonly class DirectiveParser
         $rules   = [];
         $current = '';
         $length  = strlen($rulesText);
+        $quote   = '';
 
         for ($index = 0; $index < $length; $index++) {
             $char = $rulesText[$index];
+
+            if ($quote !== '') {
+                if ($char === $quote) {
+                    $quote = '';
+                } else {
+                    $current .= strtolower($char);
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                continue;
+            }
 
             if (ctype_alnum($char) || $char === '-' || $char === '_') {
                 $current .= strtolower($char);
@@ -518,6 +535,10 @@ final readonly class DirectiveParser
                 continue;
             }
 
+            return null;
+        }
+
+        if ($quote !== '') {
             return null;
         }
 

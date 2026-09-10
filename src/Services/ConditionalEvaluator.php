@@ -246,6 +246,10 @@ final readonly class ConditionalEvaluator
 
             if (! $argument->quoted) {
                 $value = $this->text->replaceVariableReferencesInText($value, $env);
+
+                if (StringHelper::isQuoted($value)) {
+                    return new FunctionNode('url', [new StringNode(StringHelper::unquote($value), true)]);
+                }
             }
 
             return new FunctionNode('url', [new StringNode($value, $argument->quoted)]);

@@ -47,9 +47,17 @@ final readonly class UserFunctionExecutor
         Environment $env,
         string $restSeparator = 'comma',
     ): AstNode {
+        $callScope = $env->getCurrentScope();
+
         $env->enterScope($function->closureScope);
 
         $currentScope = $env->getCurrentScope();
+
+        $parentSelector = $callScope->getStringVariable('__parent_selector');
+
+        if ($parentSelector !== null) {
+            $currentScope->setVariableLocal('__parent_selector', $parentSelector);
+        }
 
         try {
             $this->parameterBinder->bind(

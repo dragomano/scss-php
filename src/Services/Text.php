@@ -1526,6 +1526,7 @@ final readonly class Text
         $length = strlen($expr);
         $index  = 0;
         $result = '';
+        $quote  = '';
 
         while ($index < $length) {
             $pos = strpos($expr, '#{', $index);
@@ -1537,6 +1538,8 @@ final readonly class Text
             }
 
             $result .= substr($expr, $index, $pos - $index);
+
+            $quote = $this->quoteStateBefore($expr, $index, $pos, $quote);
 
             $start  = $pos + 2;
             $cursor = $start;
@@ -1562,10 +1565,40 @@ final readonly class Text
             $index    = $cursor;
             $resolved = $this->resolveInterpolationExpression($inner, $env);
 
-            $result .= '"' . StringEscapeDecoder::encodeQuotedContent($resolved, '"') . '"';
+            $result .= $quote !== ''
+                ? $resolved
+                : '"' . StringEscapeDecoder::encodeQuotedContent($resolved, '"') . '"';
         }
 
         return $result;
+    }
+
+    private function quoteStateBefore(string $expr, int $from, int $until, string $initial): string
+    {
+        $quote = $initial;
+        $index = $from;
+
+        while ($index < $until) {
+            $char = $expr[$index];
+
+            if ($char === '\\') {
+                $index += 2;
+
+                continue;
+            }
+
+            if ($quote === '') {
+                if ($char === '"' || $char === "'") {
+                    $quote = $char;
+                }
+            } elseif ($char === $quote) {
+                $quote = '';
+            }
+
+            $index++;
+        }
+
+        return $quote;
     }
 
     private function isInterpolatedStringTemplate(string $expr): bool
