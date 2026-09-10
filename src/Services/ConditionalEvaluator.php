@@ -829,7 +829,13 @@ final readonly class ConditionalEvaluator
                 return $this->valueEvaluator->evaluate($item->arguments[0], $env);
             }
 
-            return $item;
+            $evaluated = $this->valueEvaluator->evaluate($item, $env);
+
+            if ($evaluated instanceof ListNode && $evaluated->parenthesized && count($evaluated->items) === 1) {
+                return $this->valueEvaluator->evaluate($evaluated->items[0], $env);
+            }
+
+            return $evaluated;
         }
 
         return $this->comparisonListEvaluator->evaluate(new ListNode(array_values($items), 'space'), $env);

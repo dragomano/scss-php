@@ -39,9 +39,12 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
         $env   = $ruleCtx->outerCtx->env;
         $scope = $env->getCurrentScope();
 
+        $protectedNthIndices = $this->selector->findFullyInterpolatedNthIndices($node->selector);
+
         $selector = str_contains($node->selector, '#{')
             ? $this->evaluation->interpolateText($node->selector, $env)
             : $node->selector;
+        $selector = $this->selector->normalizeNthArguments($selector, $protectedNthIndices);
         $selector = $this->selector->normalizeSelectorAttributes($selector);
         $selector = $this->selector->normalizePseudoArguments($selector);
         $selector = $this->selector->canonicalizeSelectorEscapes($selector);

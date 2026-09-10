@@ -53,6 +53,15 @@ final readonly class SelectorTokenizer
 
     private const PLAIN_INSERT_PSEUDO_BASE_NAMES = ['has', 'host', 'host-context', 'slotted'];
 
+    private const NTH_PSEUDO_NAMES = [
+        'nth-child',
+        'nth-last-child',
+        'nth-of-type',
+        'nth-last-of-type',
+    ];
+
+    private const SELECTOR_LIST_PSEUDO_BASE_NAMES = ['not', 'is', 'matches', 'where', 'has', 'any'];
+
     /**
      * @return array<int, string>
      */
@@ -211,14 +220,18 @@ final readonly class SelectorTokenizer
         $orderedTokens   = [];
 
         if ($targetType !== '') {
-            if ($this->extractTypeToken($replacementTokens) !== '') {
-                foreach ($replacementTokens as $token) {
-                    if (! in_array($token, $orderedTokens, true)) {
+            $replacementType = $this->extractTypeToken($replacementTokens);
+
+            if ($replacementType !== '') {
+                $orderedTokens = [$replacementType];
+
+                foreach ($remainingTokens as $token) {
+                    if ($token !== $replacementType && ! in_array($token, $orderedTokens, true)) {
                         $orderedTokens[] = $token;
                     }
                 }
 
-                foreach ($remainingTokens as $token) {
+                foreach ($replacementTokens as $token) {
                     if (! in_array($token, $orderedTokens, true)) {
                         $orderedTokens[] = $token;
                     }
@@ -850,20 +863,84 @@ final readonly class SelectorTokenizer
                 continue;
             }
 
-            $name = substr($selector, $nameStart, $index - $nameStart);
-
+            $name          = substr($selector, $nameStart, $index - $nameStart);
             $argumentStart = $index;
 
             $this->readBracketGroup($selector, $index, '(', ')');
 
-            $inner = substr($selector, $argumentStart + 1, $index - $argumentStart - 2);
+            $inner           = substr($selector, $argumentStart + 1, $index - $argumentStart - 2);
+            $normalizedInner = $this->normalizePseudoArguments($inner);
+
+            if ($this->isSelectorListPseudo($name)) {
+                $parts           = $this->splitAtTopLevel($normalizedInner, [','], handleQuotes: true, trim: true);
+                $normalizedInner = implode(', ', $parts);
+            }
 
             $result .= substr($selector, $pseudoStart, $nameStart - $pseudoStart)
                 . $name
-                . '(' . $this->trimPseudoArgumentEdges($this->normalizePseudoArguments($inner)) . ')';
+                . '(' . $this->trimPseudoArgumentEdges($normalizedInner) . ')';
         }
 
         return $result;
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function findFullyInterpolatedNthIndices(string $selector): array
+    {
+        if (! str_contains($selector, 'nth-') || ! str_contains($selector, '#{')) {
+            return [];
+        }
+
+        $result = [];
+
+        foreach ($this->collectNthArgumentSpans($selector) as $nthIndex => $span) {
+            if ($this->isFullyInterpolated(trim($span['inner']))) {
+                $result[] = $nthIndex;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param list<int> $protectedIndices
+     */
+    public function normalizeNthArguments(string $selector, array $protectedIndices = []): string
+    {
+        if (! str_contains($selector, 'nth-')) {
+            return $selector;
+        }
+
+        $spans = $this->collectNthArgumentSpans($selector);
+
+        if ($spans === []) {
+            return $selector;
+        }
+
+        foreach (array_reverse($spans, true) as $nthIndex => $span) {
+            $inner = $span['inner'];
+
+            if (in_array($nthIndex, $protectedIndices, true)) {
+                $normalized = $this->collapseInterpolationWhitespace($inner);
+            } else {
+                $normalized = $this->normalizeAnPlusB($inner);
+            }
+
+            if ($normalized === $inner) {
+                continue;
+            }
+
+            $selector = substr_replace(
+                $selector,
+                '(' . trim($normalized) . ')',
+                $span['start'],
+                $span['end'] - $span['start'],
+            );
+        }
+
+        return $selector;
     }
 
     public function canonicalizeSelectorEscapes(string $selector): string
@@ -4825,6 +4902,131 @@ final readonly class SelectorTokenizer
         return $length;
     }
 
+    private function isSelectorListPseudo(string $name): bool
+    {
+        $base = strtolower($name);
+
+        if ($base !== '' && $base[0] === '-') {
+            $secondDash = strpos($base, '-', 1);
+
+            if ($secondDash !== false) {
+                $base = substr($base, $secondDash + 1);
+            }
+        }
+
+        return in_array($base, self::SELECTOR_LIST_PSEUDO_BASE_NAMES, true);
+    }
+
+    /**
+     * @return list<array{start: int, end: int, inner: string}>
+     */
+    private function collectNthArgumentSpans(string $selector): array
+    {
+        $spans  = [];
+        $length = strlen($selector);
+        $index  = 0;
+
+        while ($index < $length) {
+            if ($selector[$index] !== ':') {
+                $index++;
+
+                continue;
+            }
+
+            $pseudoStart = $index;
+
+            $index++;
+
+            if ($index < $length && $selector[$index] === ':') {
+                $index++;
+            }
+
+            $nameStart = $index;
+
+            while ($index < $length && $this->isIdentifierChar($selector[$index])) {
+                $index++;
+            }
+
+            if ($index === $nameStart || $index >= $length || $selector[$index] !== '(') {
+                continue;
+            }
+
+            $name = strtolower(substr($selector, $nameStart, $index - $nameStart));
+
+            $argumentStart = $index;
+
+            $this->readBracketGroup($selector, $index, '(', ')');
+
+            if (in_array($name, self::NTH_PSEUDO_NAMES, true)) {
+                $spans[] = [
+                    'start' => $argumentStart,
+                    'end'   => $index,
+                    'inner' => substr($selector, $argumentStart + 1, $index - $argumentStart - 2),
+                ];
+            }
+        }
+
+        return $spans;
+    }
+
+    private function isFullyInterpolated(string $value): bool
+    {
+        if (! str_starts_with($value, '#{')) {
+            return false;
+        }
+
+        $length = strlen($value);
+        $index  = 2;
+        $depth  = 1;
+        $quote  = '';
+
+        while ($index < $length) {
+            $char = $value[$index];
+
+            if ($quote !== '') {
+                if ($char === '\\') {
+                    $index += 2;
+
+                    continue;
+                }
+
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '{') {
+                $depth++;
+            } elseif ($char === '}') {
+                $depth--;
+
+                if ($depth === 0) {
+                    break;
+                }
+            }
+
+            $index++;
+        }
+
+        if ($depth !== 0) {
+            return false;
+        }
+
+        return trim(substr($value, $index + 1)) === '';
+    }
+
     /**
      * @param array<int, string> $tokens
      */
@@ -5013,6 +5215,146 @@ final readonly class SelectorTokenizer
         }
 
         return $result;
+    }
+
+    private function collapseInterpolationWhitespace(string $value): string
+    {
+        $result  = '';
+        $length  = strlen($value);
+        $pending = false;
+
+        for ($index = 0; $index < $length; $index++) {
+            $char = $value[$index];
+
+            if ($char === ' ' || $char === "\t" || $char === "\n" || $char === "\r") {
+                $pending = true;
+
+                continue;
+            }
+
+            if ($pending && $result !== '') {
+                $result .= ' ';
+            }
+
+            $pending = false;
+            $result .= $char;
+        }
+
+        return $result;
+    }
+
+    private function normalizeAnPlusB(string $argument): string
+    {
+        $value = trim($argument);
+
+        if ($value === '') {
+            return $argument;
+        }
+
+        $lower = strtolower($value);
+
+        if ($lower === 'odd' || $lower === 'even') {
+            return $argument;
+        }
+
+        $length = strlen($value);
+        $index  = 0;
+        $sign   = 1;
+        $a      = 0;
+        $b      = null;
+
+        if ($value[$index] === '+' || $value[$index] === '-') {
+            $sign = $value[$index] === '-' ? -1 : 1;
+
+            $index++;
+        }
+
+        if ($index >= $length) {
+            return $argument;
+        }
+
+        $digitsStart = $index;
+
+        while ($index < $length && ctype_digit($value[$index])) {
+            $index++;
+        }
+
+        $digits = substr($value, $digitsStart, $index - $digitsStart);
+
+        if ($index < $length && ($value[$index] === 'n' || $value[$index] === 'N')) {
+            $a = $sign * ($digits === '' ? 1 : (int) $digits);
+
+            $index++;
+
+            while ($index < $length && ($value[$index] === ' ' || $value[$index] === "\t" || $value[$index] === "\n")) {
+                $index++;
+            }
+
+            if ($index >= $length) {
+                return $this->serializeAnPlusB($a, null);
+            }
+
+            if ($value[$index] !== '+' && $value[$index] !== '-') {
+                return $argument;
+            }
+
+            $bSign = $value[$index] === '-' ? -1 : 1;
+
+            $index++;
+
+            while ($index < $length && ($value[$index] === ' ' || $value[$index] === "\t" || $value[$index] === "\n")) {
+                $index++;
+            }
+
+            $bStart = $index;
+
+            while ($index < $length && ctype_digit($value[$index])) {
+                $index++;
+            }
+
+            if ($bStart === $index) {
+                return $argument;
+            }
+
+            $b = $bSign * (int) substr($value, $bStart, $index - $bStart);
+
+            while ($index < $length && ($value[$index] === ' ' || $value[$index] === "\t" || $value[$index] === "\n")) {
+                $index++;
+            }
+
+            if ($index !== $length) {
+                return $argument;
+            }
+
+            return $this->serializeAnPlusB($a, $b);
+        }
+
+        if ($digits === '') {
+            return $argument;
+        }
+
+        $b = $sign * (int) $digits;
+
+        while ($index < $length && ($value[$index] === ' ' || $value[$index] === "\t" || $value[$index] === "\n")) {
+            $index++;
+        }
+
+        if ($index !== $length) {
+            return $argument;
+        }
+
+        return (string) $b;
+    }
+
+    private function serializeAnPlusB(int $a, ?int $b): string
+    {
+        $prefix = $a === 1 ? '' : ($a === -1 ? '-' : (string) $a);
+
+        if ($b === null || $b === 0) {
+            return $prefix . 'n';
+        }
+
+        return $prefix . 'n' . ($b > 0 ? '+' : '') . $b;
     }
 
     private function unifyUniversalAndElement(string $left, string $right): ?string

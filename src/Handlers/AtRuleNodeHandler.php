@@ -26,8 +26,10 @@ use Bugo\SCSS\Utils\RawChunk;
 
 use function count;
 use function in_array;
+use function ltrim;
 use function str_contains;
 use function str_ends_with;
+use function str_starts_with;
 use function strtolower;
 use function trim;
 
@@ -120,6 +122,8 @@ final readonly class AtRuleNodeHandler
                 $resolvedPrelude = str_contains($node->prelude, '#{')
                     ? $this->evaluation->interpolateText($node->prelude, $ctx->env)
                     : $node->prelude;
+
+                $resolvedPrelude = $this->selector->collapseWhitespaceInPrelude($resolvedPrelude);
             } else {
                 $lowerName = strtolower($node->name);
 
@@ -142,6 +146,8 @@ final readonly class AtRuleNodeHandler
                     } else {
                         $resolvedPrelude = $this->selector->stripLeadingComments($resolvedPrelude);
                     }
+
+                    $resolvedPrelude = $this->selector->collapseWhitespaceInPrelude($resolvedPrelude);
                 }
             }
 
@@ -355,7 +361,7 @@ final readonly class AtRuleNodeHandler
             $this->render->restorePosition($parentSegmentSaved);
         } elseif (
             ! in_array(strtolower($node->name), ['media', 'supports'], true)
-            && $outsideChunks === []
+            && ! $this->escapedChunksReopenDirective($outsideChunks, $directiveName)
         ) {
             $emptyOutput = $prefix . '@' . $directiveName . $prelude . ' {}';
 
@@ -411,6 +417,22 @@ final readonly class AtRuleNodeHandler
     private function appendResolvedChunk(string &$output, OutputChunk $chunk): void
     {
         $this->render->appendOutputChunk($output, $chunk);
+    }
+
+    /**
+     * @param array<int, string> $outsideChunks
+     */
+    private function escapedChunksReopenDirective(array $outsideChunks, string $directiveName): bool
+    {
+        $needle = strtolower('@' . $directiveName);
+
+        foreach ($outsideChunks as $chunk) {
+            if (str_starts_with(ltrim($chunk), $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function interpolatePreludeOnly(string $prelude, \Bugo\SCSS\Runtime\Environment $env): string
@@ -500,6 +522,8 @@ final readonly class AtRuleNodeHandler
         $ctx->env->enterScope($contentScope);
 
         $childScope = $ctx->env->getCurrentScope();
+
+        $childScope->markAsCallableBody();
 
         if ($mixinParentSelector instanceof StringNode) {
             $childScope->setVariableLocal('__parent_selector', $mixinParentSelector);

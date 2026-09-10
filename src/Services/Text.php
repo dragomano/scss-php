@@ -159,159 +159,13 @@ final readonly class Text
         return $result;
     }
 
-    private function evaluateFeatureGroup(string $inner, Environment $env): string
+    public function collapseWhitespaceInPrelude(string $prelude): string
     {
-        $inner = trim($inner);
-
-        foreach (['<=', '>=', '<', '>', '='] as $operator) {
-            [$parts, $ops] = $this->splitMediaFeatureByOperator($inner, $operator);
-
-            if (count($parts) < 2) {
-                continue;
-            }
-
-            $result = $this->evaluateFeatureOperand($parts[0], $env);
-
-            for ($i = 1, $n = count($parts); $i < $n; $i++) {
-                $result .= ' ' . $ops[$i - 1] . ' ' . $this->evaluateFeatureOperand($parts[$i], $env);
-            }
-
-            return $result;
+        if (str_contains($prelude, "\n") || str_contains($prelude, "\r")) {
+            return $prelude;
         }
 
-        $colonPos = $this->findTopLevelColon($inner);
-
-        if ($colonPos !== null) {
-            $name  = trim(substr($inner, 0, $colonPos));
-            $value = trim(substr($inner, $colonPos + 1));
-
-            return $name . ': ' . $this->evaluateFeatureOperand($value, $env);
-        }
-
-        return $inner;
-    }
-
-    private function evaluateFeatureOperand(string $operand, Environment $env): string
-    {
-        $trimmed = trim($operand);
-
-        if (! $this->shouldEvaluateFeatureOperand($trimmed)) {
-            return $trimmed;
-        }
-
-        $valueNode = $this->parser->parseInlineExpression($trimmed);
-        $evaluated = $this->valueEvaluator->evaluate($valueNode, $env);
-        $formatted = $this->valueFormatter->format($evaluated, $env);
-
-        if (trim($formatted) !== '') {
-            return $formatted;
-        }
-
-        return $trimmed;
-    }
-
-    private function shouldEvaluateFeatureOperand(string $operand): bool
-    {
-        if ($operand === '' || ctype_digit($operand)) {
-            return false;
-        }
-
-        if (str_starts_with($operand, 'if(')) {
-            return true;
-        }
-
-        if ($operand[0] === '(' || $operand[0] === '[') {
-            return true;
-        }
-
-        return str_contains($operand, '+') || str_contains($operand, '*');
-    }
-
-    /**
-     * @return array{0: list<string>, 1: list<string>}
-     */
-    private function splitMediaFeatureByOperator(string $text, string $operator): array
-    {
-        $length   = strlen($text);
-        $parts    = [];
-        $ops      = [];
-        $depth    = 0;
-        $brackets = 0;
-        $quote    = '';
-        $start    = 0;
-        $opLength = strlen($operator);
-
-        for ($i = 0; $i < $length; $i++) {
-            $char = $text[$i];
-
-            if ($quote !== '') {
-                if ($char === '\\') {
-                    $i++;
-
-                    continue;
-                }
-
-                if ($char === $quote) {
-                    $quote = '';
-                }
-
-                continue;
-            }
-
-            if ($char === '"' || $char === "'") {
-                $quote = $char;
-
-                continue;
-            }
-
-            if ($char === '(') {
-                $depth++;
-
-                continue;
-            }
-
-            if ($char === ')') {
-                $depth = max(0, $depth - 1);
-
-                continue;
-            }
-
-            if ($char === '[') {
-                $brackets++;
-
-                continue;
-            }
-
-            if ($char === ']') {
-                $brackets = max(0, $brackets - 1);
-
-                continue;
-            }
-
-            if ($depth !== 0 || $brackets !== 0) {
-                continue;
-            }
-
-            if (substr($text, $i, $opLength) === $operator) {
-                $before = $i > 0 ? $text[$i - 1] : ' ';
-                $after  = $text[$i + $opLength] ?? '';
-
-                if ((ctype_space($before) || $before === '(') && ($after === ' ' || $after === '(')) {
-                    $parts[] = trim(substr($text, $start, $i - $start));
-                    $ops[]   = $operator;
-                    $start   = $i + $opLength;
-                    $i       = $start - 1;
-                }
-            }
-        }
-
-        if ($parts === []) {
-            return [[$text], []];
-        }
-
-        $parts[] = trim(substr($text, $start));
-
-        return [$parts, $ops];
+        return $this->collapseWhitespace($prelude);
     }
 
     public function normalizePlainCssMediaQueryPrelude(string $prelude): string
@@ -1470,6 +1324,161 @@ final readonly class Text
         $evaluated = $this->valueEvaluator->evaluate($valueNode, $env);
 
         return $this->formatInterpolationValue($evaluated, $env);
+    }
+
+    private function evaluateFeatureGroup(string $inner, Environment $env): string
+    {
+        $inner = trim($inner);
+
+        foreach (['<=', '>=', '<', '>', '='] as $operator) {
+            [$parts, $ops] = $this->splitMediaFeatureByOperator($inner, $operator);
+
+            if (count($parts) < 2) {
+                continue;
+            }
+
+            $result = $this->evaluateFeatureOperand($parts[0], $env);
+
+            for ($i = 1, $n = count($parts); $i < $n; $i++) {
+                $result .= ' ' . $ops[$i - 1] . ' ' . $this->evaluateFeatureOperand($parts[$i], $env);
+            }
+
+            return $result;
+        }
+
+        $colonPos = $this->findTopLevelColon($inner);
+
+        if ($colonPos !== null) {
+            $name  = trim(substr($inner, 0, $colonPos));
+            $value = trim(substr($inner, $colonPos + 1));
+
+            return $name . ': ' . $this->evaluateFeatureOperand($value, $env);
+        }
+
+        return $inner;
+    }
+
+    private function evaluateFeatureOperand(string $operand, Environment $env): string
+    {
+        $trimmed = trim($operand);
+
+        if (! $this->shouldEvaluateFeatureOperand($trimmed)) {
+            return $trimmed;
+        }
+
+        $valueNode = $this->parser->parseInlineExpression($trimmed);
+        $evaluated = $this->valueEvaluator->evaluate($valueNode, $env);
+        $formatted = $this->valueFormatter->format($evaluated, $env);
+
+        if (trim($formatted) !== '') {
+            return $formatted;
+        }
+
+        return $trimmed;
+    }
+
+    private function shouldEvaluateFeatureOperand(string $operand): bool
+    {
+        if ($operand === '' || ctype_digit($operand)) {
+            return false;
+        }
+
+        if (str_starts_with($operand, 'if(')) {
+            return true;
+        }
+
+        if ($operand[0] === '(' || $operand[0] === '[') {
+            return true;
+        }
+
+        return str_contains($operand, '+') || str_contains($operand, '*');
+    }
+
+    /**
+     * @return array{0: list<string>, 1: list<string>}
+     */
+    private function splitMediaFeatureByOperator(string $text, string $operator): array
+    {
+        $length   = strlen($text);
+        $parts    = [];
+        $ops      = [];
+        $depth    = 0;
+        $brackets = 0;
+        $quote    = '';
+        $start    = 0;
+        $opLength = strlen($operator);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $text[$i];
+
+            if ($quote !== '') {
+                if ($char === '\\') {
+                    $i++;
+
+                    continue;
+                }
+
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                continue;
+            }
+
+            if ($char === '(') {
+                $depth++;
+
+                continue;
+            }
+
+            if ($char === ')') {
+                $depth = max(0, $depth - 1);
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $brackets++;
+
+                continue;
+            }
+
+            if ($char === ']') {
+                $brackets = max(0, $brackets - 1);
+
+                continue;
+            }
+
+            if ($depth !== 0 || $brackets !== 0) {
+                continue;
+            }
+
+            if (substr($text, $i, $opLength) === $operator) {
+                $before = $i > 0 ? $text[$i - 1] : ' ';
+                $after  = $text[$i + $opLength] ?? '';
+
+                if ((ctype_space($before) || $before === '(') && ($after === ' ' || $after === '(')) {
+                    $parts[] = trim(substr($text, $start, $i - $start));
+                    $ops[]   = $operator;
+                    $start   = $i + $opLength;
+                    $i       = $start - 1;
+                }
+            }
+        }
+
+        if ($parts === []) {
+            return [[$text], []];
+        }
+
+        $parts[] = trim(substr($text, $start));
+
+        return [$parts, $ops];
     }
 
     private function interpolateQuotedTemplate(string $expr, Environment $env): string

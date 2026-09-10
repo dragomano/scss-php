@@ -8,6 +8,7 @@ use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
 use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\EachNode;
 use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\ForNode;
@@ -190,8 +191,13 @@ final readonly class FlowControlNodeHandler
 
                 if ($child instanceof RuleNode) {
                     $parentSelector = $ctx->env->getCurrentScope()->getStringVariable('__parent_selector');
+                    $atRootNoRule   = $ctx->env->getCurrentScope()->getAstVariable('__at_root_without_rule');
 
-                    if ($parentSelector !== null && $parentSelector->value !== '') {
+                    if (
+                        $parentSelector !== null
+                        && $parentSelector->value !== ''
+                        && ! ($atRootNoRule instanceof BooleanNode && $atRootNoRule->value)
+                    ) {
                         $childSelector   = $this->chunks->resolveRuleSelector($child, $ctx);
                         $isPropertyBlock = $this->selector->parseNestedPropertyBlockSelector($childSelector) !== null;
 

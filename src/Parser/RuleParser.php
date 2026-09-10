@@ -397,10 +397,18 @@ final class RuleParser
                 TokenType::COMMENT_LOUD,
                 TokenType::COMMENT_PRESERVED,
             ], true)) {
+                $attachedComment = $this->context->isInsideBraces()
+                    && $buffer !== ''
+                    && $buffer[-1] !== ' ';
+
                 $this->stream->advance();
                 $this->stream->skipWhitespace();
 
-                if ($buffer !== '' && $buffer[-1] !== ' ') {
+                if ($attachedComment) {
+                    $buffer .= $token->type === TokenType::COMMENT_PRESERVED
+                        ? '/*!' . $token->value . '*/'
+                        : '/*' . $token->value . '*/';
+                } elseif ($buffer !== '' && $buffer[-1] !== ' ') {
                     $buffer .= ' ';
                 }
 

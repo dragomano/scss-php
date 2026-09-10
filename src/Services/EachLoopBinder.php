@@ -15,7 +15,10 @@ use function count;
 
 final readonly class EachLoopBinder implements EachLoopBinderInterface
 {
-    public function __construct(private ValueFactory $valueFactory) {}
+    public function __construct(
+        private ValueFactory $valueFactory,
+        private AstValueEvaluatorInterface $slashDivisionValueEvaluator,
+    ) {}
 
     public function items(AstNode $iterableValue): array
     {
@@ -38,6 +41,8 @@ final readonly class EachLoopBinder implements EachLoopBinderInterface
 
     public function assign(array $variables, AstNode $item, Environment $env): void
     {
+        $item = $this->slashDivisionValueEvaluator->evaluate($item, $env);
+
         if (count($variables) === 1) {
             $env->getCurrentScope()->setVariable($variables[0], $item);
 

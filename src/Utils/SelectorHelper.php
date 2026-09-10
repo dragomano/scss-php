@@ -167,6 +167,8 @@ final class SelectorHelper
         $resolved = [];
         $breaks   = [];
 
+        $multiAmpersandsHandled = false;
+
         foreach ($parentParts as $pi => $parentPart) {
             $parentHasBreak = str_contains($parentPart, "\n");
             $trimmedParent  = ltrim($parentPart);
@@ -182,12 +184,35 @@ final class SelectorHelper
                     continue;
                 }
 
-                $resolvedPart = str_contains($trimmedSelector, '&')
-                    ? self::normalizeCombinatorSpacing(str_replace('&', $trimmedParent, $trimmedSelector))
-                    : $trimmedParent . ' ' . $trimmedSelector;
+                $break = ($parentHasBreak || ($pi > 0 && str_ends_with($parentParts[$pi - 1], "\n"))) && $pi > 0;
 
-                $resolved[] = $resolvedPart;
-                $breaks[]   = ($parentHasBreak || ($pi > 0 && str_ends_with($parentParts[$pi - 1], "\n"))) && $pi > 0;
+                if (str_contains($trimmedSelector, '&')) {
+                    if (self::countTopLevelAmpersands($trimmedSelector) > 1) {
+                        if ($multiAmpersandsHandled) {
+                            continue;
+                        }
+
+                        $multiAmpersandsHandled = true;
+
+                        foreach (self::expandAmpersandVariants($trimmedSelector, $parentParts) as $variant) {
+                            $resolved[] = self::normalizeCombinatorSpacing($variant);
+                            $breaks[]   = false;
+                        }
+
+                        continue;
+                    }
+
+                    $resolved[] = self::normalizeCombinatorSpacing(
+                        self::expandAmpersandVariants($trimmedSelector, [$trimmedParent])[0],
+                    );
+
+                    $breaks[] = $break;
+
+                    continue;
+                }
+
+                $resolved[] = $trimmedParent . ' ' . $trimmedSelector;
+                $breaks[]   = $break;
             }
         }
 
@@ -210,6 +235,9 @@ final class SelectorHelper
 
     /**
      * @return array<int, string>
+     */
+    /**
+     * @return list<string>
      */
     private static function splitListRaw(string $selector): array
     {
@@ -234,6 +262,151 @@ final class SelectorHelper
         $parts[] = substr($selector, $start);
 
         return array_values(array_filter($parts, static fn(string $part): bool => trim($part) !== ''));
+    }
+
+    /**
+     * @param list<string> $parentParts
+     * @return list<string>
+     */
+    private static function expandAmpersandVariants(string $selector, array $parentParts): array
+    {
+        $ampersandCount = self::countTopLevelAmpersands($selector);
+
+        if ($ampersandCount <= 1) {
+            return [str_replace('&', trim($parentParts[0] ?? ''), $selector)];
+        }
+
+        $segments     = self::splitByTopLevelAmpersands($selector);
+        $partCount    = count($parentParts);
+        $combinations = $partCount ** $ampersandCount;
+        $result       = [];
+
+        for ($combo = 0; $combo < $combinations; $combo++) {
+            $variant    = $segments[0];
+            $remaining  = $combo;
+
+            for ($ampIndex = 0; $ampIndex < $ampersandCount; $ampIndex++) {
+                $power      = (int) ($partCount ** ($ampersandCount - 1 - $ampIndex));
+                $partIndex  = (int) ($remaining / $power);
+                $remaining -= $partIndex * $power;
+                $variant   .= trim($parentParts[$partIndex] ?? '') . $segments[$ampIndex + 1];
+            }
+
+            $result[] = $variant;
+        }
+
+        return $result;
+    }
+
+    private static function countTopLevelAmpersands(string $selector): int
+    {
+        $length   = strlen($selector);
+        $count    = 0;
+        $quote    = '';
+        $parens   = 0;
+        $brackets = 0;
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $selector[$i];
+
+            if ($quote !== '') {
+                if ($char === '\\') {
+                    $i++;
+
+                    continue;
+                }
+
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $brackets++;
+            } elseif ($char === ']' && $brackets > 0) {
+                $brackets--;
+            } elseif ($char === '(') {
+                $parens++;
+            } elseif ($char === ')' && $parens > 0) {
+                $parens--;
+            } elseif ($char === '&' && $parens === 0 && $brackets === 0) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * @return list<string> $K+1 segments around $K top-level ampersands
+     */
+    private static function splitByTopLevelAmpersands(string $selector): array
+    {
+        $segments = [];
+        $buffer   = '';
+        $length   = strlen($selector);
+        $quote    = '';
+        $parens   = 0;
+        $brackets = 0;
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $selector[$i];
+
+            if ($quote !== '') {
+                $buffer .= $char;
+
+                if ($char === '\\') {
+                    $buffer .= $selector[$i + 1] ?? '';
+
+                    $i++;
+
+                    continue;
+                }
+
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote   = $char;
+                $buffer .= $char;
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $brackets++;
+            } elseif ($char === ']' && $brackets > 0) {
+                $brackets--;
+            } elseif ($char === '(') {
+                $parens++;
+            } elseif ($char === ')' && $parens > 0) {
+                $parens--;
+            } elseif ($char === '&' && $parens === 0 && $brackets === 0) {
+                $segments[] = $buffer;
+
+                $buffer = '';
+
+                continue;
+            }
+
+            $buffer .= $char;
+        }
+
+        $segments[] = $buffer;
+
+        return $segments;
     }
 
     private static function normalizeCombinatorSpacing(string $selector): string

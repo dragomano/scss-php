@@ -35,6 +35,26 @@ use function substr;
 
 final readonly class FunctionCallEvaluator
 {
+    private const STRING_FUNCTION_NAMES = [
+        'quote',
+        'str-index',
+        'str-insert',
+        'str-length',
+        'str-slice',
+        'string.index',
+        'string.insert',
+        'string.length',
+        'string.quote',
+        'string.slice',
+        'string.split',
+        'string.to-lower-case',
+        'string.to-upper-case',
+        'string.unquote',
+        'to-lower-case',
+        'to-upper-case',
+        'unquote',
+    ];
+
     public function __construct(
         private CompilerContext $ctx,
         private CompilerOptions $options,
@@ -298,6 +318,17 @@ final readonly class FunctionCallEvaluator
 
     private function evaluateBuiltinOrCssFunction(FunctionNode $node, Environment $env): AstNode
     {
+        if (strtolower($node->name) === 'not' && count($node->arguments) === 1) {
+            $logical = $this->conditional->evaluateLogicalList(
+                new ListNode([new StringNode('not'), $node->arguments[0]], 'space'),
+                $env,
+            );
+
+            if ($logical !== null) {
+                return $logical;
+            }
+        }
+
         $isModernIf = strtolower($node->name) === 'if' && $node->modernSyntax;
 
         if ($isModernIf) {
@@ -389,7 +420,13 @@ final readonly class FunctionCallEvaluator
             return $simplifiedFunction;
         }
 
-        $resolved = $this->ctx->functionRegistry->tryCall($node->name, $arguments, $context);
+        $resolved = $this->ctx->functionRegistry->tryCall(
+            $node->name,
+            in_array(strtolower($node->name), self::STRING_FUNCTION_NAMES, true)
+                ? $this->stringifyCssFunctionArguments($arguments, $env)
+                : $arguments,
+            $context,
+        );
 
         if ($resolved !== null) {
             if ($this->isSlashTriple($resolved)) {
@@ -441,6 +478,22 @@ final readonly class FunctionCallEvaluator
         }
 
         return $fallback;
+    }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     *
+     * @return array<int, AstNode>
+     */
+    private function stringifyCssFunctionArguments(array $arguments, Environment $env): array
+    {
+        foreach ($arguments as $index => $argument) {
+            if ($argument instanceof FunctionNode) {
+                $arguments[$index] = new StringNode($this->valueFormatter->format($argument, $env));
+            }
+        }
+
+        return $arguments;
     }
 
     private function isSlashTriple(AstNode $node): bool

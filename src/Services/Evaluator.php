@@ -895,7 +895,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
 
     private function createEachLoopBinder(): EachLoopBinderInterface
     {
-        return new EachLoopBinder($this->ctx->valueFactory);
+        return new EachLoopBinder($this->ctx->valueFactory, $this->createSlashDivisionValueEvaluator());
     }
 
     private function createConditionalEvaluator(): ConditionalEvaluator

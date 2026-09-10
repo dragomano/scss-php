@@ -51,6 +51,8 @@ final readonly class UserFunctionExecutor
 
         $env->enterScope($function->closureScope);
 
+        $env->getCurrentScope()->markAsCallableBody();
+
         $currentScope = $env->getCurrentScope();
 
         $parentSelector = $callScope->getStringVariable('__parent_selector');

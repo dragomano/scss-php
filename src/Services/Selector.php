@@ -37,7 +37,6 @@ use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 use Bugo\SCSS\Utils\StringHelper;
 
-use function array_map;
 use function array_unique;
 use function array_values;
 use function count;
@@ -106,6 +105,11 @@ final readonly class Selector
         return $this->text->stripCommentsExceptTrailing($text);
     }
 
+    public function collapseWhitespaceInPrelude(string $prelude): string
+    {
+        return $this->text->collapseWhitespaceInPrelude($prelude);
+    }
+
     public function canonicalizeSelectorEscapes(string $selector): string
     {
         return $this->tokenizer->canonicalizeSelectorEscapes($selector);
@@ -119,6 +123,22 @@ final readonly class Selector
     public function normalizePseudoArguments(string $selector): string
     {
         return $this->tokenizer->normalizePseudoArguments($selector);
+    }
+
+    /**
+     * @param list<int> $protectedIndices
+     */
+    public function normalizeNthArguments(string $selector, array $protectedIndices = []): string
+    {
+        return $this->tokenizer->normalizeNthArguments($selector, $protectedIndices);
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function findFullyInterpolatedNthIndices(string $selector): array
+    {
+        return $this->tokenizer->findFullyInterpolatedNthIndices($selector);
     }
 
     public function normalizeAdjacentSelectorCompounds(string $selector): string
@@ -236,10 +256,7 @@ final readonly class Selector
         if ($node instanceof SupportsNode) {
             return new SupportsNode(
                 $node->condition,
-                array_map(
-                    fn(AstNode $child): AstNode => $this->normalizeBubblingChild($child, $selector, $attachParentSelector),
-                    $node->body,
-                ),
+                $this->normalizeBubblingChildren($node->body, $selector, $attachParentSelector),
             );
         }
 
@@ -251,14 +268,7 @@ final readonly class Selector
             return new DirectiveNode(
                 $node->name,
                 $node->prelude,
-                array_map(
-                    fn(AstNode $child): AstNode => $this->normalizeBubblingChild(
-                        $child,
-                        $selector,
-                        $attachParentSelector,
-                    ),
-                    $node->body,
-                ),
+                $this->normalizeBubblingChildren($node->body, $selector, $attachParentSelector),
                 true,
             );
         }
@@ -332,19 +342,35 @@ final readonly class Selector
         $escapeLevels    = count($currentStack);
         $keepRuleContext = $this->shouldKeepAtRootRuleContext($node->queryMode, $normalizedRules);
 
-        foreach ($node->body as $child) {
-            $compiled = $this->compileAtRootChild(
-                $child,
-                $parentSelector,
-                $keepRuleContext,
-                $stack,
-                $rootCtx,
-                $env,
-            );
+        $env->enterScope();
+        $env->getCurrentScope()->setVariableLocal(
+            '__at_root_context',
+            $this->ctx->valueFactory->createBooleanNode(true),
+        );
 
-            if ($compiled !== '') {
-                $chunks[] = $compiled;
+        if (! $keepRuleContext) {
+            $env->getCurrentScope()->setVariableLocal(
+                '__at_root_without_rule',
+                $this->ctx->valueFactory->createBooleanNode(true),
+            );
+        }
+
+        try {
+            foreach ($node->body as $child) {
+                $compiled = $this->compileAtRootChild(
+                    $child,
+                    $parentSelector,
+                    $keepRuleContext,
+                    $stack,
+                    $rootCtx,
+                );
+
+                if ($compiled !== '') {
+                    $chunks[] = $compiled;
+                }
             }
+        } finally {
+            $env->exitScope();
         }
 
         return [
@@ -991,24 +1017,13 @@ final readonly class Selector
         bool $keepRuleContext,
         array $stack,
         TraversalContext $rootCtx,
-        Environment $env,
     ): string {
         $rootChild        = $this->normalizeAtRootChild($child, $parentSelector, $keepRuleContext);
         $wrappedRootChild = $this->wrapNodeWithAtRuleStack($rootChild, $stack);
 
-        $env->enterScope();
-        $env->getCurrentScope()->setVariableLocal(
-            '__at_root_context',
-            $this->ctx->valueFactory->createBooleanNode(true),
-        );
-
-        $compiled = $this->render->trimTrailingNewlines(
+        return $this->render->trimTrailingNewlines(
             $this->dispatcher->compileWithContext($wrappedRootChild, $rootCtx),
         );
-
-        $env->exitScope();
-
-        return $compiled;
     }
 
     /**
@@ -1048,6 +1063,44 @@ final readonly class Selector
     private function isBubblingRuleNode(RuleNode $node): bool
     {
         return $node->selector === '@font-face';
+    }
+
+    /**
+     * @param array<int, AstNode> $children
+     *
+     * @return list<AstNode>
+     */
+    private function normalizeBubblingChildren(array $children, string $selector, bool $attachParentSelector): array
+    {
+        $result = [];
+        $group  = [];
+
+        foreach ($children as $child) {
+            if (
+                $child instanceof RuleNode
+                || $child instanceof DirectiveNode
+                || $child instanceof SupportsNode
+                || $child instanceof AtRootNode
+            ) {
+                if ($group !== []) {
+                    $result[] = new RuleNode($selector, $group);
+
+                    $group = [];
+                }
+
+                $result[] = $this->normalizeBubblingChild($child, $selector, $attachParentSelector);
+
+                continue;
+            }
+
+            $group[] = $child;
+        }
+
+        if ($group !== []) {
+            $result[] = new RuleNode($selector, $group);
+        }
+
+        return $result;
     }
 
     private function normalizeBubblingChild(AstNode $child, string $selector, bool $attachParentSelector): AstNode

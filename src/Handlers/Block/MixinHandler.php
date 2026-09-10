@@ -219,6 +219,8 @@ final readonly class MixinHandler
 
         $ctx->env->enterScope($mixin->closureScope);
 
+        $ctx->env->getCurrentScope()->markAsCallableBody();
+
         $childCtx = new TraversalContext($ctx->env, $ctx->indent);
 
         try {

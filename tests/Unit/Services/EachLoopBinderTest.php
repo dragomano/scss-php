@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Nodes\ArgumentListNode;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
@@ -11,11 +11,25 @@ use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\EachLoopBinder;
+use Bugo\SCSS\Values\ValueFactory;
 
 describe('EachLoopBinder', function () {
     beforeEach(function () {
-        $this->binder = new EachLoopBinder((new CompilerContext())->valueFactory);
+        $valueFactory = new ValueFactory();
+
+        $this->binder = new EachLoopBinder(
+            $valueFactory,
+            new class ($valueFactory) implements AstValueEvaluatorInterface {
+                public function __construct(private readonly ValueFactory $valueFactory) {}
+
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return $node;
+                }
+            },
+        );
     });
 
     it('returns iterable items for lists argument lists maps and scalars', function () {

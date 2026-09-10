@@ -48,7 +48,7 @@ final readonly class StringConcatenationEvaluator
 
         if ($count === 2
             && $list->items[0] instanceof StringNode
-            && in_array($list->items[0]->value, ['-', '/'], true)
+            && in_array($list->items[0]->value, ['-', '+', '/'], true)
         ) {
             return new StringNode($list->items[0]->value . $this->valueFormatter->format($list->items[1], $env));
         }

@@ -279,7 +279,17 @@ final class CompilerRuntime
                     }
                 },
             ),
-            new EachLoopBinder($this->ctx->valueFactory),
+            new EachLoopBinder(
+                $this->ctx->valueFactory,
+                new class ($this) implements AstValueEvaluatorInterface {
+                    public function __construct(private readonly CompilerRuntime $runtime) {}
+
+                    public function evaluate(AstNode $node, Environment $env): AstNode
+                    {
+                        return $this->runtime->evaluation()->evaluateValueWithSlashDivision($node, $env);
+                    }
+                },
+            ),
             $this->createAstValueFormatter(),
         );
     }

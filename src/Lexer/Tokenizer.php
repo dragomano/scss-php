@@ -631,7 +631,8 @@ final class Tokenizer
                 $hasUnitChars
                 && $this->position < $this->length
                 && $this->source[$this->position] === '-'
-                && ($this->position + 1 >= $this->length || ! ctype_digit($this->source[$this->position + 1]))
+                && ($this->position + 1 >= $this->length || (! ctype_digit($this->source[$this->position + 1])
+                    && $this->source[$this->position + 1] !== '.'))
             ) {
                 $this->position++;
 

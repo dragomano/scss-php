@@ -429,15 +429,15 @@ describe('Compiler', function () {
             SCSS;
 
             $expected = /** @lang text */ <<<'CSS'
-            ul:nth-child(3n + 1) {
+            ul:nth-child(3n+1) {
               margin-left: 10;
             }
 
-            ul:nth-child(3n + 2) {
+            ul:nth-child(3n+2) {
               margin-left: 20;
             }
 
-            ul:nth-child(3n + 3) {
+            ul:nth-child(3n+3) {
               margin-left: 30;
             }
             CSS;

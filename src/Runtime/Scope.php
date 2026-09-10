@@ -49,6 +49,8 @@ final class Scope
 
     private bool $flowControlScope = false;
 
+    private bool $callableBody = false;
+
     private bool $moduleRootScope = false;
 
     public function __construct(private readonly ?Scope $parent = null)
@@ -74,6 +76,16 @@ final class Scope
     public function markAsFlowControlScope(): void
     {
         $this->flowControlScope = true;
+    }
+
+    public function markAsCallableBody(): void
+    {
+        $this->callableBody = true;
+    }
+
+    public function isCallableBody(): bool
+    {
+        return $this->callableBody;
     }
 
     public function isFlowControlScope(): bool
@@ -464,6 +476,16 @@ final class Scope
     {
         if ($target === $this->getGlobalScope()) {
             return $this->flowControlScope && $this->isSemiGlobalPath($target);
+        }
+
+        $scope = $this;
+
+        while ($scope !== null && $scope !== $target) {
+            if ($scope->callableBody) {
+                return false;
+            }
+
+            $scope = $scope->parent;
         }
 
         return true;

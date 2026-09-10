@@ -19,8 +19,12 @@ use Bugo\SCSS\Values\AstValueInspector;
 use function array_map;
 use function array_slice;
 use function count;
+use function floor;
 use function implode;
+use function is_float;
+use function is_infinite;
 use function is_int;
+use function is_nan;
 use function ord;
 use function strlen;
 use function strtolower;
@@ -520,18 +524,24 @@ final class SassStringModule extends AbstractModule
      */
     private function requireIntegerArg(array $positional, int $index, string $context): int
     {
-        if (
-            ! isset($positional[$index])
-            || ! ($positional[$index] instanceof NumberNode)
-            || ! is_int($positional[$index]->value)
-        ) {
-            throw new MissingFunctionArgumentsException(
-                $this->builtinErrorContext($context),
-                'an integer argument',
-            );
+        $node = $positional[$index] ?? null;
+
+        if ($node instanceof NumberNode) {
+            $value = $node->value;
+
+            if (is_int($value)) {
+                return $value;
+            }
+
+            if (is_float($value) && ! is_nan($value) && ! is_infinite($value) && floor($value) === $value) {
+                return (int) $value;
+            }
         }
 
-        return $positional[$index]->value;
+        throw new MissingFunctionArgumentsException(
+            $this->builtinErrorContext($context),
+            'an integer argument',
+        );
     }
 
     private function stripQuotes(string $value): string

@@ -27,6 +27,7 @@ use function in_array;
 use function str_contains;
 use function str_ends_with;
 use function str_replace;
+use function str_starts_with;
 use function strlen;
 use function strpos;
 use function strtolower;
@@ -209,10 +210,25 @@ final readonly class FunctionCallParser
 
     public function parseUrlFunctionFromName(?string $identifier = null): FunctionNode
     {
-        $argument = $this->parseSpecialFunctionArgument(true, true);
+        $lowerName   = strtolower($identifier ?? 'url');
+        $isBareUrl   = $lowerName === 'url';
+        $isVendorUrl = str_starts_with($lowerName, '-') && str_ends_with($lowerName, '-url');
+
+        if (! $isBareUrl && ! $isVendorUrl) {
+            return $this->parseFunctionFromName($identifier ?? 'url');
+        }
+
+        $savedPosition = $this->stream->getPosition();
+        $argument      = $this->parseSpecialFunctionArgument(true, true);
 
         if ($argument === '') {
             return new FunctionNode('url', []);
+        }
+
+        if ($isVendorUrl && $this->startsWithStringQuote($argument)) {
+            $this->stream->setPosition($savedPosition);
+
+            return $this->parseFunctionFromName($identifier ?? 'url');
         }
 
         if ($this->isPlainCssUrlArgument($argument)) {
@@ -624,6 +640,13 @@ final readonly class FunctionCallParser
         $lower = strtolower($identifier);
 
         return $lower === 'url' || str_ends_with($lower, '-url');
+    }
+
+    private function startsWithStringQuote(string $argument): bool
+    {
+        $first = $argument[0] ?? '';
+
+        return $first === '"' || $first === "'";
     }
 
     private function hasSpecialProgidFunctionAhead(): bool

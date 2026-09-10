@@ -238,6 +238,12 @@ final class Parser implements
                 break;
             }
 
+            if ($this->stream->is(TokenType::SEMICOLON)) {
+                $this->stream->advance();
+
+                continue;
+            }
+
             $statement = $this->parseStatement();
 
             if ($statement !== null) {

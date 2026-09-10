@@ -236,10 +236,19 @@ final readonly class DirectiveParser
 
             $keyword = $this->moduleValueContext->consumeIdentifier();
 
-            if ($keyword !== 'else') {
+            if ($keyword !== 'else' && $keyword !== 'elseif') {
                 $this->stream->setPosition($savedPos);
 
                 break;
+            }
+
+            if ($keyword === 'elseif') {
+                $elseIfCondition = $this->parseCondition();
+                $elseIfBody      = $this->parsingContext->parseBlock();
+
+                $elseIfBranches[] = new ElseIfNode($elseIfCondition, $elseIfBody, $elseToken->line);
+
+                continue;
             }
 
             $this->stream->skipWhitespaceAndComments();

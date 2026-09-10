@@ -13,6 +13,7 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
+use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
@@ -186,6 +187,14 @@ final readonly class CssArgumentEvaluator
 
     private function evaluateFallbackCssArgument(AstNode $node, Environment $env, bool $skipConcatenation = false): AstNode
     {
+        if ($node instanceof ListNode && count($node->items) === 3 && $this->isSlashTriple($node)) {
+            if ($this->isLiteralSlashTriple($node)) {
+                return $node;
+            }
+
+            return $this->evaluateArgument($node, $env, $skipConcatenation);
+        }
+
         if (! $this->shouldPreserveCssArgument($node)) {
             return $this->evaluateArgument($node, $env, $skipConcatenation);
         }
@@ -296,6 +305,29 @@ final readonly class CssArgumentEvaluator
         }
 
         return [$evaluatedPairs, $changed];
+    }
+
+    private function isSlashTriple(ListNode $node): bool
+    {
+        if (! in_array($node->separator, ['space', '/'], true)) {
+            return false;
+        }
+
+        [$first, $mid, $last] = $node->items;
+
+        return $mid instanceof StringNode && $mid->value === '/';
+    }
+
+    private function isLiteralSlashTriple(ListNode $node): bool
+    {
+        [$first, $mid, $last] = $node->items;
+
+        return $first instanceof NumberNode
+            && $first->isLiteral
+            && $mid instanceof StringNode
+            && $mid->value === '/'
+            && $last instanceof NumberNode
+            && $last->isLiteral;
     }
 
     private function shouldPreserveCssArgument(AstNode $node): bool
