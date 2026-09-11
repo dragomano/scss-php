@@ -407,7 +407,14 @@ final readonly class Condition
 
     private function areColorsEqual(ColorNode $left, ColorNode $right): bool
     {
-        return strtolower($left->value) === strtolower($right->value);
+        $leftRgb  = $this->resolveNamedColorToRgb($left);
+        $rightRgb = $this->resolveNamedColorToRgb($right);
+
+        if ($leftRgb === null || $rightRgb === null) {
+            return strtolower($left->value) === strtolower($right->value);
+        }
+
+        return $this->areRgbColorsEqual($leftRgb, $rightRgb);
     }
 
     private function areListsEqual(ListNode $left, ListNode $right, Environment $env): bool

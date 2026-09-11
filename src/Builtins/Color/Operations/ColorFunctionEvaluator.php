@@ -1245,11 +1245,7 @@ final readonly class ColorFunctionEvaluator
                 : $this->channelValueFromNode($node, $types[$i]);
         }
 
-        if ($nativeSpace === 'hsl' && $channels[1] !== null
-            && $this->dartMath->fuzzyEquals($channels[1], 0.0)
-        ) {
-            $channels[0] = null;
-        } elseif (($nativeSpace === 'lch' || $nativeSpace === 'oklch')
+        if (($nativeSpace === 'lch' || $nativeSpace === 'oklch')
             && $channels[1] !== null
             && $this->dartMath->fuzzyEquals($channels[1], 0.0)
         ) {
