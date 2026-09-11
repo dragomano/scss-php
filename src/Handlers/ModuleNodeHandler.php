@@ -141,7 +141,12 @@ final readonly class ModuleNodeHandler
             );
 
             if (! ($data['cached'] ?? false)) {
-                $this->module->mergeScopeExports($data['scope'], $ctx->env->getCurrentScope(), trackImportedVariables: true);
+                $this->module->mergeScopeExports(
+                    $data['scope'],
+                    $ctx->env->getCurrentScope(),
+                    trackImportedVariables: true,
+                    rebaseClosures: true,
+                );
             }
 
             $css = $data['css'];

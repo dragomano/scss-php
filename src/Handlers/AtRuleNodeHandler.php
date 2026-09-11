@@ -31,6 +31,7 @@ use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strtolower;
+use function substr_count;
 use function trim;
 
 final readonly class AtRuleNodeHandler
@@ -332,11 +333,16 @@ final readonly class AtRuleNodeHandler
                     continue;
                 }
 
+                $inlineComment = $child instanceof CommentNode
+                    && ! $hasParentContent
+                    && ! $collectMappings
+                    && $child->line === $node->line + substr_count($node->prelude, "\n");
+
                 if (! $collectMappings) {
-                    $this->render->appendChunk($output, "\n");
+                    $this->render->appendChunk($output, $inlineComment ? ' ' : "\n");
                 }
 
-                $output .= $compiled;
+                $output .= $inlineComment ? ltrim($compiled) : $compiled;
 
                 $hasParentContent = true;
             }
@@ -511,6 +517,7 @@ final readonly class AtRuleNodeHandler
         $moduleGlobalTarget   = $ctx->env->getCurrentScope()->getScopeVariable('__module_global_target');
         $contentCallArguments = $this->evaluation->parseContentCallArguments($node->prelude);
         $atRuleStack          = $this->selector->getCurrentAtRuleStack($ctx->env);
+        $executionEntryScope  = $ctx->env->getCurrentScope();
 
         [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments(
             $contentCallArguments,
@@ -560,7 +567,11 @@ final readonly class AtRuleNodeHandler
         $contentCtx = $ctx;
 
         try {
-            if ($mixinParentSelector instanceof StringNode && $this->shouldWrapContentInParentRule($atRuleStack)) {
+            if (
+                $mixinParentSelector instanceof StringNode
+                && $this->shouldWrapContentInParentRule($atRuleStack)
+                && ! $this->isEnclosingRuleCloserThanAtRule($executionEntryScope)
+            ) {
                 $wrappedContent = new RuleNode($mixinParentSelector->value, $contentBlock);
                 $compiled       = $this->dispatcher->compileWithContext($wrappedContent, $contentCtx);
 
@@ -642,6 +653,28 @@ final readonly class AtRuleNodeHandler
             }
 
             if ($entry->name === 'media') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isEnclosingRuleCloserThanAtRule(Scope $scope): bool
+    {
+        $ruleDefinition      = $scope->findVariableDefinition('__parent_selector');
+        $directiveDefinition = $scope->findVariableDefinition('__at_rule_stack');
+
+        if ($ruleDefinition === null) {
+            return false;
+        }
+
+        if ($directiveDefinition === null) {
+            return true;
+        }
+
+        for ($current = $ruleDefinition->scope; $current !== null; $current = $current->getParent()) {
+            if ($current === $directiveDefinition->scope) {
                 return true;
             }
         }

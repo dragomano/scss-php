@@ -93,6 +93,19 @@ final class StringHelper
             return $trimmed . ' ';
         }
 
+        $trailingBackslashes = 0;
+        $probe               = $length - 1;
+
+        while ($probe >= 0 && $trimmed[$probe] === '\\') {
+            $trailingBackslashes++;
+
+            $probe--;
+        }
+
+        if ($trailingBackslashes % 2 === 1) {
+            return $trimmed . ' ';
+        }
+
         return $trimmed;
     }
 }

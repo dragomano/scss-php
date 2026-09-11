@@ -6,8 +6,10 @@ namespace Bugo\SCSS\Utils;
 
 use function array_merge;
 use function array_values;
+use function count;
 use function implode;
 use function in_array;
+use function str_contains;
 use function strlen;
 
 final class UnitConverter
@@ -56,10 +58,62 @@ final class UnitConverter
             return $cache[$key];
         }
 
+        if (self::isCompoundUnit($left) || self::isCompoundUnit($right)) {
+            return $cache[$key] = self::compoundCompatible($left, $right);
+        }
+
         $leftInfo  = self::CONVERSIONS[$left] ?? null;
         $rightInfo = self::CONVERSIONS[$right] ?? null;
 
         return $cache[$key] = ($leftInfo !== null && $rightInfo !== null && $leftInfo['group'] === $rightInfo['group']);
+    }
+
+    private static function isCompoundUnit(string $unit): bool
+    {
+        return str_contains($unit, '/') || str_contains($unit, '*');
+    }
+
+    private static function compoundCompatible(string $left, string $right): bool
+    {
+        [$leftNumerator, $leftDenominator]   = self::parseParts($left);
+        [$rightNumerator, $rightDenominator] = self::parseParts($right);
+
+        return self::partsCompatible($leftNumerator, $rightNumerator)
+            && self::partsCompatible($leftDenominator, $rightDenominator);
+    }
+
+    /**
+     * @param array<int, string> $left
+     * @param array<int, string> $right
+     */
+    private static function partsCompatible(array $left, array $right): bool
+    {
+        if (count($left) !== count($right)) {
+            return false;
+        }
+
+        $matched = [];
+
+        foreach ($left as $leftPart) {
+            $found = false;
+
+            foreach ($right as $index => $rightPart) {
+                if (isset($matched[$index]) || ! self::compatible($leftPart, $rightPart)) {
+                    continue;
+                }
+
+                $matched[$index] = true;
+                $found           = true;
+
+                break;
+            }
+
+            if (! $found) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public static function isKnownUnit(?string $unit): bool
@@ -86,6 +140,10 @@ final class UnitConverter
             return $value;
         }
 
+        if (self::isCompoundUnit($fromUnit) || self::isCompoundUnit($toUnit)) {
+            return self::convertCompound($value, $fromUnit, $toUnit);
+        }
+
         $from = self::CONVERSIONS[$fromUnit] ?? null;
         $to   = self::CONVERSIONS[$toUnit] ?? null;
 
@@ -96,6 +154,55 @@ final class UnitConverter
         $baseValue = $value * (float) $from['factor'];
 
         return $baseValue / (float) $to['factor'];
+    }
+
+    private static function convertCompound(float $value, string $fromUnit, string $toUnit): float
+    {
+        [$fromNumerator, $fromDenominator] = self::parseParts($fromUnit);
+        [$toNumerator, $toDenominator]     = self::parseParts($toUnit);
+
+        $value = self::convertParts($value, $fromNumerator, $toNumerator, true);
+
+        return self::convertParts($value, $fromDenominator, $toDenominator, false);
+    }
+
+    /**
+     * @param array<int, string> $fromParts
+     * @param array<int, string> $toParts
+     */
+    private static function convertParts(float $value, array $fromParts, array $toParts, bool $numerator): float
+    {
+        $used = [];
+
+        foreach ($fromParts as $fromPart) {
+            foreach ($toParts as $index => $toPart) {
+                if (isset($used[$index]) || ! self::compatible($fromPart, $toPart)) {
+                    continue;
+                }
+
+                $used[$index] = true;
+
+                $value = self::convertKnownPart($value, $fromPart, $toPart, $numerator);
+
+                continue 2;
+            }
+        }
+
+        return $value;
+    }
+
+    private static function convertKnownPart(float $value, string $fromUnit, string $toUnit, bool $numerator): float
+    {
+        $from = self::CONVERSIONS[$fromUnit] ?? null;
+        $to   = self::CONVERSIONS[$toUnit] ?? null;
+
+        if ($from === null || $to === null || $from['group'] !== $to['group']) {
+            return $value;
+        }
+
+        $ratio = (float) $from['factor'] / (float) $to['factor'];
+
+        return $numerator ? $value * $ratio : $value / $ratio;
     }
 
     public static function multiply(?string $left, ?string $right): ?string

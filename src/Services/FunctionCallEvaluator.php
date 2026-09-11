@@ -76,12 +76,16 @@ final readonly class FunctionCallEvaluator
         }
 
         if ($node->dynamicName !== null) {
+            $dynamicNameNode = $this->valueEvaluator->evaluate($node->dynamicName, $env);
+
             $node = new FunctionNode(
-                name: $this->valueFormatter->format($node->dynamicName, $env),
+                name: $this->valueFormatter->format($dynamicNameNode, $env),
                 arguments: $node->arguments,
                 line: $node->line,
                 capturedScope: $node->capturedScope,
             );
+
+            return $this->evaluateDynamicNameCssFunction($node, $env);
         }
 
         if (str_starts_with($node->name, '--') || NameHelper::isSpecialCssFunctionName($node->name)) {
@@ -316,6 +320,44 @@ final readonly class FunctionCallEvaluator
         return $hasPercentage || $hasMissing;
     }
 
+    private function evaluateDynamicNameCssFunction(FunctionNode $node, Environment $env): AstNode
+    {
+        $arguments = $this->callArguments->expandCssCallArguments(
+            $node->arguments,
+            $env,
+            SassCalculation::isCalculationFunctionName($node->name),
+        );
+
+        $cssName = $this->namespaceMember($node->name);
+
+        if (str_contains($node->name, ':')) {
+            $cssName = $node->name;
+        }
+
+        return new FunctionNode(
+            name: $cssName,
+            arguments: $this->calculation->normalizeArguments($cssName, $arguments),
+            line: $node->line,
+            parenthesized: $node->parenthesized,
+        );
+    }
+
+    private function namespaceMember(string $name): string
+    {
+        if (
+            ! NameHelper::hasNamespace($name)
+            || str_contains($name, '(')
+            || str_contains($name, ')')
+            || str_contains($name, '"')
+            || str_contains($name, "'")
+            || str_contains($name, '/')
+        ) {
+            return $name;
+        }
+
+        return NameHelper::splitNamespacedName($name)['member'];
+    }
+
     private function evaluateBuiltinOrCssFunction(FunctionNode $node, Environment $env): AstNode
     {
         if (strtolower($node->name) === 'not' && count($node->arguments) === 1) {
@@ -454,9 +496,7 @@ final readonly class FunctionCallEvaluator
             SassCalculation::isCalculationFunctionName($node->name),
         );
 
-        $cssName = NameHelper::hasNamespace($node->name)
-            ? NameHelper::splitNamespacedName($node->name)['member']
-            : $node->name;
+        $cssName = $this->namespaceMember($node->name);
 
         if (str_contains($node->name, ':')) {
             $cssName = $node->name;

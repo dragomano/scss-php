@@ -348,6 +348,39 @@ final readonly class DeferredChunkManager
             ? $child
             : $this->evaluation->normalizeBubblingNodeForSelector($child, $parentSelector);
 
+        if ($child instanceof DirectiveNode && strtolower($child->name) === 'media') {
+            $atRuleStack        = $this->selector->getCurrentAtRuleStack($ctx->env);
+            $parentMediaPrelude = $this->findLastMediaPrelude($atRuleStack);
+
+            if ($parentMediaPrelude !== null && $bubblingNode instanceof DirectiveNode) {
+                $saved = $this->render->savePosition();
+
+                ['chunk' => $chunk, 'deferredChunk' => $deferredChunk] = $this->compileMergedMediaChunk(
+                    $atRuleStack,
+                    $parentMediaPrelude,
+                    $bubblingNode,
+                    $child,
+                    $ctx->env->getCurrentScope(),
+                    new TraversalContext($ctx->env, max(0, $ctx->indent - count($atRuleStack))),
+                    $saved,
+                );
+
+                $this->render->restorePosition($saved);
+
+                if ($chunk === '') {
+                    return;
+                }
+
+                if ($this->appendDeferredAtRuleChunk(1, $chunk)) {
+                    return;
+                }
+
+                $this->appendOutputChunk($output, $first, $deferredChunk);
+
+                return;
+            }
+        }
+
         $outerCtx      = new TraversalContext($ctx->env, max(0, $ctx->indent - 1));
         $preparedChunk = $this->prepareCompiledChunk($bubblingNode, $outerCtx);
 

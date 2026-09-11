@@ -136,6 +136,10 @@ final readonly class DeclarationNodeHandler
             $evaluatedValue = $reparsedValue;
         }
 
+        if ($reparsedValue instanceof AstNode) {
+            $evaluatedValue = $reparsedValue;
+        }
+
         $val = $this->evaluation->format($evaluatedValue, $ctx->env);
         $val = $this->evaluation->normalizeDeclarationSlashSpacing($property, $val);
 

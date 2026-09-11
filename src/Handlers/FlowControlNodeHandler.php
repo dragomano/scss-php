@@ -189,6 +189,12 @@ final readonly class FlowControlNodeHandler
                     continue;
                 }
 
+                if ($this->evaluation->isBubblingAtRuleNode($child)) {
+                    $this->chunks->appendIncludeBubblingChunk($output, $first, $child, $ctx);
+
+                    continue;
+                }
+
                 if ($child instanceof RuleNode) {
                     $parentSelector = $ctx->env->getCurrentScope()->getStringVariable('__parent_selector');
                     $atRootNoRule   = $ctx->env->getCurrentScope()->getAstVariable('__at_root_without_rule');

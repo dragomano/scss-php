@@ -11,9 +11,12 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Services\Evaluation\EvaluationStrategyInterface;
 use Bugo\SCSS\Utils\SelectorHelper;
+use Bugo\SCSS\Utils\StringEscapeDecoder;
 use Closure;
 
 use function str_contains;
+use function str_starts_with;
+use function strlen;
 
 final readonly class StringNodeStrategy implements EvaluationStrategyInterface
 {
@@ -64,9 +67,26 @@ final readonly class StringNodeStrategy implements EvaluationStrategyInterface
             return $node;
         }
 
+        if (! $node->quoted && $this->isPureInterpolation($node->value)) {
+            return new StringNode(
+                ($this->replaceInterpolations)($node->value, $env),
+                false,
+                isSpecialString: true,
+            );
+        }
+
         return new StringNode(
             ($this->replaceInterpolations)($node->value, $env),
             $node->quoted,
         );
+    }
+
+    private function isPureInterpolation(string $value): bool
+    {
+        if (! str_starts_with($value, '#{')) {
+            return false;
+        }
+
+        return StringEscapeDecoder::skipInterpolation($value, 1) === strlen($value);
     }
 }

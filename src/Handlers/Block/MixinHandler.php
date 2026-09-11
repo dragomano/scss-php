@@ -242,6 +242,10 @@ final readonly class MixinHandler
                 $executionScope->setVariableLocal('__at_root_context', $atRootContext);
             }
 
+            if ($includeCallScope->hasVariable('__at_rule_stack')) {
+                $executionScope->setVariableLocal('__at_rule_stack', $includeCallScope->getVariable('__at_rule_stack'));
+            }
+
             $executionScope->setVariableLocal(
                 '__meta_content_exists',
                 $this->evaluation->createBooleanNode($hasContent),

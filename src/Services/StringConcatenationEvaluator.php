@@ -11,6 +11,7 @@ use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
@@ -51,6 +52,14 @@ final readonly class StringConcatenationEvaluator
             && in_array($list->items[0]->value, ['-', '+', '/'], true)
         ) {
             return new StringNode($list->items[0]->value . $this->valueFormatter->format($list->items[1], $env));
+        }
+
+        if ($count >= 3) {
+            $unaryChain = $this->foldLeadingUnaryChain($list->items, $env);
+
+            if ($unaryChain !== null) {
+                return $unaryChain;
+            }
         }
 
         if ($count === 3) {
@@ -95,6 +104,37 @@ final readonly class StringConcatenationEvaluator
         }
 
         return new ListNode($items, $list->separator, $list->bracketed, $list->parenthesized);
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     */
+    private function foldLeadingUnaryChain(array $items, Environment $env): ?AstNode
+    {
+        $count = count($items);
+
+        $operators = '';
+
+        foreach (array_slice($items, 0, $count - 1) as $item) {
+            if (
+                ! $item instanceof StringNode
+                || $item->quoted
+                || $item->isSpecialString
+                || ! in_array($item->value, ['+', '-'], true)
+            ) {
+                return null;
+            }
+
+            $operators .= $item->value;
+        }
+
+        $operand = $items[$count - 1];
+
+        if (! $this->isFoldableOperand($operand)) {
+            return null;
+        }
+
+        return new StringNode($operators . $this->valueFormatter->format($operand, $env));
     }
 
     private function isBareOperator(AstNode $node): bool
@@ -171,6 +211,7 @@ final readonly class StringConcatenationEvaluator
     {
         if (! $operator instanceof StringNode
             || $operator->quoted
+            || $operator->isSpecialString
             || ! in_array($operator->value, ['+', '-'], true)
         ) {
             return false;
@@ -202,6 +243,7 @@ final readonly class StringConcatenationEvaluator
         return $node instanceof NumberNode
             || $node instanceof BooleanNode
             || $node instanceof ColorNode
+            || $node instanceof NullNode
             || $node instanceof ListNode
             || $node instanceof FunctionNode;
     }

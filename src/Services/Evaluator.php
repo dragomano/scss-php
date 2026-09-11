@@ -433,6 +433,10 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             return null;
         }
 
+        if (str_contains($formattedValue, 'url(')) {
+            return null;
+        }
+
         try {
             $valueNode = $this->parser->parseInlineExpression($formattedValue);
 

@@ -83,7 +83,7 @@ final class SassList extends AbstractSassValue
         $filtered = [];
 
         foreach ($items as $item) {
-            if ($item === 'null') {
+            if ($item === 'null' || $item === '') {
                 continue;
             }
 

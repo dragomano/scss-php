@@ -102,7 +102,13 @@ final readonly class Text
         $queries = MediaQuery::parseList($padded);
 
         if ($queries === null) {
-            return $padded;
+            $stripped = $this->stripAllComments($padded);
+
+            if ($stripped !== '') {
+                $queries = MediaQuery::parseList($stripped);
+            }
+
+            return $queries === null ? $padded : MediaQuery::serializeList($queries);
         }
 
         return MediaQuery::serializeList($queries);

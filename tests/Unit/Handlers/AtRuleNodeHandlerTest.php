@@ -309,11 +309,13 @@ it('wraps @content in the parent rule when the current at-rule stack requires it
     $ctx     = RuntimeFactory::context();
     $scope   = $ctx->env->getCurrentScope();
 
-    $scope->setVariableLocal('__meta_content_block', [
+    $scope->setVariableLocal('__parent_selector', new StringNode('.host'));
+
+    $ctx->env->enterScope();
+    $ctx->env->getCurrentScope()->setVariableLocal('__meta_content_block', [
         new DeclarationNode('color', new StringNode('red')),
     ]);
-    $scope->setVariableLocal('__parent_selector', new StringNode('.host'));
-    $scope->setVariableLocal('__at_rule_stack', [
+    $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', [
         AtRuleContextEntry::supports('(display: grid)'),
     ]);
 
@@ -356,11 +358,13 @@ it('does not wrap @content when the at-rule stack contains non-directive entries
         ['allowed_classes' => [AtRuleContextEntry::class]],
     );
 
-    $scope->setVariableLocal('__meta_content_block', [
+    $scope->setVariableLocal('__parent_selector', new StringNode('.host'));
+
+    $ctx->env->enterScope();
+    $ctx->env->getCurrentScope()->setVariableLocal('__meta_content_block', [
         new DeclarationNode('color', new StringNode('red')),
     ]);
-    $scope->setVariableLocal('__parent_selector', new StringNode('.host'));
-    $scope->setVariableLocal('__at_rule_stack', [$layerEntry]);
+    $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', [$layerEntry]);
 
     expect($runtime->atRule()->handleDirective(new DirectiveNode('content', '', [], false), $ctx))
         ->toEqualCss('color: red;');

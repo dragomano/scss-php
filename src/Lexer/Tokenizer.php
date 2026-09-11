@@ -621,28 +621,69 @@ final class Tokenizer
         } else {
             $hasUnitChars = false;
 
-            while ($this->position < $this->length && ctype_alpha($this->source[$this->position])) {
-                $this->position++;
+            while ($this->position < $this->length) {
+                $char = $this->source[$this->position];
 
-                $hasUnitChars = true;
-            }
+                if ($char === '\\') {
+                    $escapeEnd = $this->scanEscapeEnd();
 
-            while (
-                $hasUnitChars
-                && $this->position < $this->length
-                && $this->source[$this->position] === '-'
-                && ($this->position + 1 >= $this->length || (! ctype_digit($this->source[$this->position + 1])
-                    && $this->source[$this->position + 1] !== '.'))
-            ) {
-                $this->position++;
+                    if ($escapeEnd === null) {
+                        break;
+                    }
 
-                $hasUnitChars = false;
+                    $this->position = $escapeEnd;
 
-                while ($this->position < $this->length && ctype_alpha($this->source[$this->position])) {
+                    $hasUnitChars = true;
+
+                    continue;
+                }
+
+                if (ctype_alnum($char) || $char === '_') {
                     $this->position++;
 
                     $hasUnitChars = true;
+
+                    continue;
                 }
+
+                if ($char !== '-') {
+                    break;
+                }
+
+                $next = $this->position + 1 < $this->length ? $this->source[$this->position + 1] : null;
+
+                if ($next === null || ctype_digit($next)) {
+                    break;
+                }
+
+                if ($next === '.' && $this->position + 2 < $this->length
+                    && ctype_digit($this->source[$this->position + 2])) {
+                    break;
+                }
+
+                if (! $hasUnitChars && ($next === '-' || ! $this->isNameStartCodePoint($next))) {
+                    break;
+                }
+
+                if (! $hasUnitChars && $next === '\\') {
+                    $this->position++;
+
+                    $escapeEnd = $this->scanEscapeEnd();
+
+                    if ($escapeEnd === null) {
+                        break;
+                    }
+
+                    $this->position = $escapeEnd;
+
+                    $hasUnitChars = true;
+
+                    continue;
+                }
+
+                $this->position++;
+
+                $hasUnitChars = true;
             }
         }
 
@@ -684,6 +725,62 @@ final class Tokenizer
         }
 
         return false;
+    }
+
+    private function scanEscapeEnd(): ?int
+    {
+        if ($this->source[$this->position] !== '\\') {
+            return null;
+        }
+
+        if ($this->position + 1 >= $this->length) {
+            return $this->position + 1;
+        }
+
+        $after = $this->source[$this->position + 1];
+
+        if (ctype_xdigit($after)) {
+            $end = $this->position + 1;
+
+            $hexLength = 0;
+
+            while ($end < $this->length && $hexLength < 6 && ctype_xdigit($this->source[$end])) {
+                $end++;
+
+                $hexLength++;
+            }
+
+            if ($end < $this->length && ctype_space($this->source[$end])) {
+                $end++;
+            }
+
+            return $end;
+        }
+
+        return $this->position + 1 + $this->utf8SequenceWidthAt($this->position + 1);
+    }
+
+    private function isNameStartCodePoint(string $char): bool
+    {
+        if ($char >= "\x80") {
+            return true;
+        }
+
+        return ctype_alpha($char) || $char === '_' || $char === '-';
+    }
+
+    private function utf8SequenceWidthAt(int $position): int
+    {
+        $byte = ord($this->source[$position]);
+
+        $width = match (true) {
+            $byte >= 0xF0 => 4,
+            $byte >= 0xE0 => 3,
+            $byte >= 0xC2 => 2,
+            default       => 1,
+        };
+
+        return min($width, $this->length - $position);
     }
 
     private function tokenizeIdentifier(?Token $lastToken = null): Token

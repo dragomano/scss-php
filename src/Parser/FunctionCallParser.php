@@ -22,6 +22,7 @@ use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\StringEscapeDecoder;
 
 use function array_key_last;
+use function ctype_alnum;
 use function implode;
 use function in_array;
 use function str_contains;
@@ -184,7 +185,7 @@ final readonly class FunctionCallParser
                 $arg = $this->parseFunctionArgument();
 
                 if ($arg !== null) {
-                    $arguments[] = $arg;
+                    $arguments[] = $this->expandVariableInVarName($arg);
 
                     continue;
                 }
@@ -197,7 +198,7 @@ final readonly class FunctionCallParser
             $arg = $this->parseFunctionArgument();
 
             if ($arg !== null) {
-                $arguments[] = $arg;
+                $arguments[] = $this->expandVariableInVarName($arg);
 
                 continue;
             }
@@ -647,6 +648,44 @@ final readonly class FunctionCallParser
         $first = $argument[0] ?? '';
 
         return $first === '"' || $first === "'";
+    }
+
+    private function expandVariableInVarName(AstNode $argument): AstNode
+    {
+        if (! $argument instanceof StringNode || $argument->quoted) {
+            return $argument;
+        }
+
+        $dollar = strpos($argument->value, '$');
+
+        if ($dollar === false) {
+            return $argument;
+        }
+
+        $name   = '';
+        $length = strlen($argument->value);
+
+        for ($index = $dollar + 1; $index < $length; $index++) {
+            $char = $argument->value[$index];
+
+            if (! ctype_alnum($char) && $char !== '-' && $char !== '_') {
+                return $argument;
+            }
+
+            $name .= $char;
+        }
+
+        if ($name === '') {
+            return $argument;
+        }
+
+        $variable = new VariableReferenceNode($name);
+
+        if ($dollar === 0) {
+            return $variable;
+        }
+
+        return new ListNode([new StringNode(substr($argument->value, 0, $dollar)), $variable], 'space');
     }
 
     private function hasSpecialProgidFunctionAhead(): bool

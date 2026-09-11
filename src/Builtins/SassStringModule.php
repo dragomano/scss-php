@@ -21,7 +21,6 @@ use function array_slice;
 use function count;
 use function floor;
 use function implode;
-use function is_float;
 use function is_infinite;
 use function is_int;
 use function is_nan;
@@ -533,7 +532,7 @@ final class SassStringModule extends AbstractModule
                 return $value;
             }
 
-            if (is_float($value) && ! is_nan($value) && ! is_infinite($value) && floor($value) === $value) {
+            if (! is_nan($value) && ! is_infinite($value) && floor($value) === $value) {
                 return (int) $value;
             }
         }

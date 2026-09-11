@@ -22,6 +22,7 @@ use Bugo\SCSS\Nodes\StatementNode;
 use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\ParserInterface;
+use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\States\LoadedModule;
@@ -84,6 +85,13 @@ final readonly class Module
         }
 
         $value  = $evaluateValue ? $this->evaluation->evaluateValue($node->value, $env) : $node->value;
+
+        if ($moduleScope->findImportedVariableOrigin($node->name) !== null) {
+            $moduleScope->setVariableLocal($node->name, $value, $node->default);
+
+            return;
+        }
+
         $origin = $moduleScope->findForwardedVariableOrigin($node->name);
 
         if ($origin !== null) {
@@ -877,6 +885,7 @@ final readonly class Module
         ?string $visibility = null,
         array $members = [],
         bool $trackImportedVariables = false,
+        bool $rebaseClosures = false,
     ): void {
         $normalizedMembers = $this->normalizeForwardMembers($members);
 
@@ -910,7 +919,9 @@ final readonly class Module
 
             $to->setMixin(
                 $this->prefixExportName($name, $prefix),
-                $mixin,
+                $rebaseClosures
+                    ? new CallableDefinition($mixin->arguments, $mixin->body, $to, $mixin->line)
+                    : $mixin,
             );
         }
 
@@ -925,7 +936,9 @@ final readonly class Module
 
             $to->setFunction(
                 $this->prefixExportName($name, $prefix),
-                $function,
+                $rebaseClosures
+                    ? new CallableDefinition($function->arguments, $function->body, $to, $function->line)
+                    : $function,
             );
         }
     }
