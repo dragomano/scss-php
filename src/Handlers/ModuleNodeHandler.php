@@ -8,6 +8,7 @@ use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\UseNode;
+use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Module;
@@ -104,7 +105,7 @@ final readonly class ModuleNodeHandler
             $parentSelector = $this->selector->getCurrentParentSelector($ctx->env);
             $inlined        = null;
 
-            if ($parentSelector !== null && $parentSelector !== '') {
+            if (($parentSelector !== null && $parentSelector !== '') || $this->isInsideMediaContext($ctx->env)) {
                 $inlined = $this->module->inlineImportedFile(
                     $path,
                     fn(array $children): string => $this->chunks->compileBodyChunks(
@@ -242,5 +243,16 @@ final readonly class ModuleNodeHandler
         );
 
         return null;
+    }
+
+    private function isInsideMediaContext(Environment $env): bool
+    {
+        foreach ($this->selector->getCurrentAtRuleStack($env) as $entry) {
+            if ($entry->type === 'directive' && $entry->name === 'media') {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

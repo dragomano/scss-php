@@ -47,7 +47,7 @@ describe('DeferredChunkManager', function () {
 
         $leading  = [];
         $trailing = [];
-        $child    = new DirectiveNode('media', 'print', [
+        $child    = new DirectiveNode('media', '(min-width: 1)', [
             new RuleNode('.item', [
                 new DeclarationNode('color', new StringNode('red')),
             ]),
@@ -64,7 +64,7 @@ describe('DeferredChunkManager', function () {
         );
 
         expect($leading)->toHaveCount(1)
-            ->and($leading[0]->content())->toContain('@media screen and print')
+            ->and($leading[0]->content())->toContain('@media screen and (min-width: 1)')
             ->and($trailing)->toBe([])
             ->and($scope->getVariable('__at_rule_stack'))->toEqual([
                 AtRuleContextEntry::directive('media', 'screen'),
@@ -81,7 +81,7 @@ describe('DeferredChunkManager', function () {
 
         $leading  = [];
         $trailing = [];
-        $child    = new DirectiveNode('media', 'print', [
+        $child    = new DirectiveNode('media', '(min-width: 1)', [
             new RuleNode('.item', [
                 new DeclarationNode('color', new StringNode('red')),
             ]),
@@ -102,7 +102,7 @@ describe('DeferredChunkManager', function () {
             ->and($this->runtime->render()->outputState()->deferral->atRuleStack[0])->toHaveCount(1)
             ->and($this->runtime->render()->outputState()->deferral->atRuleStack[0][0]->levels)->toBe(1)
             ->and($this->runtime->render()->outputState()->deferral->atRuleStack[0][0]->chunk)
-            ->toContain('@media screen and print');
+            ->toContain('@media screen and (min-width: 1)');
     });
 
     it('collects merged media chunks into trailing root chunks after children were rendered', function () {
@@ -113,7 +113,7 @@ describe('DeferredChunkManager', function () {
 
         $leading  = [];
         $trailing = [];
-        $child    = new DirectiveNode('media', 'print', [
+        $child    = new DirectiveNode('media', '(min-width: 1)', [
             new RuleNode('.item', [
                 new DeclarationNode('color', new StringNode('red')),
             ]),
@@ -131,7 +131,7 @@ describe('DeferredChunkManager', function () {
 
         expect($leading)->toBe([])
             ->and($trailing)->toHaveCount(1)
-            ->and($trailing[0]->content())->toContain('@media screen and print');
+            ->and($trailing[0]->content())->toContain('@media screen and (min-width: 1)');
     });
 
     it('collects non-media bubbling chunks into trailing root chunks after children were rendered', function () {
@@ -432,7 +432,7 @@ describe('DeferredChunkManager', function () {
             AtRuleContextEntry::directive('media', 'screen'),
         ]);
 
-        $child = new DirectiveNode('media', 'print', [
+        $child = new DirectiveNode('media', '(min-width: 1)', [
             new RuleNode('.item', [
                 new DeclarationNode('color', new StringNode('red')),
             ]),
@@ -446,7 +446,7 @@ describe('DeferredChunkManager', function () {
         );
 
         expect($chunk)->not->toBeNull()
-            ->and($chunk->content())->toContain('@media screen and print')
+            ->and($chunk->content())->toContain('@media screen and (min-width: 1)')
             ->and($chunk->content())->toContain('.host .item')
             ->and($scope->getVariable('__at_rule_stack'))->toEqual([
                 AtRuleContextEntry::directive('media', 'screen'),
@@ -461,7 +461,7 @@ describe('DeferredChunkManager', function () {
 
         $this->runtime->render()->outputState()->deferral->atRuleStack[] = [];
 
-        $child = new DirectiveNode('media', 'print', [
+        $child = new DirectiveNode('media', '(min-width: 1)', [
             new RuleNode('.item', [
                 new DeclarationNode('color', new StringNode('red')),
             ]),
@@ -478,7 +478,7 @@ describe('DeferredChunkManager', function () {
             ->and($this->runtime->render()->outputState()->deferral->atRuleStack[0])->toHaveCount(1)
             ->and($this->runtime->render()->outputState()->deferral->atRuleStack[0][0]->levels)->toBe(1)
             ->and($this->runtime->render()->outputState()->deferral->atRuleStack[0][0]->chunk)
-            ->toContain('@media screen and print');
+            ->toContain('@media screen and (min-width: 1)');
     });
 
     it('returns an interleaved chunk for empty bubbling directives', function () {
@@ -533,7 +533,7 @@ describe('DeferredChunkManager', function () {
         $chunk = $this->manager->compileInterleavedBubblingChunk(
             '.host',
             $scope,
-            new DirectiveNode('media', 'print', [
+            new DirectiveNode('media', '(min-width: 1)', [
                 new RuleNode('.item', [
                     new DeclarationNode('color', new StringNode('red')),
                 ]),
@@ -542,7 +542,7 @@ describe('DeferredChunkManager', function () {
         );
 
         expect($chunk)->not->toBeNull()
-            ->and($chunk->content())->toContain('@media screen and print')
+            ->and($chunk->content())->toContain('@media screen and (min-width: 1)')
             ->and($scope->getVariable('__at_rule_stack'))->toEqual([
                 AtRuleContextEntry::directive('media', 'screen'),
                 AtRuleContextEntry::supports('(display: grid)'),

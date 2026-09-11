@@ -6,12 +6,21 @@ namespace Bugo\SCSS\Services;
 
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\LoaderInterface;
+use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\DirectiveNode;
+use Bugo\SCSS\Nodes\EachNode;
+use Bugo\SCSS\Nodes\ForNode;
 use Bugo\SCSS\Nodes\ForwardNode;
+use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\RootNode;
+use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\UseNode;
+use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Syntax;
@@ -363,7 +372,19 @@ final readonly class ExtendsGraphResolver
         $paths = [];
         $seen  = [];
 
-        foreach ($ast->children as $child) {
+        $this->collectModuleDependencies($ast->children, $paths, $seen);
+
+        return $paths;
+    }
+
+    /**
+     * @param array<int, AstNode> $children
+     * @param list<array{0: string, 1: bool, 2: bool}> $paths
+     * @param array<string, true> $seen
+     */
+    private function collectModuleDependencies(array $children, array &$paths, array &$seen): void
+    {
+        foreach ($children as $child) {
             if ($child instanceof IncludeNode) {
                 if ($this->isLoadCssInclude($child)) {
                     $target = $this->resolveLoadCssTarget($child);
@@ -400,6 +421,8 @@ final readonly class ExtendsGraphResolver
             }
 
             if (! $child instanceof UseNode && ! $child instanceof ForwardNode) {
+                $this->collectNestedDependencies($child, $paths, $seen);
+
                 continue;
             }
 
@@ -410,8 +433,53 @@ final readonly class ExtendsGraphResolver
             $seen[$child->path] = true;
             $paths[]            = [$child->path, false, false];
         }
+    }
 
-        return $paths;
+    /**
+     * @param AstNode $node
+     * @param list<array{0: string, 1: bool, 2: bool}> $paths
+     * @param array<string, true> $seen
+     */
+    private function collectNestedDependencies(AstNode $node, array &$paths, array &$seen): void
+    {
+        if ($node instanceof RuleNode) {
+            $this->collectModuleDependencies($node->children, $paths, $seen);
+
+            return;
+        }
+
+        if ($node instanceof DirectiveNode) {
+            if ($node->hasBlock) {
+                /** @var array<int, AstNode> $body */
+                $body = $node->body;
+
+                $this->collectModuleDependencies($body, $paths, $seen);
+            }
+
+            return;
+        }
+
+        if ($node instanceof SupportsNode || $node instanceof AtRootNode) {
+            $this->collectModuleDependencies($node->body, $paths, $seen);
+
+            return;
+        }
+
+        if ($node instanceof IfNode) {
+            $this->collectModuleDependencies($node->body, $paths, $seen);
+
+            foreach ($node->elseIfBranches as $branch) {
+                $this->collectModuleDependencies($branch->body, $paths, $seen);
+            }
+
+            $this->collectModuleDependencies($node->elseBody, $paths, $seen);
+
+            return;
+        }
+
+        if ($node instanceof EachNode || $node instanceof ForNode || $node instanceof WhileNode) {
+            $this->collectModuleDependencies($node->body, $paths, $seen);
+        }
     }
 
     private function isLoadCssInclude(IncludeNode $node): bool

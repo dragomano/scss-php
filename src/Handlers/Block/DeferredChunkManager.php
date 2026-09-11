@@ -986,10 +986,9 @@ final readonly class DeferredChunkManager
         TraversalContext $ctx,
         array $saved,
     ): array {
-        $mergedPrelude = $this->selector->combineMediaQueryPreludes(
-            $parentMediaPrelude,
-            $this->selector->resolveDirectivePrelude($child->prelude, $ctx->env),
-        );
+        $childPrelude  = $this->selector->resolveDirectivePrelude($child->prelude, $ctx->env);
+        $mergedPrelude = $this->selector->mergeMediaQueryPreludes($parentMediaPrelude, $childPrelude)
+            ?? $this->selector->combineMediaQueryPreludes($parentMediaPrelude, $childPrelude);
 
         $mergedNode = new DirectiveNode('media', $mergedPrelude, $bubblingNode->body, true);
         $scope->setVariableLocal('__at_rule_stack', $this->removeLastMediaEntryFromAtRuleStack($atRuleStack));
