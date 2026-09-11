@@ -320,9 +320,31 @@ final readonly class Text
             $depth  = 1;
 
             while ($cursor < $length && $depth > 0) {
-                if ($value[$cursor] === '{') {
+                $char = $value[$cursor];
+
+                if ($char === '/' && ($value[$cursor + 1] ?? '') === '*') {
+                    $commentEnd = strpos($value, '*/', $cursor + 2);
+
+                    $cursor = $commentEnd === false ? $length : $commentEnd + 2;
+
+                    continue;
+                }
+
+                if ($char === '"' || $char === "'") {
+                    $cursor = StringEscapeDecoder::skipQuotedChunk($value, $cursor);
+
+                    continue;
+                }
+
+                if ($char === '\\' && $cursor + 1 < $length) {
+                    $cursor += 2;
+
+                    continue;
+                }
+
+                if ($char === '{') {
                     $depth++;
-                } elseif ($value[$cursor] === '}') {
+                } elseif ($char === '}') {
                     $depth--;
                 }
 

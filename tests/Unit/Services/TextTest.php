@@ -61,6 +61,14 @@ describe('Text service', function () {
             expect($this->text->replaceInterpolations('a#{b', $this->env))->toBe('a#{b');
         });
 
+        it('skips quoted braces when finding the end of an interpolation', function () {
+            expect($this->text->replaceInterpolations('#{ "}" }', $this->env))->toBe('}');
+        });
+
+        it('skips loud comments with braces when finding the end of an interpolation', function () {
+            expect($this->text->replaceInterpolations('#{ a /* } */ b }', $this->env))->toBe('a b');
+        });
+
         it('preserves spacing of nested interpolation resolving to a space list', function () {
             expect($this->text->interpolateText('#{#{"["\'foo\'"]"}}', $this->env))->toBe('[ foo ]');
         });

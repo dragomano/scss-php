@@ -493,6 +493,14 @@ final class Tokenizer
         while ($this->position < $this->length && $depth > 0) {
             $char = $this->source[$this->position];
 
+            if ($char === '/' && $this->peekChar() === '*') {
+                $commentEnd = strpos($this->source, '*/', $this->position + 2);
+
+                $this->advance($commentEnd === false ? $this->length - $this->position : $commentEnd - $this->position + 2);
+
+                continue;
+            }
+
             if ($char === '"' || $char === "'") {
                 $this->skipQuotedChunk($char);
 

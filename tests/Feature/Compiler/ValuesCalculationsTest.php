@@ -571,6 +571,24 @@ describe('Compiler', function () {
             expect($this->compiler->compileString($source))->toEqualCss($expected);
         });
 
+        it('keeps quoted braces and comments inside string interpolation spans', function () {
+            $source = <<<'SCSS'
+            .interpolation-span {
+              content-a: "#{ "}" }";
+              content-b: "#{ a /* } */ b }";
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .interpolation-span {
+              content-a: "}";
+              content-b: "a b";
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
         it('concatenates quoted string results without duplicating quotes', function () {
             $source = <<<'SCSS'
             @use "sass:string";
