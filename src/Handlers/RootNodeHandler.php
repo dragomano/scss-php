@@ -15,6 +15,8 @@ use Bugo\SCSS\Services\Render;
 
 use function array_splice;
 use function count;
+use function ltrim;
+use function str_ends_with;
 
 final readonly class RootNodeHandler
 {
@@ -31,6 +33,22 @@ final readonly class RootNodeHandler
         $inLeadingRun    = $outputState->hoistCssImports && $ctx->indent === 0;
 
         foreach ($node->children as $child) {
+            if ($child instanceof CommentNode && $child->afterClosingBrace && $output !== '') {
+                $trimmedOutput = $this->render->trimTrailingNewlines($output);
+
+                if (str_ends_with($trimmedOutput, '}')) {
+                    $compiled = $this->dispatcher->compileWithContext($child, $ctx);
+
+                    if ($compiled !== '') {
+                        $this->render->appendChunk($trimmedOutput, ' ' . ltrim($compiled), $child);
+
+                        $output = $trimmedOutput;
+                    }
+
+                    continue;
+                }
+            }
+
             $savedPosition = null;
 
             if ($output !== '' && $this->render->collectSourceMappings()) {

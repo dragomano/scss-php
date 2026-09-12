@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Handlers\Block;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
@@ -432,16 +433,16 @@ final readonly class DeferredChunkManager
         $ruleNode = $child;
 
         if ($parentSelector !== null && $parentSelector !== '') {
-            $resolvedSelector = str_contains($childSelector, '&')
-                ? $this->selector->resolveNestedSelector($childSelector, $parentSelector)
-                : $this->selector->combineNestedSelectorWithParent($childSelector, $parentSelector);
+            $resolvedSelector = $this->resolveIncludedRuleSelector($childSelector, $parentSelector, $ctx);
 
-            $ruleNode = new RuleNode(
-                $resolvedSelector,
-                $child->children,
-                $child->line,
-                $child->column,
-            );
+            if ($resolvedSelector !== null) {
+                $ruleNode = new RuleNode(
+                    $resolvedSelector,
+                    $child->children,
+                    $child->line,
+                    $child->column,
+                );
+            }
         }
 
         $outerCtx = new TraversalContext($ctx->env, $parentSelector !== null && $parentSelector !== ''
@@ -798,6 +799,21 @@ final readonly class DeferredChunkManager
         $output = $this->render->trimTrailingNewlines($output);
 
         $this->render->appendChunk($output, "\n" . $parentPrefix . '}');
+    }
+
+    private function resolveIncludedRuleSelector(string $childSelector, string $parentSelector, TraversalContext $ctx): ?string
+    {
+        if (str_contains($childSelector, '&')) {
+            return $this->selector->resolveNestedSelector($childSelector, $parentSelector);
+        }
+
+        $flag = $ctx->env->getCurrentScope()->getAstVariable('__at_root_strip_parent');
+
+        if ($flag instanceof BooleanNode && $flag->value) {
+            return null;
+        }
+
+        return $this->selector->combineNestedSelectorWithParent($childSelector, $parentSelector);
     }
 
     /**

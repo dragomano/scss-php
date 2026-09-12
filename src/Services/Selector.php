@@ -1001,7 +1001,20 @@ final readonly class Selector
             return $child;
         }
 
-        if ($child instanceof RuleNode || $child instanceof AtRootNode) {
+        if ($child instanceof RuleNode) {
+            $resolvedSelector = str_contains($child->selector, '&')
+                ? SelectorHelper::resolveNested($child->selector, $parentSelector)
+                : $this->combineNestedSelectorWithParent($child->selector, $parentSelector);
+
+            return new RuleNode(
+                $resolvedSelector,
+                $child->children,
+                $child->line,
+                $child->column,
+            );
+        }
+
+        if ($child instanceof AtRootNode) {
             return $child;
         }
 

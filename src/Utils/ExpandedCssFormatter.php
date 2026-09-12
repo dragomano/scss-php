@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Utils;
 use Bugo\SCSS\Services\Render;
 
 use function implode;
+use function ltrim;
 use function max;
 use function str_contains;
 use function str_starts_with;
@@ -115,6 +116,12 @@ final readonly class ExpandedCssFormatter
             $gap       = substr($css, $previous['end'], $statement['start'] - $previous['end']);
             $separator = "\n\n";
 
+            if ($this->isSameLineComment($previous, $statement)) {
+                $result .= $raw;
+
+                continue;
+            }
+
             if (str_contains($gap, Render::CONTINUATION_MARK)) {
                 $separator = "\n";
             } elseif ($this->isInlineStatement($previous)) {
@@ -127,6 +134,26 @@ final readonly class ExpandedCssFormatter
         }
 
         return $result;
+    }
+
+    /**
+     * @param array{type: string, header: string, body: string, raw: string, start: int, end: int, trailing: string} $previous
+     * @param array{type: string, header: string, body: string, raw: string, start: int, end: int, trailing: string} $statement
+     */
+    private function isSameLineComment(array $previous, array $statement): bool
+    {
+        if ($previous['trailing'] !== '') {
+            return false;
+        }
+
+        $raw   = $statement['raw'];
+        $first = $raw !== '' ? $raw[0] : '';
+
+        if ($first !== ' ' && $first !== "\t") {
+            return false;
+        }
+
+        return str_starts_with(ltrim($raw), '/*');
     }
 
     /**

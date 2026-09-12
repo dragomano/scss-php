@@ -251,6 +251,27 @@ final class Scope
         return $value instanceof AstNode ? $value : null;
     }
 
+    public function isInsideAtRootWithoutRule(): bool
+    {
+        $withoutRuleName = $this->normalizeName('__at_root_without_rule');
+        $parentName      = $this->normalizeName('__parent_selector');
+        $scope           = $this;
+
+        while ($scope !== null) {
+            if ($scope->variables->has($withoutRuleName)) {
+                return true;
+            }
+
+            if ($scope->variables->has($parentName)) {
+                return false;
+            }
+
+            $scope = $scope->parent;
+        }
+
+        return false;
+    }
+
     public function getStringVariable(string $name): ?StringNode
     {
         $normalized = $this->normalizeName($name);

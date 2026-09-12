@@ -231,10 +231,21 @@ final class RuleParser
                 TokenType::COMMENT_PRESERVED,
             ], true)) {
                 $this->stream->advance();
+
+                $commentLine = $token->line;
+
                 $this->stream->skipWhitespace();
 
                 if ($selector !== '' && $selector[-1] !== ' ') {
                     $selector .= ' ';
+                }
+
+                if (
+                    $this->stream->current()->line > $commentLine
+                    && $selector !== ''
+                    && ! str_ends_with($selector, "\n")
+                ) {
+                    $selector .= "\n";
                 }
 
                 continue;
@@ -402,6 +413,9 @@ final class RuleParser
                     && $buffer[-1] !== ' ';
 
                 $this->stream->advance();
+
+                $commentLine = $token->line;
+
                 $this->stream->skipWhitespace();
 
                 if ($attachedComment) {
@@ -410,6 +424,15 @@ final class RuleParser
                         : '/*' . $token->value . '*/';
                 } elseif ($buffer !== '' && $buffer[-1] !== ' ') {
                     $buffer .= ' ';
+                }
+
+                if (
+                    ! $attachedComment
+                    && $this->stream->current()->line > $commentLine
+                    && $buffer !== ''
+                    && ! str_ends_with($buffer, "\n")
+                ) {
+                    $buffer .= "\n";
                 }
 
                 continue;

@@ -659,10 +659,12 @@ final readonly class ExtendsResolver
                 continue;
             }
 
+            $effectiveNewExtensions = $this->excludeExtensionsContainingOwnTarget($newExtensions) ?? $newExtensions;
+
             $extendedExtender = $this->extendSingleComplex(
                 $store,
                 $extension['extender'],
-                $newExtensions,
+                $effectiveNewExtensions,
                 $extension['context'],
             );
 
@@ -715,6 +717,29 @@ final readonly class ExtendsResolver
         }
 
         return $additional;
+    }
+
+    /**
+     * @param ExtensionMap $newExtensions
+     * @return ExtensionMap|null
+     */
+    private function excludeExtensionsContainingOwnTarget(array $newExtensions): ?array
+    {
+        $filtered = null;
+
+        foreach ($newExtensions as $target => $map) {
+            foreach ($map as $key => $extension) {
+                if (! in_array($target, $this->simpleSelectorsRecursive($extension['extender']), true)) {
+                    continue;
+                }
+
+                $filtered ??= $newExtensions;
+
+                unset($filtered[$target][$key]);
+            }
+        }
+
+        return $filtered;
     }
 
     /**

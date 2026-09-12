@@ -787,6 +787,10 @@ final readonly class Condition
     {
         $value = trim($raw);
 
+        if ($value === '&') {
+            return $this->valueEvaluator->evaluate(new StringNode('&'), $env);
+        }
+
         if (str_starts_with($value, '$')) {
             return $this->valueEvaluator->evaluate(new VariableReferenceNode(substr($value, 1)), $env);
         }

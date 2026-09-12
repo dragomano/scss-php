@@ -109,6 +109,8 @@ final class Parser implements
             return new RuleNode($selector, [], $line, $column);
         }
 
+        $openBraceLine = $this->stream->current()->line;
+
         $this->stream->advance();
 
         $this->blockDepth++;
@@ -133,7 +135,7 @@ final class Parser implements
             $this->stream->advance();
         }
 
-        return new RuleNode($selector, $children, $line, $column);
+        return new RuleNode($selector, $children, $line, $column, $openBraceLine);
     }
 
     public function parseInlineValue(string $expression): AstNode
@@ -297,6 +299,7 @@ final class Parser implements
                     $token->type === TokenType::COMMENT_PRESERVED,
                     $token->line,
                     $token->column,
+                    $this->isSameLineAfterClosingBrace($token),
                 );
 
                 $this->stream->advance();
@@ -359,6 +362,29 @@ final class Parser implements
         }
 
         return $this->rules->parseRuleOrDeclaration();
+    }
+
+    private function isSameLineAfterClosingBrace(Token $commentToken): bool
+    {
+        $position = $this->stream->getPosition();
+
+        for ($i = $position - 1; $i >= 0; $i--) {
+            $this->stream->setPosition($i);
+
+            $token = $this->stream->current();
+
+            if ($token->type === TokenType::WHITESPACE || $token->type === TokenType::COMMENT_SILENT) {
+                continue;
+            }
+
+            $this->stream->setPosition($position);
+
+            return $token->type === TokenType::RBRACE && $token->line === $commentToken->line;
+        }
+
+        $this->stream->setPosition($position);
+
+        return false;
     }
 
     private function initSubParsers(): void

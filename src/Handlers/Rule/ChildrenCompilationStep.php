@@ -45,7 +45,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
         $scope       = $ruleCtx->outerCtx->env->getCurrentScope();
         $outputState = $this->render->outputState();
 
-        $lastRenderedLine = $ruleCtx->node->line;
+        $lastRenderedLine = $ruleCtx->node->openBraceLine ?: $ruleCtx->node->line;
 
         foreach ($ruleCtx->node->children as $child) {
             $inlinesBody = $child instanceof IncludeNode || $child instanceof ImportNode;

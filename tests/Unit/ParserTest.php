@@ -715,7 +715,7 @@ describe('Parser', function () {
                         new NamedArgumentNode('color2', new ColorNode('#000')),
                         new NamedArgumentNode('weight', new NumberNode(20, '%')),
                     ], 22), 22, 5),
-                ], 14, 1),
+                ], 14, 1, 14),
                 new RuleNode('#lp_blocks', [
                     new RuleNode('.item', [
                         new IncludeNode('functions', 'pointer'),
@@ -738,18 +738,18 @@ describe('Parser', function () {
                                     new NumberNode(0.3),
                                 ], 34),
                             ]), 34, 13),
-                        ], 33, 9),
+                        ], 33, 9, 33),
                         new RuleNode('div', [
                             new DeclarationNode('font-size', new NumberNode(16, 'px'), 38, 13),
                             new DeclarationNode('margin', new NumberNode(10, 'px'), 39, 13),
-                        ], 37, 9),
+                        ], 37, 9, 37),
                         new RuleNode('p', [
                             new DeclarationNode('text-align', new StringNode('left', line: 43, column: 25), 43, 13),
                             new DeclarationNode('font-size', new NumberNode(14, 'px'), 44, 13),
-                        ], 42, 9),
-                    ], 26, 5),
+                        ], 42, 9, 42),
+                    ], 26, 5, 26),
                     new DeclarationNode('margin-bottom', new NumberNode(1, 'em'), 48, 5),
-                ], 25, 1),
+                ], 25, 1, 25),
                 new RuleNode('.preview_frame', [
                     new DeclarationNode('margin', new NumberNode(10, 'px'), 52, 5),
                     new DeclarationNode('padding', new NumberNode(10, 'px'), 53, 5),
@@ -763,7 +763,7 @@ describe('Parser', function () {
                     new IncludeNode(null, 'test-mixin', [
                         new ColorNode('#333'),
                     ]),
-                ], 51, 1),
+                ], 51, 1, 51),
             ]);
 
             $ast = $this->parser->parse($source);

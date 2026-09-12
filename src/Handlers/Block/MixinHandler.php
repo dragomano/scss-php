@@ -236,6 +236,17 @@ final readonly class MixinHandler
                 $executionScope->setVariableLocal('__parent_selector', $parentSelector);
             }
 
+            if (
+                $includeCallScope->isInsideAtRootWithoutRule()
+                && $parentSelector !== null
+                && $parentSelector->value !== ''
+            ) {
+                $executionScope->setVariableLocal(
+                    '__at_root_strip_parent',
+                    $this->evaluation->createBooleanNode(true),
+                );
+            }
+
             $atRootContext = $includeCallScope->getAstVariable('__at_root_context');
 
             if ($atRootContext !== null) {

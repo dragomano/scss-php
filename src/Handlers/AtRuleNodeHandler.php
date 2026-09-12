@@ -512,12 +512,13 @@ final readonly class AtRuleNodeHandler
             )
             : [];
 
-        $contentScope         = $ctx->env->getCurrentScope()->getScopeVariable('__meta_content_scope');
-        $mixinParentSelector  = $ctx->env->getCurrentScope()->getStringVariable('__parent_selector');
-        $moduleGlobalTarget   = $ctx->env->getCurrentScope()->getScopeVariable('__module_global_target');
-        $contentCallArguments = $this->evaluation->parseContentCallArguments($node->prelude);
-        $atRuleStack          = $this->selector->getCurrentAtRuleStack($ctx->env);
-        $executionEntryScope  = $ctx->env->getCurrentScope();
+        $contentScope          = $ctx->env->getCurrentScope()->getScopeVariable('__meta_content_scope');
+        $mixinParentSelector   = $ctx->env->getCurrentScope()->getStringVariable('__parent_selector');
+        $moduleGlobalTarget    = $ctx->env->getCurrentScope()->getScopeVariable('__module_global_target');
+        $contentCallArguments  = $this->evaluation->parseContentCallArguments($node->prelude);
+        $atRuleStack           = $this->selector->getCurrentAtRuleStack($ctx->env);
+        $executionEntryScope   = $ctx->env->getCurrentScope();
+        $isDirectAtRootContent = $executionEntryScope->isInsideAtRootWithoutRule();
 
         [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments(
             $contentCallArguments,
@@ -534,6 +535,10 @@ final readonly class AtRuleNodeHandler
 
         if ($mixinParentSelector instanceof StringNode) {
             $childScope->setVariableLocal('__parent_selector', $mixinParentSelector);
+        }
+
+        if ($isDirectAtRootContent && $mixinParentSelector !== null && $mixinParentSelector->value !== '') {
+            $childScope->setVariableLocal('__at_root_strip_parent', $this->evaluation->createBooleanNode(true));
         }
 
         if ($moduleGlobalTarget instanceof Scope) {
@@ -569,6 +574,7 @@ final readonly class AtRuleNodeHandler
         try {
             if (
                 $mixinParentSelector instanceof StringNode
+                && ! $isDirectAtRootContent
                 && $this->shouldWrapContentInParentRule($atRuleStack)
                 && ! $this->isEnclosingRuleCloserThanAtRule($executionEntryScope)
             ) {
