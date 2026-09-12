@@ -959,7 +959,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             AstNode $node,
             Environment $env,
             EvaluationOptions $opts = new EvaluationOptions(),
-        ): AstNode => $this->evaluateValue($node, $env, $opts->skipSlashArithmetic);
+        ): AstNode => $this->evaluateValue($node, $env, $opts->skipSlashArithmetic, $opts);
     }
 
     private function createFunctionCallEvaluator(): FunctionCallEvaluator

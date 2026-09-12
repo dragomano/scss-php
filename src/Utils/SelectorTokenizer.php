@@ -60,6 +60,11 @@ final readonly class SelectorTokenizer
         'nth-last-of-type',
     ];
 
+    private const NTH_RAW_PSEUDO_NAMES = [
+        'nth-of-type',
+        'nth-last-of-type',
+    ];
+
     private const SELECTOR_LIST_PSEUDO_BASE_NAMES = ['not', 'is', 'matches', 'where', 'has', 'any'];
 
     /**
@@ -922,7 +927,10 @@ final readonly class SelectorTokenizer
         foreach (array_reverse($spans, true) as $nthIndex => $span) {
             $inner = $span['inner'];
 
-            if (in_array($nthIndex, $protectedIndices, true)) {
+            if (
+                in_array($nthIndex, $protectedIndices, true)
+                || in_array($span['name'], self::NTH_RAW_PSEUDO_NAMES, true)
+            ) {
                 $normalized = $this->collapseInterpolationWhitespace($inner);
             } else {
                 $normalized = $this->normalizeAnPlusB($inner);
@@ -4918,7 +4926,7 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @return list<array{start: int, end: int, inner: string}>
+     * @return list<array{start: int, end: int, inner: string, name: string}>
      */
     private function collectNthArgumentSpans(string $selector): array
     {
@@ -4962,6 +4970,7 @@ final readonly class SelectorTokenizer
                     'start' => $argumentStart,
                     'end'   => $index,
                     'inner' => substr($selector, $argumentStart + 1, $index - $argumentStart - 2),
+                    'name'  => $name,
                 ];
             }
         }
