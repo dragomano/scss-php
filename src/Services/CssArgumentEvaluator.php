@@ -188,7 +188,7 @@ final readonly class CssArgumentEvaluator
     private function evaluateFallbackCssArgument(AstNode $node, Environment $env, bool $skipConcatenation = false): AstNode
     {
         if ($node instanceof ListNode && count($node->items) === 3 && $this->isSlashTriple($node)) {
-            if ($this->isLiteralSlashTriple($node)) {
+            if ($this->isLiteralSlashTriple($node) && $node->parenthesized === 0) {
                 return $node;
             }
 

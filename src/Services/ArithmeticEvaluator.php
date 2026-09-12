@@ -54,11 +54,12 @@ final readonly class ArithmeticEvaluator
                 return null;
             }
 
-            $items = $this->mergeUnarySigns($node->items);
+            $items         = $this->mergeUnarySigns($node->items);
+            $parenthesized = $node->parenthesized > 0;
 
             if (count($items) % 2 !== 0) {
                 try {
-                    $strictResult = $this->evaluateStrictList($items, $node->bracketed, $insideCalc, $strict);
+                    $strictResult = $this->evaluateStrictList($items, $node->bracketed, $insideCalc, $strict, $parenthesized);
                 } catch (IncompatibleUnitsException $exception) {
                     if (! $insideCalc) {
                         throw $exception;
@@ -290,7 +291,7 @@ final readonly class ArithmeticEvaluator
     /**
      * @param array<int, AstNode> $items
      */
-    private function evaluateStrictList(array $items, bool $bracketed, bool $insideCalc = false, bool $strict = true): ?AstNode
+    private function evaluateStrictList(array $items, bool $bracketed, bool $insideCalc = false, bool $strict = true, bool $parenthesized = false): ?AstNode
     {
         $first = $items[0] ?? null;
         $mid   = $items[1] ?? null;
@@ -298,6 +299,7 @@ final readonly class ArithmeticEvaluator
 
         if (! $bracketed
             && ! $insideCalc
+            && ! $parenthesized
             && count($items) === 3
             && $first instanceof NumberNode
             && $this->isSimpleSlashOperand($first)
@@ -309,7 +311,7 @@ final readonly class ArithmeticEvaluator
             return null;
         }
 
-        if (! $bracketed && ! $insideCalc && $this->isSimpleSlashChain($items)) {
+        if (! $bracketed && ! $insideCalc && ! $parenthesized && $this->isSimpleSlashChain($items)) {
             return null;
         }
 
@@ -406,6 +408,7 @@ final readonly class ArithmeticEvaluator
             && $items[1]->value === '/'
             && $items[2] instanceof NumberNode
             && $this->isSimpleSlashOperand($items[2])
+            && ! $this->hasArithmeticContinuation($items, 3)
         ) {
             return null;
         }
@@ -428,6 +431,18 @@ final readonly class ArithmeticEvaluator
         }
 
         return $result;
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     */
+    private function hasArithmeticContinuation(array $items, int $index): bool
+    {
+        $node = $items[$index] ?? null;
+
+        return $node instanceof StringNode
+            && ! $node->quoted
+            && in_array(trim($node->value), ['*', '%'], true);
     }
 
     /**
@@ -463,7 +478,15 @@ final readonly class ArithmeticEvaluator
                 && in_array($op->value, ['*', '/', '%'], true)
                 && ($nextItem = $items[$i + 2]) instanceof NumberNode
                 && $value instanceof NumberNode
-                && ($insideCalc || ! ($op->value === '/' && $this->isSimpleSlashOperand($value) && $this->isSimpleSlashOperand($nextItem)))
+                && (
+                    $insideCalc
+                    || ! (
+                        $op->value === '/'
+                        && $this->isSimpleSlashOperand($value)
+                        && $this->isSimpleSlashOperand($nextItem)
+                        && ! $this->hasArithmeticContinuation($items, $i + 3)
+                    )
+                )
             ) {
                 $value   = $this->applyOperator($value, $op->value, $nextItem, $insideCalc);
                 $changed = true;

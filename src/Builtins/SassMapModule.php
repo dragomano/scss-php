@@ -403,7 +403,7 @@ final class SassMapModule extends AbstractModule
 
             foreach ($result as $idx => $existing) {
                 if (AstValueComparator::equals($existing->key, $rightPair->key)) {
-                    $result[$idx] = $rightPair;
+                    $result[$idx] = new MapPair($existing->key, $rightPair->value);
                     $replaced     = true;
 
                     break;
@@ -437,7 +437,7 @@ final class SassMapModule extends AbstractModule
                             $this->deepMergeMaps($existing->value, $rightPair->value),
                         );
                     } else {
-                        $result[$idx] = $rightPair;
+                        $result[$idx] = new MapPair($existing->key, $rightPair->value);
                     }
 
                     $matched = true;

@@ -24,6 +24,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Utils\CssNamedColors;
 use Bugo\SCSS\Utils\StringHelper;
 use Bugo\SCSS\Utils\UnitConverter;
 use Bugo\SCSS\Values\SassNumber;
@@ -446,14 +447,28 @@ final readonly class Condition
             return false;
         }
 
-        foreach ($left->pairs as $index => $leftPair) {
-            $rightPair = $right->pairs[$index];
+        $remaining = $right->pairs;
 
-            if (! $this->areValuesEqual($leftPair->key, $rightPair->key, $env)) {
-                return false;
+        foreach ($left->pairs as $leftPair) {
+            $matched = false;
+
+            foreach ($remaining as $index => $rightPair) {
+                if (! $this->areValuesEqual($leftPair->key, $rightPair->key, $env)) {
+                    continue;
+                }
+
+                if (! $this->areValuesEqual($leftPair->value, $rightPair->value, $env)) {
+                    return false;
+                }
+
+                unset($remaining[$index]);
+
+                $matched = true;
+
+                break;
             }
 
-            if (! $this->areValuesEqual($leftPair->value, $rightPair->value, $env)) {
+            if (! $matched) {
                 return false;
             }
         }
@@ -770,6 +785,14 @@ final readonly class Condition
         if (StringHelper::isQuoted($value)) {
             $unquoted = StringHelper::unquote($value);
             $literal  = new StringNode($unquoted, true);
+
+            $this->ctx->conditionCacheState->literalValue[$value] = $literal;
+
+            return $literal;
+        }
+
+        if (isset(CssNamedColors::NAMED_HEX[strtolower($value)])) {
+            $literal = new ColorNode($value);
 
             $this->ctx->conditionCacheState->literalValue[$value] = $literal;
 

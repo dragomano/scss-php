@@ -798,10 +798,12 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
     private function evaluateSpaceSeparatedItems(array $items, Environment $env): AstNode
     {
         if (count($items) === 1) {
-            return $this->evaluateValue($items[0], $env);
+            return $items[0] instanceof ListNode
+                ? $this->evaluateValueWithSlashDivision($items[0], $env)
+                : $this->evaluateValue($items[0], $env);
         }
 
-        return $this->evaluateValue(new ListNode($items, 'space'), $env);
+        return $this->evaluateValueWithSlashDivision(new ListNode($items, 'space'), $env);
     }
 
     private function resolveVariable(string $name, Environment $env): AstNode

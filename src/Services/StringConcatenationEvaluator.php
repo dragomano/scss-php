@@ -139,9 +139,15 @@ final readonly class StringConcatenationEvaluator
 
     private function isBareOperator(AstNode $node): bool
     {
-        return $node instanceof StringNode
-            && ! $node->quoted
-            && in_array(strtolower(trim($node->value)), self::OPERATOR_WORDS, true);
+        if (! $node instanceof StringNode || $node->quoted) {
+            return false;
+        }
+
+        if ($node->value === '/') {
+            return $node->isSlashOperator;
+        }
+
+        return in_array(strtolower(trim($node->value)), self::OPERATOR_WORDS, true);
     }
 
     /**
@@ -235,6 +241,10 @@ final readonly class StringConcatenationEvaluator
         if ($node instanceof StringNode) {
             if ($node->quoted) {
                 return true;
+            }
+
+            if ($node->value === '/') {
+                return ! $node->isSlashOperator;
             }
 
             return ! in_array(strtolower(trim($node->value)), self::OPERATOR_WORDS, true);

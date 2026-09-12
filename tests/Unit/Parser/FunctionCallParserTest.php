@@ -291,7 +291,6 @@ describe('FunctionCallParser', function () {
 
     it('keeps dynamic right-hand sides of name=value arguments for runtime evaluation', function () {
         $stream = null;
-        $call   = 0;
 
         [$parser, $stream] = createFunctionCallParser([
             functionCallToken(TokenType::LPAREN, '('),
@@ -301,18 +300,18 @@ describe('FunctionCallParser', function () {
             functionCallToken(TokenType::RPAREN, ')'),
             functionCallToken(TokenType::EOF),
         ], [
-            'parseSingleValue' => function () use (&$stream, &$call): ?AstNode {
-                $call++;
+            'parseSingleValue' => function () use (&$stream): ?AstNode {
                 $stream?->advance();
 
-                return match ($call) {
-                    1 => new ListNode([
-                        new VariableReferenceNode('theme.color'),
-                        new StringNode('solid'),
-                    ]),
-                    2 => new VariableReferenceNode('fallback'),
-                    default => null,
-                };
+                return new ListNode([
+                    new VariableReferenceNode('theme.color'),
+                    new StringNode('solid'),
+                ]);
+            },
+            'parseCommaSeparatedValue' => function () use (&$stream): ?AstNode {
+                $stream?->advance();
+
+                return new VariableReferenceNode('fallback');
             },
         ]);
 
@@ -329,7 +328,6 @@ describe('FunctionCallParser', function () {
 
     it('returns an empty string for unsupported node types', function () {
         $stream = null;
-        $call   = 0;
 
         [$parser, $stream] = createFunctionCallParser([
             functionCallToken(TokenType::LPAREN, '('),
@@ -339,15 +337,15 @@ describe('FunctionCallParser', function () {
             functionCallToken(TokenType::RPAREN, ')'),
             functionCallToken(TokenType::EOF),
         ], [
-            'parseSingleValue' => function () use (&$stream, &$call): ?AstNode {
-                $call++;
+            'parseSingleValue' => function () use (&$stream): ?AstNode {
                 $stream?->advance();
 
-                return match ($call) {
-                    1 => new class extends AstNode {},
-                    2 => new StringNode('fallback'),
-                    default => null,
-                };
+                return new class extends AstNode {};
+            },
+            'parseCommaSeparatedValue' => function () use (&$stream): ?AstNode {
+                $stream?->advance();
+
+                return new StringNode('fallback');
             },
         ]);
 

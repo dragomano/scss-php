@@ -213,6 +213,10 @@ final class Tokenizer
             return $this->tokenizeIdentifier($lastToken);
         }
 
+        if ($char === '?') {
+            return $this->makeToken(TokenType::IDENTIFIER, '?', 1);
+        }
+
         $this->advance();
 
         return null;

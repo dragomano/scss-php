@@ -97,8 +97,14 @@ final readonly class ListNodeStrategy implements EvaluationStrategyInterface
         if (! $options->skipSlashArithmetic) {
             $arithmetic = ($this->evaluateArithmeticList)($evaluated, true, $env);
 
-            if ($arithmetic !== null) {
+            if ($arithmetic !== null && ! $arithmetic instanceof ListNode) {
                 return $arithmetic;
+            }
+
+            if ($arithmetic instanceof ListNode) {
+                $concatenated = ($this->evaluateStringConcatenationList)($arithmetic, $env, $options);
+
+                return $concatenated ?? $arithmetic;
             }
         }
 

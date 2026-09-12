@@ -331,17 +331,26 @@ final readonly class FunctionCallParser
                     $this->stream->advance();
                     $this->stream->skipWhitespace();
 
-                    $rightSide = $this->parseSingleValueNode();
+                    $rightSide = $this->parseFunctionArgument();
 
                     if ($rightSide !== null) {
                         $leftStr = $this->nodeToString($potentialArg);
 
                         if ($this->containsDynamicValue($rightSide)) {
-                            $arguments[] = new ListNode([
+                            $items = [
                                 new StringNode($leftStr . '='),
                                 new StringNode('+'),
-                                $rightSide,
-                            ], 'space');
+                            ];
+
+                            if ($rightSide instanceof ListNode && $rightSide->separator === 'space') {
+                                foreach ($rightSide->items as $item) {
+                                    $items[] = $item;
+                                }
+                            } else {
+                                $items[] = $rightSide;
+                            }
+
+                            $arguments[] = new ListNode($items, 'space');
                         } else {
                             $rightStr = $this->nodeToString($rightSide);
 

@@ -8,6 +8,7 @@ use Bugo\SCSS\Exceptions\SassThrowable;
 use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\ParserInterface;
@@ -1733,8 +1734,14 @@ final readonly class Text
 
         if ($value instanceof ListNode || $value instanceof ArgumentListNode) {
             $parts = [];
+            $kept  = [];
 
             foreach ($value->items as $item) {
+                if ($item instanceof NullNode) {
+                    continue;
+                }
+
+                $kept[]  = $item;
                 $parts[] = $this->formatInterpolationValue($item, $env);
             }
 
@@ -1745,7 +1752,7 @@ final readonly class Text
             };
 
             $formatted = $separator === ' '
-                ? $this->joinInterpolationParts($value->items, $parts)
+                ? $this->joinInterpolationParts($kept, $parts)
                 : implode($separator, $parts);
 
             if ($value->bracketed) {
