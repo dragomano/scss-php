@@ -20,11 +20,13 @@ use Bugo\SCSS\Utils\StringHelper;
 use function count;
 use function ctype_alpha;
 use function ctype_digit;
+use function implode;
 use function in_array;
 use function is_array;
 use function ltrim;
 use function str_contains;
 use function str_ends_with;
+use function str_replace;
 use function str_starts_with;
 use function strlen;
 use function strpos;
@@ -85,6 +87,8 @@ final readonly class Text
     public function resolveDirectivePrelude(string $prelude, Environment $env): string
     {
         $prelude  = $this->normalizeCssLogicalOperators($prelude);
+        $prelude  = $this->collapseNegatedGeneralQueries($prelude);
+
         $resolved = str_contains($prelude, '#{')
             ? $this->interpolateText($prelude, $env)
             : $prelude;
@@ -180,6 +184,19 @@ final readonly class Text
         return $this->normalizeMediaQueryPrelude($this->normalizeCssLogicalOperators($prelude));
     }
 
+    public function normalizeCssImportQuery(string $import, Environment $env): string
+    {
+        [$source, $query] = $this->splitCssImportSourceAndQuery($import);
+
+        if ($query === '') {
+            return $import;
+        }
+
+        $normalized = $this->normalizeImportQueryMedia($query, $env);
+
+        return $source . ($normalized === '' ? '' : ' ' . $normalized);
+    }
+
     public function stripAllComments(string $text): string
     {
         $result = '';
@@ -264,35 +281,6 @@ final readonly class Text
         }
 
         return $this->stripAllComments($text);
-    }
-
-    private function findLoudCommentOpen(string $text, int $end): int|false
-    {
-        $open   = false;
-        $i      = 0;
-        $length = strlen($text);
-
-        while ($i < $length) {
-            if ($text[$i] === '/' && ($text[$i + 1] ?? '') === '*') {
-                $close = strpos($text, '*/', $i + 2);
-
-                if ($close === false) {
-                    break;
-                }
-
-                if ($close + 2 <= $end && ltrim(substr($text, $close + 2, $end - $close - 2)) === '') {
-                    $open = $i;
-                }
-
-                $i = $close + 2;
-
-                continue;
-            }
-
-            $i++;
-        }
-
-        return $open;
     }
 
     public function replaceInterpolations(string $value, Environment $env): string
@@ -552,6 +540,35 @@ final readonly class Text
         return ['name' => $name, 'value' => $value];
     }
 
+    private function findLoudCommentOpen(string $text, int $end): int|false
+    {
+        $open   = false;
+        $i      = 0;
+        $length = strlen($text);
+
+        while ($i < $length) {
+            if ($text[$i] === '/' && ($text[$i + 1] ?? '') === '*') {
+                $close = strpos($text, '*/', $i + 2);
+
+                if ($close === false) {
+                    break;
+                }
+
+                if ($close + 2 <= $end && ltrim(substr($text, $close + 2, $end - $close - 2)) === '') {
+                    $open = $i;
+                }
+
+                $i = $close + 2;
+
+                continue;
+            }
+
+            $i++;
+        }
+
+        return $open;
+    }
+
     private function stripPreludeComments(string $text): string
     {
         $text   = StringHelper::trimPreservingEscapeTerminator($text);
@@ -788,6 +805,141 @@ final readonly class Text
         }
 
         return StringHelper::trimPreservingEscapeTerminator($result);
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function splitCssImportSourceAndQuery(string $import): array
+    {
+        $trimmed = trim($import);
+        $length  = strlen($trimmed);
+
+        if ($length === 0) {
+            return ['', ''];
+        }
+
+        $char = $trimmed[0];
+
+        if ($char === '"' || $char === "'") {
+            $end = $this->findQuotedLiteralEnd($trimmed, 0);
+        } elseif (strtolower(substr($trimmed, 0, 4)) === 'url(') {
+            $close = $this->findMatchingParenthesis($trimmed, 3);
+
+            if ($close === null) {
+                return [$trimmed, ''];
+            }
+
+            $end = $close + 1;
+        } else {
+            return [$trimmed, ''];
+        }
+
+        return [substr($trimmed, 0, $end), trim(substr($trimmed, $end))];
+    }
+
+    private function normalizeImportQueryMedia(string $query, Environment $env): string
+    {
+        $protected = [];
+        $result    = '';
+        $length    = strlen($query);
+        $index     = 0;
+
+        while ($index < $length) {
+            $char = $query[$index];
+
+            if ($char !== '(') {
+                $result .= $char;
+
+                $index++;
+
+                continue;
+            }
+
+            $close = $this->findMatchingParenthesis($query, $index);
+
+            if ($close === null) {
+                $result .= substr($query, $index);
+
+                break;
+            }
+
+            $group = substr($query, $index + 1, $close - $index - 1);
+
+            if ($this->isStaticImportFeatureName($group)) {
+                $result .= '(' . $group . ')';
+                $index   = $close + 1;
+
+                continue;
+            }
+
+            $resolved = $this->resolveImportQueryGroup($group, $env);
+            $sentinel = "\x01" . count($protected) . "\x01";
+
+            $protected[$sentinel] = $resolved;
+
+            $result .= '(' . $sentinel . ')';
+            $index   = $close + 1;
+        }
+
+        $normalized = $this->normalizeMediaQueryPrelude(
+            $this->evaluateMediaFeatureOperands(
+                $this->resolveDirectivePrelude($result, $env),
+                $env,
+            ),
+        );
+
+        foreach ($protected as $sentinel => $text) {
+            $normalized = str_replace('(' . $sentinel . ')', '(' . $text . ')', $normalized);
+        }
+
+        return $normalized;
+    }
+
+    private function isStaticImportFeatureName(string $group): bool
+    {
+        $inner = trim($group);
+        $colon = $this->findTopLevelColon($inner);
+
+        if ($colon === null || $colon === 0) {
+            return false;
+        }
+
+        $name     = substr($inner, 0, $colon);
+        $length   = strlen($name);
+        $hasAlpha = false;
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $name[$i];
+
+            if (ctype_alpha($char) || $char === '-' || $char === '_' || $char === '*') {
+                $hasAlpha = $hasAlpha || ctype_alpha($char);
+
+                continue;
+            }
+
+            return false;
+        }
+
+        return $hasAlpha;
+    }
+
+    private function resolveImportQueryGroup(string $group, Environment $env): string
+    {
+        $inner = trim($group);
+
+        if ($inner === '') {
+            return '';
+        }
+
+        $resolved = trim($this->interpolateText($inner, $env));
+        $resolved = trim($this->replaceVariableReferencesInText($resolved, $env));
+
+        if (StringHelper::isQuoted($resolved)) {
+            $resolved = StringHelper::unquote($resolved);
+        }
+
+        return $resolved;
     }
 
     private function normalizeSupportsFeatureDeclarations(string $condition, Environment $env): string
@@ -1358,6 +1510,13 @@ final readonly class Text
     private function evaluateFeatureGroup(string $inner, Environment $env): string
     {
         $inner = trim($inner);
+
+        if (
+            StringHelper::isQuoted($inner)
+            && $this->findQuotedLiteralEnd($inner, 0) === strlen($inner)
+        ) {
+            return StringHelper::unquote($inner);
+        }
 
         foreach (['<=', '>=', '<', '>', '='] as $operator) {
             [$parts, $ops] = $this->splitMediaFeatureByOperator($inner, $operator);
@@ -1990,6 +2149,123 @@ final readonly class Text
         }
 
         return $result;
+    }
+
+    private function collapseNegatedGeneralQueries(string $prelude): string
+    {
+        $result = '';
+        $length = strlen($prelude);
+        $index  = 0;
+
+        while ($index < $length) {
+            $char = $prelude[$index];
+
+            if ($char === '"' || $char === "'") {
+                $end     = $this->findQuotedLiteralEnd($prelude, $index);
+                $result .= substr($prelude, $index, $end - $index);
+                $index   = $end;
+
+                continue;
+            }
+
+            if ($char === '#' && ($prelude[$index + 1] ?? '') === '{') {
+                $end     = $this->skipInterpolationSpan($prelude, $index);
+                $result .= substr($prelude, $index, $end - $index);
+                $index   = $end;
+
+                continue;
+            }
+
+            if ($char === '(') {
+                $close = $this->findMatchingParenthesis($prelude, $index);
+
+                if ($close !== null) {
+                    $inner = $this->collapseNegatedGeneralQueries(
+                        substr($prelude, $index + 1, $close - $index - 1),
+                    );
+
+                    $collapsed = $this->collapseNegatedGroupContent($inner);
+
+                    if ($collapsed !== $inner) {
+                        $result .= $collapsed;
+
+                        $index = $close + 1;
+
+                        continue;
+                    }
+
+                    $result .= '(' . $inner . ')';
+                    $index   = $close + 1;
+
+                    continue;
+                }
+            }
+
+            $result .= $char;
+
+            $index++;
+        }
+
+        return $result;
+    }
+
+    private function collapseNegatedGroupContent(string $inner): string
+    {
+        $trimmed = trim($inner);
+        $length  = strlen($trimmed);
+
+        if ($length < 5 || strtolower(substr($trimmed, 0, 3)) !== 'not' || strspn($trimmed, " \t\r\n", 3) === 3) {
+            return $inner;
+        }
+
+        $rest = ltrim(substr($trimmed, 3));
+
+        if (! str_starts_with($rest, '(')) {
+            return $inner;
+        }
+
+        if ($this->findMatchingParenthesis($rest, 0) !== strlen($rest) - 1) {
+            return $inner;
+        }
+
+        $parts = $this->splitTopLevelByOperator(trim(substr($rest, 1, -1)), 'and');
+        $kept  = [];
+
+        foreach ($parts as $part) {
+            if ($part !== '' && $part[0] === '(') {
+                $kept[] = $part;
+            }
+        }
+
+        if ($kept === []) {
+            return $inner;
+        }
+
+        return 'not ' . implode(' and ', $kept);
+    }
+
+    private function skipInterpolationSpan(string $text, int $start): int
+    {
+        $depth  = 0;
+        $length = strlen($text);
+
+        for ($i = $start + 1; $i < $length; $i++) {
+            if ($text[$i] === '{') {
+                $depth++;
+
+                continue;
+            }
+
+            if ($text[$i] === '}') {
+                $depth--;
+
+                if ($depth === 0) {
+                    return $i + 1;
+                }
+            }
+        }
+
+        return $length;
     }
 
     private function startsWithNot(string $text): bool

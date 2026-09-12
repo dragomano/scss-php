@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Handlers\Rule;
 
 use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
+use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\States\OutputState;
@@ -14,6 +15,7 @@ use Bugo\SCSS\Utils\OutputChunk;
 use function array_pop;
 use function array_values;
 use function count;
+use function str_ends_with;
 
 final readonly class OutputFormattingStep implements CompilationStepInterface
 {
@@ -28,7 +30,11 @@ final readonly class OutputFormattingStep implements CompilationStepInterface
         if ($ruleCtx->hasRenderedChildren) {
             $ruleCtx->output = $this->render->trimTrailingNewlines($ruleCtx->output);
 
-            $this->render->appendChunk($ruleCtx->output, "\n" . $ruleCtx->prefix . '}');
+            if ($this->isSingleInlineCommentBody($ruleCtx)) {
+                $this->render->appendChunk($ruleCtx->output, ' }');
+            } else {
+                $this->render->appendChunk($ruleCtx->output, "\n" . $ruleCtx->prefix . '}');
+            }
         }
 
         if (
@@ -78,6 +84,27 @@ final readonly class OutputFormattingStep implements CompilationStepInterface
             $ruleCtx->leadingRootChunks,
             $ruleCtx->trailingRootChunks,
         );
+    }
+
+    private function isSingleInlineCommentBody(RuleCompilationContext $ruleCtx): bool
+    {
+        if (! str_ends_with($ruleCtx->output, '*/')) {
+            return false;
+        }
+
+        $children = $ruleCtx->node->children;
+
+        if (count($children) !== 1) {
+            return false;
+        }
+
+        $child = array_pop($children);
+
+        if (! $child instanceof CommentNode) {
+            return false;
+        }
+
+        return $child->line === ($ruleCtx->node->openBraceLine ?: $ruleCtx->node->line);
     }
 
     /**

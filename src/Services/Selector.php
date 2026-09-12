@@ -110,6 +110,11 @@ final readonly class Selector
         return $this->text->collapseWhitespaceInPrelude($prelude);
     }
 
+    public function normalizeCssImportQuery(string $import, Environment $env): string
+    {
+        return $this->text->normalizeCssImportQuery($import, $env);
+    }
+
     public function canonicalizeSelectorEscapes(string $selector): string
     {
         return $this->tokenizer->canonicalizeSelectorEscapes($selector);

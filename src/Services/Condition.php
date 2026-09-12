@@ -818,7 +818,7 @@ final readonly class Condition
             return $this->valueEvaluator->evaluate(new VariableReferenceNode(substr($value, 1)), $env);
         }
 
-        if (str_contains($value, '(')) {
+        if (str_contains($value, '(') || str_contains($value, '&')) {
             $valueNode = $this->parser->parseInlineExpression($value);
 
             if ($line !== null && $valueNode instanceof FunctionNode) {

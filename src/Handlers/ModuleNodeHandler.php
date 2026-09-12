@@ -71,7 +71,7 @@ final readonly class ModuleNodeHandler
 
             if ($resolvedImport['type'] === 'css') {
                 /** @var array{type: 'css', raw: string} $resolvedImport */
-                $rawImport = $resolvedImport['raw'];
+                $rawImport = $this->selector->normalizeCssImportQuery($resolvedImport['raw'], $ctx->env);
 
                 if (str_contains($rawImport, '#{')) {
                     $rawImport = $this->evaluation->interpolateText($rawImport, $ctx->env);

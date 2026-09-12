@@ -23,6 +23,7 @@ use Bugo\SCSS\Nodes\VariableReferenceNode;
 use function abs;
 use function count;
 use function ctype_digit;
+use function dechex;
 use function in_array;
 use function max;
 use function str_contains;
@@ -356,96 +357,6 @@ final readonly class ValueParser implements
         }
 
         return new NumberNode($number, $unit);
-    }
-
-    private function decodeEscapedUnit(string $unit): string
-    {
-        if (! str_contains($unit, '\\')) {
-            return $unit;
-        }
-
-        $length = strlen($unit);
-        $result = '';
-
-        for ($i = 0; $i < $length;) {
-            $char = $unit[$i];
-
-            if ($char !== '\\') {
-                $result .= $char;
-
-                $i++;
-
-                continue;
-            }
-
-            if ($i + 1 >= $length) {
-                $result .= '\\';
-
-                break;
-            }
-
-            $next = $unit[$i + 1];
-
-            if (ctype_xdigit($next)) {
-                $hex      = '';
-                $position = $i + 1;
-
-                while ($position < $length && strlen($hex) < 6 && ctype_xdigit($unit[$position])) {
-                    $hex .= $unit[$position];
-
-                    $position++;
-                }
-
-                if ($position < $length && ctype_space($unit[$position])) {
-                    $position++;
-                }
-
-                $result .= $this->encodeCodePointToUtf8((int) hexdec($hex));
-
-                $i = $position;
-
-                continue;
-            }
-
-            $width   = $this->utf8WidthAt($unit, $i + 1);
-            $result .= substr($unit, $i + 1, $width);
-
-            $i += 1 + $width;
-        }
-
-        return $result;
-    }
-
-    private function encodeCodePointToUtf8(int $codePoint): string
-    {
-        if ($codePoint <= 0x7F) {
-            return chr($codePoint & 0x7F);
-        }
-
-        if ($codePoint <= 0x7FF) {
-            return chr(0xC0 | ($codePoint >> 6)) . chr(0x80 | ($codePoint & 0x3F));
-        }
-
-        if ($codePoint <= 0xFFFF) {
-            return chr(0xE0 | ($codePoint >> 12)) . chr(0x80 | (($codePoint >> 6) & 0x3F)) . chr(0x80 | ($codePoint & 0x3F));
-        }
-
-        return chr(0xF0 | (($codePoint >> 18) & 0x07)) . chr(0x80 | (($codePoint >> 12) & 0x3F))
-            . chr(0x80 | (($codePoint >> 6) & 0x3F)) . chr(0x80 | ($codePoint & 0x3F));
-    }
-
-    private function utf8WidthAt(string $value, int $position): int
-    {
-        $byte = ord($value[$position]);
-
-        $width = match (true) {
-            $byte >= 0xF0 => 4,
-            $byte >= 0xE0 => 3,
-            $byte >= 0xC2 => 2,
-            default       => 1,
-        };
-
-        return min($width, strlen($value) - $position);
     }
 
     public function parseParenthesizedValue(): AstNode
@@ -819,6 +730,102 @@ final readonly class ValueParser implements
     public function parseCommaSeparatedValue(): ?AstNode
     {
         return $this->parseValueUntil([TokenType::COMMA, TokenType::RPAREN]);
+    }
+
+    private function decodeEscapedUnit(string $unit): string
+    {
+        if (! str_contains($unit, '\\')) {
+            return $unit;
+        }
+
+        $length = strlen($unit);
+        $result = '';
+
+        for ($i = 0; $i < $length;) {
+            $char = $unit[$i];
+
+            if ($char !== '\\') {
+                $result .= $char;
+
+                $i++;
+
+                continue;
+            }
+
+            if ($i + 1 >= $length) {
+                $result .= '\\';
+
+                break;
+            }
+
+            $next = $unit[$i + 1];
+
+            if (ctype_xdigit($next)) {
+                $hex      = '';
+                $position = $i + 1;
+
+                while ($position < $length && strlen($hex) < 6 && ctype_xdigit($unit[$position])) {
+                    $hex .= $unit[$position];
+
+                    $position++;
+                }
+
+                if ($position < $length && ctype_space($unit[$position])) {
+                    $position++;
+                }
+
+                $codePoint = (int) hexdec($hex);
+
+                if ($codePoint < 0x20 || $codePoint === 0x7F) {
+                    $result .= '\\' . strtolower(dechex($codePoint)) . ' ';
+                } else {
+                    $result .= $this->encodeCodePointToUtf8($codePoint);
+                }
+
+                $i = $position;
+
+                continue;
+            }
+
+            $width   = $this->utf8WidthAt($unit, $i + 1);
+            $result .= substr($unit, $i + 1, $width);
+
+            $i += 1 + $width;
+        }
+
+        return $result;
+    }
+
+    private function encodeCodePointToUtf8(int $codePoint): string
+    {
+        if ($codePoint <= 0x7F) {
+            return chr($codePoint & 0x7F);
+        }
+
+        if ($codePoint <= 0x7FF) {
+            return chr(0xC0 | ($codePoint >> 6)) . chr(0x80 | ($codePoint & 0x3F));
+        }
+
+        if ($codePoint <= 0xFFFF) {
+            return chr(0xE0 | ($codePoint >> 12)) . chr(0x80 | (($codePoint >> 6) & 0x3F)) . chr(0x80 | ($codePoint & 0x3F));
+        }
+
+        return chr(0xF0 | (($codePoint >> 18) & 0x07)) . chr(0x80 | (($codePoint >> 12) & 0x3F))
+            . chr(0x80 | (($codePoint >> 6) & 0x3F)) . chr(0x80 | ($codePoint & 0x3F));
+    }
+
+    private function utf8WidthAt(string $value, int $position): int
+    {
+        $byte = ord($value[$position]);
+
+        $width = match (true) {
+            $byte >= 0xF0 => 4,
+            $byte >= 0xE0 => 3,
+            $byte >= 0xC2 => 2,
+            default       => 1,
+        };
+
+        return min($width, strlen($value) - $position);
     }
 
     /**

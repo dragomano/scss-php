@@ -211,7 +211,7 @@ final readonly class DirectiveParser
     {
         $this->stream->skipWhitespaceAndComments();
 
-        $condition = $this->parseCondition();
+        $condition = $this->parseCondition(true);
         $ifBody    = $this->parsingContext->parseBlock();
 
         $elseIfBranches = [];
@@ -222,9 +222,13 @@ final readonly class DirectiveParser
         while ($iterations < $maxIterations) {
             $iterations++;
 
-            $this->stream->skipWhitespace();
+            $lookbackPos = $this->stream->getPosition();
+
+            $this->stream->skipWhitespaceAndComments();
 
             if (! $this->stream->is(TokenType::AT)) {
+                $this->stream->setPosition($lookbackPos);
+
                 break;
             }
 
@@ -237,13 +241,13 @@ final readonly class DirectiveParser
             $keyword = $this->moduleValueContext->consumeIdentifier();
 
             if ($keyword !== 'else' && $keyword !== 'elseif') {
-                $this->stream->setPosition($savedPos);
+                $this->stream->setPosition($lookbackPos);
 
                 break;
             }
 
             if ($keyword === 'elseif') {
-                $elseIfCondition = $this->parseCondition();
+                $elseIfCondition = $this->parseCondition(true);
                 $elseIfBody      = $this->parsingContext->parseBlock();
 
                 $elseIfBranches[] = new ElseIfNode($elseIfCondition, $elseIfBody, $elseToken->line);
@@ -263,7 +267,7 @@ final readonly class DirectiveParser
                 $this->stream->advance();
                 $this->stream->skipWhitespaceAndComments();
 
-                $elseIfCondition = $this->parseCondition();
+                $elseIfCondition = $this->parseCondition(true);
                 $elseIfBody      = $this->parsingContext->parseBlock();
 
                 $elseIfBranches[] = new ElseIfNode($elseIfCondition, $elseIfBody, $elseToken->line);
@@ -376,7 +380,7 @@ final readonly class DirectiveParser
         return new SupportsNode($condition, $body);
     }
 
-    public function parseCondition(): string
+    public function parseCondition(bool $dropComments = false): string
     {
         $condition          = '';
         $loopCount          = 0;
@@ -426,7 +430,7 @@ final readonly class DirectiveParser
             $wrapped = TokenStreamHelper::wrapComment($token);
 
             if ($wrapped !== null) {
-                $condition .= $wrapped;
+                $condition .= $dropComments ? ' ' : $wrapped;
 
                 $this->stream->advance();
 

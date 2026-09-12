@@ -78,6 +78,12 @@ final readonly class RootNodeHandler
                 }
 
                 if ($compiled !== '' && ! $child instanceof UseNode && ! $child instanceof ForwardNode) {
+                    if ($leadingComments !== [] && $outputState->cssImports === []) {
+                        array_splice($outputState->cssImports, 0, 0, $leadingComments);
+
+                        $leadingComments = [];
+                    }
+
                     $inLeadingRun = false;
                 }
             }

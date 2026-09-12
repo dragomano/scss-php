@@ -312,6 +312,33 @@ final class Tokenizer
             while ($this->position < $this->length) {
                 $c = $this->source[$this->position];
 
+                if ($c === '\\') {
+                    $value = substr($this->source, $start, $this->position - $start);
+
+                    $this->column += strlen($value);
+
+                    while ($this->position < $this->length) {
+                        $char = $this->source[$this->position];
+
+                        if ($char === '\\') {
+                            $value .= $this->tokenizeIdentifierEscape(false);
+
+                            continue;
+                        }
+
+                        if (! ctype_alnum($char) && $char !== '_' && $char !== '-') {
+                            break;
+                        }
+
+                        $value .= $char;
+
+                        $this->position++;
+                        $this->column++;
+                    }
+
+                    return new Token(TokenType::HASH, $value, $line, $column, $tokenStart);
+                }
+
                 if (! ctype_alnum($c) && $c !== '_' && $c !== '-') {
                     break;
                 }

@@ -33,7 +33,7 @@ final class AstValueComparator
         }
 
         if ($left instanceof NumberNode && $right instanceof NumberNode) {
-            return $left->value === $right->value && $left->unit === $right->unit;
+            return (float) $left->value === (float) $right->value && $left->unit === $right->unit;
         }
 
         if ($left instanceof StringNode && $right instanceof StringNode) {
