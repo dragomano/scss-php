@@ -215,103 +215,6 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return false;
     }
 
-    private function isSlashDivisionCandidate(ListNode $value): bool
-    {
-        if (count($value->items) !== 3) {
-            return false;
-        }
-
-        [$first, $mid, $last] = $value->items;
-
-        if (! ($mid instanceof StringNode && $mid->value === '/')) {
-            return false;
-        }
-
-        if ($first instanceof FunctionNode && strtolower($first->name) === 'calc') {
-            return false;
-        }
-
-        if ($last instanceof FunctionNode && strtolower($last->name) === 'calc') {
-            return false;
-        }
-
-        $firstLiteral = $first instanceof NumberNode && $first->isLiteral;
-        $lastLiteral  = $last instanceof NumberNode && $last->isLiteral;
-
-        return ! ($firstLiteral && $lastLiteral);
-    }
-
-    private function isMultiSlashChain(ListNode $value): bool
-    {
-        $items = $value->items;
-        $count = count($items);
-
-        if ($count < 5 || $count % 2 !== 1) {
-            return false;
-        }
-
-        foreach ($items as $index => $item) {
-            if ($index % 2 === 0) {
-                if (! $item instanceof NumberNode && ! $item instanceof VariableReferenceNode) {
-                    return false;
-                }
-            } elseif (! $item instanceof StringNode || $item->value !== '/') {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * @param array<int, AstNode> $items
-     */
-    private function containsVariableReference(array $items): bool
-    {
-        foreach ($items as $item) {
-            if ($item instanceof VariableReferenceNode) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function evaluateMultiSlashChain(ListNode $value, Environment $env): ?AstNode
-    {
-        $operands = [];
-
-        foreach ($value->items as $index => $item) {
-            if ($index % 2 === 0) {
-                $operand = $this->evaluateValue($item, $env);
-
-                if (! $operand instanceof NumberNode) {
-                    return null;
-                }
-
-                $operands[] = $operand;
-
-                continue;
-            }
-
-            if (! $item instanceof StringNode || $item->value !== '/') {
-                return null;
-            }
-        }
-
-        $result = $operands[0];
-
-        for ($i = 1, $count = count($operands); $i < $count; $i++) {
-            if (! $result instanceof NumberNode) {
-                return $result;
-            }
-
-            $result = $this->arithmetic->applyOperator($result, '/', $operands[$i]);
-        }
-
-        return $result;
-    }
-
     public function isSassNullValue(AstNode $value): bool
     {
         return $value instanceof NullNode;
@@ -649,13 +552,6 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return new ListNode([...$leading, ...$tail], 'space');
     }
 
-    private function isArithmeticOperatorItem(AstNode $node): bool
-    {
-        return $node instanceof StringNode
-            && ! $node->quoted
-            && in_array(trim($node->value), ['+', '-', '*', '/', '%'], true);
-    }
-
     public function evaluateStringConcatenationList(ListNode $list, ?Environment $env = null, ?EvaluationOptions $options = null): ?AstNode
     {
         if ($options !== null && $options->skipConcatenation) {
@@ -740,6 +636,110 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
     public function normalizeBubblingNodeForSelector(StatementNode $node, string $selector): StatementNode
     {
         return $this->selector->normalizeBubblingNodeForSelector($node, $selector);
+    }
+
+    private function isSlashDivisionCandidate(ListNode $value): bool
+    {
+        if (count($value->items) !== 3) {
+            return false;
+        }
+
+        [$first, $mid, $last] = $value->items;
+
+        if (! ($mid instanceof StringNode && $mid->value === '/')) {
+            return false;
+        }
+
+        if ($first instanceof FunctionNode && strtolower($first->name) === 'calc') {
+            return false;
+        }
+
+        if ($last instanceof FunctionNode && strtolower($last->name) === 'calc') {
+            return false;
+        }
+
+        $firstLiteral = $first instanceof NumberNode && $first->isLiteral;
+        $lastLiteral  = $last instanceof NumberNode && $last->isLiteral;
+
+        return ! ($firstLiteral && $lastLiteral);
+    }
+
+    private function isMultiSlashChain(ListNode $value): bool
+    {
+        $items = $value->items;
+        $count = count($items);
+
+        if ($count < 5 || $count % 2 !== 1) {
+            return false;
+        }
+
+        foreach ($items as $index => $item) {
+            if ($index % 2 === 0) {
+                if (! $item instanceof NumberNode && ! $item instanceof VariableReferenceNode) {
+                    return false;
+                }
+            } elseif (! $item instanceof StringNode || $item->value !== '/') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     */
+    private function containsVariableReference(array $items): bool
+    {
+        foreach ($items as $item) {
+            if ($item instanceof VariableReferenceNode) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function evaluateMultiSlashChain(ListNode $value, Environment $env): ?AstNode
+    {
+        $operands = [];
+
+        foreach ($value->items as $index => $item) {
+            if ($index % 2 === 0) {
+                $operand = $this->evaluateValue($item, $env);
+
+                if (! $operand instanceof NumberNode) {
+                    return null;
+                }
+
+                $operands[] = $operand;
+
+                continue;
+            }
+
+            if (! $item instanceof StringNode || $item->value !== '/') {
+                return null;
+            }
+        }
+
+        $result = $operands[0];
+
+        for ($i = 1, $count = count($operands); $i < $count; $i++) {
+            if (! $result instanceof NumberNode) {
+                return $result;
+            }
+
+            $result = $this->arithmetic->applyOperator($result, '/', $operands[$i]);
+        }
+
+        return $result;
+    }
+
+    private function isArithmeticOperatorItem(AstNode $node): bool
+    {
+        return $node instanceof StringNode
+            && ! $node->quoted
+            && in_array(trim($node->value), ['+', '-', '*', '/', '%'], true);
     }
 
     private function preserveHwbZeroHueUnit(FunctionNode $node): FunctionNode
@@ -997,7 +997,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             new StringNodeStrategy(
                 fn(Environment $env): ?StringNode => $this->getCurrentParentSelector($env),
                 fn(): AstNode => $this->ctx->valueFactory->createNullNode(),
-                fn(string $value, Environment $env): string => $this->text->replaceInterpolations($value, $env),
+                fn(string $value, Environment $env, bool $decoded = false): string => $this->text->replaceInterpolations($value, $env, $decoded),
             ),
             new ListNodeStrategy(
                 $evaluateValueClosure,

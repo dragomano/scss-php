@@ -283,9 +283,11 @@ final readonly class Text
         return $this->stripAllComments($text);
     }
 
-    public function replaceInterpolations(string $value, Environment $env): string
+    public function replaceInterpolations(string $value, Environment $env, bool $decoded = false): string
     {
-        $value = StringEscapeDecoder::protectHashes($value);
+        if (! $decoded) {
+            $value = StringEscapeDecoder::protectHashes($value);
+        }
 
         $result = '';
         $length = strlen($value);
@@ -1901,7 +1903,9 @@ final readonly class Text
                 }
 
                 $kept[]  = $item;
-                $parts[] = $this->formatInterpolationValue($item, $env);
+                $parts[] = $item instanceof StringNode
+                    ? StringEscapeDecoder::encodeUnquotedContent($item->value)
+                    : $this->formatInterpolationValue($item, $env);
             }
 
             $separator = match ($value->separator) {

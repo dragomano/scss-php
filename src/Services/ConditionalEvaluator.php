@@ -57,6 +57,52 @@ final readonly class ConditionalEvaluator
     /**
      * @param array<int, AstNode> $arguments
      */
+    public function evaluateSpecialUrlFunction(string $name, array $arguments, Environment $env): ?AstNode
+    {
+        if (strtolower($name) !== 'url' || count($arguments) !== 1) {
+            return null;
+        }
+
+        $argument = $arguments[0];
+
+        if ($argument instanceof StringNode) {
+            $value = $this->text->replaceInterpolations($argument->value, $env, $argument->quoted);
+
+            if (! $argument->quoted) {
+                $value = $this->text->replaceVariableReferencesInText($value, $env);
+
+                if (StringHelper::isQuoted($value)) {
+                    return new FunctionNode('url', [new StringNode(StringHelper::unquote($value), true)]);
+                }
+            }
+
+            return new FunctionNode('url', [new StringNode($value, $argument->quoted)]);
+        }
+
+        $value = $this->valueFormatter->format($argument, $env);
+        $value = $this->text->replaceInterpolations($value, $env);
+        $value = $this->text->replaceVariableReferencesInText($value, $env);
+        $value = $this->collapseUrlStringConcatenation($value);
+
+        if (StringHelper::isQuoted($value)) {
+            return new FunctionNode('url', [new StringNode(StringHelper::unquote($value), true)]);
+        }
+
+        return new FunctionNode('url', [new StringNode($value)]);
+    }
+
+    public function evaluateLogicalList(ListNode $list, Environment $env): ?AstNode
+    {
+        if ($list->separator !== 'space') {
+            return null;
+        }
+
+        return $this->evaluateLogicalItems($list->items, $env);
+    }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     */
     private function evaluateInlineIfFunctionInner(string $name, array $arguments, Environment $env): AstNode
     {
 
@@ -231,52 +277,6 @@ final readonly class ConditionalEvaluator
     }
 
     /**
-     * @param array<int, AstNode> $arguments
-     */
-    public function evaluateSpecialUrlFunction(string $name, array $arguments, Environment $env): ?AstNode
-    {
-        if (strtolower($name) !== 'url' || count($arguments) !== 1) {
-            return null;
-        }
-
-        $argument = $arguments[0];
-
-        if ($argument instanceof StringNode) {
-            $value = $this->text->replaceInterpolations($argument->value, $env);
-
-            if (! $argument->quoted) {
-                $value = $this->text->replaceVariableReferencesInText($value, $env);
-
-                if (StringHelper::isQuoted($value)) {
-                    return new FunctionNode('url', [new StringNode(StringHelper::unquote($value), true)]);
-                }
-            }
-
-            return new FunctionNode('url', [new StringNode($value, $argument->quoted)]);
-        }
-
-        $value = $this->valueFormatter->format($argument, $env);
-        $value = $this->text->replaceInterpolations($value, $env);
-        $value = $this->text->replaceVariableReferencesInText($value, $env);
-        $value = $this->collapseUrlStringConcatenation($value);
-
-        if (StringHelper::isQuoted($value)) {
-            return new FunctionNode('url', [new StringNode(StringHelper::unquote($value), true)]);
-        }
-
-        return new FunctionNode('url', [new StringNode($value)]);
-    }
-
-    public function evaluateLogicalList(ListNode $list, Environment $env): ?AstNode
-    {
-        if ($list->separator !== 'space') {
-            return null;
-        }
-
-        return $this->evaluateLogicalItems($list->items, $env);
-    }
-
-    /**
      * @return array{kind: 'bool', value: bool}|array{kind: 'css', expression: string}
      */
     private function evaluateInlineIfCondition(AstNode $condition, Environment $env, bool $forceBoolean = false): array
@@ -409,7 +409,7 @@ final readonly class ConditionalEvaluator
 
         if ($node instanceof StringNode && str_contains($node->value, '#{')) {
             try {
-                $value = $this->text->replaceInterpolations($node->value, $env);
+                $value = $this->text->replaceInterpolations($node->value, $env, $node->quoted);
             } catch (Throwable) {
                 $value = $node->value;
             }

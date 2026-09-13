@@ -23,7 +23,7 @@ final readonly class StringNodeStrategy implements EvaluationStrategyInterface
     /**
      * @param Closure(Environment): ?StringNode $getCurrentParentSelector
      * @param Closure(): AstNode $createNullNode
-     * @param Closure(string, Environment): string $replaceInterpolations
+     * @param Closure(string, Environment, bool): string $replaceInterpolations
      */
     public function __construct(
         private Closure $getCurrentParentSelector,
@@ -69,14 +69,14 @@ final readonly class StringNodeStrategy implements EvaluationStrategyInterface
 
         if (! $node->quoted && $this->isPureInterpolation($node->value)) {
             return new StringNode(
-                ($this->replaceInterpolations)($node->value, $env),
+                ($this->replaceInterpolations)($node->value, $env, false),
                 false,
                 isSpecialString: true,
             );
         }
 
         return new StringNode(
-            ($this->replaceInterpolations)($node->value, $env),
+            ($this->replaceInterpolations)($node->value, $env, $node->quoted),
             $node->quoted,
         );
     }
