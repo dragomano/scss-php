@@ -72,6 +72,13 @@ final readonly class SelectorTokenizer
      */
     public function tokenizeCompound(string $compound): array
     {
+        /** @var array<string, array<int, string>> $cache */
+        static $cache = [];
+
+        if (isset($cache[$compound])) {
+            return $cache[$compound];
+        }
+
         $tokens = [];
         $length = strlen($compound);
         $index  = 0;
@@ -151,6 +158,8 @@ final readonly class SelectorTokenizer
 
             $index++;
         }
+
+        $cache[$compound] = $tokens;
 
         return $tokens;
     }

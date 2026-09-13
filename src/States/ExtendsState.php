@@ -73,6 +73,9 @@ final class ExtendsState
     /** @var array<int, ExtendsBox> */
     public array $boxes = [];
 
+    /** @var array<int, array{target: string, source: string, priority: int}>|null */
+    public ?array $orderedExtends = null;
+
     /** @var array<string, ExtendsScope> */
     public array $moduleScopes = [];
 
@@ -101,6 +104,7 @@ final class ExtendsState
         $this->selectorContexts = $scope['selectorContexts'];
         $this->partLineBreaks   = $scope['partLineBreaks'];
         $this->boxes            = $scope['boxes'];
+        $this->orderedExtends   = null;
     }
 
     /**
@@ -162,6 +166,7 @@ final class ExtendsState
         $this->ruleStack        = [];
         $this->extendSequence   = 0;
         $this->boxes            = [];
+        $this->orderedExtends   = null;
     }
 
     public function reset(): void
@@ -170,5 +175,6 @@ final class ExtendsState
 
         $this->moduleScopes       = [];
         $this->moduleScopesImport = [];
+        $this->orderedExtends     = null;
     }
 }

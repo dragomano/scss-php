@@ -688,5 +688,30 @@ describe('Compiler', function () {
                 }
             }
         });
+
+        it('compiles many @extend directives without performance regression', function () {
+            $scss = /** @lang SCSS */ <<<'SCSS'
+            @use "sass:math";
+            @for $i from 1 through 30 {
+              .a-#{$i} {
+                %ph-#{$i} {color: red}
+              }
+              @for $j from 1 through 30 {
+                .b-#{$i}-#{$j} {
+                  @extend %ph-#{$i};
+                  width: math.div($i * 100%, $j);
+                }
+              }
+            }
+            SCSS;
+
+            $start   = hrtime(true);
+            $css     = $this->compiler->compileString($scss);
+            $elapsed = (hrtime(true) - $start) / 1e9;
+
+            expect($css)->toContain('.a-1 .b-1-1')
+                ->and($css)->toContain('.a-30 .b-30-30')
+                ->and($elapsed)->toBeLessThan(3.0);
+        });
     });
 });

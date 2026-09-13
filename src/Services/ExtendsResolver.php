@@ -257,9 +257,18 @@ final readonly class ExtendsResolver
         $boxes = [];
 
         foreach ($meta as $boxId => $boxMeta) {
+            /** @var list<Complex> $complexes */
+            $complexes = array_values($store['boxes'][$boxId] ?? []);
+
+            $trimmed = $this->trimExtendedComplexes(
+                $store,
+                $complexes,
+                fn(array $complex): bool => isset($store['originals'][$this->complexKey($complex)]),
+            );
+
             $selectors = [];
 
-            foreach ($store['boxes'][$boxId] ?? [] as $complex) {
+            foreach ($trimmed as $complex) {
                 $selectors[] = $this->complexKey($complex);
             }
 
@@ -800,11 +809,7 @@ final readonly class ExtendsResolver
             return null;
         }
 
-        return $this->trimExtendedComplexes(
-            $store,
-            $extended,
-            fn(array $complex): bool => isset($store['originals'][$this->complexKey($complex)]),
-        );
+        return $extended;
     }
 
     /**
@@ -1794,6 +1799,20 @@ final readonly class ExtendsResolver
         $seen       = [$part => true];
 
         foreach ($this->orderedExtends() as $extend) {
+            $hasMatch = false;
+
+            foreach ($allResults as $selector) {
+                if (str_contains($selector, $extend['target'])) {
+                    $hasMatch = true;
+
+                    break;
+                }
+            }
+
+            if (! $hasMatch) {
+                continue;
+            }
+
             $next = [];
 
             foreach ($allResults as $selector) {
@@ -1935,10 +1954,16 @@ final readonly class ExtendsResolver
      */
     private function orderedExtends(): array
     {
+        $state = $this->ctx->outputState->extends;
+
+        if ($state->orderedExtends !== null) {
+            return $state->orderedExtends;
+        }
+
         /** @var array<int, array{target: string, source: string, priority: int}> $extends */
         $extends = [];
 
-        foreach ($this->ctx->outputState->extends->extendMap as $target => $sources) {
+        foreach ($state->extendMap as $target => $sources) {
             foreach ($sources as $source) {
                 $extends[] = [
                     'target'   => $target,
@@ -1952,6 +1977,8 @@ final readonly class ExtendsResolver
             $extends,
             static fn(array $left, array $right): int => $left['priority'] <=> $right['priority'],
         );
+
+        $state->orderedExtends = $extends;
 
         return $extends;
     }
