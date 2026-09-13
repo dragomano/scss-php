@@ -11,6 +11,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
+use Bugo\SCSS\Utils\SelectorComponent;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 
 use function array_map;
@@ -30,6 +31,15 @@ use function strpos;
 use function substr;
 use function trim;
 
+/**
+ * @phpstan-import-type Complex from SelectorTokenizer
+ * @phpstan-type  SelectorList       array<int, Complex>
+ * @phpstan-type  NestedSelectorList array<int, SelectorList>
+ *
+ * @psalm-import-type Complex from SelectorTokenizer
+ * @psalm-type        SelectorList = array<int, Complex>
+ * @psalm-type        NestedSelectorList = array<int, SelectorList>
+ */
 final class SassSelectorModule extends AbstractModule
 {
     private const FUNCTIONS = [
@@ -347,13 +357,13 @@ final class SassSelectorModule extends AbstractModule
         if (
             count($complexes) !== 1
             || count($complexes[0]) !== 1
-            || ($complexes[0][0]['lead'] ?? '') !== ''
-            || $complexes[0][0]['comb'] !== ''
+            || ($complexes[0][0]->lead ?? '') !== ''
+            || $complexes[0][0]->comb !== ''
         ) {
             throw new SassErrorException('expected selector.');
         }
 
-        $tokens = $this->tokenizer->tokenizeCompound($complexes[0][0]['sel']);
+        $tokens = $this->tokenizer->tokenizeCompound($complexes[0][0]->sel);
 
         if ($tokens === []) {
             throw new SassErrorException('expected selector.');
@@ -436,7 +446,7 @@ final class SassSelectorModule extends AbstractModule
     }
 
     /**
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     * @return SelectorList
      */
     private function assertSelector(AstNode $value, string $context, bool $allowParent = false): array
     {
@@ -512,7 +522,7 @@ final class SassSelectorModule extends AbstractModule
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $complexes
+     * @param SelectorList $complexes
      */
     private function selectorListNode(array $complexes): ListNode
     {
@@ -520,7 +530,7 @@ final class SassSelectorModule extends AbstractModule
 
         foreach ($complexes as $components) {
             $parts = [];
-            $lead  = $components[0]['lead'] ?? '';
+            $lead  = $components[0]->lead ?? '';
 
             if ($lead !== '') {
                 foreach (explode(' ', $lead) as $piece) {
@@ -531,12 +541,12 @@ final class SassSelectorModule extends AbstractModule
             }
 
             foreach ($components as $component) {
-                if ($component['sel'] !== '') {
-                    $parts[] = new StringNode($component['sel'], isSelectorValue: true);
+                if ($component->sel !== '') {
+                    $parts[] = new StringNode($component->sel, isSelectorValue: true);
                 }
 
-                if ($component['comb'] !== '') {
-                    foreach (explode(' ', $component['comb']) as $piece) {
+                if ($component->comb !== '') {
+                    foreach (explode(' ', $component->comb) as $piece) {
                         if ($piece !== '') {
                             $parts[] = new StringNode($piece, isSelectorValue: true);
                         }
@@ -557,9 +567,9 @@ final class SassSelectorModule extends AbstractModule
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $parent
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $child
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     * @param SelectorList $parent
+     * @param SelectorList $child
+     * @return SelectorList
      */
     private function appendSelectors(array $parent, array $child): array
     {
@@ -567,11 +577,7 @@ final class SassSelectorModule extends AbstractModule
 
         foreach ($child as $childComplex) {
             $firstChildComponent = $childComplex[0];
-            $childLead           = '';
-
-            if (array_key_exists('lead', $firstChildComponent)) {
-                $childLead = $firstChildComponent['lead'];
-            }
+            $childLead = $firstChildComponent->lead ?? '';
 
             if ($childLead !== '') {
                 throw new SassErrorException(
@@ -580,7 +586,7 @@ final class SassSelectorModule extends AbstractModule
                 );
             }
 
-            $prepared = $this->prependParentToCompound($childComplex[0]['sel']);
+            $prepared = $this->prependParentToCompound($childComplex[0]->sel);
 
             if ($prepared === null) {
                 throw new SassErrorException(
@@ -589,7 +595,7 @@ final class SassSelectorModule extends AbstractModule
                 );
             }
 
-            $rewritten = [['sel' => $prepared, 'comb' => $childComplex[0]['comb']]];
+            $rewritten = [new SelectorComponent($prepared, $childComplex[0]->comb)];
 
             foreach (array_slice($childComplex, 1) as $extra) {
                 $rewritten[] = $extra;
@@ -619,9 +625,9 @@ final class SassSelectorModule extends AbstractModule
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $parent
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $child
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     * @param SelectorList $parent
+     * @param SelectorList $child
+     * @return SelectorList
      */
     private function nestWithin(array $parent, array $child): array
     {
@@ -643,11 +649,11 @@ final class SassSelectorModule extends AbstractModule
             $newComplexes = [];
 
             foreach ($childComplex as $component) {
-                $resolvedSelectors = $this->nestWithinCompound($component['sel'], $parent);
+                $resolvedSelectors = $this->nestWithinCompound($component->sel, $parent);
 
                 if ($resolvedSelectors === null) {
                     if ($newComplexes === []) {
-                        $newComplexes = [[['sel' => $component['sel'], 'comb' => $component['comb']]]];
+                        $newComplexes = [[new SelectorComponent($component->sel, $component->comb)]];
                     } else {
                         $newComplexes = $this->appendComponentToGroups($newComplexes, $component);
                     }
@@ -655,7 +661,7 @@ final class SassSelectorModule extends AbstractModule
                     continue;
                 }
 
-                $withCombinators = $this->applyCombinatorToVariants($resolvedSelectors, $component['comb']);
+                $withCombinators = $this->applyCombinatorToVariants($resolvedSelectors, $component->comb);
 
                 if ($newComplexes === []) {
                     $newComplexes = $withCombinators;
@@ -664,7 +670,7 @@ final class SassSelectorModule extends AbstractModule
                 }
             }
 
-            $lead = $childComplex[0]['lead'] ?? '';
+            $lead = $childComplex[0]->lead ?? '';
 
             if ($lead !== '') {
                 $newComplexes = $this->applyLeadingCombinator($newComplexes, $lead);
@@ -677,11 +683,11 @@ final class SassSelectorModule extends AbstractModule
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $groups
-     * @param array{sel: string, comb: string, lead?: string} $component
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     * @param SelectorList $groups
+     * @param SelectorComponent $component
+     * @return SelectorList
      */
-    private function appendComponentToGroups(array $groups, array $component): array
+    private function appendComponentToGroups(array $groups, SelectorComponent $component): array
     {
         foreach ($groups as $index => $group) {
             $groups[$index] = [...$group, $component];
@@ -691,8 +697,8 @@ final class SassSelectorModule extends AbstractModule
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $variants
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     * @param SelectorList $variants
+     * @return SelectorList
      */
     private function applyCombinatorToVariants(array $variants, string $combinator): array
     {
@@ -703,19 +709,18 @@ final class SassSelectorModule extends AbstractModule
                 continue;
             }
 
-            $last         = $variant[count($variant) - 1];
-            $last['comb'] = $combinator;
+            $last = $variant[count($variant) - 1];
 
-            $result[] = [...array_slice($variant, 0, -1), $last];
+            $result[] = [...array_slice($variant, 0, -1), new SelectorComponent($last->sel, $combinator, $last->lead)];
         }
 
         return $result;
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $bases
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $extensions
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     * @param SelectorList $bases
+     * @param SelectorList $extensions
+     * @return SelectorList
      */
     private function combineComplexGroups(array $bases, array $extensions): array
     {
@@ -731,8 +736,8 @@ final class SassSelectorModule extends AbstractModule
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $complexes
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     * @param SelectorList $complexes
+     * @return SelectorList
      */
     private function applyLeadingCombinator(array $complexes, string $lead): array
     {
@@ -743,12 +748,12 @@ final class SassSelectorModule extends AbstractModule
 
             $first = $complex[0];
 
-            if (($first['lead'] ?? '') !== '') {
+            if (($first->lead ?? '') !== '') {
                 continue;
             }
 
             $complexes[$index] = [
-                ['sel' => $first['sel'], 'comb' => $first['comb'], 'lead' => $lead],
+                new SelectorComponent($first->sel, $first->comb, $lead),
                 ...array_slice($complex, 1),
             ];
         }
@@ -757,8 +762,8 @@ final class SassSelectorModule extends AbstractModule
     }
 
     /**
-     * @param array<int, array<int, array<int, array{sel: string, comb: string, lead?: string}>>> $groups
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     * @param NestedSelectorList $groups
+     * @return SelectorList
      */
     private function flattenVertically(array $groups): array
     {
@@ -788,8 +793,8 @@ final class SassSelectorModule extends AbstractModule
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $parent
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>|null
+     * @param SelectorList $parent
+     * @return SelectorList|null
      */
     private function nestWithinCompound(string $sel, array $parent): ?array
     {
@@ -807,7 +812,7 @@ final class SassSelectorModule extends AbstractModule
             $results = [];
 
             foreach ($variants as $variantTokens) {
-                $results[] = [['sel' => implode('', $variantTokens), 'comb' => '']];
+                $results[] = [new SelectorComponent(implode('', $variantTokens), '')];
             }
 
             return $results;
@@ -836,14 +841,14 @@ final class SassSelectorModule extends AbstractModule
         foreach ($parent as $parentComplex) {
             $lastIndex = count($parentComplex) - 1;
 
-            if ($parentComplex[$lastIndex]['comb'] !== '') {
+            if ($parentComplex[$lastIndex]->comb !== '') {
                 throw new SassErrorException(
                     "Selector \"{$this->tokenizer->complexComponentsToString($parentComplex)}\""
                     . " can't be used as a parent in a compound selector.",
                 );
             }
 
-            $tokens = $this->tokenizer->tokenizeCompound($parentComplex[$lastIndex]['sel']);
+            $tokens = $this->tokenizer->tokenizeCompound($parentComplex[$lastIndex]->sel);
 
             if ($tokens === []) {
                 continue;
@@ -859,16 +864,13 @@ final class SassSelectorModule extends AbstractModule
             foreach ($variants as $variantTokens) {
                 $resolved = [
                     ...array_slice($parentComplex, 0, -1),
-                    [
-                        'sel'  => implode('', [...$prefixTokens, $lastToken, ...$variantTokens]),
-                        'comb' => '',
-                    ],
+                    new SelectorComponent(implode('', [...$prefixTokens, $lastToken, ...$variantTokens]), ''),
                 ];
 
-                $parentLead = $parentComplex[0]['lead'] ?? '';
+                $parentLead = $parentComplex[0]->lead ?? '';
 
                 if ($parentLead !== '') {
-                    $resolved[0]['lead'] = $parentLead;
+                    $resolved[0] = new SelectorComponent($resolved[0]->sel, $resolved[0]->comb, $parentLead);
                 }
 
                 $results[] = $resolved;
@@ -879,7 +881,7 @@ final class SassSelectorModule extends AbstractModule
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $parent
+     * @param SelectorList $parent
      * @return array<int, array<int, string>>
      */
     private function resolveCompoundRemainder(string $text, array $parent): array
@@ -957,13 +959,13 @@ final class SassSelectorModule extends AbstractModule
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $parent
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $child
-     * @return array<int, array{sel: string, comb: string, lead?: string}>
+     * @param Complex $parent
+     * @param Complex $child
+     * @return Complex
      */
     private function concatenateComplexes(array $parent, array $child): array
     {
-        $childLead = $child[0]['lead'] ?? '';
+        $childLead = $child[0]->lead ?? '';
 
         if ($childLead === '') {
             return [...$parent, ...$child];
@@ -975,21 +977,21 @@ final class SassSelectorModule extends AbstractModule
             return $child;
         }
 
-        $last     = $parent[$count - 1];
-        $stripped = [['sel' => $child[0]['sel'], 'comb' => $child[0]['comb']], ...array_slice($child, 1)];
+        $last = $parent[$count - 1];
+        $last = new SelectorComponent(
+            $last->sel,
+            $last->comb === '' ? $childLead : $last->comb . ' ' . $childLead,
+            $last->lead,
+        );
 
-        if ($last['comb'] === '') {
-            $last['comb'] = $childLead;
-        } else {
-            $last['comb'] .= ' ' . $childLead;
-        }
+        $stripped = [new SelectorComponent($child[0]->sel, $child[0]->comb), ...array_slice($child, 1)];
 
         return [...array_slice($parent, 0, -1), $last, ...$stripped];
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $complexes
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     * @param SelectorList $complexes
+     * @return SelectorList
      */
     private function uniqueComplexes(array $complexes): array
     {
@@ -1012,12 +1014,12 @@ final class SassSelectorModule extends AbstractModule
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $complex
+     * @param Complex $complex
      */
     private function complexContainsParentSelector(array $complex): bool
     {
         foreach ($complex as $component) {
-            if ($this->stringContainsParent($component['sel'])) {
+            if ($this->stringContainsParent($component->sel)) {
                 return true;
             }
         }

@@ -6,6 +6,7 @@ use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\CannotModifyBuiltInVariableException;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
+use Bugo\SCSS\LoadedFile;
 use Bugo\SCSS\Loader;
 use Bugo\SCSS\LoaderInterface;
 use Tests\Support\ArrayLogger;
@@ -100,7 +101,7 @@ describe('Compiler', function () {
                     $this->inner->addPath($path);
                 }
 
-                public function load(string $url, bool $fromImport = false): array
+                public function load(string $url, bool $fromImport = false): LoadedFile
                 {
                     if ($url === '_functions.scss') {
                         $this->functionsLoads++;

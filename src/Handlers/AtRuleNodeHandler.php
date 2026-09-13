@@ -520,7 +520,7 @@ final readonly class AtRuleNodeHandler
         $executionEntryScope   = $ctx->env->getCurrentScope();
         $isDirectAtRootContent = $executionEntryScope->isInsideAtRootWithoutRule();
 
-        [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments(
+        $resolved = $this->evaluation->resolveCallArguments(
             $contentCallArguments,
             $ctx->env,
         );
@@ -552,8 +552,8 @@ final readonly class AtRuleNodeHandler
         if ($contentArguments !== []) {
             $this->evaluation->bindParametersToCurrentScope(
                 $contentArguments,
-                $resolvedPositional,
-                $resolvedNamed,
+                $resolved->positional,
+                $resolved->named,
                 $childScope,
                 $ctx->env,
             );

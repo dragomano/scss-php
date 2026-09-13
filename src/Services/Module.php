@@ -9,6 +9,7 @@ use Bugo\SCSS\Exceptions\CannotModifyBuiltInVariableException;
 use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
+use Bugo\SCSS\LoadedFile;
 use Bugo\SCSS\LoaderInterface;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
@@ -187,9 +188,9 @@ final readonly class Module
 
         $file = $this->loadModuleFile($node->path);
 
-        $this->loader->addPath(dirname($file['path']));
+        $this->loader->addPath(dirname($file->path));
 
-        $moduleId   = $file['path'];
+        $moduleId = $file->path;
 
         if ($namespace === '*' && $node->configuration === [] && isset($state->anonymousUseModules[$moduleId])) {
             return '';
@@ -227,9 +228,9 @@ final readonly class Module
             throw ModuleResolutionException::circularDependency($moduleId);
         }
 
-        $syntax       = Syntax::fromPath($file['path'], $file['content']);
-        $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
-        $moduleAst    = $this->parseModuleAst($file['path'], $moduleSource);
+        $syntax       = Syntax::fromPath($file->path, $file->content);
+        $moduleSource = $this->ctx->normalizerPipeline->process($file->content, $syntax);
+        $moduleAst    = $this->parseModuleAst($file->path, $moduleSource);
 
         if ($node->configuration !== []) {
             $defaultVars = $this->collectDefaultVariableNames($moduleAst);
@@ -420,7 +421,7 @@ final readonly class Module
             $state->forwardedModules[$forwardKey] = $moduleData;
 
             $namespace = $this->deriveNamespaceFromUsePath($path);
-            $moduleId  = $this->loader->load($path)['path'];
+            $moduleId  = $this->loader->load($path)->path;
 
             if ($node->configuration !== [] || ! $state->hasNamespace($namespace)) {
                 $state->addByNamespace($namespace, new LoadedModule($moduleId, $moduleData['scope'], $moduleData['css']));
@@ -506,7 +507,7 @@ final readonly class Module
     public function resolveModulePath(string $path): ?string
     {
         try {
-            return $this->loadModuleFile($path)['path'];
+            return $this->loadModuleFile($path)->path;
         } catch (Throwable) {
             return null;
         }
@@ -526,18 +527,18 @@ final readonly class Module
     ): array {
         $file = $fromImport ? $this->loader->load($path, true) : $this->loadModuleFile($path);
 
-        $this->loader->addPath(dirname($file['path']));
+        $this->loader->addPath(dirname($file->path));
 
-        if ($fromImport && $this->isImportOnlyFile($file['path'])) {
-            $cached = $this->ctx->moduleState->importedModules[$file['path']] ?? null;
+        if ($fromImport && $this->isImportOnlyFile($file->path)) {
+            $cached = $this->ctx->moduleState->importedModules[$file->path] ?? null;
 
             if ($cached !== null) {
                 return ['scope' => $cached->scope, 'css' => $cached->css, 'cached' => true];
             }
         }
 
-        $syntax       = Syntax::fromPath($file['path'], $file['content']);
-        $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
+        $syntax       = Syntax::fromPath($file->path, $file->content);
+        $moduleSource = $this->ctx->normalizerPipeline->process($file->content, $syntax);
         $moduleAst    = $this->parseModuleAstWithSyntax($moduleSource, $syntax);
         $moduleEnv    = new Environment();
 
@@ -558,7 +559,7 @@ final readonly class Module
         $previousEmittedSnapshot = null;
 
         if ($fromImport) {
-            $resolvedPath = $file['path'];
+            $resolvedPath = $file->path;
 
             if (isset($this->ctx->moduleState->loadingFiles[$resolvedPath])) {
                 throw ModuleResolutionException::circularDependency($resolvedPath);
@@ -570,7 +571,7 @@ final readonly class Module
             $emittedCss         = $this->ctx->moduleState->takeEmittedCssState();
             $previousImportRoot = $this->ctx->moduleState->currentImportRoot;
 
-            $this->ctx->moduleState->currentImportRoot = $file['path'];
+            $this->ctx->moduleState->currentImportRoot = $file->path;
 
             $previousEmittedSnapshot = $this->ctx->moduleState->importEmittedSnapshot;
 
@@ -578,21 +579,21 @@ final readonly class Module
         }
 
         $importRoot       = $this->ctx->moduleState->currentImportRoot;
-        $hasBranchScope   = $importRoot === $file['path']
-            && isset($this->ctx->outputState->extends->moduleScopesImport[$importRoot][$file['path']]);
+        $hasBranchScope   = $importRoot === $file->path
+            && isset($this->ctx->outputState->extends->moduleScopesImport[$importRoot][$file->path]);
 
         $previousExtends = $fromImport
             ? null
-            : ($importRoot === $file['path']
+            : ($importRoot === $file->path
                 ? ($hasBranchScope
-                    ? $this->ctx->outputState->extends->enterImportModuleScope($importRoot, $file['path'])
+                    ? $this->ctx->outputState->extends->enterImportModuleScope($importRoot, $file->path)
                     : null)
-                : $this->ctx->outputState->extends->enterModuleScope($file['path']));
+                : $this->ctx->outputState->extends->enterModuleScope($file->path));
 
         $previousModuleId = $this->ctx->moduleState->currentModuleId;
 
         if (! $fromImport) {
-            $this->ctx->moduleState->currentModuleId = $file['path'];
+            $this->ctx->moduleState->currentModuleId = $file->path;
         }
 
         $this->prescanGlobalNullSlots($moduleAst->children, $moduleEnv->getCurrentScope());
@@ -610,7 +611,7 @@ final readonly class Module
 
             if ($emittedCss !== null) {
                 $this->ctx->moduleState->importEvaluationDepth--;
-                unset($this->ctx->moduleState->loadingFiles[$file['path']]);
+                unset($this->ctx->moduleState->loadingFiles[$file->path]);
 
                 $this->ctx->moduleState->restoreEmittedCssState($emittedCss);
 
@@ -620,9 +621,9 @@ final readonly class Module
             }
         }
 
-        if ($fromImport && $this->isImportOnlyFile($file['path'])) {
-            $this->ctx->moduleState->importedModules[$file['path']] = new LoadedModule(
-                $file['path'],
+        if ($fromImport && $this->isImportOnlyFile($file->path)) {
+            $this->ctx->moduleState->importedModules[$file->path] = new LoadedModule(
+                $file->path,
                 $moduleEnv->getCurrentScope(),
                 $css,
             );
@@ -657,8 +658,8 @@ final readonly class Module
         $state->branchSessionDepth++;
 
         $file   = $this->loadModuleFile($moduleId);
-        $syntax = Syntax::fromPath($file['path'], $file['content']);
-        $ast    = $this->parseModuleAst($file['path'], $this->ctx->normalizerPipeline->process($file['content'], $syntax));
+        $syntax = Syntax::fromPath($file->path, $file->content);
+        $ast    = $this->parseModuleAst($file->path, $this->ctx->normalizerPipeline->process($file->content, $syntax));
 
         $moduleEnv = new Environment();
 
@@ -693,10 +694,10 @@ final readonly class Module
     {
         $file = $this->loader->load($path, true);
 
-        $this->loader->addPath(dirname($file['path']));
+        $this->loader->addPath(dirname($file->path));
 
-        $resolvedPath = $file['path'];
-        $syntax       = Syntax::fromPath($resolvedPath, $file['content']);
+        $resolvedPath = $file->path;
+        $syntax       = Syntax::fromPath($resolvedPath, $file->content);
 
         if ($syntax === Syntax::CSS) {
             return null;
@@ -708,7 +709,7 @@ final readonly class Module
             throw ModuleResolutionException::circularDependency($resolvedPath);
         }
 
-        $ast = $this->parser->parse($this->ctx->normalizerPipeline->process($file['content'], $syntax));
+        $ast = $this->parser->parse($this->ctx->normalizerPipeline->process($file->content, $syntax));
 
         $state->loadingFiles[$resolvedPath] = true;
         $state->importEvaluationDepth++;
@@ -1081,8 +1082,7 @@ final readonly class Module
         return str_ends_with($normalized, '.import.scss') || str_ends_with($normalized, '.import.sass');
     }
 
-    /** @return array{path: string, content: string} */
-    private function loadModuleFile(string $path): array
+    private function loadModuleFile(string $path): LoadedFile
     {
         return $this->ctx->moduleState->prefetchedFile($path) ?? $this->loader->load($path);
     }
@@ -1090,7 +1090,7 @@ final readonly class Module
     private function findLoadedByPath(string $path): ?LoadedModule
     {
         try {
-            $moduleId = $this->loader->load($path)['path'];
+            $moduleId = $this->loader->load($path)->path;
         } catch (Throwable) {
             return null;
         }
@@ -1217,10 +1217,10 @@ final readonly class Module
         try {
             $file = $this->loader->load($node->path);
 
-            $this->loader->addPath(dirname($file['path']));
+            $this->loader->addPath(dirname($file->path));
 
-            $syntax       = Syntax::fromPath($file['path'], $file['content']);
-            $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
+            $syntax       = Syntax::fromPath($file->path, $file->content);
+            $moduleSource = $this->ctx->normalizerPipeline->process($file->content, $syntax);
             $moduleAst    = $this->parser->parse($moduleSource);
 
             return $this->collectDefaultVariableNames($moduleAst, $depth);
@@ -1235,10 +1235,10 @@ final readonly class Module
         try {
             $file = $this->loader->load($path, true);
 
-            $this->loader->addPath(dirname($file['path']));
+            $this->loader->addPath(dirname($file->path));
 
-            $syntax       = Syntax::fromPath($file['path'], $file['content']);
-            $moduleSource = $this->ctx->normalizerPipeline->process($file['content'], $syntax);
+            $syntax       = Syntax::fromPath($file->path, $file->content);
+            $moduleSource = $this->ctx->normalizerPipeline->process($file->content, $syntax);
             $moduleAst    = $this->parser->parse($moduleSource);
 
             return $this->collectDefaultVariableNames($moduleAst, $depth);

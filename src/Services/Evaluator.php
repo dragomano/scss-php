@@ -30,6 +30,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Runtime\ResolvedCallArguments;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Services\Evaluation\EvaluationStrategyRegistry;
@@ -42,12 +43,12 @@ use Bugo\SCSS\Services\Evaluation\Strategy\NamedArgumentNodeStrategy;
 use Bugo\SCSS\Services\Evaluation\Strategy\PassthroughNodeStrategy;
 use Bugo\SCSS\Services\Evaluation\Strategy\StringNodeStrategy;
 use Bugo\SCSS\Services\Evaluation\Strategy\VariableReferenceStrategy;
+use Bugo\SCSS\Services\Evaluation\ValueEvaluatorInterface;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Values\SassCalculation;
 use Bugo\SCSS\Values\SassMap;
-use Closure;
 use LogicException;
 
 use function array_slice;
@@ -109,9 +110,9 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         $this->cssArgument                = $this->createCssArgumentEvaluator();
         $this->callArguments              = $this->createCallArgumentResolver();
 
-        $evaluateValueClosure = $this->createEvaluationValueClosure();
-        $this->functionCalls  = $this->createFunctionCallEvaluator();
-        $this->registry       = $this->createEvaluationStrategyRegistry($evaluateValueClosure);
+        $valueEvaluator     = $this->createEvaluationValueEvaluator();
+        $this->functionCalls = $this->createFunctionCallEvaluator();
+        $this->registry      = $this->createEvaluationStrategyRegistry($valueEvaluator);
     }
 
     public function interpolateText(string $text, Environment $env): string
@@ -589,9 +590,8 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
 
     /**
      * @param array<int, AstNode> $arguments
-     * @return array{0: array<int, AstNode>, 1: array<string, AstNode>, 2: string}
      */
-    public function resolveCallArguments(array $arguments, Environment $env): array
+    public function resolveCallArguments(array $arguments, Environment $env): ResolvedCallArguments
     {
         return $this->callArguments->resolveCallArguments($arguments, $env);
     }
@@ -950,16 +950,16 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         );
     }
 
-    /**
-     * @return Closure(AstNode, Environment, EvaluationOptions): AstNode
-     */
-    private function createEvaluationValueClosure(): Closure
+    private function createEvaluationValueEvaluator(): ValueEvaluatorInterface
     {
-        return fn(
-            AstNode $node,
-            Environment $env,
-            EvaluationOptions $opts = new EvaluationOptions(),
-        ): AstNode => $this->evaluateValue($node, $env, $opts->skipSlashArithmetic, $opts);
+        return new class ($this) implements ValueEvaluatorInterface {
+            public function __construct(private readonly Evaluator $evaluator) {}
+
+            public function evaluate(AstNode $node, Environment $env, EvaluationOptions $options): AstNode
+            {
+                return $this->evaluator->evaluateValue($node, $env, $options->skipSlashArithmetic, $options);
+            }
+        };
     }
 
     private function createFunctionCallEvaluator(): FunctionCallEvaluator
@@ -979,19 +979,16 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         );
     }
 
-    /**
-     * @param Closure(AstNode, Environment, EvaluationOptions): AstNode $evaluateValueClosure
-     */
-    private function createEvaluationStrategyRegistry(Closure $evaluateValueClosure): EvaluationStrategyRegistry
+    private function createEvaluationStrategyRegistry(ValueEvaluatorInterface $valueEvaluator): EvaluationStrategyRegistry
     {
         return new EvaluationStrategyRegistry([
             new PassthroughNodeStrategy(),
             new DeprecatedExpressionStrategy(
-                $evaluateValueClosure,
+                $valueEvaluator,
                 $this->diagnosticHandler,
             ),
             new VariableReferenceStrategy(
-                $evaluateValueClosure,
+                $valueEvaluator,
                 fn(string $name, Environment $env): AstNode => $this->resolveVariable($name, $env),
             ),
             new StringNodeStrategy(
@@ -1000,14 +997,14 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
                 fn(string $value, Environment $env, bool $decoded = false): string => $this->text->replaceInterpolations($value, $env, $decoded),
             ),
             new ListNodeStrategy(
-                $evaluateValueClosure,
+                $valueEvaluator,
                 fn(ListNode $list, Environment $env): ?AstNode => $this->conditional->evaluateLogicalList($list, $env),
                 fn(ListNode $list, bool $strict, Environment $env): ?AstNode => $this->evaluateArithmeticList($list, $strict, $env),
                 fn(ListNode $list, ?Environment $env, EvaluationOptions $opts): ?AstNode => $this->evaluateStringConcatenationList($list, $env, $opts),
             ),
-            new ArgumentListNodeStrategy($evaluateValueClosure),
-            new MapNodeStrategy($evaluateValueClosure),
-            new NamedArgumentNodeStrategy($evaluateValueClosure),
+            new ArgumentListNodeStrategy($valueEvaluator),
+            new MapNodeStrategy($valueEvaluator),
+            new NamedArgumentNodeStrategy($valueEvaluator),
             new FunctionNodeStrategy($this->functionCalls),
         ]);
     }

@@ -40,6 +40,11 @@ use function sprintf;
 use function strtolower;
 use function trim;
 
+/**
+ * @phpstan-import-type ChannelVector from ColorSpaceConverter
+ *
+ * @psalm-import-type ChannelVector from ColorSpaceConverter
+ */
 final readonly class ColorFunctionEvaluator
 {
     private const SPACE_CHANNELS = [
@@ -284,7 +289,7 @@ final readonly class ColorFunctionEvaluator
 
                 if ($nativeSpace === 'lch' && $color instanceof FunctionNode) {
                     $native       = $this->nativeChannels($color, $nativeSpace);
-                    $nativeChroma = $native['channels'][1] ?? null;
+                    $nativeChroma = $native->channels[1] ?? null;
 
                     if ($nativeChroma !== null
                         && $this->dartMath->fuzzyEquals($nativeChroma, 0.0)
@@ -307,7 +312,7 @@ final readonly class ColorFunctionEvaluator
 
             if ($space === $nativeSpace) {
                 $native   = $this->nativeChannels($color, $nativeSpace);
-                $channels = $native['channels'];
+                $channels = $native->channels;
 
                 if ($nativeSpace === 'hsl' && $channels[0] === null && $color instanceof FunctionNode) {
                     [$rawChannels] = $this->converter->extractRawChannelsPublic($color);
@@ -375,7 +380,7 @@ final readonly class ColorFunctionEvaluator
                     }
                 }
 
-                return $this->serializeModifiedColor($color, $nativeSpace, $inverted, $native['alpha']);
+                return $this->serializeModifiedColor($color, $nativeSpace, $inverted, $native->alpha);
             }
         }
 
@@ -536,7 +541,7 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
-     * @param array<int, float|null> $channels
+     * @param ChannelVector $channels
      */
     public function serializeModifiedColor(AstNode $original, string $nativeSpace, array $channels, ?float $alpha): AstNode
     {
@@ -825,7 +830,7 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
-     * @return array{0: array<int, float|null>, 1: float|null}
+     * @return array{0: ChannelVector, 1: float|null}
      */
     private function colorChannelsInSpace(AstNode $color, string $space): array
     {
@@ -833,7 +838,7 @@ final readonly class ColorFunctionEvaluator
         $native      = $this->nativeChannels($color, $nativeSpace);
 
         /** @var array{0: float|null, 1: float|null, 2: float|null} $nativeChannels */
-        $nativeChannels = $native['channels'];
+        $nativeChannels = $native->channels;
 
         $channels = [$nativeChannels[0], $nativeChannels[1], $nativeChannels[2]];
 
@@ -866,13 +871,13 @@ final readonly class ColorFunctionEvaluator
             $channels[0] = null;
         }
 
-        if ($nativeSpace === 'hsl' && ($native['channels'][1] ?? null) === null
+        if ($nativeSpace === 'hsl' && ($native->channels[1] ?? null) === null
             && in_array($space, ['lch', 'oklch', 'oklab', 'lab'], true)
         ) {
             $channels = [($channels[0] ?? 0.0), null, null];
         }
 
-        return [$channels, $native['alpha']];
+        return [$channels, $native->alpha];
     }
 
     private function nativeChannelsAsColorNode(AstNode $color): AstNode
@@ -881,7 +886,7 @@ final readonly class ColorFunctionEvaluator
         $native      = $this->nativeChannels($color, $space);
         $asOriginal  = $this->normalizeSpaceName($space);
 
-        return $this->serializeModifiedColor($color, $asOriginal, $native['channels'], $native['alpha']);
+        return $this->serializeModifiedColor($color, $asOriginal, $native->channels, $native->alpha);
     }
 
     private function interpolateHues(float $hue1, float $hue2, ?string $method, float $weight): float
@@ -979,10 +984,10 @@ final readonly class ColorFunctionEvaluator
         $native = $this->nativeChannels($color, $nativeSpace);
 
         if ($hwbOriginChannels !== null) {
-            $native['channels'] = $hwbOriginChannels;
+            $native = $native->withChannels($hwbOriginChannels);
         }
 
-        $channels = $native['channels'];
+        $channels = $native->channels;
 
         if ($targetSpace !== $nativeSpace) {
             $channels = $this->preserveAnalogousMissingChannels(
@@ -993,7 +998,7 @@ final readonly class ColorFunctionEvaluator
             );
         }
 
-        [$channels, $alpha] = $this->modifyChannels($channels, $native['alpha'], $provided, $targetSpace, $mode);
+        [$channels, $alpha] = $this->modifyChannels($channels, $native->alpha, $provided, $targetSpace, $mode);
 
         if ($targetSpace !== $nativeSpace) {
             $targetChannels = $channels;
@@ -1020,9 +1025,9 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
-     * @param array<int, float|null> $destChannels
-     * @param array<int, float|null> $sourceChannels
-     * @return array<int, float|null>
+     * @param ChannelVector $destChannels
+     * @param ChannelVector $sourceChannels
+     * @return ChannelVector
      */
     private function preserveAnalogousMissingChannels(
         array $destChannels,
@@ -1099,8 +1104,8 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
-     * @param array<int, float|null> $channels
-     * @return array<int, float|null>
+     * @param ChannelVector $channels
+     * @return ChannelVector
      */
     private function dartConvert(string $from, string $to, array $channels): array
     {
@@ -1201,21 +1206,15 @@ final readonly class ColorFunctionEvaluator
         };
     }
 
-    /**
-     * @return array{channels: list<float|null>, alpha: float|null}
-     */
-    /**
-     * @return array{channels: array{0: float|null, 1: float|null, 2: float|null}, alpha: float|null}
-     */
-    private function nativeChannels(AstNode $color, string $nativeSpace): array
+    private function nativeChannels(AstNode $color, string $nativeSpace): NativeChannels
     {
         if (! $color instanceof FunctionNode) {
             $rgb = $this->converter->toRgb($color);
 
-            return [
-                'channels' => [$rgb->rValue(), $rgb->gValue(), $rgb->bValue()],
-                'alpha'    => $rgb->a,
-            ];
+            return new NativeChannels(
+                [$rgb->rValue(), $rgb->gValue(), $rgb->bValue()],
+                $rgb->a,
+            );
         }
 
         [$nodes, $alphaNode] = $this->converter->extractRawChannelsPublic($color);
@@ -1260,16 +1259,13 @@ final readonly class ColorFunctionEvaluator
             $alpha = 1.0;
         }
 
-        /** @var array{channels: array{float|null, float|null, float|null}, alpha: float|null} $result */
-        $result = ['channels' => $channels, 'alpha' => $alpha];
-
-        return $result;
+        return new NativeChannels($channels, $alpha);
     }
 
     /**
-     * @param array<int, float|null> $channels
+     * @param ChannelVector $channels
      * @param array<string, float|null> $provided
-     * @return array{0: array<int, float|null>, 1: float|null}
+     * @return array{0: ChannelVector, 1: float|null}
      */
     private function modifyChannels(
         array $channels,
@@ -1380,7 +1376,7 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
-     * @param array<int, float|null> $channels rgb bytes
+     * @param ChannelVector $channels rgb bytes
      */
     private function serializeLegacyRgb(array $channels, ?float $alpha, bool $hslDerived = false): AstNode
     {
@@ -1467,7 +1463,7 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
-     * @param array<int, float|null> $channels
+     * @param ChannelVector $channels
      */
     private function hasFuzzyIntegralBytes(array $channels): bool
     {
@@ -1481,7 +1477,7 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
-     * @param array<int, float|null> $channels
+     * @param ChannelVector $channels
      */
     private function hasBoundaryBytes(array $channels): bool
     {
@@ -1510,7 +1506,7 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
-     * @param array<int, float|null> $channels
+     * @param ChannelVector $channels
      */
     private function buildGenericModernNode(string $space, array $channels, ?float $alpha): FunctionNode
     {
@@ -1533,7 +1529,7 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
-     * @param array<int, float|null> $channels
+     * @param ChannelVector $channels
      */
     private function buildOutOfRangeFunctionalNode(string $space, array $channels, float $alpha): FunctionNode
     {

@@ -14,6 +14,7 @@ use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Runtime\ResolvedCallArguments;
 
 use function array_filter;
 use function array_merge;
@@ -96,9 +97,8 @@ final readonly class CallArgumentResolver
 
     /**
      * @param array<int, AstNode> $arguments
-     * @return array{0: array<int, AstNode>, 1: array<string, AstNode>, 2: string}
      */
-    public function resolveCallArguments(array $arguments, Environment $env): array
+    public function resolveCallArguments(array $arguments, Environment $env): ResolvedCallArguments
     {
         $positional  = [];
         $spread      = [];
@@ -144,7 +144,7 @@ final readonly class CallArgumentResolver
             $separator = 'comma';
         }
 
-        return [array_merge($positional, $spread), $named, $separator];
+        return new ResolvedCallArguments(array_merge($positional, $spread), $named, $separator);
     }
 
     /**

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
+use Bugo\SCSS\LoadedFile;
 use Bugo\SCSS\Loader;
 
 describe('Loader', function () {
@@ -14,20 +15,15 @@ describe('Loader', function () {
         it('returns virtual content for sass: modules', function () {
             $result = $this->loader->load('sass:color');
 
-            expect($result)->toBe([
-                'path'    => 'sass:color',
-                'content' => '',
-            ]);
+            expect($result)->toEqual(new LoadedFile('sass:color', ''));
         });
 
         it('loads SCSS file', function () {
             $result = $this->loader->load('_theme.scss');
 
-            expect($result)->toBeArray()
-                ->and($result)->toHaveKey('path')
-                ->and($result)->toHaveKey('content')
-                ->and($result['path'])->toEndWith('_theme.scss')
-                ->and($result['content'])->toContain('$primary-color');
+            expect($result)->toBeInstanceOf(LoadedFile::class)
+                ->and($result->path)->toEndWith('_theme.scss')
+                ->and($result->content)->toContain('$primary-color');
         });
 
         it('loads CSS file by module name without extension', function () {
@@ -41,9 +37,9 @@ describe('Loader', function () {
                 $loader = new Loader([$tmpDir]);
                 $result = $loader->load('base');
 
-                expect($result)->toBeArray()
-                    ->and($result['path'])->toEndWith('_base.css')
-                    ->and($result['content'])->toContain('color: red');
+                expect($result)->toBeInstanceOf(LoadedFile::class)
+                    ->and($result->path)->toEndWith('_base.css')
+                    ->and($result->content)->toContain('color: red');
             } finally {
                 if (file_exists($path)) {
                     unlink($path);
@@ -67,9 +63,9 @@ describe('Loader', function () {
                 $loader = new Loader([$tmpDir]);
                 $result = $loader->load('foundation');
 
-                expect($result)->toBeArray()
-                    ->and($result['path'])->toEndWith('_index.scss')
-                    ->and($result['content'])->toContain('$radius');
+                expect($result)->toBeInstanceOf(LoadedFile::class)
+                    ->and($result->path)->toEndWith('_index.scss')
+                    ->and($result->content)->toContain('$radius');
             } finally {
                 if (file_exists($path)) {
                     unlink($path);
@@ -191,8 +187,8 @@ describe('Loader', function () {
                 $loader = new Loader([$loadDir]);
                 $result = $loader->load('style');
 
-                expect($result['content'])->toContain('.from-cwd')
-                    ->and($result['content'])->not->toContain('.from-loadpath');
+                expect($result->content)->toContain('.from-cwd')
+                    ->and($result->content)->not->toContain('.from-loadpath');
             } finally {
                 if ($initialCwd !== false) {
                     chdir($initialCwd);
@@ -223,7 +219,7 @@ describe('Loader', function () {
             $this->loader->addPath($newPath);
 
             $result = $this->loader->load('_test.scss');
-            expect($result['content'])->toContain('.test');
+            expect($result->content)->toContain('.test');
         });
 
         it('prioritizes the most recently added path', function () {
@@ -246,7 +242,7 @@ describe('Loader', function () {
 
                 $result = $loader->load($fileName);
 
-                expect($result['content'])->toContain('.from-b');
+                expect($result->content)->toContain('.from-b');
             } finally {
                 if (file_exists($pathA)) {
                     unlink($pathA);
@@ -284,12 +280,12 @@ describe('Loader', function () {
                 $loader = new Loader([$tmpDirA, $tmpDirB]);
 
                 $before = $loader->load($fileName);
-                expect($before['content'])->toContain('.from-a');
+                expect($before->content)->toContain('.from-a');
 
                 $loader->addPath($tmpDirB);
                 $after = $loader->load($fileName);
 
-                expect($after['content'])->toContain('.from-b');
+                expect($after->content)->toContain('.from-b');
             } finally {
                 if (file_exists($pathA)) {
                     unlink($pathA);
@@ -319,8 +315,8 @@ describe('Loader', function () {
 
             $result = $loader->load('_theme.scss');
 
-            expect($result['path'])->toContain('tests')
-                ->and(str_replace('\\', '/', $result['path']))->toEndWith('tests/fixtures/_theme.scss');
+            expect($result->path)->toContain('tests')
+                ->and(str_replace('\\', '/', $result->path))->toEndWith('tests/fixtures/_theme.scss');
         });
 
         it('loads from cwd when it is already included as a search path', function () {
@@ -332,7 +328,7 @@ describe('Loader', function () {
             $loader = new Loader([$cwd]);
             $result = $loader->load('composer.json');
 
-            expect(str_replace('\\', '/', $result['path']))->toEndWith('/composer.json');
+            expect(str_replace('\\', '/', $result->path))->toEndWith('/composer.json');
         });
     });
 });

@@ -14,6 +14,7 @@ use Bugo\Iris\Spaces\OklchColor;
 use Bugo\Iris\Spaces\RgbColor;
 use Bugo\Iris\Spaces\XyzColor;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
+use Bugo\SCSS\Builtins\Color\Support\LchChannelData;
 use Bugo\SCSS\Builtins\Color\Support\RgbChannelScale;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
@@ -397,10 +398,7 @@ final readonly class ColorNodeConverter
         );
     }
 
-    /**
-     * @return array{l: float, c: float, h: float, a: float, l_missing: bool, c_missing: bool, h_missing: bool}
-     */
-    public function extractOklchMixData(AstNode $color, string $context): array
+    public function extractOklchMixData(AstNode $color, string $context): LchChannelData
     {
         if ($color instanceof FunctionNode && strtolower($color->name) === 'oklch') {
             [$channels, $alpha] = $this->extractRawChannels($color);
@@ -409,30 +407,27 @@ final readonly class ColorNodeConverter
             $chromaMissing    = $this->isMissing($channels[1] ?? null);
             $hueMissing       = $this->isMissing($channels[2] ?? null);
 
-            return [
-                'l'         => $lightnessMissing ? 0.0 : $this->parseLightness($channels[0] ?? null, $context),
-                'c'         => $chromaMissing ? 0.0 : $this->parseChroma($channels[1] ?? null, $context),
-                'h'         => $hueMissing ? 0.0 : $this->parseHue($channels[2] ?? null, $context),
-                'a'         => $this->parseAlpha($alpha, $context),
-                'l_missing' => $lightnessMissing,
-                'c_missing' => $chromaMissing,
-                'h_missing' => $hueMissing,
-            ];
+            return new LchChannelData(
+                $lightnessMissing ? 0.0 : $this->parseLightness($channels[0] ?? null, $context),
+                $chromaMissing ? 0.0 : $this->parseChroma($channels[1] ?? null, $context),
+                $hueMissing ? 0.0 : $this->parseHue($channels[2] ?? null, $context),
+                $this->parseAlpha($alpha, $context),
+                $lightnessMissing,
+                $chromaMissing,
+                $hueMissing,
+            );
         }
 
         $oklch = $this->runtime->spaceConverter->rgbToOklch(
             RgbChannelScale::toNormalized($this->toRgb($color)),
         );
 
-        return [
-            'l'         => $oklch->lValue(),
-            'c'         => $oklch->cValue(),
-            'h'         => $oklch->hValue(),
-            'a'         => $oklch->a,
-            'l_missing' => false,
-            'c_missing' => false,
-            'h_missing' => false,
-        ];
+        return new LchChannelData(
+            $oklch->lValue(),
+            $oklch->cValue(),
+            $oklch->hValue(),
+            $oklch->a,
+        );
     }
 
     public function fromRgb(RgbColor $rgb): ColorNode

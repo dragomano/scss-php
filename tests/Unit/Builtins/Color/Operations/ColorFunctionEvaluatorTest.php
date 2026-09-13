@@ -55,6 +55,30 @@ describe('ColorFunctionEvaluator', function () {
             ->and($result->name)->toBe('rgb');
     });
 
+    it('reuses origin srgb channels when adjusting whiteness of hsl colors converted from hwb', function () {
+        $hslFromHwb = new FunctionNode(
+            'hsl',
+            [new ListNode([
+                new NumberNode(200),
+                new NumberNode(50, '%'),
+                new NumberNode(40, '%'),
+            ], 'space')],
+            originColorSpace: 'hwb',
+            originSrgbChannels: [0.2, 0.4, 0.6],
+        );
+
+        $result = $this->evaluator->adjustColorChannelByPercent(
+            [$hslFromHwb, new NumberNode(10, '%')],
+            'whiteness',
+            1,
+            'whiteness',
+        );
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('hsl')
+            ->and($result->arguments)->toHaveCount(3);
+    });
+
     it('grayscales non-srgb colors while preserving their color space', function () {
         $displayP3 = new FunctionNode('color', [new ListNode([
             new StringNode('display-p3'),

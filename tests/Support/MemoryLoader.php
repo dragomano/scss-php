@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Support;
 
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
+use Bugo\SCSS\LoadedFile;
 use Bugo\SCSS\LoaderInterface;
 use Symfony\Component\Filesystem\Path;
 
@@ -52,13 +53,10 @@ final class MemoryLoader implements LoaderInterface
         array_unshift($this->searchPaths, $path);
     }
 
-    /**
-     * @return array{path: string, content: string}
-     */
-    public function load(string $url, bool $fromImport = false): array
+    public function load(string $url, bool $fromImport = false): LoadedFile
     {
         if (str_starts_with($url, 'sass:')) {
-            return ['path' => $url, 'content' => ''];
+            return new LoadedFile($url, '');
         }
 
         $url = rtrim($url, '/\\');
@@ -68,7 +66,7 @@ final class MemoryLoader implements LoaderInterface
                 $path = Path::join($dir, $candidate);
 
                 if (isset($this->files[$path])) {
-                    return ['path' => $path, 'content' => $this->files[$path]];
+                    return new LoadedFile($path, $this->files[$path]);
                 }
             }
         }

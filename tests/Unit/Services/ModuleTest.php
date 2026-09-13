@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
+use Bugo\SCSS\LoadedFile;
 use Bugo\SCSS\LoaderInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ForwardNode;
@@ -30,9 +31,9 @@ describe('Module service', function () {
                 $this->paths[] = $path;
             }
 
-            public function load(string $url, bool $fromImport = false): array
+            public function load(string $url, bool $fromImport = false): LoadedFile
             {
-                return $this->files[$url] ?? ['path' => $url, 'content' => ''];
+                return $this->files[$url] ?? new LoadedFile($url, '');
             }
         };
 
@@ -106,7 +107,7 @@ describe('Module service', function () {
     it('handleUse() throws when configuring a non-default module variable', function () {
         $env = new Environment();
 
-        $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
 
         expect(fn() => $this->module->handleUse(
             new UseNode('theme', 'theme', ['color' => new StringNode('red')]),
@@ -123,7 +124,7 @@ describe('Module service', function () {
         $module = new LoadedModule('/tmp/_theme.scss', $scope, '');
 
         $this->state->addByNamespace('/tmp/_theme.scss', $module);
-        $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
         $this->module->handleUse(new UseNode('theme', 'theme'), $env);
 
         expect($this->state->getByNamespace('theme'))->toBeInstanceOf(LoadedModule::class)
@@ -134,7 +135,7 @@ describe('Module service', function () {
     it('handleUse() throws for circular module dependencies', function () {
         $env = new Environment();
 
-        $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
         $this->state->loadingFiles['/tmp/_theme.scss'] = true;
 
         expect(fn() => $this->module->handleUse(new UseNode('theme', 'theme'), $env))
@@ -179,7 +180,7 @@ describe('Module service', function () {
     });
 
     it('loadAndEvaluateModule() throws for circular dependencies during import evaluation', function () {
-        $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
         $this->state->loadingFiles['/tmp/_theme.scss'] = true;
 
         expect(fn() => $this->module->loadAndEvaluateModule('theme', fromImport: true))
@@ -244,7 +245,7 @@ describe('Module service', function () {
     });
 
     it('loadAndEvaluateModule() returns empty css when compilation is disabled', function () {
-        $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
 
         $result = $this->module->loadAndEvaluateModule('theme', compileCss: false);
 

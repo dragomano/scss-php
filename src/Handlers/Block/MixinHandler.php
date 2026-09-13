@@ -55,7 +55,10 @@ final readonly class MixinHandler
             throw UndefinedSymbolException::mixin($node->name);
         }
 
-        [$resolvedPositional, $resolvedNamed, $restSeparator] = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
+        $resolved           = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
+        $restSeparator      = $resolved->separator;
+        $resolvedPositional = $resolved->positional;
+        $resolvedNamed      = $resolved->named;
 
         return $this->compileMixin(
             $mixin,
@@ -86,9 +89,9 @@ final readonly class MixinHandler
 
     private function handleMetaApply(IncludeNode $node, TraversalContext $ctx): string
     {
-        [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
+        $resolved = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
 
-        $first = $resolvedPositional[0] ?? $resolvedNamed['mixin'] ?? null;
+        $first = $resolved->positional[0] ?? $resolved->named['mixin'] ?? null;
 
         if ((! ($first instanceof StringNode) && ! ($first instanceof MixinRefNode))) {
             return '';
@@ -110,10 +113,10 @@ final readonly class MixinHandler
         }
 
         $restPositional = $first instanceof MixinRefNode
-            ? array_slice($resolvedPositional, 1)
-            : $resolvedPositional;
+            ? array_slice($resolved->positional, 1)
+            : $resolved->positional;
 
-        $restNamed = $resolvedNamed;
+        $restNamed = $resolved->named;
         unset($restNamed['mixin']);
 
         return $this->compileMixin(
@@ -130,15 +133,15 @@ final readonly class MixinHandler
 
     private function handleMetaLoadCss(IncludeNode $node, TraversalContext $ctx): string
     {
-        [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
+        $resolved = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
 
-        $urlNode = $resolvedPositional[0] ?? $resolvedNamed['url'] ?? null;
+        $urlNode = $resolved->positional[0] ?? $resolved->named['url'] ?? null;
 
         if (! ($urlNode instanceof StringNode)) {
             return '';
         }
 
-        $configuration = $this->metaLoadCssConfiguration($resolvedNamed['with'] ?? null);
+        $configuration = $this->metaLoadCssConfiguration($resolved->named['with'] ?? null);
 
         $path = $urlNode->value;
 

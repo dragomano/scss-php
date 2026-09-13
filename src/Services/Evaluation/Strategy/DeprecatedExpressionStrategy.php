@@ -11,15 +11,12 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\DiagnosticDirectiveHandlerInterface;
 use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Services\Evaluation\EvaluationStrategyInterface;
-use Closure;
+use Bugo\SCSS\Services\Evaluation\ValueEvaluatorInterface;
 
 final readonly class DeprecatedExpressionStrategy implements EvaluationStrategyInterface
 {
-    /**
-     * @param Closure(AstNode, Environment, EvaluationOptions): AstNode $evaluateValue
-     */
     public function __construct(
-        private Closure $evaluateValue,
+        private ValueEvaluatorInterface $evaluateValue,
         private DiagnosticDirectiveHandlerInterface $diagnosticHandler,
     ) {}
 
@@ -38,6 +35,6 @@ final readonly class DeprecatedExpressionStrategy implements EvaluationStrategyI
             $node,
         );
 
-        return ($this->evaluateValue)($node->expression, $env, $options);
+        return $this->evaluateValue->evaluate($node->expression, $env, $options);
     }
 }

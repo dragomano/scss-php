@@ -77,13 +77,10 @@ final class Loader implements LoaderInterface
         }
     }
 
-    /**
-     * @return array{path: string, content: string}
-     */
-    public function load(string $url, bool $fromImport = false): array
+    public function load(string $url, bool $fromImport = false): LoadedFile
     {
         if (str_starts_with($url, 'sass:')) {
-            return ['path' => $url, 'content' => ''];
+            return new LoadedFile($url, '');
         }
 
         if ($loaded = $this->tryLoadFile($url, $fromImport)) {
@@ -103,10 +100,7 @@ final class Loader implements LoaderInterface
         throw ModuleResolutionException::importNotFound($url);
     }
 
-    /**
-     * @return array{path: string, content: string}|null
-     */
-    private function tryLoadFile(string $path, bool $fromImport): ?array
+    private function tryLoadFile(string $path, bool $fromImport): ?LoadedFile
     {
         if (! $fromImport && $this->isImportOnlyPath($path)) {
             return null;
@@ -125,7 +119,7 @@ final class Loader implements LoaderInterface
                 return null;
             }
 
-            return ['path' => $resolvedPath, 'content' => $content];
+            return new LoadedFile($resolvedPath, $content);
         }
 
         return null;

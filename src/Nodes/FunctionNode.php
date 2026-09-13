@@ -7,10 +7,15 @@ namespace Bugo\SCSS\Nodes;
 use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Scope;
 
+/**
+ * @phpstan-import-type NodeList from AstNode
+ *
+ * @psalm-import-type NodeList from AstNode
+ */
 final class FunctionNode extends AstNode
 {
     /**
-     * @param array<int, AstNode> $arguments
+     * @param NodeList $arguments
      */
     public function __construct(
         public string $name,

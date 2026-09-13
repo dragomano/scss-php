@@ -15,6 +15,8 @@ use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\Evaluation\BoolConditionResult;
+use Bugo\SCSS\Services\Evaluation\CssConditionResult;
 use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Utils\StringHelper;
 use Bugo\SCSS\Values\ValueFactory;
@@ -115,16 +117,14 @@ final readonly class ConditionalEvaluator
         foreach ($clauses as [$condition, $value]) {
             $result = $this->evaluateInlineIfCondition($condition, $env);
 
-            if ($result['kind'] === 'bool') {
-                /** @var array{kind: 'bool', value: bool} $result */
-                if ($result['value']) {
+            if ($result instanceof BoolConditionResult) {
+                if ($result->value) {
                     return $this->valueEvaluator->evaluate($value, $env);
                 }
 
                 continue;
             }
 
-            /** @var array{kind: 'css', expression: string} $result */
             $isCss = true;
 
             $valueText = $this->valueFormatter->format(
@@ -132,7 +132,7 @@ final readonly class ConditionalEvaluator
                 $env,
             );
 
-            $cssParts[] = $result['expression'] . ': ' . $valueText;
+            $cssParts[] = $result->expression . ': ' . $valueText;
         }
 
         if ($isCss) {
@@ -276,11 +276,11 @@ final readonly class ConditionalEvaluator
         return ['clauses' => $clauses, 'else' => $else];
     }
 
-    /**
-     * @return array{kind: 'bool', value: bool}|array{kind: 'css', expression: string}
-     */
-    private function evaluateInlineIfCondition(AstNode $condition, Environment $env, bool $forceBoolean = false): array
-    {
+    private function evaluateInlineIfCondition(
+        AstNode $condition,
+        Environment $env,
+        bool $forceBoolean = false,
+    ): BoolConditionResult|CssConditionResult {
         $condition       = $this->normalizeRawConnectorIfs($condition, $env);
         $isParenthesized = ($condition instanceof ListNode || $condition instanceof FunctionNode) && $condition->parenthesized;
 
@@ -292,9 +292,10 @@ final readonly class ConditionalEvaluator
         ) {
             $result = $this->evaluateInlineIfListCondition($condition->items, $env);
 
-            if ($result['kind'] === 'css') {
-                /** @var array{kind: 'css', expression: string} $result */
-                $result['expression'] = $this->wrapParensIfNeeded($isParenthesized, $result['expression']);
+            if ($result instanceof CssConditionResult) {
+                $result = new CssConditionResult(
+                    $this->wrapParensIfNeeded($isParenthesized, $result->expression),
+                );
             }
 
             return $result;
@@ -315,32 +316,34 @@ final readonly class ConditionalEvaluator
         }
 
         if ($resolved instanceof BooleanNode) {
-            return ['kind' => 'bool', 'value' => $resolved->value];
+            return new BoolConditionResult($resolved->value);
         }
 
         if ($resolved instanceof NullNode) {
-            return ['kind' => 'bool', 'value' => false];
+            return new BoolConditionResult(false);
         }
 
         if ($resolved instanceof StringNode) {
             if ($forceBoolean || $resolved->quoted) {
-                return ['kind' => 'bool', 'value' => $this->condition->isTruthy($resolved)];
+                return new BoolConditionResult($this->condition->isTruthy($resolved));
             }
 
             $expression = trim($resolved->value);
 
             if ($this->isLikelySassBooleanCondition($expression)) {
-                return ['kind' => 'bool', 'value' => $this->condition->evaluate($expression, $env)];
+                return new BoolConditionResult($this->condition->evaluate($expression, $env));
             }
 
-            return ['kind' => 'css', 'expression' => $this->wrapParensIfNeeded($isParenthesized, $resolved->value)];
+            return new CssConditionResult($this->wrapParensIfNeeded($isParenthesized, $resolved->value));
         }
 
         if ($resolved instanceof FunctionNode) {
-            return ['kind' => 'css', 'expression' => $this->wrapParensIfNeeded($isParenthesized, $this->valueFormatter->format($resolved, $env))];
+            return new CssConditionResult(
+                $this->wrapParensIfNeeded($isParenthesized, $this->valueFormatter->format($resolved, $env)),
+            );
         }
 
-        return ['kind' => 'bool', 'value' => $this->condition->isTruthy($resolved)];
+        return new BoolConditionResult($this->condition->isTruthy($resolved));
     }
 
     private function wrapParensIfNeeded(bool $isParenthesized, string $expression): string
@@ -582,9 +585,8 @@ final readonly class ConditionalEvaluator
 
     /**
      * @param AstNode[] $items
-     * @return array{kind: 'bool', value: bool}|array{kind: 'css', expression: string}
      */
-    private function evaluateInlineIfListCondition(array $items, Environment $env): array
+    private function evaluateInlineIfListCondition(array $items, Environment $env): BoolConditionResult|CssConditionResult
     {
         $items   = $this->normalizeLogicalOperatorFunctions($items);
         $orParts = $this->splitByOperator($items, 'or');
@@ -595,28 +597,26 @@ final readonly class ConditionalEvaluator
             foreach ($orParts as $part) {
                 $partResult = $this->evaluateInlineIfListCondition($part, $env);
 
-                if ($partResult['kind'] === 'bool') {
-                    /** @var array{kind: 'bool', value: bool} $partResult */
-                    if ($partResult['value']) {
-                        return ['kind' => 'bool', 'value' => true];
+                if ($partResult instanceof BoolConditionResult) {
+                    if ($partResult->value) {
+                        return new BoolConditionResult(true);
                     }
 
                     continue;
                 }
 
-                /** @var array{kind: 'css', expression: string} $partResult */
-                $cssParts[] = $partResult['expression'];
+                $cssParts[] = $partResult->expression;
             }
 
             if ($cssParts === []) {
-                return ['kind' => 'bool', 'value' => false];
+                return new BoolConditionResult(false);
             }
 
             if (count($cssParts) === 1) {
                 $cssParts[0] = $this->stripRedundantRawParens($cssParts[0]);
             }
 
-            return ['kind' => 'css', 'expression' => implode(' or ', $cssParts)];
+            return new CssConditionResult(implode(' or ', $cssParts));
         }
 
         $andParts = $this->splitByOperator($items, 'and');
@@ -627,28 +627,26 @@ final readonly class ConditionalEvaluator
             foreach ($andParts as $part) {
                 $partResult = $this->evaluateInlineIfListCondition($part, $env);
 
-                if ($partResult['kind'] === 'bool') {
-                    /** @var array{kind: 'bool', value: bool} $partResult */
-                    if (! $partResult['value']) {
-                        return ['kind' => 'bool', 'value' => false];
+                if ($partResult instanceof BoolConditionResult) {
+                    if (! $partResult->value) {
+                        return new BoolConditionResult(false);
                     }
 
                     continue;
                 }
 
-                /** @var array{kind: 'css', expression: string} $partResult */
-                $cssParts[] = $partResult['expression'];
+                $cssParts[] = $partResult->expression;
             }
 
             if ($cssParts === []) {
-                return ['kind' => 'bool', 'value' => true];
+                return new BoolConditionResult(true);
             }
 
             if (count($cssParts) === 1) {
                 $cssParts[0] = $this->stripRedundantRawParens($cssParts[0]);
             }
 
-            return ['kind' => 'css', 'expression' => implode(' and ', $cssParts)];
+            return new CssConditionResult(implode(' and ', $cssParts));
         }
 
         $first = $items[0] ?? null;
@@ -657,7 +655,7 @@ final readonly class ConditionalEvaluator
             $rest = array_slice($items, 1);
 
             if ($rest === []) {
-                return ['kind' => 'bool', 'value' => false];
+                return new BoolConditionResult(false);
             }
 
             $restResult = $this->evaluateInlineIfCondition($rest[0], $env);
@@ -666,35 +664,32 @@ final readonly class ConditionalEvaluator
                 $restResult = $this->evaluateInlineIfListCondition($rest, $env);
             }
 
-            if ($restResult['kind'] === 'bool') {
-                /** @var array{kind: 'bool', value: bool} $restResult */
-                return ['kind' => 'bool', 'value' => ! $restResult['value']];
+            if ($restResult instanceof BoolConditionResult) {
+                return new BoolConditionResult(! $restResult->value);
             }
 
-            /** @var array{kind: 'css', expression: string} $restResult */
-            $expr = $restResult['expression'];
+            $expr = $restResult->expression;
 
             if (str_contains($expr, ' and ') || str_contains($expr, ' or ')) {
                 $expr = '(' . $expr . ')';
             }
 
-            return ['kind' => 'css', 'expression' => 'not ' . $expr];
+            return new CssConditionResult('not ' . $expr);
         }
 
         $comparisonResult = $this->evaluateInlineIfListComparison($items, $env);
 
         if ($comparisonResult !== null) {
-            return ['kind' => 'bool', 'value' => $comparisonResult];
+            return new BoolConditionResult($comparisonResult);
         }
 
         if (count($items) === 1) {
             return $this->evaluateInlineIfCondition($items[0], $env);
         }
 
-        return [
-            'kind'       => 'css',
-            'expression' => $this->valueFormatter->format(new ListNode(array_values($items), 'space'), $env),
-        ];
+        return new CssConditionResult(
+            $this->valueFormatter->format(new ListNode(array_values($items), 'space'), $env),
+        );
     }
 
     /**

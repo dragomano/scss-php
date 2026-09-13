@@ -12,6 +12,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Services\Evaluation\EvaluationStrategyInterface;
+use Bugo\SCSS\Services\Evaluation\ValueEvaluatorInterface;
 use Closure;
 
 use function count;
@@ -22,13 +23,12 @@ final readonly class ListNodeStrategy implements EvaluationStrategyInterface
     use LazilyEvaluatesItems;
 
     /**
-     * @param Closure(AstNode, Environment, EvaluationOptions): AstNode $evaluateValue
      * @param Closure(ListNode, Environment): ?AstNode $evaluateLogicalList
      * @param Closure(ListNode, bool, Environment): ?AstNode $evaluateArithmeticList
      * @param Closure(ListNode, ?Environment, EvaluationOptions): ?AstNode $evaluateStringConcatenationList
      */
     public function __construct(
-        private Closure $evaluateValue,
+        private ValueEvaluatorInterface $evaluateValue,
         private Closure $evaluateLogicalList,
         private Closure $evaluateArithmeticList,
         private Closure $evaluateStringConcatenationList,
@@ -62,7 +62,7 @@ final readonly class ListNodeStrategy implements EvaluationStrategyInterface
                     }
                 }
 
-                return ($this->evaluateValue)($item, $env, $options);
+                return $this->evaluateValue->evaluate($item, $env, $options);
             },
         );
 

@@ -8,8 +8,5 @@ interface LoaderInterface
 {
     public function addPath(string $path): void;
 
-    /**
-     * @return array{path: string, content: string}
-     */
-    public function load(string $url, bool $fromImport = false): array;
+    public function load(string $url, bool $fromImport = false): LoadedFile;
 }

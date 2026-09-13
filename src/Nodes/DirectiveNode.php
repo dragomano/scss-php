@@ -7,10 +7,15 @@ namespace Bugo\SCSS\Nodes;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Visitor;
 
+/**
+ * @phpstan-import-type NodeList from AstNode
+ *
+ * @psalm-import-type NodeList from AstNode
+ */
 final class DirectiveNode extends StatementNode
 {
     /**
-     * @param array<int, AstNode> $body
+     * @param NodeList $body
      */
     public function __construct(
         public string $name,

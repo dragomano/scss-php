@@ -33,9 +33,9 @@ use function substr;
 use function trim;
 
 /**
- * @phpstan-type Complex array<int, array{sel: string, comb: string, lead?: string}>
+ * @phpstan-type Complex array<int, SelectorComponent>
  *
- * @psalm-type Complex=array<int, array{sel: string, comb: string, lead?: string}>
+ * @psalm-type Complex=array<int, SelectorComponent>
  */
 final readonly class SelectorTokenizer
 {
@@ -499,12 +499,12 @@ final readonly class SelectorTokenizer
 
         $last = $components[count($components) - 1];
 
-        if ($last['comb'] !== '') {
+        if ($last->comb !== '') {
             return true;
         }
 
         foreach ($components as $component) {
-            if ($component['sel'] !== '') {
+            if ($component->sel !== '') {
                 return false;
             }
         }
@@ -1165,7 +1165,7 @@ final readonly class SelectorTokenizer
         $hasPseudo      = false;
 
         if ($partComponents !== []) {
-            $compoundTokens = $this->tokenizeCompound($this->normalizeCompoundPseudoTokens($partComponents[0]['sel']));
+            $compoundTokens = $this->tokenizeCompound($this->normalizeCompoundPseudoTokens($partComponents[0]->sel));
 
             foreach ($compoundTokens as $token) {
                 $pseudo = $this->parsePseudoToken($token);
@@ -1198,7 +1198,11 @@ final readonly class SelectorTokenizer
         }
 
         foreach ($components as $index => $component) {
-            $components[$index]['sel'] = $this->normalizeCompoundPseudoTokens($component['sel']);
+            $components[$index] = new SelectorComponent(
+                $this->normalizeCompoundPseudoTokens($component->sel),
+                $component->comb,
+                $component->lead,
+            );
         }
 
         return $this->complexComponentsToString($components);
@@ -1267,8 +1271,8 @@ final readonly class SelectorTokenizer
             return [];
         }
 
-        $partLeading     = $partComponents[0]['lead'] ?? '';
-        $extenderLeading = $extenderComponents[0]['lead'] ?? '';
+        $partLeading     = $partComponents[0]->lead ?? '';
+        $extenderLeading = $extenderComponents[0]->lead ?? '';
 
         if ($partLeading !== '' && $extenderLeading !== '' && $partLeading !== $extenderLeading) {
             return [];
@@ -1288,7 +1292,7 @@ final readonly class SelectorTokenizer
             $replaceable = [];
 
             foreach ($partComponents as $index => $component) {
-                if ($this->removeTokensFromCompound($component['sel'], $targetTokens) !== null) {
+                if ($this->removeTokensFromCompound($component->sel, $targetTokens) !== null) {
                     $replaceable[] = $index;
                 }
             }
@@ -1307,9 +1311,9 @@ final readonly class SelectorTokenizer
                     foreach ($partComponents as $index => $component) {
                         if (in_array($index, $subset, true)) {
                             $unifiedSubject = $this->replaceTokensInCompound(
-                                $component['sel'],
+                                $component->sel,
                                 $targetTokens,
-                                $replacementSubject['sel'],
+                                $replacementSubject->sel,
                             );
 
                             if ($unifiedSubject === null) {
@@ -1318,11 +1322,7 @@ final readonly class SelectorTokenizer
                                 break;
                             }
 
-                            $candidate[] = [
-                                'sel'  => $unifiedSubject,
-                                'comb' => $component['comb'],
-                                'lead' => '',
-                            ];
+                            $candidate[] = new SelectorComponent($unifiedSubject, $component->comb, '');
                         } else {
                             $candidate[] = $component;
                         }
@@ -1332,8 +1332,8 @@ final readonly class SelectorTokenizer
                         continue;
                     }
 
-                    if ($leading !== '' && ! isset($candidate[0]['lead'])) {
-                        $candidate[0]['lead'] = $leading;
+                    if ($leading !== '' && ! isset($candidate[0]->lead)) {
+                        $candidate[0] = new SelectorComponent($candidate[0]->sel, $candidate[0]->comb, $leading);
                     }
 
                     $resolved[] = $this->complexComponentsToString($candidate);
@@ -1344,13 +1344,13 @@ final readonly class SelectorTokenizer
         }
 
         foreach ($partComponents as $index => $component) {
-            $remainingCompound = $this->removeTokensFromCompound($component['sel'], $targetTokens);
+            $remainingCompound = $this->removeTokensFromCompound($component->sel, $targetTokens);
 
             if ($remainingCompound === null) {
                 continue;
             }
 
-            $unifiedSubject = $this->unifyCompounds($remainingCompound, $replacementSubject['sel']);
+            $unifiedSubject = $this->unifyCompounds($remainingCompound, $replacementSubject->sel);
 
             if ($unifiedSubject === null) {
                 continue;
@@ -1362,21 +1362,21 @@ final readonly class SelectorTokenizer
             $wovenPrefixes = $this->weaveParents($prefix, $extenderComponents) ?? [];
 
             foreach ($wovenPrefixes as $wovenPrefix) {
-                /** @var array<int, array{sel: string, comb: string, lead?: string}> $candidate */
+                /** @var Complex $candidate */
                 $candidate = $wovenPrefix;
 
-                $candidate[] = [
-                    'sel'  => $unifiedSubject,
-                    'comb' => $suffix === [] ? '' : $component['comb'],
-                    'lead' => '',
-                ];
+                $candidate[] = new SelectorComponent(
+                    $unifiedSubject,
+                    $suffix === [] ? '' : $component->comb,
+                    '',
+                );
 
                 foreach ($suffix as $suffixComponent) {
                     $candidate[] = $suffixComponent;
                 }
 
-                if ($leading !== '' && ! isset($candidate[0]['lead'])) {
-                    $candidate[0] = ['sel' => $candidate[0]['sel'], 'comb' => $candidate[0]['comb'], 'lead' => $leading];
+                if ($leading !== '' && ! isset($candidate[0]->lead)) {
+                    $candidate[0] = new SelectorComponent($candidate[0]->sel, $candidate[0]->comb, $leading);
                 }
 
                 $resolved[] = $this->complexComponentsToString($candidate);
@@ -1593,7 +1593,7 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @return array<int, array{sel: string, comb: string, lead?: string}>
+     * @return Complex
      */
     public function parseComplexComponents(string $complex): array
     {
@@ -1704,7 +1704,7 @@ final readonly class SelectorTokenizer
         $leading = implode(' ', $leadCombs);
 
         if ($index === $count && $leading !== '') {
-            return [['sel' => '', 'comb' => '', 'lead' => $leading]];
+            return [new SelectorComponent('', '', $leading)];
         }
 
         while ($index < $count) {
@@ -1720,27 +1720,23 @@ final readonly class SelectorTokenizer
                 $index++;
             }
 
-            $component = ['sel' => $sel, 'comb' => implode(' ', $combs)];
+            $lead = $leading !== '' && $components === [] ? $leading : null;
 
-            if ($leading !== '' && $components === []) {
-                $component['lead'] = $leading;
-            }
-
-            $components[] = $component;
+            $components[] = new SelectorComponent($sel, implode(' ', $combs), $lead);
         }
 
         return $components;
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
+     * @param Complex $components
      */
     public function complexComponentsToString(array $components): string
     {
         $pieces = [];
 
         foreach ($components as $i => $component) {
-            $lead = $component['lead'] ?? '';
+            $lead = $component->lead ?? '';
 
             if ($i === 0 && $lead !== '') {
                 foreach (explode(' ', $lead) as $piece) {
@@ -1750,12 +1746,12 @@ final readonly class SelectorTokenizer
                 }
             }
 
-            if ($component['sel'] !== '') {
-                $pieces[] = $component['sel'];
+            if ($component->sel !== '') {
+                $pieces[] = $component->sel;
             }
 
-            if ($component['comb'] !== '') {
-                foreach (explode(' ', $component['comb']) as $piece) {
+            if ($component->comb !== '') {
+                foreach (explode(' ', $component->comb) as $piece) {
                     if ($piece !== '') {
                         $pieces[] = $piece;
                     }
@@ -1767,7 +1763,7 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     * @return array<int, Complex>
      */
     public function parseSelectorList(string $selector): array
     {
@@ -1835,7 +1831,7 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $complexes
+     * @param array<int, Complex> $complexes
      */
     public function complexesToString(array $complexes): string
     {
@@ -1854,7 +1850,7 @@ final readonly class SelectorTokenizer
      */
     public function complexesAreSuperselector(array $complex1, array $complex2): bool
     {
-        if (($complex1[0]['lead'] ?? '') !== '' || ($complex2[0]['lead'] ?? '') !== '') {
+        if (($complex1[0]->lead ?? '') !== '' || ($complex2[0]->lead ?? '') !== '') {
             return false;
         }
 
@@ -1889,12 +1885,12 @@ final readonly class SelectorTokenizer
     /**
      * @param Complex $left
      * @param Complex $right
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>|null
+     * @return array<int, Complex>|null
      */
     public function unifyComplexes(array $left, array $right): ?array
     {
-        $leftLead  = $left[0]['lead'] ?? '';
-        $rightLead = $right[0]['lead'] ?? '';
+        $leftLead  = $left[0]->lead ?? '';
+        $rightLead = $right[0]->lead ?? '';
 
         if ($leftLead !== '' && $rightLead !== '' && $leftLead !== $rightLead) {
             return null;
@@ -1903,23 +1899,23 @@ final readonly class SelectorTokenizer
         $lead      = $leftLead !== '' ? $leftLead : $rightLead;
         $leftLast  = $left[count($left) - 1];
         $rightLast = $right[count($right) - 1];
-        $trailing  = $leftLast['comb'];
+        $trailing  = $leftLast->comb;
 
-        if ($rightLast['comb'] !== '') {
-            if ($trailing !== '' && $trailing !== $rightLast['comb']) {
+        if ($rightLast->comb !== '') {
+            if ($trailing !== '' && $trailing !== $rightLast->comb) {
                 return null;
             }
 
-            $trailing = $rightLast['comb'];
+            $trailing = $rightLast->comb;
         }
 
-        $unifiedBase = $this->unifyCompoundsStrict($leftLast['sel'], $rightLast['sel']);
+        $unifiedBase = $this->unifyCompoundsStrict($leftLast->sel, $rightLast->sel);
 
         if ($unifiedBase === null) {
             return null;
         }
 
-        $base         = [['sel' => $unifiedBase, 'comb' => $trailing]];
+        $base         = [new SelectorComponent($unifiedBase, $trailing)];
         $withoutBases = [];
 
         if (count($left) > 1) {
@@ -1950,7 +1946,7 @@ final readonly class SelectorTokenizer
 
             $first         = $complex[0];
             $woven[$index] = [
-                ['sel' => $first['sel'], 'comb' => $first['comb'], 'lead' => $lead],
+                new SelectorComponent($first->sel, $first->comb, $lead),
                 ...array_slice($complex, 1),
             ];
         }
@@ -1994,8 +1990,8 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $complexes
-     * @return list<array<int, array{sel: string, comb: string, lead?: string}>>
+     * @param array<int, Complex> $complexes
+     * @return list<Complex>
      */
     public function weave(array $complexes): array
     {
@@ -2045,14 +2041,14 @@ final readonly class SelectorTokenizer
         $rootish2 = $this->firstIfRootish($queue2);
 
         if ($rootish1 !== null && $rootish2 !== null) {
-            $rootish = $this->unifyCompounds($rootish1['sel'], $rootish2['sel']);
+            $rootish = $this->unifyCompounds($rootish1->sel, $rootish2->sel);
 
             if ($rootish === null) {
                 return null;
             }
 
-            array_unshift($queue1, ['sel' => $rootish, 'comb' => $rootish1['comb']]);
-            array_unshift($queue2, ['sel' => $rootish, 'comb' => $rootish2['comb']]);
+            array_unshift($queue1, new SelectorComponent($rootish, $rootish1->comb));
+            array_unshift($queue2, new SelectorComponent($rootish, $rootish2->comb));
         } elseif ($rootish1 !== null || $rootish2 !== null) {
             $rootish = $rootish1 ?? $rootish2;
 
@@ -2160,12 +2156,12 @@ final readonly class SelectorTokenizer
             $result[] = $components;
         }
 
-        $baseLead = $base === [] ? '' : ($base[0]['lead'] ?? '');
+        $baseLead = $base === [] ? '' : ($base[0]->lead ?? '');
 
         if ($baseLead !== '') {
             foreach ($result as &$complex) {
-                if ($complex !== [] && ($complex[0]['lead'] ?? '') === '') {
-                    $complex[0]['lead'] = $baseLead;
+                if ($complex !== [] && ($complex[0]->lead ?? '') === '') {
+                    $complex[0] = new SelectorComponent($complex[0]->sel, $complex[0]->comb, $baseLead);
                 }
             }
 
@@ -2637,12 +2633,12 @@ final readonly class SelectorTokenizer
             return [];
         }
 
-        $extenderLead = $extenderComplexes[0][0]['lead'] ?? '';
+        $extenderLead = $extenderComplexes[0][0]->lead ?? '';
 
         $isCombinatorOnly = true;
 
         foreach ($extenderComplexes[0] as $component) {
-            if ($component['sel'] !== '') {
+            if ($component->sel !== '') {
                 $isCombinatorOnly = false;
 
                 break;
@@ -2680,14 +2676,14 @@ final readonly class SelectorTokenizer
             $targetComponent = $targetComplexes[0][0];
 
             if (
-                $targetComponent['sel'] === ''
-                || $targetComponent['comb'] !== ''
-                || ($targetComponent['lead'] ?? '') !== ''
+                $targetComponent->sel === ''
+                || $targetComponent->comb !== ''
+                || ($targetComponent->lead ?? '') !== ''
             ) {
                 continue;
             }
 
-            $tokens = $this->tokenizeCompound($this->normalizeCompoundPseudoTokens($targetComponent['sel']));
+            $tokens = $this->tokenizeCompound($this->normalizeCompoundPseudoTokens($targetComponent->sel));
 
             if ($tokens === []) {
                 continue;
@@ -2706,7 +2702,7 @@ final readonly class SelectorTokenizer
             return [];
         }
 
-        $partLead = $partComponents[0]['lead'] ?? '';
+        $partLead = $partComponents[0]->lead ?? '';
 
         if ($partLead !== '' && $extenderLead !== '' && $partLead !== $extenderLead) {
             return [];
@@ -2714,12 +2710,12 @@ final readonly class SelectorTokenizer
 
         $lead              = $partLead !== '' ? $partLead : $extenderLead;
         $lastExtenderIndex = count($extenderComplexes[0]) - 1;
-        $extenderSubject   = $extenderComplexes[0][$lastExtenderIndex]['sel'];
-        $extenderTrailing  = $extenderComplexes[0][$lastExtenderIndex]['comb'];
+        $extenderSubject   = $extenderComplexes[0][$lastExtenderIndex]->sel;
+        $extenderTrailing  = $extenderComplexes[0][$lastExtenderIndex]->comb;
         $extenderAncestors = array_slice($extenderComplexes[0], 0, -1);
 
         if ($extenderLead !== '' && in_array($extenderLead, ['>', '+', '~'], true)) {
-            array_unshift($extenderAncestors, ['sel' => '', 'comb' => $extenderLead]);
+            array_unshift($extenderAncestors, new SelectorComponent('', $extenderLead));
 
             if ($lead === $extenderLead) {
                 $lead = '';
@@ -2735,7 +2731,7 @@ final readonly class SelectorTokenizer
         $hasPseudoChanges = false;
 
         foreach ($partComponents as $index => $component) {
-            $compoundSel = $this->normalizeCompoundPseudoTokens($component['sel']);
+            $compoundSel = $this->normalizeCompoundPseudoTokens($component->sel);
             $remainders  = [$compoundSel];
 
             foreach ($guardedTargets as $targetTokens) {
@@ -2825,7 +2821,7 @@ final readonly class SelectorTokenizer
             $base = $replacementCompound;
         }
 
-        $trailingCombinator = $this->mergeExtendCombinators($partComponents[$index]['comb'], $extenderTrailing);
+        $trailingCombinator = $this->mergeExtendCombinators($partComponents[$index]->comb, $extenderTrailing);
 
         if ($trailingCombinator === null) {
             return [];
@@ -2833,7 +2829,7 @@ final readonly class SelectorTokenizer
 
         $prefix        = array_slice($partComponents, 0, $index);
         $suffix        = array_slice($partComponents, $index + 1);
-        $baseComponent = ['sel' => $base, 'comb' => $trailingCombinator];
+        $baseComponent = new SelectorComponent($base, $trailingCombinator);
 
         $variants = [];
 
@@ -2841,7 +2837,7 @@ final readonly class SelectorTokenizer
             $assembled = [...$body, $baseComponent, ...$suffix];
 
             if ($lead !== '') {
-                $assembled[0] = ['sel' => $assembled[0]['sel'], 'comb' => $assembled[0]['comb'], 'lead' => $lead];
+                $assembled[0] = new SelectorComponent($assembled[0]->sel, $assembled[0]->comb, $lead);
             }
 
             $variants[] = $this->complexComponentsToString($assembled);
@@ -2865,7 +2861,7 @@ final readonly class SelectorTokenizer
         array $extenders,
         string $lead,
     ): array {
-        $compoundTokens = $this->tokenizeCompound($partComponents[$index]['sel']);
+        $compoundTokens = $this->tokenizeCompound($partComponents[$index]->sel);
         $variants       = [];
 
         foreach ($compoundTokens as $tokenIndex => $token) {
@@ -2957,7 +2953,7 @@ final readonly class SelectorTokenizer
             $first = $extenderComplexes[0];
 
             if ($this->isFamilySinglePseudoComplex($first, self::NTH_OF_PSEUDO_BASE_NAMES)) {
-                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]['sel'])[0]);
+                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]->sel)[0]);
 
                 if (
                     $nestedPseudo === null
@@ -2976,7 +2972,7 @@ final readonly class SelectorTokenizer
             }
 
             if (! $isNthOf && $this->isFamilySinglePseudoComplex($first, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
-                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]['sel'])[0]);
+                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]->sel)[0]);
 
                 if ($nestedPseudo !== null && $nestedPseudo['selector'] !== null) {
                     if (strtolower($nestedPseudo['name']) === strtolower($pseudo['name'])) {
@@ -3009,7 +3005,7 @@ final readonly class SelectorTokenizer
 
         foreach ($argComplexes as $complex) {
             if ($this->isFamilySinglePseudoComplex($complex, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
-                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($complex[0]['sel'])[0]);
+                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($complex[0]->sel)[0]);
                 $inner = $nestedPseudo !== null && $nestedPseudo['selector'] !== null
                     ? $this->parseSelectorList($nestedPseudo['selector'])
                     : [];
@@ -3089,7 +3085,7 @@ final readonly class SelectorTokenizer
 
     /**
      * @param array{name: string, argument: string, selector: ?string, isElement: bool} $pseudo
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>>  $argComplexes
+     * @param array<int, Complex>  $argComplexes
      * @param array<int, string> $targets
      * @param array<int, string> $extenders
      */
@@ -3111,11 +3107,11 @@ final readonly class SelectorTokenizer
 
             $component = $targetComplexes[0][0];
 
-            if ($component['sel'] === '' || $component['comb'] !== '' || ($component['lead'] ?? '') !== '') {
+            if ($component->sel === '' || $component->comb !== '' || ($component->lead ?? '') !== '') {
                 continue;
             }
 
-            $tokens = $this->tokenizeCompound($this->normalizeCompoundPseudoTokens($component['sel']));
+            $tokens = $this->tokenizeCompound($this->normalizeCompoundPseudoTokens($component->sel));
 
             if ($tokens !== []) {
                 $targetTokenSets[] = $tokens;
@@ -3169,7 +3165,7 @@ final readonly class SelectorTokenizer
             $first = $extenderComplexes[0];
 
             if ($this->isFamilySinglePseudoComplex($first, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
-                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]['sel'])[0]);
+                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]->sel)[0]);
 
                 if ($nestedPseudo !== null && $nestedPseudo['selector'] !== null) {
                     foreach ($this->parseSelectorList($nestedPseudo['selector']) as $inner) {
@@ -3212,7 +3208,7 @@ final readonly class SelectorTokenizer
             $first = $extenderComplexes[0];
 
             if ($this->isFamilySinglePseudoComplex($first, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
-                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]['sel'])[0]);
+                $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($first[0]->sel)[0]);
 
                 if ($nestedPseudo !== null && $nestedPseudo['selector'] !== null) {
                     foreach ($this->parseSelectorList($nestedPseudo['selector']) as $inner) {
@@ -3236,7 +3232,7 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $complexes
+     * @param array<int, Complex> $complexes
      * @param array<int, array<int, string>> $targetTokenSets
      */
     private function anyComplexMatchesTarget(array $complexes, array $targetTokenSets): bool
@@ -3251,7 +3247,7 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
+     * @param Complex $components
      * @param array<int, array<int, string>> $targetTokenSets
      */
     private function complexMatchesAnyTarget(array $components, array $targetTokenSets): bool
@@ -3262,12 +3258,12 @@ final readonly class SelectorTokenizer
 
         foreach ($components as $component) {
             foreach ($targetTokenSets as $tokens) {
-                if ($this->removeTokensFromCompound($component['sel'], $tokens) !== null) {
+                if ($this->removeTokensFromCompound($component->sel, $tokens) !== null) {
                     return true;
                 }
             }
 
-            foreach ($this->tokenizeCompound($component['sel']) as $token) {
+            foreach ($this->tokenizeCompound($component->sel) as $token) {
                 $pseudo = $this->parsePseudoToken($token);
 
                 if ($pseudo === null || $pseudo['selector'] === null) {
@@ -3284,16 +3280,16 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
+     * @param Complex $components
      * @param array<int, string> $baseNames
      */
     private function isFamilySinglePseudoComplex(array $components, array $baseNames): bool
     {
-        if (count($components) !== 1 || $components[0]['comb'] !== '') {
+        if (count($components) !== 1 || $components[0]->comb !== '') {
             return false;
         }
 
-        $tokens = $this->tokenizeCompound($components[0]['sel']);
+        $tokens = $this->tokenizeCompound($components[0]->sel);
 
         if (count($tokens) !== 1) {
             return false;
@@ -3307,12 +3303,12 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
+     * @param Complex $components
      */
     private function complexContainsNot(array $components): bool
     {
         foreach ($components as $component) {
-            foreach ($this->tokenizeCompound($component['sel']) as $token) {
+            foreach ($this->tokenizeCompound($component->sel) as $token) {
                 $pseudo = $this->parsePseudoToken($token);
 
                 if ($pseudo !== null && $this->pseudoBaseName($pseudo['name']) === self::NOT_PSEUDO_BASE_NAME) {
@@ -3393,7 +3389,7 @@ final readonly class SelectorTokenizer
 
     /**
      * @param array<int, string> $targets
-     * @param array<int, array<int, array{sel: string, comb: string, lead?: string}>> $extenderComplexes
+     * @param array<int, Complex> $extenderComplexes
      * @return array<int, string>
      */
     private function extendByCombinatorOnlyExtender(string $part, array $targets, array $extenderComplexes): array
@@ -3411,14 +3407,14 @@ final readonly class SelectorTokenizer
                 continue;
             }
 
-            $tokens = $this->tokenizeCompound($targetComplexes[0][0]['sel']);
+            $tokens = $this->tokenizeCompound($targetComplexes[0][0]->sel);
 
             if ($tokens === []) {
                 continue;
             }
 
             foreach ($partComponents as $component) {
-                if ($this->removeTokensFromCompound($component['sel'], $tokens) === '') {
+                if ($this->removeTokensFromCompound($component->sel, $tokens) === '') {
                     return [$this->complexComponentsToString($extenderComplexes[0])];
                 }
             }
@@ -3438,8 +3434,7 @@ final readonly class SelectorTokenizer
             return [$prefix];
         }
 
-        /** @var array{sel: string, comb: string} $sentinel */
-        $sentinel = ['sel' => "\0extender-base", 'comb' => ''];
+        $sentinel = new SelectorComponent("\0extender-base", '');
 
         return $this->weaveParents($prefix, [...$ancestors, $sentinel]) ?? [];
     }
@@ -3714,16 +3709,16 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $queue
-     * @return array{sel: string, comb: string, lead?: string}|null
+     * @param Complex $queue
+     * @return SelectorComponent|null
      */
-    private function firstIfRootish(array &$queue): ?array
+    private function firstIfRootish(array &$queue): ?SelectorComponent
     {
         if ($queue === []) {
             return null;
         }
 
-        foreach ($this->tokenizeCompound($queue[0]['sel']) as $token) {
+        foreach ($this->tokenizeCompound($queue[0]->sel) as $token) {
             if (! str_starts_with($token, ':')) {
                 continue;
             }
@@ -3744,36 +3739,36 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $components1
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $components2
-     * @param array<int, array<int, array<int, array{sel: string, comb: string, lead?: string}>>> $result
-     * @return array<int, array<int, array<int, array{sel: string, comb: string, lead?: string}>>>|null
+     * @param Complex $components1
+     * @param Complex $components2
+     * @param array<int, array<int, Complex>> $result
+     * @return array<int, array<int, Complex>>|null
      */
     private function mergeTrailingCombinators(array &$components1, array &$components2, array $result = []): ?array
     {
-        $combinators1 = $components1 === [] ? '' : $components1[count($components1) - 1]['comb'];
-        $combinators2 = $components2 === [] ? '' : $components2[count($components2) - 1]['comb'];
+        $combinators1 = $components1 === [] ? '' : $components1[count($components1) - 1]->comb;
+        $combinators2 = $components2 === [] ? '' : $components2[count($components2) - 1]->comb;
 
         if ($combinators1 === '' && $combinators2 === '') {
             return $result;
         }
 
         if ($combinators1 === '~' && $combinators2 === '~') {
-            /** @var array{sel: string, comb: string, lead?: string} $component1 */
+            /** @var SelectorComponent $component1 */
             $component1 = array_pop($components1);
-            /** @var array{sel: string, comb: string, lead?: string} $component2 */
+            /** @var SelectorComponent $component2 */
             $component2 = array_pop($components2);
 
-            if ($this->compoundIsSuperselector($component1['sel'], $component2['sel'])) {
+            if ($this->compoundIsSuperselector($component1->sel, $component2->sel)) {
                 array_unshift($result, [[$component2]]);
-            } elseif ($this->compoundIsSuperselector($component2['sel'], $component1['sel'])) {
+            } elseif ($this->compoundIsSuperselector($component2->sel, $component1->sel)) {
                 array_unshift($result, [[$component1]]);
             } else {
                 $choices = [[$component1, $component2], [$component2, $component1]];
-                $unified = $this->unifyCompounds($component1['sel'], $component2['sel']);
+                $unified = $this->unifyCompounds($component1->sel, $component2->sel);
 
                 if ($unified !== null) {
-                    $choices[] = [['sel' => $unified, 'comb' => $combinators1]];
+                    $choices[] = [new SelectorComponent($unified, $combinators1)];
                 }
 
                 array_unshift($result, $choices);
@@ -3783,18 +3778,18 @@ final readonly class SelectorTokenizer
         }
 
         if (in_array($combinators1, ['>', '+', '~'], true) && $combinators1 === $combinators2) {
-            /** @var array{sel: string, comb: string, lead?: string} $component1 */
+            /** @var SelectorComponent $component1 */
             $component1 = array_pop($components1);
-            /** @var array{sel: string, comb: string, lead?: string} $component2 */
+            /** @var SelectorComponent $component2 */
             $component2 = array_pop($components2);
 
-            $unified = $this->unifyCompounds($component1['sel'], $component2['sel']);
+            $unified = $this->unifyCompounds($component1->sel, $component2->sel);
 
             if ($unified === null) {
                 return null;
             }
 
-            array_unshift($result, [[['sel' => $unified, 'comb' => $combinators1]]]);
+            array_unshift($result, [[new SelectorComponent($unified, $combinators1)]]);
 
             return $this->mergeTrailingCombinators($components1, $components2, $result);
         }
@@ -3803,19 +3798,19 @@ final readonly class SelectorTokenizer
             ($combinators1 === '~' && $combinators2 === '+')
             || ($combinators1 === '+' && $combinators2 === '~')
         ) {
-            /** @var array{sel: string, comb: string, lead?: string} $next */
+            /** @var SelectorComponent $next */
             $next      = $combinators1 === '+' ? array_pop($components1) : array_pop($components2);
-            /** @var array{sel: string, comb: string, lead?: string} $following */
+            /** @var SelectorComponent $following */
             $following = $combinators1 === '+' ? array_pop($components2) : array_pop($components1);
 
-            if ($this->compoundIsSuperselector($following['sel'], $next['sel'])) {
+            if ($this->compoundIsSuperselector($following->sel, $next->sel)) {
                 array_unshift($result, [[$next]]);
             } else {
                 $choices = [[$following, $next]];
-                $unified = $this->unifyCompounds($following['sel'], $next['sel']);
+                $unified = $this->unifyCompounds($following->sel, $next->sel);
 
                 if ($unified !== null) {
-                    $choices[] = [['sel' => $unified, 'comb' => $next['comb']]];
+                    $choices[] = [new SelectorComponent($unified, $next->comb)];
                 }
 
                 array_unshift($result, $choices);
@@ -3833,7 +3828,7 @@ final readonly class SelectorTokenizer
         }
 
         if ($siblingSide !== null) {
-            /** @var array{sel: string, comb: string, lead?: string} $sibling */
+            /** @var SelectorComponent $sibling */
             $sibling = array_pop($siblingSide);
 
             array_unshift($result, [[$sibling]]);
@@ -3856,14 +3851,14 @@ final readonly class SelectorTokenizer
             && $descendantSide !== []
             && $combinatorSide !== []
             && $this->compoundIsSuperselector(
-                $descendantSide[count($descendantSide) - 1]['sel'],
-                $combinatorSide[count($combinatorSide) - 1]['sel'],
+                $descendantSide[count($descendantSide) - 1]->sel,
+                $combinatorSide[count($combinatorSide) - 1]->sel,
             )
         ) {
             array_pop($descendantSide);
         }
 
-        /** @var array{sel: string, comb: string, lead?: string} $component */
+        /** @var SelectorComponent $component */
         $component = array_pop($combinatorSide);
 
         array_unshift($result, [[$component]]);
@@ -3872,8 +3867,8 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $components
-     * @return array<int, array<int, array{sel: string, comb: string, lead?: string}>>
+     * @param Complex $components
+     * @return array<int, Complex>
      */
     private function groupSelectors(array $components): array
     {
@@ -3883,7 +3878,7 @@ final readonly class SelectorTokenizer
         foreach ($components as $component) {
             $group[] = $component;
 
-            if ($component['comb'] === '') {
+            if ($component->comb === '') {
                 $groups[] = $group;
                 $group    = [];
             }
@@ -3988,7 +3983,7 @@ final readonly class SelectorTokenizer
             return false;
         }
 
-        $placeholder = ['sel' => '%_weave', 'comb' => ''];
+        $placeholder = new SelectorComponent('%_weave', '');
 
         return $this->complexIsSuperselector(
             [...$complex1, $placeholder],
@@ -3997,8 +3992,8 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $complex1
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $complex2
+     * @param Complex $complex1
+     * @param Complex $complex2
      */
     private function complexIsSuperselector(array $complex1, array $complex2, bool $strictSemantics = false): bool
     {
@@ -4006,11 +4001,11 @@ final readonly class SelectorTokenizer
             return false;
         }
 
-        if ($complex1[count($complex1) - 1]['comb'] !== '') {
+        if ($complex1[count($complex1) - 1]->comb !== '') {
             return false;
         }
 
-        if ($complex2[count($complex2) - 1]['comb'] !== '') {
+        if ($complex2[count($complex2) - 1]->comb !== '') {
             return false;
         }
 
@@ -4032,7 +4027,7 @@ final readonly class SelectorTokenizer
             }
 
             $component1  = $complex1[$i1];
-            $combinator1 = $component1['comb'];
+            $combinator1 = $component1->comb;
 
             if ($strictSemantics && str_contains($combinator1, ' ')) {
                 return false;
@@ -4041,19 +4036,19 @@ final readonly class SelectorTokenizer
             if ($remaining1 === 1) {
                 if ($strictSemantics) {
                     for ($j = $i2; $j < count($complex2); $j++) {
-                        if (str_contains($complex2[$j]['comb'], ' ')) {
+                        if (str_contains($complex2[$j]->comb, ' ')) {
                             return false;
                         }
                     }
 
-                    $parents = $this->compoundHasComplicatedSuperselectorSemantics($component1['sel'])
+                    $parents = $this->compoundHasComplicatedSuperselectorSemantics($component1->sel)
                         ? array_slice($complex2, $i2, count($complex2) - 1 - $i2)
                         : [];
 
-                    return $this->compoundIsSuperselector($component1['sel'], $last['sel'], $parents, true);
+                    return $this->compoundIsSuperselector($component1->sel, $last->sel, $parents, true);
                 }
 
-                return $this->compoundIsSuperselector($component1['sel'], $last['sel'])
+                return $this->compoundIsSuperselector($component1->sel, $last->sel)
                     && $this->compatibleWithPreviousCombinator(
                         $prev,
                         $i2 < count($complex2) - 1 ? array_slice($complex2, $i2, count($complex2) - 1 - $i2) : [],
@@ -4065,7 +4060,7 @@ final readonly class SelectorTokenizer
             while (true) {
                 $component2 = $complex2[$end];
 
-                if ($strictSemantics && str_contains($component2['comb'], ' ')) {
+                if ($strictSemantics && str_contains($component2->comb, ' ')) {
                     $end++;
 
                     if ($end === count($complex2) - 1) {
@@ -4076,14 +4071,14 @@ final readonly class SelectorTokenizer
                 }
 
                 if ($strictSemantics) {
-                    $parents = $this->compoundHasComplicatedSuperselectorSemantics($component1['sel'])
+                    $parents = $this->compoundHasComplicatedSuperselectorSemantics($component1->sel)
                         ? array_slice($complex2, $i2, $end - $i2)
                         : [];
 
-                    if ($this->compoundIsSuperselector($component1['sel'], $component2['sel'], $parents, true)) {
+                    if ($this->compoundIsSuperselector($component1->sel, $component2->sel, $parents, true)) {
                         break;
                     }
-                } elseif ($this->compoundIsSuperselector($component1['sel'], $component2['sel'])) {
+                } elseif ($this->compoundIsSuperselector($component1->sel, $component2->sel)) {
                     break;
                 }
 
@@ -4101,7 +4096,7 @@ final readonly class SelectorTokenizer
                 return false;
             }
 
-            $combinator2 = $complex2[$end]['comb'];
+            $combinator2 = $complex2[$end]->comb;
 
             if (! $this->isSupercombinator($combinator1, $combinator2)) {
                 return false;
@@ -4115,7 +4110,7 @@ final readonly class SelectorTokenizer
             if (count($complex1) - $i1 === 1) {
                 if ($combinator1 === '~') {
                     foreach (array_slice($complex2, $i2, max(0, count($complex2) - 1 - $i2)) as $component) {
-                        if (! $this->isSupercombinator($combinator1, $component['comb'])) {
+                        if (! $this->isSupercombinator($combinator1, $component->comb)) {
                             return false;
                         }
                     }
@@ -4129,7 +4124,7 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $parents
+     * @param Complex $parents
      */
     private function compatibleWithPreviousCombinator(string $previous, array $parents): bool
     {
@@ -4146,7 +4141,7 @@ final readonly class SelectorTokenizer
         }
 
         foreach ($parents as $component) {
-            if ($component['comb'] !== '~' && $component['comb'] !== '+') {
+            if ($component->comb !== '~' && $component->comb !== '+') {
                 return false;
             }
         }
@@ -4164,7 +4159,7 @@ final readonly class SelectorTokenizer
     /**
      * @param string $general
      * @param string $specific
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $parents
+     * @param Complex $parents
      */
     private function compoundIsSuperselector(
         string $general,
@@ -4180,15 +4175,15 @@ final readonly class SelectorTokenizer
     }
 
     /**
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $group1
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $group2
+     * @param Complex $group1
+     * @param Complex $group2
      */
     private function mustUnify(array $group1, array $group2): bool
     {
         $uniqueSelectors = [];
 
         foreach ($group1 as $component) {
-            foreach ($this->tokenizeCompound($component['sel']) as $token) {
+            foreach ($this->tokenizeCompound($component->sel) as $token) {
                 if ($token[0] === '#' || $this->isPseudoElementToken($token)) {
                     $uniqueSelectors[] = $token;
                 }
@@ -4200,7 +4195,7 @@ final readonly class SelectorTokenizer
         }
 
         foreach ($group2 as $component) {
-            foreach ($this->tokenizeCompound($component['sel']) as $token) {
+            foreach ($this->tokenizeCompound($component->sel) as $token) {
                 if (in_array($token, $uniqueSelectors, true)) {
                     return true;
                 }
@@ -4218,15 +4213,15 @@ final readonly class SelectorTokenizer
     private function unifyGroups(array $group1, array $group2): ?array
     {
         if (count($group1) === 1 && count($group2) === 1) {
-            $unified = $this->unifyCompounds($group1[0]['sel'], $group2[0]['sel']);
+            $unified = $this->unifyCompounds($group1[0]->sel, $group2[0]->sel);
 
             if ($unified === null) {
                 return null;
             }
 
-            $comb = $group1[0]['comb'] !== '' ? $group1[0]['comb'] : $group2[0]['comb'];
+            $comb = $group1[0]->comb !== '' ? $group1[0]->comb : $group2[0]->comb;
 
-            return [['sel' => $unified, 'comb' => $comb]];
+            return [new SelectorComponent($unified, $comb)];
         }
 
         $woven = $this->weave([$group1, $group2]);
@@ -4265,7 +4260,7 @@ final readonly class SelectorTokenizer
     /**
      * @param string $general
      * @param string $specific
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $parents
+     * @param Complex $parents
      */
     private function strictCompoundIsSuperselector(string $general, string $specific, array $parents): bool
     {
@@ -4352,7 +4347,7 @@ final readonly class SelectorTokenizer
     /**
      * @param array<int, string> $generalTokens
      * @param array<int, string> $specificTokens
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $parents
+     * @param Complex $parents
      */
     private function strictCompoundPartsAreSuperselector(
         array $generalTokens,
@@ -4470,7 +4465,7 @@ final readonly class SelectorTokenizer
                 return false;
             }
 
-            $lastSelector = $complex[count($complex) - 1]['sel'];
+            $lastSelector = $complex[count($complex) - 1]->sel;
             $covered      = false;
 
             foreach ($this->tokenizeCompound($lastSelector) as $token) {
@@ -4492,7 +4487,7 @@ final readonly class SelectorTokenizer
     /**
      * @param string $generalToken
      * @param array<int, string>  $specificTokens
-     * @param array<int, array{sel: string, comb: string, lead?: string}> $parents
+     * @param Complex $parents
      */
     private function selectorPseudoIsSuperselector(string $generalToken, array $specificTokens, array $parents): bool
     {
@@ -4529,10 +4524,10 @@ final readonly class SelectorTokenizer
                     }
                 }
 
-                $target = [...$parents, ['sel' => implode('', $specificTokens), 'comb' => '']];
+                $target = [...$parents, new SelectorComponent(implode('', $specificTokens), '')];
 
                 foreach ($generalList as $complex) {
-                    if (($complex[0]['lead'] ?? '') !== '') {
+                    if (($complex[0]->lead ?? '') !== '') {
                         continue;
                     }
 
@@ -4615,7 +4610,7 @@ final readonly class SelectorTokenizer
     private function notPseudoIsSuperselector(array $generalPseudo, string $rawName, array $specificTokens): bool
     {
         foreach ($this->parseSelectorList((string) $generalPseudo['selector']) as $complex) {
-            if (($complex[0]['lead'] ?? '') !== '') {
+            if (($complex[0]->lead ?? '') !== '') {
                 return false;
             }
 
@@ -4637,7 +4632,7 @@ final readonly class SelectorTokenizer
                         continue;
                     }
 
-                    foreach ($this->tokenizeCompound($lastComponent['sel']) as $lastToken) {
+                    foreach ($this->tokenizeCompound($lastComponent->sel) as $lastToken) {
                         if (
                             $this->isTypeLikeToken($lastToken)
                             && $this->parsePseudoToken($lastToken) === null
@@ -4656,7 +4651,7 @@ final readonly class SelectorTokenizer
                         continue;
                     }
 
-                    foreach ($this->tokenizeCompound($lastComponent['sel']) as $lastToken) {
+                    foreach ($this->tokenizeCompound($lastComponent->sel) as $lastToken) {
                         if ($lastToken[0] === '#' && $lastToken !== $specificToken) {
                             $negated = true;
 

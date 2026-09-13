@@ -7,12 +7,17 @@ namespace Bugo\SCSS\Nodes;
 use function array_keys;
 use function is_array;
 
+/**
+ * @phpstan-import-type NodeList from AstNode
+ *
+ * @psalm-import-type NodeList from AstNode
+ */
 trait HasChildren
 {
     /** @var array<int, string> */
     private array $childProperties = ['body', 'children', 'contentBlock', 'elseBody'];
 
-    /** @return array<int, AstNode> */
+    /** @return NodeList */
     public function getChildren(): array
     {
         $children = [];

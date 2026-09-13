@@ -25,6 +25,7 @@ use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\States\ExtendsState;
 use Bugo\SCSS\Utils\NameNormalizer;
+use Bugo\SCSS\Utils\SelectorComponent;
 use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 
@@ -550,7 +551,7 @@ final readonly class ExtendsResolver
     {
         foreach ($complexes as $complex) {
             foreach ($complex as $component) {
-                foreach ($this->tokenizer->tokenizeCompound($component['sel']) as $simple) {
+                foreach ($this->tokenizer->tokenizeCompound($component->sel) as $simple) {
                     if ($simple === '') {
                         continue;
                     }
@@ -710,7 +711,7 @@ final readonly class ExtendsResolver
                 $store['extensions'][$target][$variantKey] = $withExtender;
 
                 foreach ($variant as $component) {
-                    foreach ($this->tokenizer->tokenizeCompound($component['sel']) as $simple) {
+                    foreach ($this->tokenizer->tokenizeCompound($component->sel) as $simple) {
                         if ($simple === '') {
                             continue;
                         }
@@ -820,7 +821,7 @@ final readonly class ExtendsResolver
      */
     private function extendSingleComplex(array &$store, array $complex, array $extensionsMap, string $context): ?array
     {
-        $lead = $complex[0]['lead'] ?? '';
+        $lead = $complex[0]->lead ?? '';
 
         if ($this->countCombinatorWords($lead) > 1) {
             return null;
@@ -839,10 +840,7 @@ final readonly class ExtendsResolver
 
             if ($extended === null) {
                 if ($extendedNotExpanded !== null) {
-                    $extendedNotExpanded[] = [[[
-                        'sel'  => $component['sel'],
-                        'comb' => $component['comb'],
-                    ]]];
+                    $extendedNotExpanded[] = [[new SelectorComponent($component->sel, $component->comb)]];
                 }
             } elseif ($extendedNotExpanded !== null) {
                 $extendedNotExpanded[] = $extended;
@@ -858,11 +856,11 @@ final readonly class ExtendsResolver
                         continue;
                     }
 
-                    $newLead = $newComplex[0]['lead'] ?? '';
+                    $newLead = $newComplex[0]->lead ?? '';
 
                     if ($newLead === '' || $newLead === $lead) {
-                        $newComplex[0]['lead'] = $lead;
-                        $filtered[]            = $newComplex;
+                        $newComplex[0] = new SelectorComponent($newComplex[0]->sel, $newComplex[0]->comb, $lead);
+                        $filtered[]    = $newComplex;
                     }
                 }
 
@@ -894,13 +892,13 @@ final readonly class ExtendsResolver
 
     /**
      * @param ExtensionStore $store
-     * @param array{sel: string, comb: string, lead?: string} $component
+     * @param SelectorComponent $component
      * @param ExtensionMap $extensionsMap
      * @return array<int, Complex>|null
      */
     private function extendCompoundComponent(
         array &$store,
-        array $component,
+        SelectorComponent $component,
         array $extensionsMap,
         string $context,
         bool $inOriginal,
@@ -908,7 +906,7 @@ final readonly class ExtendsResolver
         /** @var list<string>|null $targetsUsed */
         $targetsUsed = null;
 
-        $simples = $this->tokenizer->tokenizeCompound($component['sel']);
+        $simples = $this->tokenizer->tokenizeCompound($component->sel);
 
         /** @var list<list<Extender>>|null $options */
         $options = null;
@@ -954,7 +952,7 @@ final readonly class ExtendsResolver
             foreach ($options[0] as $extender) {
                 $this->assertExtensionMediaContext($extender, $context);
 
-                $candidate = $this->withAdditionalCombinators($extender['selector'], $component['comb']);
+                $candidate = $this->withAdditionalCombinators($extender['selector'], $component->comb);
 
                 if ($this->isUselessComplex($candidate)) {
                     continue;
@@ -974,7 +972,7 @@ final readonly class ExtendsResolver
         foreach ($firstPath as $extender) {
             $lastComponent = $extender['selector'][count($extender['selector']) - 1];
 
-            foreach ($this->tokenizer->tokenizeCompound($lastComponent['sel']) as $token) {
+            foreach ($this->tokenizer->tokenizeCompound($lastComponent->sel) as $token) {
                 if ($token !== '') {
                     $originalTokens[] = $token;
                 }
@@ -982,7 +980,7 @@ final readonly class ExtendsResolver
         }
 
         /** @var list<Complex> $result */
-        $result = [[[ 'sel' => implode('', $originalTokens), 'comb' => $component['comb'] ]]];
+        $result = [[new SelectorComponent(implode('', $originalTokens), $component->comb)]];
 
         foreach (array_slice($paths, 1) as $path) {
             $unified = $this->unifyExtenderPath($path, $context);
@@ -992,7 +990,7 @@ final readonly class ExtendsResolver
             }
 
             foreach ($unified as $unifiedComplex) {
-                $withCombinators = $this->withAdditionalCombinators($unifiedComplex, $component['comb']);
+                $withCombinators = $this->withAdditionalCombinators($unifiedComplex, $component->comb);
 
                 if (! $this->isUselessComplex($withCombinators)) {
                     $result[] = $withCombinators;
@@ -1023,7 +1021,7 @@ final readonly class ExtendsResolver
             if ($extender['original']) {
                 $lastComponent = $extender['selector'][count($extender['selector']) - 1];
 
-                foreach ($this->tokenizer->tokenizeCompound($lastComponent['sel']) as $token) {
+                foreach ($this->tokenizer->tokenizeCompound($lastComponent->sel) as $token) {
                     if ($token !== '') {
                         $originalTokens[] = $token;
                     }
@@ -1038,7 +1036,7 @@ final readonly class ExtendsResolver
         }
 
         if ($originalTokens !== null) {
-            array_unshift($toUnify, [['sel' => implode('', $originalTokens), 'comb' => '']]);
+            array_unshift($toUnify, [new SelectorComponent(implode('', $originalTokens), '')]);
         }
 
         $complexes = $this->unifyComplexList($toUnify);
@@ -1073,7 +1071,7 @@ final readonly class ExtendsResolver
                 return null;
             }
 
-            $complexLead = $complex[0]['lead'] ?? '';
+            $complexLead = $complex[0]->lead ?? '';
 
             if (count($complex) === 1 && $complexLead !== '') {
                 if ($lead === '') {
@@ -1084,7 +1082,7 @@ final readonly class ExtendsResolver
             }
 
             $last            = $complex[count($complex) - 1];
-            $lastCombination = trim($last['comb']);
+            $lastCombination = trim($last->comb);
 
             if ($lastCombination !== '' && $this->countCombinatorWords($lastCombination) === 1) {
                 if ($trailing === '') {
@@ -1095,8 +1093,8 @@ final readonly class ExtendsResolver
             }
 
             $candidate = $base === null
-                ? $last['sel']
-                : $this->tokenizer->unifyCompoundsStrict($base, $last['sel']);
+                ? $last->sel
+                : $this->tokenizer->unifyCompoundsStrict($base, $last->sel);
 
             if ($candidate === null) {
                 return null;
@@ -1109,11 +1107,7 @@ final readonly class ExtendsResolver
             return null;
         }
 
-        $baseComplex = [['sel' => $base, 'comb' => $trailing]];
-
-        if ($lead !== '') {
-            $baseComplex[0]['lead'] = $lead;
-        }
+        $baseComplex = [new SelectorComponent($base, $trailing, $lead !== '' ? $lead : null)];
 
         /** @var list<Complex> $prefixes */
         $prefixes = [];
@@ -1397,7 +1391,7 @@ final readonly class ExtendsResolver
             foreach ($complex as $component) {
                 $maxSpecificity = max(
                     $maxSpecificity,
-                    $this->sourceSpecificityForCompound($store, $component['sel']),
+                    $this->sourceSpecificityForCompound($store, $component->sel),
                 );
             }
 
@@ -1464,12 +1458,12 @@ final readonly class ExtendsResolver
      */
     private function isUselessComplex(array $complex): bool
     {
-        if ($this->countCombinatorWords($complex[0]['lead'] ?? '') > 1) {
+        if ($this->countCombinatorWords($complex[0]->lead ?? '') > 1) {
             return true;
         }
 
         foreach ($complex as $component) {
-            if ($this->countCombinatorWords($component['comb']) > 1) {
+            if ($this->countCombinatorWords($component->comb) > 1) {
                 return true;
             }
         }
@@ -1495,10 +1489,10 @@ final readonly class ExtendsResolver
      */
     private function structuralSpecificity(array $complex): int
     {
-        $specificity = ($complex[0]['lead'] ?? '') !== '' ? 1 : 0;
+        $specificity = ($complex[0]->lead ?? '') !== '' ? 1 : 0;
 
         foreach ($complex as $component) {
-            foreach ($this->tokenizer->tokenizeCompound($component['sel']) as $token) {
+            foreach ($this->tokenizer->tokenizeCompound($component->sel) as $token) {
                 if ($token !== '') {
                     $specificity += $this->simpleStructuralSpecificity($token);
                 }
@@ -1617,10 +1611,13 @@ final readonly class ExtendsResolver
 
         $out       = $complex;
         $lastIndex = count($out) - 1;
+        $last      = $out[$lastIndex];
 
-        $out[$lastIndex]['comb'] = $out[$lastIndex]['comb'] === ''
-            ? $combinators
-            : $out[$lastIndex]['comb'] . ' ' . $combinators;
+        $out[$lastIndex] = new SelectorComponent(
+            $last->sel,
+            $last->comb === '' ? $combinators : $last->comb . ' ' . $combinators,
+            $last->lead,
+        );
 
         return $out;
     }
@@ -1648,7 +1645,7 @@ final readonly class ExtendsResolver
         $simples = [];
 
         foreach ($complex as $component) {
-            foreach ($this->tokenizer->tokenizeCompound($component['sel']) as $simple) {
+            foreach ($this->tokenizer->tokenizeCompound($component->sel) as $simple) {
                 if ($simple === '') {
                     continue;
                 }
@@ -1675,11 +1672,11 @@ final readonly class ExtendsResolver
      */
     private function singleSimpleOfComplex(array $complex): ?string
     {
-        if (count($complex) !== 1 || ($complex[0]['lead'] ?? '') !== '') {
+        if (count($complex) !== 1 || ($complex[0]->lead ?? '') !== '') {
             return null;
         }
 
-        $tokens = $this->tokenizer->tokenizeCompound($complex[0]['sel']);
+        $tokens = $this->tokenizer->tokenizeCompound($complex[0]->sel);
 
         return count($tokens) === 1 && $tokens[0] !== '' ? $tokens[0] : null;
     }
@@ -1690,7 +1687,7 @@ final readonly class ExtendsResolver
     private function extenderForSimple(string $simple): array
     {
         return [
-            'selector' => [['sel' => $simple, 'comb' => '']],
+            'selector' => [new SelectorComponent($simple, '')],
             'original' => true,
             'context'  => '',
         ];
@@ -1703,7 +1700,7 @@ final readonly class ExtendsResolver
     private function extenderForCompound(array $tokens): array
     {
         return [
-            'selector' => [['sel' => implode('', $tokens), 'comb' => '']],
+            'selector' => [new SelectorComponent(implode('', $tokens), '')],
             'original' => true,
             'context'  => '',
         ];

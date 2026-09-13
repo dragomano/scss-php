@@ -7,10 +7,15 @@ namespace Bugo\SCSS\Nodes;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Visitor;
 
+/**
+ * @phpstan-import-type NodeList from AstNode
+ *
+ * @psalm-import-type NodeList from AstNode
+ */
 final class RuleNode extends StatementNode
 {
     /**
-     * @param array<int, AstNode> $children
+     * @param NodeList $children
      */
     public function __construct(
         public string $selector,

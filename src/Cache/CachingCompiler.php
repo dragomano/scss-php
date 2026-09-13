@@ -40,7 +40,7 @@ final readonly class CachingCompiler implements CompilerInterface
      */
     public function compileFile(string $path): string
     {
-        $resolvedPath = $this->trackingLoader->load($path)['path'];
+        $resolvedPath = $this->trackingLoader->load($path)->path;
         $key          = $this->buildCacheKey($resolvedPath);
         $cached       = $this->getCacheEntry($key);
 

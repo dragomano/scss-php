@@ -99,12 +99,15 @@ describe('CallArgumentResolver', function () {
     });
 
     it('collects named values from expanded spread call arguments', function () {
-        [$positional, $named] = $this->resolver->resolveCallArguments([
+        $resolved = $this->resolver->resolveCallArguments([
             new SpreadArgumentNode(new ListNode([
                 new NumberNode(1),
                 new NamedArgumentNode('color', new StringNode('red')),
             ])),
         ], $this->env);
+
+        $positional = $resolved->positional;
+        $named      = $resolved->named;
 
         expect($positional)->toHaveCount(1)
             ->and($positional[0])->toBeInstanceOf(NumberNode::class)

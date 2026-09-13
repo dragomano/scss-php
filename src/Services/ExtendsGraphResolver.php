@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Services;
 
 use Bugo\SCSS\CompilerContext;
+use Bugo\SCSS\LoadedFile;
 use Bugo\SCSS\LoaderInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
@@ -290,7 +291,7 @@ final readonly class ExtendsGraphResolver
                 continue;
             }
 
-            $dependency = $file['path'];
+            $dependency = $file->path;
 
             if ($isLoadCss) {
                 if ($moduleId === self::ROOT_ID) {
@@ -308,7 +309,7 @@ final readonly class ExtendsGraphResolver
                         $moduleId,
                         $path,
                         $dependency,
-                        $file['content'],
+                        $file->content,
                         $graph['asts'][$dependency],
                     );
                 }
@@ -318,13 +319,13 @@ final readonly class ExtendsGraphResolver
 
             $graph['seen'][$dependency] = true;
 
-            $syntax = Syntax::fromPath($dependency, $file['content']);
+            $syntax = Syntax::fromPath($dependency, $file->content);
 
             $this->parser->setPlainCss($syntax === Syntax::CSS);
 
             try {
                 $dependencyAst = $this->parser->parse(
-                    $this->ctx->normalizerPipeline->process($file['content'], $syntax),
+                    $this->ctx->normalizerPipeline->process($file->content, $syntax),
                 );
             } finally {
                 $this->parser->setPlainCss(false);
@@ -337,12 +338,12 @@ final readonly class ExtendsGraphResolver
                     $moduleId,
                     $path,
                     $dependency,
-                    $file['content'],
+                    $file->content,
                     $dependencyAst,
                 );
             }
 
-            if (str_contains($file['content'], '@extend')) {
+            if (str_contains($file->content, '@extend')) {
                 $graph['hasExtend'] = true;
             }
 
@@ -352,10 +353,7 @@ final readonly class ExtendsGraphResolver
         }
     }
 
-    /**
-     * @return array{path: string, content: string}|null
-     */
-    private function tryLoad(string $path, bool $fromImport): ?array
+    private function tryLoad(string $path, bool $fromImport): ?LoadedFile
     {
         try {
             return $this->loader->load($path, $fromImport);

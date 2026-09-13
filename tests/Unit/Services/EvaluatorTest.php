@@ -47,10 +47,13 @@ it('evaluates variable references and resolves spread arguments', function () {
 
     $resolved = $runtime->evaluation()->evaluateValue(new VariableReferenceNode('value'), $env);
 
-    [$positional, $named] = $runtime->evaluation()->resolveCallArguments([
+    $callArguments = $runtime->evaluation()->resolveCallArguments([
         new SpreadArgumentNode(new ListNode([new StringNode('a'), new StringNode('b')], 'comma')),
         new NamedArgumentNode('width', new NumberNode(10, 'px')),
     ], $env);
+
+    $positional = $callArguments->positional;
+    $named      = $callArguments->named;
 
     expect($resolved)->toBeInstanceOf(NumberNode::class);
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\States;
 
+use Bugo\SCSS\LoadedFile;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Runtime\Scope;
 
@@ -42,7 +43,7 @@ final class ModuleState
     /** @var array<string, bool> */
     public array $loadingFiles = [];
 
-    /** @var array<string, array{path: string, content: string}> */
+    /** @var array<string, LoadedFile> */
     public array $prefetchedFiles = [];
 
     /** @var array<string, RootNode> */
@@ -103,15 +104,12 @@ final class ModuleState
 
     public function prefetchModule(string $parentId, string $url, string $path, string $content, RootNode $ast): void
     {
-        $this->prefetchedFiles[$parentId . "\0" . $url] = ['path' => $path, 'content' => $content];
+        $this->prefetchedFiles[$parentId . "\0" . $url] = new LoadedFile($path, $content);
 
         $this->prefetchedAsts[$path] = $ast;
     }
 
-    /**
-     * @return array{path: string, content: string}|null
-     */
-    public function prefetchedFile(string $url): ?array
+    public function prefetchedFile(string $url): ?LoadedFile
     {
         return $this->prefetchedFiles[$this->currentModuleId . "\0" . $url] ?? null;
     }

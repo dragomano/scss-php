@@ -9,16 +9,13 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Services\Evaluation\EvaluationStrategyInterface;
-use Closure;
+use Bugo\SCSS\Services\Evaluation\ValueEvaluatorInterface;
 
 final readonly class ArgumentListNodeStrategy implements EvaluationStrategyInterface
 {
     use LazilyEvaluatesItems;
 
-    /**
-     * @param Closure(AstNode, Environment, EvaluationOptions): AstNode $evaluateValue
-     */
-    public function __construct(private Closure $evaluateValue) {}
+    public function __construct(private ValueEvaluatorInterface $evaluateValue) {}
 
     public function supports(AstNode $node): bool
     {
@@ -32,13 +29,13 @@ final readonly class ArgumentListNodeStrategy implements EvaluationStrategyInter
 
         $items = self::lazilyEvaluateItems(
             $node->items,
-            fn(AstNode $item): AstNode => ($this->evaluateValue)($item, $env, $default),
+            fn(AstNode $item): AstNode => $this->evaluateValue->evaluate($item, $env, $default),
         );
 
         $keywords = null;
 
         foreach ($node->keywords as $name => $keywordValue) {
-            $evaluatedKeywordValue = ($this->evaluateValue)($keywordValue, $env, $default);
+            $evaluatedKeywordValue = $this->evaluateValue->evaluate($keywordValue, $env, $default);
 
             if ($keywords !== null) {
                 $keywords[$name] = $evaluatedKeywordValue;

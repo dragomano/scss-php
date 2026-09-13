@@ -7,12 +7,17 @@ namespace Bugo\SCSS\Nodes;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Visitor;
 
+/**
+ * @phpstan-import-type NodeList from AstNode
+ *
+ * @psalm-import-type NodeList from AstNode
+ */
 final class IfNode extends StatementNode
 {
     /**
-     * @param array<int, AstNode> $body
+     * @param NodeList $body
      * @param array<int, ElseIfNode> $elseIfBranches
-     * @param array<int, AstNode> $elseBody
+     * @param NodeList $elseBody
      */
     public function __construct(
         public string $condition,

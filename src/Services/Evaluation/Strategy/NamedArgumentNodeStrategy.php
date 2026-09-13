@@ -9,14 +9,11 @@ use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Services\Evaluation\EvaluationStrategyInterface;
-use Closure;
+use Bugo\SCSS\Services\Evaluation\ValueEvaluatorInterface;
 
 final readonly class NamedArgumentNodeStrategy implements EvaluationStrategyInterface
 {
-    /**
-     * @param Closure(AstNode, Environment, EvaluationOptions): AstNode $evaluateValue
-     */
-    public function __construct(private Closure $evaluateValue) {}
+    public function __construct(private ValueEvaluatorInterface $evaluateValue) {}
 
     public function supports(AstNode $node): bool
     {
@@ -26,7 +23,7 @@ final readonly class NamedArgumentNodeStrategy implements EvaluationStrategyInte
     public function evaluate(AstNode $node, Environment $env, EvaluationOptions $options): AstNode
     {
         /** @var NamedArgumentNode $node */
-        $value = ($this->evaluateValue)($node->value, $env, EvaluationOptions::default());
+        $value = $this->evaluateValue->evaluate($node->value, $env, EvaluationOptions::default());
 
         if ($value === $node->value) {
             return $node;

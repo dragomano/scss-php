@@ -80,8 +80,8 @@ final readonly class Compiler implements CompilerInterface
             : $path;
 
         return $this->compileString(
-            $loaded['content'],
-            Syntax::fromPath($path, $loaded['content']),
+            $loaded->content,
+            Syntax::fromPath($path, $loaded->content),
             $sourceFile,
         );
     }

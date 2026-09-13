@@ -222,7 +222,10 @@ final readonly class FunctionCallEvaluator
      */
     private function executeUserFunction(FunctionNode $node, array $resolvedUserFunction, Environment $env): AstNode
     {
-        [$positionalArguments, $namedArguments, $restSeparator] = $this->callArguments->resolveCallArguments($node->arguments, $env);
+        $resolved             = $this->callArguments->resolveCallArguments($node->arguments, $env);
+        $positionalArguments  = $resolved->positional;
+        $namedArguments       = $resolved->named;
+        $restSeparator        = $resolved->separator;
 
         if (++$this->ctx->moduleState->callDepth > 100) {
             $this->ctx->moduleState->callDepth--;
