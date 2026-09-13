@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Exceptions\ExtendOutsideStyleRuleException;
 use Bugo\SCSS\Exceptions\InvalidSyntaxException;
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Style;
@@ -118,5 +119,27 @@ describe('Compiler', function () {
 
         expect(fn() => $compiler->compileString($source))
             ->toThrow(SassErrorException::class, '@error: Expected identifier.');
+    });
+
+    it('throws a domain exception for a root-level @extend in scss', function () {
+        $compiler = new Compiler();
+
+        expect(fn() => $compiler->compileString('@extend b;'))
+            ->toThrow(ExtendOutsideStyleRuleException::class, '@extend may only be used within style rules.');
+    });
+
+    it('throws a domain exception for a root-level @extend in indented sass', function () {
+        $compiler = new Compiler();
+        $source   = "@extend b\n  !optional\n";
+
+        expect(fn() => $compiler->compileString($source, Syntax::SASS))
+            ->toThrow(ExtendOutsideStyleRuleException::class, '@extend may only be used within style rules.');
+    });
+
+    it('still compiles @extend nested inside a style rule', function () {
+        $compiler = new Compiler();
+
+        expect($compiler->compileString('.a { @extend .b; } .b { color: red; }'))
+            ->toEqualCss(".b, .a {\n  color: red;\n}");
     });
 });

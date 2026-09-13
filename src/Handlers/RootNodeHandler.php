@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Handlers;
 
+use Bugo\SCSS\Exceptions\ExtendOutsideStyleRuleException;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\CommentNode;
+use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\UseNode;
@@ -33,6 +35,10 @@ final readonly class RootNodeHandler
         $inLeadingRun    = $outputState->hoistCssImports && $ctx->indent === 0;
 
         foreach ($node->children as $child) {
+            if ($child instanceof ExtendNode) {
+                throw new ExtendOutsideStyleRuleException();
+            }
+
             if ($child instanceof CommentNode && $child->afterClosingBrace && $output !== '') {
                 $trimmedOutput = $this->render->trimTrailingNewlines($output);
 
