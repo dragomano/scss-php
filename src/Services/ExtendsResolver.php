@@ -1737,7 +1737,7 @@ final readonly class ExtendsResolver
 
             $leadingLength = strlen($part) - strlen(ltrim($part));
 
-            $canonical = $this->tokenizer->canonicalizeSelectorEscapes(trim($part));
+            $canonical = $this->canonicalBreakKey($part);
 
             if (! array_key_exists($canonical, $map)) {
                 $map[$canonical] = str_contains(substr($part, 0, $leadingLength), "\n");
@@ -1758,10 +1758,10 @@ final readonly class ExtendsResolver
         }
 
         $result        = $parts[0];
-        $previousBreak = $lineBreaks[$parts[0]] ?? false;
+        $previousBreak = $lineBreaks[$this->canonicalBreakKey($parts[0])] ?? false;
 
         foreach (array_slice($parts, 1) as $part) {
-            $currentBreak = $lineBreaks[$part] ?? false;
+            $currentBreak = $lineBreaks[$this->canonicalBreakKey($part)] ?? false;
 
             $result .= ($previousBreak || $currentBreak ? ",\n" : ', ') . $part;
 
@@ -1769,6 +1769,16 @@ final readonly class ExtendsResolver
         }
 
         return $result;
+    }
+
+    private function canonicalBreakKey(string $selectorPart): string
+    {
+        $trimmed   = trim($selectorPart);
+        $complexes = $this->tokenizer->parseSelectorList($trimmed);
+
+        return $complexes === []
+            ? $trimmed
+            : $this->tokenizer->complexComponentsToString($complexes[0]);
     }
 
     /**

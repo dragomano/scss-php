@@ -362,6 +362,40 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('keeps source line breaks in combinator selector lists when other rules use @extend', function () {
+            $source = <<<'SCSS'
+            .article {
+              color: red;
+            }
+
+            .layout {
+              .a+.b,
+              .c+.d {
+                margin: 0;
+              }
+            }
+
+            .featured {
+              @extend .article;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .article, .featured {
+              color: red;
+            }
+
+            .layout .a + .b,
+            .layout .c + .d {
+              margin: 0;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
         it('supports transitive extends through placeholders', function () {
             $source = <<<'SCSS'
             %base {
