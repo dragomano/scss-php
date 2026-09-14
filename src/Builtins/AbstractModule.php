@@ -214,7 +214,7 @@ abstract class AbstractModule implements ModuleInterface
         string $fallback,
         bool $multipleSuggestions = false,
     ): void {
-        if ($context === null) {
+        if ($context === null || $context->logWarning === null) {
             return;
         }
 

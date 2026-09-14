@@ -34,6 +34,8 @@ final class FunctionRegistry
     /** @var array<int, string> */
     private array $starModules = [];
 
+    private bool $allDefaultModulesLoaded = false;
+
     private const DEFAULT_MODULE_CLASSES = [
         'color'    => SassColorModule::class,
         'list'     => SassListModule::class,
@@ -63,6 +65,8 @@ final class FunctionRegistry
         $moduleName = $module->getName();
 
         $this->modules[$moduleName] = $module;
+
+        $this->allDefaultModulesLoaded = $this->allDefaultModulesLoaded || $this->areAllDefaultModulesLoaded();
 
         foreach ($module->getGlobalAliases() as $global => $function) {
             $this->globalAliases[$this->normalizeName($global)] = [$moduleName, $function];
@@ -279,6 +283,17 @@ final class FunctionRegistry
         return isset($this->modules[$moduleName]) || isset($this->moduleFactories[$moduleName]);
     }
 
+    private function areAllDefaultModulesLoaded(): bool
+    {
+        foreach (self::DEFAULT_MODULE_CLASSES as $moduleName => $_class) {
+            if (! isset($this->modules[$moduleName])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private function getModule(string $moduleName): ?ModuleInterface
     {
         if (! $this->hasModule($moduleName)) {
@@ -343,12 +358,10 @@ final class FunctionRegistry
             return $this->globalAliases[$functionName];
         }
 
-        foreach (self::DEFAULT_MODULE_CLASSES as $moduleName => $_class) {
-            if (isset($this->globalAliases[$functionName])) {
-                break;
+        if (! $this->allDefaultModulesLoaded) {
+            foreach (self::DEFAULT_MODULE_CLASSES as $moduleName => $_class) {
+                $this->getModule($moduleName);
             }
-
-            $this->getModule($moduleName);
         }
 
         return $this->globalAliases[$functionName] ?? null;

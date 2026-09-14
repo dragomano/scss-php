@@ -27,6 +27,7 @@ use function rtrim;
 use function str_contains;
 use function str_starts_with;
 use function strlen;
+use function strpbrk;
 use function strpos;
 use function strtolower;
 use function substr;
@@ -459,6 +460,10 @@ final readonly class SelectorTokenizer
 
     public function hasBogusTopLevelCombinatorSequence(string $selector): bool
     {
+        if (strpbrk($selector, '>+~') === false) {
+            return false;
+        }
+
         $state = new class {
             public bool $lastTokenWasCombinator = false;
         };
@@ -514,6 +519,10 @@ final readonly class SelectorTokenizer
 
     public function normalizeAdjacentSelectorCompounds(string $selector): string
     {
+        if (! str_contains($selector, ']')) {
+            return $selector;
+        }
+
         $length       = strlen($selector);
         $result       = '';
         $bracketDepth = 0;
@@ -574,6 +583,10 @@ final readonly class SelectorTokenizer
 
     public function hasAdjacentCompoundSelectors(string $selector): bool
     {
+        if (strpbrk($selector, '.#[:*') === false) {
+            return false;
+        }
+
         $length = strlen($selector);
         $i      = 0;
 
@@ -734,6 +747,10 @@ final readonly class SelectorTokenizer
 
     public function hasBogusSelectorPseudoCombinator(string $selector): bool
     {
+        if (! str_contains($selector, '(')) {
+            return false;
+        }
+
         foreach ([':is(', ':matches(', ':where(', ':not('] as $pseudo) {
             $offset = 0;
 
@@ -3849,7 +3866,6 @@ final readonly class SelectorTokenizer
         if (
             ($combinators1 !== '' ? $combinators1 : $combinators2) === '>'
             && $descendantSide !== []
-            && $combinatorSide !== []
             && $this->compoundIsSuperselector(
                 $descendantSide[count($descendantSide) - 1]->sel,
                 $combinatorSide[count($combinatorSide) - 1]->sel,

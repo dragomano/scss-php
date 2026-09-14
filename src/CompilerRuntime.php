@@ -246,6 +246,7 @@ final class CompilerRuntime
             $this->condition(),
             $this->createModuleVariableAssigner(),
             $this->createDiagnosticDirectiveHandler(),
+            $this->logger,
         );
     }
 

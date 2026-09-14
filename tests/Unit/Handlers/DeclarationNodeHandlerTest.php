@@ -49,7 +49,7 @@ it('replaces declaration value with non-strict arithmetic result when available'
     $evaluation->shouldReceive('evaluateArithmeticList')->once()->with($list, false, $env)->andReturn($resolved);
     $evaluation->shouldReceive('isSassNullValue')->once()->with($resolved)->andReturn(false);
     $evaluation->shouldReceive('shouldCompressNamedColorForProperty')->once()->with('width')->andReturn(false);
-    $evaluation->shouldReceive('tryEvaluateFormattedDeclarationExpression')->once()->with('width', $resolved, $env)->andReturn(null);
+    $evaluation->shouldReceive('tryEvaluateFormattedDeclarationExpression')->once()->with('width', $resolved, $env, null)->andReturn(null);
     $evaluation->shouldReceive('format')->once()->with($resolved, $env)->andReturn('5');
     $evaluation->shouldReceive('normalizeDeclarationSlashSpacing')->once()->with('width', '5')->andReturn('5');
 

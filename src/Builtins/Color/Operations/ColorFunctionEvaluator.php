@@ -416,7 +416,7 @@ final readonly class ColorFunctionEvaluator
             );
         }
 
-        $legacyHsl   = $this->extractLegacyHsl($color);
+        $legacyHsl = $this->extractLegacyHsl($color, $rgb);
 
         if ($legacyHsl !== null && $legacyHsl['origin'] !== 'rgb') {
             return $this->emitLegacyHsl(
@@ -439,7 +439,7 @@ final readonly class ColorFunctionEvaluator
         $color   = $this->runtime->argumentParser->requireColorOrDefer($positional, 'adjust-hue');
         $degrees = $this->runtime->argumentParser->asHueAngle($positional[1] ?? null, 'adjust-hue');
 
-        if ($context !== null) {
+        if ($context !== null && $context->logWarning !== null) {
             $this->runtime->context->warn(
                 $context,
                 $this->formatColorAdjustHint($color, 'hue', $this->runtime->formatter->formatDegrees($degrees)),
@@ -466,7 +466,7 @@ final readonly class ColorFunctionEvaluator
         $color  = $this->runtime->argumentParser->requireColor($positional, 0, $context);
         $amount = $this->runtime->argumentParser->asNumber($positional[1] ?? null, $context) * (float) $direction;
 
-        if ($callContext !== null) {
+        if ($callContext !== null && $callContext->logWarning !== null) {
             $this->runtime->context->warn(
                 $callContext,
                 $this->buildScaleSuggestion($color, 'alpha', $direction, $amount) . ', or '
@@ -516,7 +516,7 @@ final readonly class ColorFunctionEvaluator
 
         $amount = $this->runtime->argumentParser->asPercentage($positional[1] ?? null, $context) * (float) $direction;
 
-        if ($callContext !== null) {
+        if ($callContext !== null && $callContext->logWarning !== null) {
             $this->runtime->context->warn(
                 $callContext,
                 $this->buildScaleSuggestion($color, $channel, $direction, $amount) . ', or '
@@ -1554,7 +1554,7 @@ final readonly class ColorFunctionEvaluator
     private function emitModifiedLegacyColor(AstNode $color, callable $modify, bool $alphaOnly = false): AstNode
     {
         $rgb       = $this->converter->toRgb($color);
-        $legacyHsl = $this->extractLegacyHsl($color) ?? [
+        $legacyHsl = $this->extractLegacyHsl($color, $rgb) ?? [
             'channels' => $this->legacyMath->rgbToHsl($rgb),
             'origin'   => 'rgb',
         ];
@@ -1579,7 +1579,7 @@ final readonly class ColorFunctionEvaluator
     /**
      * @return array{channels: array{h: float, s: float, l: float, a: float}, origin: string}|null
      */
-    private function extractLegacyHsl(AstNode $color): ?array
+    private function extractLegacyHsl(AstNode $color, ?RgbColor $rgb = null): ?array
     {
         if ($color instanceof FunctionNode) {
             $name = strtolower($color->name);
@@ -1644,7 +1644,7 @@ final readonly class ColorFunctionEvaluator
         }
 
         return [
-            'channels' => $this->legacyMath->rgbToHsl($this->converter->toRgb($color)),
+            'channels' => $this->legacyMath->rgbToHsl($rgb ?? $this->converter->toRgb($color)),
             'origin'   => 'rgb',
         ];
     }

@@ -102,10 +102,12 @@ final readonly class ColorChannelInspector
     ): NumberNode {
         $color = $this->runtime->argumentParser->requireColor($positional, 0, $context);
 
-        $this->runtime->context->warn(
-            $callContext,
-            'color.channel(' . $this->runtime->formatter->describeValue($color) . ', "' . $channelName . '", $space: ' . $space . ')',
-        );
+        if ($callContext !== null && $callContext->logWarning !== null) {
+            $this->runtime->context->warn(
+                $callContext,
+                'color.channel(' . $this->runtime->formatter->describeValue($color) . ', "' . $channelName . '", $space: ' . $space . ')',
+            );
+        }
 
         return $this->resolveChannelValue($color, $space, $channelName);
     }
@@ -145,10 +147,12 @@ final readonly class ColorChannelInspector
         }
 
         if ($isGlobal) {
-            $this->runtime->context->warn(
-                $context,
-                'color.channel(' . $this->runtime->formatter->describeValue($color) . ', "alpha")',
-            );
+            if ($context !== null && $context->logWarning !== null) {
+                $this->runtime->context->warn(
+                    $context,
+                    'color.channel(' . $this->runtime->formatter->describeValue($color) . ', "alpha")',
+                );
+            }
         }
 
         return new NumberNode($alpha);

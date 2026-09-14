@@ -800,23 +800,18 @@ final class SassMathModule extends AbstractModule
             $numbers = array_map(fn(AstNode $value): NumberNode
                 => $this->ensureNumber($value, $wantMax ? 'math.max' : 'math.min'), $positional);
 
-            $unit = $numbers[0]->unit;
+            $unit           = $numbers[0]->unit;
+            $comparisonUnit = $unit;
 
             foreach ($numbers as $number) {
-                if (! $this->unitsCompatible($unit, $number->unit)) {
+                if ($unit !== null && $number->unit !== $unit && ! $this->unitsCompatible($unit, $number->unit)) {
                     throw IncompatibleUnitsException::functionArguments(
                         $this->builtinCallReference($wantMax ? 'math.max' : 'math.min'),
                     );
                 }
-            }
 
-            $comparisonUnit = null;
-
-            foreach ($numbers as $number) {
-                if ($number->unit !== null) {
+                if ($number->unit !== null && $comparisonUnit === null) {
                     $comparisonUnit = $number->unit;
-
-                    break;
                 }
             }
 
@@ -968,6 +963,10 @@ final class SassMathModule extends AbstractModule
         string $name,
         array $positional,
     ): void {
+        if ($context === null || $context->logWarning === null) {
+            return;
+        }
+
         if (! $this->isGlobalBuiltinCall() || in_array($name, ['abs', 'clamp'], true)) {
             return;
         }

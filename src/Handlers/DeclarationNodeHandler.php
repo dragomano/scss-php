@@ -124,11 +124,14 @@ final readonly class DeclarationNodeHandler
             $evaluatedValue = $this->evaluation->compressNamedColorsForOutput($evaluatedValue);
         }
 
+        $formattedValue = null;
+
         $reparsedValue = ! $evaluatedValue instanceof StringNode
             ? $this->evaluation->tryEvaluateFormattedDeclarationExpression(
                 $property,
                 $evaluatedValue,
                 $ctx->env,
+                $formattedValue,
             )
             : null;
 
@@ -140,7 +143,9 @@ final readonly class DeclarationNodeHandler
             $evaluatedValue = $reparsedValue;
         }
 
-        $val = $this->evaluation->format($evaluatedValue, $ctx->env);
+        $val = $reparsedValue === null && $formattedValue !== null
+            ? $formattedValue
+            : $this->evaluation->format($evaluatedValue, $ctx->env);
         $val = $this->evaluation->normalizeDeclarationSlashSpacing($property, $val);
 
         if (str_contains($val, '#{')) {

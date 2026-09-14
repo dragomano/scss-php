@@ -50,6 +50,7 @@ use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Values\SassCalculation;
 use Bugo\SCSS\Values\SassMap;
 use LogicException;
+use Psr\Log\LoggerInterface;
 
 use function array_slice;
 use function count;
@@ -96,6 +97,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         private Condition $condition,
         private ModuleVariableAssignerInterface $moduleVariableAssigner,
         private DiagnosticDirectiveHandlerInterface $diagnosticHandler,
+        private LoggerInterface $logger,
     ) {
         $this->hexColorConverter = new HexColorConverter();
         $this->arithmetic        = new ArithmeticEvaluator();
@@ -316,6 +318,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         string $property,
         AstNode $value,
         Environment $env,
+        ?string &$formattedValue = null,
     ): ?AstNode {
         if ($value instanceof FunctionNode && strtolower($value->name) === 'calc') {
             return null;
@@ -976,6 +979,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             $this,
             $this,
             $this->createSlashDivisionValueEvaluator(),
+            $this->logger,
         );
     }
 
@@ -983,10 +987,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
     {
         return new EvaluationStrategyRegistry([
             new PassthroughNodeStrategy(),
-            new DeprecatedExpressionStrategy(
-                $valueEvaluator,
-                $this->diagnosticHandler,
-            ),
+            new FunctionNodeStrategy($this->functionCalls),
             new VariableReferenceStrategy(
                 $valueEvaluator,
                 fn(string $name, Environment $env): AstNode => $this->resolveVariable($name, $env),
@@ -1005,7 +1006,10 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             new ArgumentListNodeStrategy($valueEvaluator),
             new MapNodeStrategy($valueEvaluator),
             new NamedArgumentNodeStrategy($valueEvaluator),
-            new FunctionNodeStrategy($this->functionCalls),
+            new DeprecatedExpressionStrategy(
+                $valueEvaluator,
+                $this->diagnosticHandler,
+            ),
         ]);
     }
 }

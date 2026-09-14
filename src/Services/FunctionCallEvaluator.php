@@ -22,6 +22,9 @@ use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Values\AstValueInspector;
 use Bugo\SCSS\Values\SassCalculation;
+use Closure;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use Throwable;
 
 use function count;
@@ -67,6 +70,7 @@ final readonly class FunctionCallEvaluator
         private AstValueEvaluatorInterface $valueEvaluator,
         private AstValueFormatterInterface $valueFormatter,
         private AstValueEvaluatorInterface $slashDivisionValueEvaluator,
+        private LoggerInterface $logger,
     ) {}
 
     public function evaluate(FunctionNode $node, Environment $env): AstNode
@@ -150,7 +154,7 @@ final readonly class FunctionCallEvaluator
             $context = new BuiltinCallContext(
                 $env,
                 $this->ctx->functionRegistry,
-                fn(string $message) => $this->diagnosticHandler->handle('warn', new StringNode($message), $env, $node),
+                $this->buildWarningEmitter($env, $node),
                 null,
                 $node->arguments,
                 $node->line,
@@ -453,7 +457,7 @@ final readonly class FunctionCallEvaluator
         $context = new BuiltinCallContext(
             $env,
             $this->ctx->functionRegistry,
-            fn(string $msg) => $this->diagnosticHandler->handle('warn', new StringNode($msg), $env, $node),
+            $this->buildWarningEmitter($env, $node),
             null,
             $node->arguments,
             $node->line,
@@ -582,5 +586,19 @@ final readonly class FunctionCallEvaluator
                 $arg->parenthesized = $original->parenthesized;
             }
         }
+    }
+
+    /**
+     * @return Closure(string): void|null
+     */
+    private function buildWarningEmitter(Environment $env, FunctionNode $node): ?Closure
+    {
+        if ($this->logger instanceof NullLogger) {
+            return null;
+        }
+
+        return function (string $message) use ($env, $node): void {
+            $this->diagnosticHandler->handle('warn', new StringNode($message), $env, $node);
+        };
     }
 }
