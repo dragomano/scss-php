@@ -56,59 +56,6 @@ final class ColorSpaceConverter
 
     private const LOCAL_MINDE_EPSILON = 0.0001;
 
-    /**
-     * Direct linear-light RGB conversion matrices (Dart Sass, lib/src/value/color/conversions.dart)
-     *
-     * @var array<string, array{float, float, float, float, float, float, float, float, float}>
-     */
-    private const RGB_FAMILY_LINEAR_MATRICES = [
-        'srgb|srgb'             => [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
-        'display-p3|display-p3' => [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
-        'a98-rgb|a98-rgb'       => [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
-        'rec2020|rec2020'       => [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
-        'srgb|display-p3'       => [0.82246196871436230, 0.17753803128563775, 0.0, 0.03319419885096161, 0.96680580114903840, 0.0, 0.01708263072112003, 0.07239744066396346, 0.91051992861491650],
-        'display-p3|srgb'       => [1.22494017628055980, -0.22494017628055996, 0.0, -0.04205695470968816, 1.04205695470968800, 0.0, -0.01963755459033443, -0.07863604555063188, 1.09827360014096630],
-        'srgb|a98-rgb'          => [0.71512560685562470, 0.28487439314437535, 0.0, 0.0, 1.0, 0.0, 0.0, 0.04116194845011846, 0.95883805154988160],
-        'a98-rgb|srgb'          => [1.39835574396077830, -0.39835574396077830, 0.0, 0.0, 1.0, 0.0, 0.0, -0.04292898929447326, 1.04292898929447330],
-        'srgb|rec2020'          => [0.62740389593469900, 0.32928303837788370, 0.04331306568741722, 0.06909728935823208, 0.91954039507545870, 0.01136231556630917, 0.01639143887515027, 0.08801330787722575, 0.89559525324762400],
-        'rec2020|srgb'          => [1.66049100210843450, -0.58764113878854950, -0.07284986331988487, -0.12455047452159074, 1.13289989712596030, -0.00834942260436947, -0.01815076335490530, -0.10057889800800737, 1.11872966136291270],
-        'display-p3|a98-rgb'    => [0.86400513747404840, 0.13599486252595164, 0.0, -0.04205695470968816, 1.04205695470968800, 0.0, -0.02056038078232985, -0.03250613804550798, 1.05306651882783790],
-        'a98-rgb|display-p3'    => [1.15009441814101840, -0.15009441814101834, 0.0, 0.04641729862941844, 0.95358270137058150, 0.0, 0.02388759479083904, 0.02650477632633013, 0.94960762888283080],
-        'display-p3|rec2020'    => [0.75383303436172180, 0.19859736905261630, 0.04756959658566187, 0.04574384896535833, 0.94177721981169350, 0.01247893122294812, -0.00121034035451832, 0.01760171730108989, 0.98360862305342840],
-        'rec2020|display-p3'    => [1.34357825258433200, -0.28217967052613570, -0.06139858205819628, -0.06529745278911953, 1.07578791584857460, -0.01049046305945495, 0.00282178726170095, -0.01959849452449406, 1.01677670726279310],
-        'rec2020|a98-rgb'       => [1.15197839471591630, -0.09750305530240860, -0.05447533941350766, -0.12455047452159074, 1.13289989712596030, -0.00834942260436947, -0.02253038278105590, -0.04980650742838876, 1.07233689020944460],
-        'a98-rgb|rec2020'       => [0.87733384166365680, 0.07749370651571998, 0.04517245182062317, 0.09662259146620378, 0.89152732024418050, 0.01185008828961569, 0.02292106270284839, 0.04303668501067932, 0.93404225228647230],
-    ];
-
-    /**
-     * ProPhoto RGB (D50) linear → XYZ D50 matrix (Dart Sass, lib/src/value/color/conversions.dart)
-     *
-     * @var array{float, float, float, float, float, float, float, float, float}
-     */
-    private const PROPHOTO_TO_XYZ_D50_MATRIX = [
-        0.79776664490064230, 0.13518129740053308, 0.03134773412839220,
-        0.28807482881940130, 0.71183523424187300, 0.00008993693872564,
-        0.0,                 0.0,                 0.82510460251046020,
-    ];
-
-    private const PROPHOTO_TO_XYZ_D65_MATRIX = [
-        0.75559074229692100, 0.11271984265940525, 0.08214534209534540,
-        0.26832184357857190, 0.71511525666179120, 0.01656289975963685,
-        0.00391597276242580, -0.01293344283684181, 1.09807522083429450,
-    ];
-
-    private const A98_TO_XYZ_D65_MATRIX = [
-        0.57666904291013080, 0.18555823790654627, 0.18822864623499472,
-        0.29734497525053616, 0.62736356625546600, 0.07529145849399789,
-        0.02703136138641237, 0.07068885253582714, 0.99133753683763890,
-    ];
-
-    private const XYZ_D65_TO_PROPHOTO_MATRIX = [
-        1.40319046337749790, -0.22301514479051668, -0.10160668507413790,
-        -0.52623840216330720, 1.48163196292346440, 0.01701879027252688,
-        -0.01120226528622150, 0.01824640347962099, 0.91124722749150480,
-    ];
-
     public function __construct(
         private readonly ColorRuntime $runtime,
         private readonly ColorNodeConverter $converter,
@@ -1404,47 +1351,26 @@ final class ColorSpaceConverter
     /**
      * @return array{0: float, 1: float, 2: float}
      */
+    /**
+     * @return array{0: float, 1: float, 2: float}
+     */
     public function extractUnclampedHslChannels(FunctionNode $color): array
     {
-        $ap = $this->runtime->argumentParser;
-
-        /** @var array<int, AstNode> $expandedArgs */
-        $expandedArgs = $ap->expandSingleSpaceListArgument($color->arguments);
-
-        $hue = 0.0;
-        $sat = 0.0;
-        $lig = 0.0;
-
-        if (isset($expandedArgs[0]) && ! $ap->isMissingChannelNode($expandedArgs[0])) {
-            $node = $expandedArgs[0];
-            if ($node instanceof NumberNode) {
-                $hue = $this->runtime->spaceConverter->normalizeHue($ap->asNumber($node, 'to-space'));
-            }
-        }
-
-        if (isset($expandedArgs[1]) && ! $ap->isMissingChannelNode($expandedArgs[1])) {
-            $node = $expandedArgs[1];
-            if ($node instanceof NumberNode) {
-                $val = (float) $node->value;
-                $sat = strtolower($node->unit ?? '') === '%' ? $val / 100.0 : $val / 100.0;
-            }
-        }
-
-        if (isset($expandedArgs[2]) && ! $ap->isMissingChannelNode($expandedArgs[2])) {
-            $node = $expandedArgs[2];
-            if ($node instanceof NumberNode) {
-                $val = (float) $node->value;
-                $lig = strtolower($node->unit ?? '') === '%' ? $val / 100.0 : $val / 100.0;
-            }
-        }
-
-        return [$hue, $sat, $lig];
+        return $this->extractUnclampedHslLikeChannels($color);
     }
 
     /**
      * @return array{0: float, 1: float, 2: float}
      */
     public function extractUnclampedHwbChannels(FunctionNode $color): array
+    {
+        return $this->extractUnclampedHslLikeChannels($color);
+    }
+
+    /**
+     * @return array{0: float, 1: float, 2: float} hue normalized, other channels scaled to 0..1
+     */
+    private function extractUnclampedHslLikeChannels(FunctionNode $color): array
     {
         $ap = $this->runtime->argumentParser;
 
@@ -1465,16 +1391,14 @@ final class ColorSpaceConverter
         if (isset($expandedArgs[1]) && ! $ap->isMissingChannelNode($expandedArgs[1])) {
             $node = $expandedArgs[1];
             if ($node instanceof NumberNode) {
-                $val   = (float) $node->value;
-                $white = strtolower($node->unit ?? '') === '%' ? $val / 100.0 : $val / 100.0;
+                $white = ((float) $node->value) / 100.0;
             }
         }
 
         if (isset($expandedArgs[2]) && ! $ap->isMissingChannelNode($expandedArgs[2])) {
             $node = $expandedArgs[2];
             if ($node instanceof NumberNode) {
-                $val   = (float) $node->value;
-                $black = strtolower($node->unit ?? '') === '%' ? $val / 100.0 : $val / 100.0;
+                $black = ((float) $node->value) / 100.0;
             }
         }
 
@@ -1987,10 +1911,10 @@ final class ColorSpaceConverter
         if ($this->isRgbFamilySpace($space)) {
             [$r, $g, $b] = $this->extractUnclampedSrgbChannels($color);
 
-            $resultChannels = $this->convertRgbFamilyChannels(
+            $resultChannels = $this->dartMath->convertNumeric(
                 'srgb',
-                [$r / 255.0, $g / 255.0, $b / 255.0],
                 $space,
+                [$r / 255.0, $g / 255.0, $b / 255.0],
             );
 
             return $this->buildRgbFamilyOutput($space, $resultChannels, $alpha, [false, false, false]);
@@ -2009,16 +1933,36 @@ final class ColorSpaceConverter
         $sc = $this->runtime->spaceConverter;
 
         return match ($inputSpace) {
-            'a98-rgb'           => $this->a98ToXyzD65($channels[0], $channels[1], $channels[2]),
+            'a98-rgb'           => $this->convertedToXyz('a98-rgb', $channels),
             'rec2020'           => $sc->rec2020ToXyzD65($channels[0], $channels[1], $channels[2]),
             'display-p3'        => $sc->p3ToXyzD65($channels[0], $channels[1], $channels[2]),
             'display-p3-linear' => $sc->linP3ToXyzD65($channels[0], $channels[1], $channels[2]),
             'srgb-linear'       => $sc->linSrgbToXyzD65($channels[0], $channels[1], $channels[2]),
-            'prophoto-rgb'      => $this->prophotoToXyzD65($channels[0], $channels[1], $channels[2]),
+            'prophoto-rgb'      => $this->convertedToXyz('prophoto-rgb', $channels),
             'xyz'               => new XyzColor(x: $channels[0], y: $channels[1], z: $channels[2]),
             'xyz-d50'           => $sc->xyzD50ToXyzD65(new XyzColor(x: $channels[0], y: $channels[1], z: $channels[2])),
             default             => $sc->srgbToXyzD65($channels[0], $channels[1], $channels[2]),
         };
+    }
+
+    /**
+     * @param array<int, float> $channels
+     */
+    private function convertedToXyz(string $from, array $channels): XyzColor
+    {
+        $converted = $this->dartMath->convertNumeric($from, 'xyz-d65', $channels);
+
+        return new XyzColor($converted[0], $converted[1], $converted[2]);
+    }
+
+    /**
+     * @param array<int, float> $channels
+     */
+    private function convertedToXyzD50(string $from, array $channels): XyzColor
+    {
+        $converted = $this->dartMath->convertNumeric($from, 'xyz-d50', $channels);
+
+        return new XyzColor($converted[0], $converted[1], $converted[2]);
     }
 
     private function convertGenericRgbFamilySpace(FunctionNode $color, string $inputSpace, string $targetSpace): AstNode
@@ -2040,7 +1984,7 @@ final class ColorSpaceConverter
             }
         }
 
-        $resultChannels = $this->convertRgbFamilyChannels($inputSpace, $numericValues, $targetSpace);
+        $resultChannels = $this->dartMath->convertNumeric($inputSpace, $targetSpace, $numericValues);
 
         return $this->buildRgbFamilyOutput($targetSpace, $resultChannels, $alpha, $noneChannels);
     }
@@ -2057,10 +2001,10 @@ final class ColorSpaceConverter
 
         [$r, $g, $b] = $legacyChannels;
 
-        $resultChannels = $this->convertRgbFamilyChannels(
+        $resultChannels = $this->dartMath->convertNumeric(
             'srgb',
-            [$r / 255.0, $g / 255.0, $b / 255.0],
             $targetSpace,
+            [$r / 255.0, $g / 255.0, $b / 255.0],
         );
 
         $noneChannels = [false, false, false];
@@ -2155,11 +2099,7 @@ final class ColorSpaceConverter
         }
 
         if ($inputSpace === 'prophoto-rgb') {
-            $linR = $this->runtime->spaceConverter->linProphoto($numericValues[0]);
-            $linG = $this->runtime->spaceConverter->linProphoto($numericValues[1]);
-            $linB = $this->runtime->spaceConverter->linProphoto($numericValues[2]);
-
-            $xyzD50 = $this->linearProphotoToXyzD50($linR, $linG, $linB);
+            $xyzD50 = $this->convertedToXyzD50('prophoto-rgb', $numericValues);
         } else {
             $xyzD65 = $this->forwardToXyzD65Unclamped($inputSpace, $numericValues);
             $xyzD50 = $this->runtime->spaceConverter->xyzD65ToXyzD50($xyzD65);
@@ -2235,7 +2175,11 @@ final class ColorSpaceConverter
             'display-p3'   => $sc->xyzD65ToP3Channels($xyz),
             'a98-rgb'      => $sc->xyzD65ToA98Channels($xyz),
             'rec2020'      => $sc->xyzD65ToRec2020Channels($xyz),
-            'prophoto-rgb' => $this->xyzD65ToProphotoChannels($xyz),
+            'prophoto-rgb' => $this->dartMath->convertNumeric('xyz-d65', 'prophoto-rgb', [
+                $xyz->x ?? 0.0,
+                $xyz->y ?? 0.0,
+                $xyz->z ?? 0.0,
+            ]),
             default        => $sc->xyzD65ToSrgbChannels($xyz),
         };
 
@@ -2284,11 +2228,7 @@ final class ColorSpaceConverter
             }
 
             if ($inputSpace === 'prophoto-rgb') {
-                $linR = $this->runtime->spaceConverter->linProphoto($numericValues[0]);
-                $linG = $this->runtime->spaceConverter->linProphoto($numericValues[1]);
-                $linB = $this->runtime->spaceConverter->linProphoto($numericValues[2]);
-
-                $xyzD50 = $this->linearProphotoToXyzD50($linR, $linG, $linB);
+                $xyzD50 = $this->convertedToXyzD50('prophoto-rgb', $numericValues);
             } else {
                 $xyzD65 = $this->forwardToXyzD65Unclamped($inputSpace, $numericValues);
                 $xyzD50 = $this->runtime->spaceConverter->xyzD65ToXyzD50($xyzD65);
@@ -2365,55 +2305,6 @@ final class ColorSpaceConverter
         ], $alpha);
     }
 
-    private function prophotoToXyzD65(float $red, float $green, float $blue): XyzColor
-    {
-        $sc = $this->runtime->spaceConverter;
-
-        $linear = $this->multiplyMatrix(self::PROPHOTO_TO_XYZ_D65_MATRIX, [
-            $sc->linProphoto($red), $sc->linProphoto($green), $sc->linProphoto($blue),
-        ]);
-
-        return new XyzColor(x: $linear[0], y: $linear[1], z: $linear[2]);
-    }
-
-    private function a98ToXyzD65(float $red, float $green, float $blue): XyzColor
-    {
-        $sc = $this->runtime->spaceConverter;
-
-        $linear = $this->multiplyMatrix(self::A98_TO_XYZ_D65_MATRIX, [
-            $sc->linA98($red), $sc->linA98($green), $sc->linA98($blue),
-        ]);
-
-        return new XyzColor(x: $linear[0], y: $linear[1], z: $linear[2]);
-    }
-
-    /** @return array{0: float, 1: float, 2: float} */
-    private function xyzD65ToProphotoChannels(XyzColor $xyz): array
-    {
-        $sc = $this->runtime->spaceConverter;
-
-        $linear = $this->multiplyMatrix(self::XYZ_D65_TO_PROPHOTO_MATRIX, [
-            $xyz->x ?? 0.0,
-            $xyz->y ?? 0.0,
-            $xyz->z ?? 0.0,
-        ]);
-
-        return [$sc->gamProphoto($linear[0]), $sc->gamProphoto($linear[1]), $sc->gamProphoto($linear[2])];
-    }
-
-    /** @param array{float, float, float, float, float, float, float, float, float} $matrix
-     * @param array{0: float, 1: float, 2: float} $values
-     * @return array{0: float, 1: float, 2: float}
-     */
-    private function multiplyMatrix(array $matrix, array $values): array
-    {
-        return [
-            $matrix[0] * $values[0] + $matrix[1] * $values[1] + $matrix[2] * $values[2],
-            $matrix[3] * $values[0] + $matrix[4] * $values[1] + $matrix[5] * $values[2],
-            $matrix[6] * $values[0] + $matrix[7] * $values[1] + $matrix[8] * $values[2],
-        ];
-    }
-
     /**
      * @param array{0: float, 1: float, 2: float} $channels
      * @return array{0: float, 1: float, 2: float}
@@ -2429,75 +2320,9 @@ final class ColorSpaceConverter
         ];
     }
 
-    private function linearProphotoToXyzD50(float $linR, float $linG, float $linB): XyzColor
-    {
-        $m = self::PROPHOTO_TO_XYZ_D50_MATRIX;
-
-        return new XyzColor(
-            x: $m[0] * $linR + $m[1] * $linG + $m[2] * $linB,
-            y: $m[3] * $linR + $m[4] * $linG + $m[5] * $linB,
-            z: $m[8] * $linB,
-        );
-    }
-
-    /**
-     * @param array{0: float, 1: float, 2: float} $channels
-     * @return array{0: float, 1: float, 2: float}
-     */
-    private function convertRgbFamilyChannels(string $inputSpace, array $channels, string $targetSpace): array
-    {
-        $linearInput = [
-            $this->toLinearRgbFamilyChannel($inputSpace, $channels[0]),
-            $this->toLinearRgbFamilyChannel($inputSpace, $channels[1]),
-            $this->toLinearRgbFamilyChannel($inputSpace, $channels[2]),
-        ];
-
-        $m = self::RGB_FAMILY_LINEAR_MATRICES[$this->rgbFamilyMatrixKey($inputSpace, $targetSpace)];
-
-        return [
-            $this->fromLinearRgbFamilyChannel($targetSpace, $m[0] * $linearInput[0] + $m[1] * $linearInput[1] + $m[2] * $linearInput[2]),
-            $this->fromLinearRgbFamilyChannel($targetSpace, $m[3] * $linearInput[0] + $m[4] * $linearInput[1] + $m[5] * $linearInput[2]),
-            $this->fromLinearRgbFamilyChannel($targetSpace, $m[6] * $linearInput[0] + $m[7] * $linearInput[1] + $m[8] * $linearInput[2]),
-        ];
-    }
-
     private function isRgbFamilySpace(string $space): bool
     {
         return in_array($space, self::RGB_FAMILY_SPACES, true);
-    }
-
-    private function rgbFamilyMatrixKey(string $source, string $target): string
-    {
-        return $this->rgbFamilyBaseSpace($source) . '|' . $this->rgbFamilyBaseSpace($target);
-    }
-
-    private function rgbFamilyBaseSpace(string $space): string
-    {
-        return $space === 'srgb-linear' ? 'srgb' : ($space === 'display-p3-linear' ? 'display-p3' : $space);
-    }
-
-    private function toLinearRgbFamilyChannel(string $space, float $channel): float
-    {
-        $sc = $this->runtime->spaceConverter;
-
-        return match ($space) {
-            'srgb', 'display-p3' => $sc->linSrgb($channel),
-            'a98-rgb'            => $sc->linA98($channel),
-            'rec2020'            => $sc->linRec2020($channel),
-            default              => $channel,
-        };
-    }
-
-    private function fromLinearRgbFamilyChannel(string $space, float $channel): float
-    {
-        $sc = $this->runtime->spaceConverter;
-
-        return match ($space) {
-            'srgb', 'display-p3' => $sc->gamSrgb($channel),
-            'a98-rgb'            => $sc->gamA98($channel),
-            'rec2020'            => $sc->gamRec2020($channel),
-            default              => $channel,
-        };
     }
 
     /**
@@ -2520,37 +2345,21 @@ final class ColorSpaceConverter
         /** @var array<int, AstNode> $expandedArgs */
         $expandedArgs = $ap->expandSingleSpaceListArgument($color->arguments);
 
-        $r = 0.0;
-        $g = 0.0;
-        $b = 0.0;
+        $values = [];
 
-        if (isset($expandedArgs[0]) && ! $ap->isMissingChannelNode($expandedArgs[0])) {
-            $node = $expandedArgs[0];
-            if ($node instanceof NumberNode) {
+        foreach ([0, 1, 2] as $i) {
+            $node = $expandedArgs[$i] ?? null;
+
+            if ($node instanceof NumberNode && ! $ap->isMissingChannelNode($node)) {
                 $val = (float) $node->value;
-                $r   = strtolower($node->unit ?? '') === '%' ? $val * 255.0 / 100.0 : $val;
+
+                $values[$i] = strtolower($node->unit ?? '') === '%' ? $val * 255.0 / 100.0 : $val;
+            } else {
+                $values[$i] = 0.0;
             }
         }
 
-        if (isset($expandedArgs[1]) && ! $ap->isMissingChannelNode($expandedArgs[1])) {
-            $node = $expandedArgs[1];
-            if ($node instanceof NumberNode) {
-                $val = (float) $node->value;
-                $g   = strtolower($node->unit ?? '') === '%' ? $val * 255.0 / 100.0 : $val;
-            }
-        }
-
-        if (isset($expandedArgs[2]) && ! $ap->isMissingChannelNode($expandedArgs[2])) {
-            $node = $expandedArgs[2];
-            if ($node instanceof NumberNode) {
-                $val = (float) $node->value;
-                $b   = strtolower($node->unit ?? '') === '%' ? $val * 255.0 / 100.0 : $val;
-            }
-        }
-
-        $alpha = $this->converter->toAlpha($color);
-
-        return [$r, $g, $b, $alpha];
+        return [$values[0], $values[1], $values[2], $this->converter->toAlpha($color)];
     }
 
     /**
