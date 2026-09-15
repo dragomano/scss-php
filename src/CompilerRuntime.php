@@ -292,6 +292,7 @@ final class CompilerRuntime
                 },
             ),
             $this->createAstValueFormatter(),
+            new LoopIterator(),
         );
     }
 

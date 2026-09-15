@@ -157,8 +157,10 @@ final readonly class FlowControlNodeHandler
 
             $this->loopIterator->whileLoop(
                 fn(): bool => $this->evaluation->evaluateFunctionCondition($node->condition, $ctx->env, $node->line),
-                function () use ($node, $bodyCtx, &$output, &$first): void {
+                function () use ($node, $bodyCtx, &$output, &$first): bool {
                     $this->compileBody($node->body, $bodyCtx, $output, $first);
+
+                    return true;
                 },
             );
         } finally {

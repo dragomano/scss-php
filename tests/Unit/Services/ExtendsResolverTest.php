@@ -29,6 +29,7 @@ use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\EachLoopBinderInterface;
 use Bugo\SCSS\Services\ExtendsResolver;
 use Bugo\SCSS\Services\FunctionConditionEvaluatorInterface;
+use Bugo\SCSS\Services\LoopIterator;
 use Bugo\SCSS\Services\Text;
 use Bugo\SCSS\Services\VariableDeclarationApplierInterface;
 use Bugo\SCSS\Utils\SelectorTokenizer;
@@ -145,6 +146,7 @@ describe('ExtendsResolver', function () {
                         return ($this->format)($node, $env);
                     }
                 },
+                new LoopIterator(),
             );
         };
 
@@ -363,6 +365,7 @@ describe('ExtendsResolver', function () {
                     return $node instanceof StringNode ? $node->value : '';
                 }
             },
+            new LoopIterator(),
         );
 
         $resolver->collectExtends(
@@ -547,6 +550,113 @@ describe('ExtendsResolver', function () {
             ->and($result)->toContain('.c')
             ->and($result)->toContain('.d')
             ->and(substr_count($result, '.d'))->toBe(1);
+    });
+
+    it('collects extends from each and while loops nested inside rules', function () {
+        $env = new Environment();
+        $env->getCurrentScope()->setVariableLocal('__extend_directive_context', new StringNode(''));
+
+        $resolver = new ExtendsResolver(
+            $this->ctx,
+            new Text(
+                new class implements ParserInterface {
+                    public function setTrackSourceLocations(bool $track): void {}
+
+                    public function setPlainCss(bool $plainCss): void {}
+
+                    public function parse(string $source): RootNode
+                    {
+                        return new RootNode();
+                    }
+
+                    public function parseInlineExpression(string $expr): AstNode
+                    {
+                        return new StringNode($expr);
+                    }
+                },
+                new class implements AstValueEvaluatorInterface {
+                    public function evaluate(AstNode $node, Environment $env): AstNode
+                    {
+                        return new NumberNode(2);
+                    }
+                },
+                new class implements AstValueFormatterInterface {
+                    public function format(AstNode $node, Environment $env): string
+                    {
+                        return $node instanceof StringNode ? $node->value : '';
+                    }
+                },
+            ),
+            new SelectorTokenizer(),
+            new class implements AstValueEvaluatorInterface {
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return $node;
+                }
+            },
+            new class implements FunctionConditionEvaluatorInterface {
+                public function evaluate(string $condition, Environment $env, ?int $line = null): bool
+                {
+                    if ($condition === 'loop') {
+                        $ran = isset($GLOBALS['__loopRan']);
+
+                        $GLOBALS['__loopRan'] = true;
+
+                        return ! $ran;
+                    }
+
+                    return false;
+                }
+            },
+            new class implements VariableDeclarationApplierInterface {
+                public function apply(AstNode $node, Environment $env): bool
+                {
+                    return false;
+                }
+            },
+            new class implements EachLoopBinderInterface {
+                public function items(AstNode $iterableValue): array
+                {
+                    return [new NumberNode(1), new NumberNode(2)];
+                }
+
+                public function assign(array $variables, AstNode $item, Environment $env): void {}
+            },
+            new class implements AstValueFormatterInterface {
+                public function format(AstNode $node, Environment $env): string
+                {
+                    return $node instanceof StringNode ? $node->value : '';
+                }
+            },
+            new LoopIterator(),
+        );
+
+        $resolver->collectExtends(
+            new RuleNode('.looping', [
+                new ExtendNode('%target'),
+                new EachNode(['item'], new StringNode('items'), [
+                    new ExtendNode('%each-target'),
+                ]),
+                new ForNode('i', new NumberNode(1), new NumberNode(2), true, [
+                    new ExtendNode('%for-target'),
+                ]),
+                new WhileNode('loop', [
+                    new ExtendNode('%while-target'),
+                ]),
+            ]),
+            $env,
+        );
+
+        $targets = array_column($this->ctx->outputState->extends->pendingExtends, 'target');
+
+        expect($targets)->toBe([
+            '%target',
+            '%each-target',
+            '%each-target',
+            '%for-target',
+            '%for-target',
+            '%while-target',
+        ]);
     });
 
     it('collects extends from the matching if body or else body', function () {

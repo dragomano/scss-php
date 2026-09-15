@@ -40,7 +40,7 @@ final readonly class LoopIterator
 
     /**
      * @param callable(): bool $condition
-     * @param callable(): void $body
+     * @param callable(): bool $body Return false to stop iterating.
      */
     public function whileLoop(
         callable $condition,
@@ -53,7 +53,9 @@ final readonly class LoopIterator
                 throw new MaxIterationsExceededException('@while');
             }
 
-            $body();
+            if ($body() === false) {
+                break;
+            }
         }
     }
 }

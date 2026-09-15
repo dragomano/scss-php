@@ -6,7 +6,6 @@ namespace Bugo\SCSS\Services;
 
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
-use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
@@ -97,6 +96,7 @@ final readonly class ExtendsResolver
         private VariableDeclarationApplierInterface $variableDeclarationApplier,
         private EachLoopBinderInterface $eachLoopBinder,
         private AstValueFormatterInterface $valueFormatter,
+        private LoopIterator $loopIterator,
     ) {}
 
     public function collectExtends(AstNode $node, Environment $env): void
@@ -1283,7 +1283,7 @@ final readonly class ExtendsResolver
                 'matches',
                 'where',
                 'any',
-                'current',
+                'current'        => $innerNormalizedName === $normalizedName,
                 'nth-child',
                 'nth-last-child' => $innerPseudo['name'] === $name && $innerPseudo['argument'] === $pseudo['argument'],
                 'has',
@@ -2139,39 +2139,36 @@ final readonly class ExtendsResolver
         $from = (int) $this->toLoopNumber($node->from, $env);
         $to   = (int) $this->toLoopNumber($node->to, $env);
 
-        if (! $node->inclusive) {
-            $to += $from <= $to ? -1 : 1;
-        }
-
-        $step       = $from <= $to ? 1 : -1;
-        $iterations = 0;
-
         $env->enterScope();
 
-        for ($i = $from; $step > 0 ? $i <= $to : $i >= $to; $i += $step) {
-            $iterations++;
+        try {
+            $this->loopIterator->forLoop(
+                $from,
+                $to,
+                $node->inclusive,
+                function (int $i) use ($node, $env, $selector, $currentContext): bool {
+                    $env->getCurrentScope()->setVariable($node->variable, new NumberNode($i));
 
-            $this->assertIterationLimit($iterations, '@for');
+                    $this->collectChildren($node->body, $env, $selector, $currentContext, applyDeclarations: true);
 
-            $env->getCurrentScope()->setVariable($node->variable, new NumberNode($i));
-
-            $this->collectChildren($node->body, $env, $selector, $currentContext, applyDeclarations: true);
+                    return true;
+                },
+            );
+        } finally {
+            $env->exitScope();
         }
-
-        $env->exitScope();
     }
 
     private function collectWhileExtends(WhileNode $node, Environment $env, ?string $selector = null, string $currentContext = ''): void
     {
-        $iterations = 0;
+        $this->loopIterator->whileLoop(
+            fn(): bool => $this->conditionEvaluator->evaluate($node->condition, $env),
+            function () use ($node, $env, $selector, $currentContext): bool {
+                $this->collectChildren($node->body, $env, $selector, $currentContext, applyDeclarations: true);
 
-        while ($this->conditionEvaluator->evaluate($node->condition, $env)) {
-            $iterations++;
-
-            $this->assertIterationLimit($iterations, '@while');
-
-            $this->collectChildren($node->body, $env, $selector, $currentContext, applyDeclarations: true);
-        }
+                return true;
+            },
+        );
     }
 
     /**
@@ -2539,13 +2536,6 @@ final readonly class ExtendsResolver
         }
 
         return (float) $formatted;
-    }
-
-    private function assertIterationLimit(int $iterations, string $atRule): void
-    {
-        if ($iterations > 10000) {
-            throw new MaxIterationsExceededException($atRule);
-        }
     }
 
     private function getCurrentExtendDirectiveContext(Environment $env): string

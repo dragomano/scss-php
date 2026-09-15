@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Services;
 
 use Bugo\SCSS\Exceptions\FunctionReturnValueException;
-use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
@@ -211,21 +210,21 @@ final readonly class UserFunctionExecutor
             }
 
             if ($statement instanceof WhileNode) {
-                $iterations = 0;
-                $result     = null;
+                $result = null;
 
                 $env->enterScope();
 
                 try {
                     $env->getCurrentScope()->markAsFlowControlScope();
 
-                    while ($result === null && $this->condition->evaluate($statement->condition, $env)) {
-                        if (++$iterations > LoopIterator::MAX_ITERATIONS) {
-                            throw new MaxIterationsExceededException('@while');
-                        }
+                    $this->loopIterator->whileLoop(
+                        fn(): bool => $this->condition->evaluate($statement->condition, $env),
+                        function () use ($statement, $env, &$result): bool {
+                            $result = $this->runStatements($statement->body, $env);
 
-                        $result = $this->runStatements($statement->body, $env);
-                    }
+                            return $result === null;
+                        },
+                    );
                 } finally {
                     $env->exitScope();
                 }

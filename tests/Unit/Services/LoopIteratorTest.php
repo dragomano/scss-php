@@ -85,6 +85,8 @@ describe('LoopIterator', function () {
             function () use (&$counter, &$collected) {
                 $counter++;
                 $collected[] = $counter;
+
+                return true;
             },
         );
 
@@ -98,6 +100,8 @@ describe('LoopIterator', function () {
             fn() => false,
             function () use (&$executed) {
                 $executed = true;
+
+                return true;
             },
         );
 
@@ -113,6 +117,8 @@ describe('LoopIterator', function () {
             },
             function () use (&$counter) {
                 $counter++;
+
+                return true;
             },
         );
 
@@ -122,7 +128,7 @@ describe('LoopIterator', function () {
     it('throws after exceeding max iterations in while-loop', function () {
         $this->iterator->whileLoop(
             fn() => true,
-            function () {},
+            fn() => true,
         );
     })->throws(MaxIterationsExceededException::class);
 });
