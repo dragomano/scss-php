@@ -281,21 +281,13 @@ final class SelectorRuleOptimizer
 
     private function shouldKeepRedundantDeclaration(bool $collapseRedundantProperties, string $line): bool
     {
-        if (! $collapseRedundantProperties) {
-            return false;
-        }
-
         return $this->declarationHasVendorValue($line) || $this->declarationHasImportant($line);
     }
 
     private function declarationHasVendorValue(string $line): bool
     {
         $trimmed    = ltrim($line);
-        $colonIndex = strpos($trimmed, ':');
-
-        if ($colonIndex === false) {
-            return false;
-        }
+        $colonIndex = (int) strpos($trimmed, ':');
 
         $value = strtolower(trim(substr($trimmed, $colonIndex + 1, -1)));
 

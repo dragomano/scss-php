@@ -71,6 +71,33 @@ describe('SassListModule', function () {
         expect($result->value)->toBe(2);
     });
 
+    it('matches index values across compatible units', function () {
+        $result = $this->module->call('index', [new ListNode(
+            [new NumberNode(1, 'cm'), new NumberNode(9, 'px')],
+            'space',
+        ), new NumberNode(10, 'mm')], []);
+
+        expect($result->value)->toBe(1);
+    });
+
+    it('returns null when index needle has no unit', function () {
+        $result = $this->module->call('index', [
+            new ListNode([new NumberNode(1)], 'space'),
+            new NumberNode(1, 'px'),
+        ], []);
+
+        expect($result)->toBeInstanceOf(NullNode::class);
+    });
+
+    it('returns null when index units are incompatible', function () {
+        $result = $this->module->call('index', [
+            new ListNode([new NumberNode(1, 'px')], 'space'),
+            new NumberNode(1, 'em'),
+        ], []);
+
+        expect($result)->toBeInstanceOf(NullNode::class);
+    });
+
     it('evaluates is-bracketed', function () {
         $result = $this->module->call('is-bracketed', [new ListNode([new NumberNode(1)], 'space', true)], []);
 

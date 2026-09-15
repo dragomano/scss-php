@@ -521,15 +521,6 @@ final readonly class DartColorMath
         return $this->fuzzyEquals($number, round($number));
     }
 
-    public function trimPercent(float $value): string
-    {
-        $rounded = round($value, 10);
-        $text    = sprintf('%.10f', $rounded);
-        $text    = rtrim($text, '0');
-
-        return rtrim($text, '.');
-    }
-
     public function normalizeHue(float $hue, bool $invert = false): float
     {
         return $this->positiveModulo($this->positiveModulo($hue, 360.0) + 360.0 + ($invert ? 180.0 : 0.0), 360.0);

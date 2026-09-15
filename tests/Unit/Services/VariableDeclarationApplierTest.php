@@ -85,6 +85,38 @@ describe('VariableDeclarationApplier', function () {
             ->and($env->getGlobalScope()->hasVariable('theme-color'))->toBeFalse();
     });
 
+    it('writes global declarations through to the imported variable origin', function () {
+        $env         = new Environment();
+        $originScope = new Scope();
+
+        $env->getCurrentScope()->trackImportedVariable('imported', $originScope, 'original');
+
+        $applied = $this->applier->apply(
+            new VariableDeclarationNode('imported', new StringNode('slash'), true),
+            $env,
+        );
+
+        expect($applied)->toBeTrue()
+            ->and($originScope->getVariable('original'))->toBeInstanceOf(NumberNode::class)
+            ->and($env->getGlobalScope()->hasVariable('imported'))->toBeFalse();
+    });
+
+    it('writes local declarations through to the forwarded variable origin', function () {
+        $env         = new Environment();
+        $originScope = new Scope();
+
+        $env->getCurrentScope()->trackForwardedVariable('forwarded', $originScope, 'original');
+
+        $applied = $this->applier->apply(
+            new VariableDeclarationNode('forwarded', new StringNode('slash')),
+            $env,
+        );
+
+        expect($applied)->toBeTrue()
+            ->and($originScope->getVariable('original'))->toBeInstanceOf(NumberNode::class)
+            ->and($env->getCurrentScope()->hasVariable('forwarded'))->toBeFalse();
+    });
+
     it('delegates module variable declarations to the assigner', function () {
         $env  = new Environment();
         $node = new ModuleVarDeclarationNode('theme', 'accent', new StringNode('blue'));

@@ -294,6 +294,18 @@ describe('CompressedCssFormatter', function () {
             expect($this->formatter->format('.a{border-radius:10px 20px/5px 20px}'))->toBe('.a{border-radius:10px 20px/5px 20px}');
         });
 
+        it('does not collapse a value consisting of a standalone slash', function () {
+            expect($this->formatter->format('.a{margin: /}'))->toBe('.a{margin:/}');
+        });
+
+        it('leaves an identifier without a colon at declaration position untouched', function () {
+            expect($this->formatter->format('.a{margin}'))->toBe('.a{margin}');
+        });
+
+        it('collapses identical quoted string components containing escaped quotes', function () {
+            expect($this->formatter->format('.a{margin:"a\"b" "a\"b"}'))->toBe('.a{margin:"a\"b"}');
+        });
+
         it('ignores declaration-like text inside quoted strings', function () {
             $css = '.a{content:"margin:4px 4px";margin:4px 4px}';
 

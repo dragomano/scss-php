@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
+use Bugo\SCSS\Exceptions\SassArgumentException;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -74,5 +75,42 @@ describe('Compiler', function () {
         CSS;
 
         expect($this->compiler->compileString($source))->toEqualCss($expected);
+    });
+
+    it('rejects empty rgb component list', function () {
+        $scss = /** @lang text */ 'a { x: rgb(()); }';
+
+        expect(fn() => $this->compiler->compileString($scss))
+            ->toThrow(SassArgumentException::class, 'Color component list may not be empty.');
+    });
+
+    it('rejects comma-separated rgb component list', function () {
+        $scss = /** @lang text */ 'a { x: rgb((255, 0, 0)); }';
+
+        expect(fn() => $this->compiler->compileString($scss))
+            ->toThrow(SassArgumentException::class, 'Expected a space- or slash-separated list, was (255, 0, 0)');
+    });
+
+    it('rejects non-number rgb channel value', function () {
+        $scss = /** @lang text */ 'a { x: rgb(red 0 0); }';
+
+        expect(fn() => $this->compiler->compileString($scss))
+            ->toThrow(SassArgumentException::class, 'Expected red channel to be a number, was red.');
+    });
+
+    it('accepts slash inside the last hsl component', function () {
+        $scss = <<<'SCSS'
+        a { x: hsl(30deg 50% 50%/0.5); }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        a {
+          x: hsla(30, 50%, 50%, 0.5);
+        }
+        CSS;
+
+        $css = $this->compiler->compileString($scss);
+
+        expect($css)->toEqualCss($expected);
     });
 });

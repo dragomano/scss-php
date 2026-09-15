@@ -199,6 +199,67 @@ describe('Compiler', function () {
                 ->toThrow(SassErrorException::class, 'You may not @extend selectors across media queries.');
         });
 
+        it('throws when extending a rule declared outside media from an inner context', function () {
+            $source = <<<'SCSS'
+            .error {
+              border: 1px #f00;
+            }
+
+            @media print {
+              .note {
+                @extend .error;
+              }
+            }
+            SCSS;
+
+            expect(fn() => $this->compiler->compileString($source))
+                ->toThrow(SassErrorException::class, 'You may not @extend selectors across media queries.');
+        });
+
+        it('extends universal selector', function () {
+            $source = <<<'SCSS'
+            .m {
+              @extend *;
+            }
+
+            * {
+              color: red;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            *, .m {
+              color: red;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('extends namespaced universal selector', function () {
+            $source = <<<'SCSS'
+            .m {
+              @extend svg|*;
+            }
+
+            svg|* {
+              fill: blue;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            svg|*, .m {
+              fill: blue;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
         it('extends simple selectors inside pseudo-classes', function () {
             $source = <<<'SCSS'
             .error:hover {

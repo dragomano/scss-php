@@ -59,6 +59,17 @@ it('compresses css output when style is compressed', function () {
     expect($result)->toBe('.test{width:10px;opacity:0.7}');
 });
 
+it('keeps an unterminated source map comment when compressed', function () {
+    $options = new CompilerOptions(style: Style::COMPRESSED);
+    $source  = /** @lang text */ <<<'CSS'
+    .test { color: red; } /*# sourceMappingURL=a.css.map
+    CSS;
+
+    $result = $this->optimizer->optimize($source, $options);
+
+    expect($result)->toBe('.test{color:red}/*# sourceMappingURL=a.css.map');
+});
+
 it('removes spaces around multiplication in math expressions when compressed', function () {
     $options = new CompilerOptions(style: Style::COMPRESSED);
     $source  = /** @lang text */ <<<'SCSS'

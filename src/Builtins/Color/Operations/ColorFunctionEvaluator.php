@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Builtins\Color\Operations;
 
 use Bugo\Iris\Manipulators\LegacyManipulator;
-use Bugo\Iris\Spaces\OklchColor;
 use Bugo\Iris\Spaces\RgbColor;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
@@ -426,11 +425,6 @@ final readonly class ColorFunctionEvaluator
         }
 
         return $this->converter->serializeRgbResult(RgbChannelScale::toByte($invertedRgb));
-    }
-
-    public function extractNativeOrConvertedOklchColor(AstNode $color): OklchColor
-    {
-        return $this->converter->extractOklch($color, 'color');
     }
 
     /** @param array<int, AstNode> $positional */

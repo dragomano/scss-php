@@ -96,4 +96,15 @@ describe('SassColor', function () {
         expect($color->toCss())->toBe('rgba(255, 0, 0, 1)');
     });
 
+    it('returns five-digit hex with invalid characters as-is', function () {
+        $color = new SassColor('#zzzz');
+
+        expect($color->toCss())->toBe('#zzzz');
+    });
+
+    it('returns nine-digit hex with invalid characters as-is', function () {
+        $color = new SassColor('#zzzzzzzz');
+
+        expect($color->toCss())->toBe('#zzzzzzzz');
+    });
 });

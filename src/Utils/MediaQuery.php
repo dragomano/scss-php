@@ -444,13 +444,7 @@ final readonly class MediaQuery
             $start        = $point + $boundaryLength;
         }
 
-        $condition = trim(substr($text, $start));
-
-        if ($condition === '') {
-            return null;
-        }
-
-        $conditions[] = $condition;
+        $conditions[] = trim(substr($text, $start));
 
         return $conditions;
     }

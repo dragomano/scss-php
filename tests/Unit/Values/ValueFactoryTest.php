@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\NumberNode;
+use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Values\SassBoolean;
+use Bugo\SCSS\Values\SassMap;
 use Bugo\SCSS\Values\SassString;
 use Bugo\SCSS\Values\ValueFactory;
 
@@ -40,5 +45,21 @@ describe('ValueFactory', function () {
 
         expect($function->toCss())->toBe('get-function("lighten")')
             ->and($mixin->toCss())->toBe('get-mixin("button")');
+    });
+
+    it('converts map ast nodes to sass maps with recursive pair values', function () {
+        $node = new MapNode([
+            new MapPair(new StringNode('width'), new NumberNode(10, 'px')),
+            new MapPair(new StringNode('nested'), new MapNode([
+                new MapPair(new StringNode('color'), new StringNode('red')),
+            ])),
+        ]);
+
+        $value = $this->factory->fromAst($node);
+
+        expect($value)->toBeInstanceOf(SassMap::class);
+
+        /** @var SassMap $value */
+        expect($value->toCss())->toBe('(width: 10px, nested: (color: red))');
     });
 });

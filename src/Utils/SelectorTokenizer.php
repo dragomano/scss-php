@@ -390,11 +390,7 @@ final readonly class SelectorTokenizer
         }
 
         if ($result === []) {
-            if ($resolvedType !== '') {
-                return $resolvedType;
-            }
-
-            return '';
+            return $resolvedType;
         }
 
         return implode('', $result);
@@ -1392,10 +1388,6 @@ final readonly class SelectorTokenizer
                     $candidate[] = $suffixComponent;
                 }
 
-                if ($leading !== '' && ! isset($candidate[0]->lead)) {
-                    $candidate[0] = new SelectorComponent($candidate[0]->sel, $candidate[0]->comb, $leading);
-                }
-
                 $resolved[] = $this->complexComponentsToString($candidate);
             }
         }
@@ -1957,10 +1949,6 @@ final readonly class SelectorTokenizer
         }
 
         foreach ($woven as $index => $complex) {
-            if ($complex === []) {
-                continue;
-            }
-
             $first         = $complex[0];
             $woven[$index] = [
                 new SelectorComponent($first->sel, $first->comb, $lead),
@@ -2514,18 +2502,6 @@ final readonly class SelectorTokenizer
 
     private function unquoteIdentifierValue(string $value): string
     {
-        $length = strlen($value);
-
-        if ($length < 2) {
-            return $value;
-        }
-
-        $quote = $value[0];
-
-        if (($quote !== '"' && $quote !== "'") || $value[$length - 1] !== $quote) {
-            return $value;
-        }
-
         $inner = substr($value, 1, -1);
 
         if (! $this->isIdentifier($inner)) {
@@ -2580,6 +2556,8 @@ final readonly class SelectorTokenizer
                 $escape = $this->readEscapeSequence($input, $index);
 
                 if ($escape === null) {
+                    $index++;
+
                     break;
                 }
 
@@ -2739,10 +2717,6 @@ final readonly class SelectorTokenizer
             }
         }
 
-        if ($extenderSubject === '') {
-            return [];
-        }
-
         $extenders        = $allExtenders ?? [$extender];
         $results          = [];
         $hasPseudoChanges = false;
@@ -2882,6 +2856,8 @@ final readonly class SelectorTokenizer
         $variants       = [];
 
         foreach ($compoundTokens as $tokenIndex => $token) {
+            $modifiedCompounds = [];
+
             $pseudo = $this->parsePseudoToken($token);
 
             if ($pseudo === null || $pseudo['selector'] === null) {
@@ -2912,8 +2888,6 @@ final readonly class SelectorTokenizer
                 $tokensCopy           = $compoundTokens;
                 $tokensCopy[$tokenIndex] = $replacement;
                 $modifiedCompounds    = [implode('', $tokensCopy)];
-            } else {
-                continue;
             }
 
             foreach ($modifiedCompounds as $modifiedCompound) {
@@ -3023,9 +2997,7 @@ final readonly class SelectorTokenizer
         foreach ($argComplexes as $complex) {
             if ($this->isFamilySinglePseudoComplex($complex, self::FLATTENABLE_PSEUDO_BASE_NAMES)) {
                 $nestedPseudo = $this->parsePseudoToken($this->tokenizeCompound($complex[0]->sel)[0]);
-                $inner = $nestedPseudo !== null && $nestedPseudo['selector'] !== null
-                    ? $this->parseSelectorList($nestedPseudo['selector'])
-                    : [];
+                $inner        = $this->parseSelectorList($nestedPseudo['selector'] ?? '');
 
                 if ($inner !== [] && $this->anyComplexMatchesTarget($inner, $targetTokenSets)) {
                     foreach ([...$inner, ...$inserted] as $piece) {
@@ -3269,10 +3241,6 @@ final readonly class SelectorTokenizer
      */
     private function complexMatchesAnyTarget(array $components, array $targetTokenSets): bool
     {
-        if ($targetTokenSets === []) {
-            return false;
-        }
-
         foreach ($components as $component) {
             foreach ($targetTokenSets as $tokens) {
                 if ($this->removeTokensFromCompound($component->sel, $tokens) !== null) {
@@ -3703,14 +3671,6 @@ final readonly class SelectorTokenizer
         $required  = $this->parseTypeToken($requiredType);
 
         if ($required['element'] === '*') {
-            if ($required['namespace'] === '*') {
-                return true;
-            }
-
-            if ($required['namespace'] === null) {
-                return $candidate['namespace'] === null;
-            }
-
             return $required['namespace'] === $candidate['namespace'];
         }
 
@@ -3900,10 +3860,6 @@ final readonly class SelectorTokenizer
             }
         }
 
-        if ($group !== []) {
-            $groups[] = $group;
-        }
-
         return $groups;
     }
 
@@ -4013,10 +3969,6 @@ final readonly class SelectorTokenizer
      */
     private function complexIsSuperselector(array $complex1, array $complex2, bool $strictSemantics = false): bool
     {
-        if ($complex1 === [] || $complex2 === []) {
-            return false;
-        }
-
         if ($complex1[count($complex1) - 1]->comb !== '') {
             return false;
         }
@@ -4033,10 +3985,6 @@ final readonly class SelectorTokenizer
         while (true) {
             $remaining1 = count($complex1) - $i1;
             $remaining2 = count($complex2) - $i2;
-
-            if ($remaining1 === 0 || $remaining2 === 0) {
-                return false;
-            }
 
             if ($remaining1 > $remaining2) {
                 return false;
@@ -4240,13 +4188,7 @@ final readonly class SelectorTokenizer
             return [new SelectorComponent($unified, $comb)];
         }
 
-        $woven = $this->weave([$group1, $group2]);
-
-        if (count($woven) !== 1) {
-            return null;
-        }
-
-        return $woven[0];
+        return $this->weave([$group1, $group2])[0] ?? null;
     }
 
     private function readNamespacedType(string $compound, int &$index, string $prefix): string
@@ -4477,10 +4419,6 @@ final readonly class SelectorTokenizer
         }
 
         foreach ($this->parseSelectorList($specificPseudo['selector']) as $complex) {
-            if ($complex === []) {
-                return false;
-            }
-
             $lastSelector = $complex[count($complex) - 1]->sel;
             $covered      = false;
 
@@ -4507,14 +4445,10 @@ final readonly class SelectorTokenizer
      */
     private function selectorPseudoIsSuperselector(string $generalToken, array $specificTokens, array $parents): bool
     {
+        /** @var array{name: string, argument: string, selector: ?string, isElement: bool} $generalPseudo */
         $generalPseudo = $this->parsePseudoToken($generalToken);
-
-        if ($generalPseudo === null) {
-            return false;
-        }
-
-        $rawName     = $generalPseudo['name'];
-        $loweredName = strtolower($rawName);
+        $rawName       = $generalPseudo['name'];
+        $loweredName   = strtolower($rawName);
 
         if ($loweredName !== '' && $loweredName[0] === '-') {
             $secondDash = strpos($loweredName, '-', 1);
@@ -4560,17 +4494,6 @@ final readonly class SelectorTokenizer
                 $generalList = $this->parseSelectorList($generalText);
 
                 foreach ($this->selectorPseudoArgs($specificTokens, $rawName) as $specificList) {
-                    if ($this->listsAreSuperselectors($generalList, $specificList)) {
-                        return true;
-                    }
-                }
-
-                return false;
-
-            case 'slotted':
-                $generalList = $this->parseSelectorList($generalText);
-
-                foreach ($this->selectorPseudoArgs($specificTokens, $rawName, false) as $specificList) {
                     if ($this->listsAreSuperselectors($generalList, $specificList)) {
                         return true;
                     }
@@ -4642,11 +4565,8 @@ final readonly class SelectorTokenizer
                         continue;
                     }
 
+                    /** @var SelectorComponent $lastComponent */
                     $lastComponent = end($complex);
-
-                    if ($lastComponent === false) {
-                        continue;
-                    }
 
                     foreach ($this->tokenizeCompound($lastComponent->sel) as $lastToken) {
                         if (
@@ -4661,11 +4581,8 @@ final readonly class SelectorTokenizer
                         }
                     }
                 } elseif ($specificToken !== '' && $specificToken[0] === '#') {
+                    /** @var SelectorComponent $lastComponent */
                     $lastComponent = end($complex);
-
-                    if ($lastComponent === false) {
-                        continue;
-                    }
 
                     foreach ($this->tokenizeCompound($lastComponent->sel) as $lastToken) {
                         if ($lastToken[0] === '#' && $lastToken !== $specificToken) {
@@ -5102,10 +5019,6 @@ final readonly class SelectorTokenizer
 
     private function isTypeLikeToken(string $token): bool
     {
-        if ($token === '') {
-            return false;
-        }
-
         return ! in_array($token[0], ['.', '#', '%', ':', '['], true);
     }
 
@@ -5139,13 +5052,7 @@ final readonly class SelectorTokenizer
                 return null;
             }
 
-            $namespace = $this->parseTypeToken($simple)['namespace'];
-
-            if ($namespace === null || $namespace === '*') {
-                return $compound;
-            }
-
-            return [$simple, ...$compound];
+            return $compound;
         }
 
         if ($simplePseudo === null && $this->isTypeLikeToken($simple)) {
@@ -5228,10 +5135,6 @@ final readonly class SelectorTokenizer
                 : $this->isPseudoElementToken($token);
 
             if ($trigger && ! $addedThis) {
-                if ($simpleIsElement) {
-                    return null;
-                }
-
                 $result[]  = $simple;
                 $addedThis = true;
             }

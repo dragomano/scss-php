@@ -67,6 +67,10 @@ describe('StringEscapeDecoder', function () {
         it('does not decode escapes inside interpolation regions', function () {
             expect(StringEscapeDecoder::decodeLiteral('#{"\41"}'))->toBe('#{"\41"}');
         });
+
+        it('copies a bare hash verbatim', function () {
+            expect(StringEscapeDecoder::decodeLiteral('a#b'))->toBe('a#b');
+        });
     });
 
     describe('protectHashes()', function () {
@@ -117,6 +121,12 @@ describe('StringEscapeDecoder', function () {
         });
     });
 
+    describe('skipInterpolation()', function () {
+        it('treats a bare opening brace as nesting depth', function () {
+            expect(StringEscapeDecoder::skipInterpolation('#{ { } }', 1))->toBe(8);
+        });
+    });
+
     describe('encodeUnquotedContent()', function () {
         it('writes plain text verbatim', function () {
             expect(StringEscapeDecoder::encodeUnquotedContent('q\\w'))->toBe('q\\w');
@@ -151,6 +161,13 @@ describe('StringEscapeDecoder', function () {
 
         it('leaves non-private astral code points unescaped', function () {
             expect(StringEscapeDecoder::encodeUnquotedContent("\u{1F600}"))->toBe("\u{1F600}");
+        });
+
+        it('keeps malformed UTF-8 sequences verbatim', function () {
+            expect(StringEscapeDecoder::encodeUnquotedContent("\xF0"))->toBe("\xF0");
+            expect(StringEscapeDecoder::encodeUnquotedContent("\xE0"))->toBe("\xE0");
+            expect(StringEscapeDecoder::encodeUnquotedContent("\xC3"))->toBe("\xC3");
+            expect(StringEscapeDecoder::encodeUnquotedContent("\xF0\x9F"))->toBe("\xF0\x9F");
         });
 
         it('passes the protected hash through verbatim', function () {

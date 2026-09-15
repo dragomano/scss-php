@@ -7,14 +7,18 @@ use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
+use Bugo\SCSS\Nodes\MixinRefNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\ParserInterface;
+use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Runtime\Scope;
 use Tests\Support\RuntimeFactory;
 
 describe('Condition', function () {
@@ -251,5 +255,105 @@ describe('Condition', function () {
         expect($condition->evaluate('func(test)', $env))->toBeTrue()
             ->and($ctx->conditionCacheState->literalValue['func(test)'])->toBeInstanceOf(StringNode::class)
             ->and($ctx->conditionCacheState->literalValue['func(test)']->value)->toBe('func(test)');
+    });
+
+    it('falls back to raw color comparison when colors cannot be parsed', function () {
+        expect($this->condition->compare(
+            new ColorNode('not-a-color'),
+            '==',
+            new ColorNode('not-a-color'),
+            $this->env,
+        ))->toBeTrue()
+            ->and($this->condition->compare(
+                new ColorNode('not-a-color'),
+                '==',
+                new ColorNode('different'),
+                $this->env,
+            ))->toBeFalse();
+    });
+
+    it('returns false when function nodes have different names', function () {
+        expect($this->condition->compare(
+            new FunctionNode('rgb', [new NumberNode(1)]),
+            '==',
+            new FunctionNode('hsl', [new NumberNode(1)]),
+            $this->env,
+        ))->toBeFalse();
+    });
+
+    it('detects direct none channel arguments on function nodes', function () {
+        expect($this->condition->compare(
+            new FunctionNode('rgb', [new NumberNode(1), new StringNode('none'), new NumberNode(3)]),
+            '==',
+            new FunctionNode('rgb', [new NumberNode(1), new NumberNode(0), new NumberNode(3)]),
+            $this->env,
+        ))->toBeFalse();
+    });
+
+    it('treats powerless missing channels as insignificant during cross type equality', function () {
+        $hueNone = new FunctionNode('hsl', [new ListNode([
+            new NumberNode(120),
+            new StringNode('none'),
+            new NumberNode(0),
+        ], 'space')]);
+
+        $lightnessNone = new FunctionNode('hsl', [new ListNode([
+            new NumberNode(120),
+            new NumberNode(0),
+            new StringNode('none'),
+        ], 'space')]);
+
+        $nonChannelNone = new FunctionNode('hsl', [new ListNode([
+            new NumberNode(120),
+            new NumberNode(0),
+            new NumberNode(0),
+            new StringNode('none'),
+        ], 'space')]);
+
+        expect($this->condition->compare($hueNone, '==', new ColorNode('red'), $this->env))->toBeFalse()
+            ->and($this->condition->compare($lightnessNone, '==', new ColorNode('red'), $this->env))->toBeFalse()
+            ->and($this->condition->compare($nonChannelNone, '==', new ColorNode('red'), $this->env))->toBeFalse()
+            ->and($this->condition->compare(new FunctionNode('hwb', [new ListNode([
+                new StringNode('none'),
+                new NumberNode(60),
+                new NumberNode(40),
+            ], 'space')]), '==', new ColorNode('red'), $this->env))->toBeFalse()
+            ->and($this->condition->compare(new FunctionNode('hwb', [new ListNode([
+                new StringNode('none'),
+                new NumberNode(60),
+                new NumberNode(40),
+                new StringNode('none'),
+            ], 'space')]), '==', new ColorNode('red'), $this->env))->toBeFalse();
+    });
+
+    it('handles null channel values during missing channel checks', function () {
+        $hueNone = new FunctionNode('hsl', [new ListNode([
+            new StringNode('none'),
+            new StringNode('sat'),
+            new NumberNode(50),
+        ], 'comma')]);
+
+        expect($this->condition->compare($hueNone, '==', new ColorNode('red'), $this->env))->toBeFalse();
+    });
+
+    it('returns false when function or mixin references differ by lock state', function () {
+        $definition = new CallableDefinition([], [], new Scope(), 1);
+
+        expect($this->condition->compare(
+            new FunctionRefNode('a', lockedDefinition: $definition),
+            '==',
+            new FunctionRefNode('a'),
+            $this->env,
+        ))->toBeFalse()
+            ->and($this->condition->compare(
+                new MixinRefNode('a', $definition),
+                '==',
+                new MixinRefNode('a'),
+                $this->env,
+            ))->toBeFalse();
+    });
+
+    it('compares non numeric values with inclusive operators', function () {
+        expect($this->condition->compare(new StringNode('a'), '<=', new StringNode('b'), $this->env))->toBeTrue();
     });
 });

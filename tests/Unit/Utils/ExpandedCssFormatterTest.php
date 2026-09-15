@@ -85,6 +85,28 @@ describe('ExpandedCssFormatter', function () {
             expect($this->formatter->format($source))->toBe($source);
         });
 
+        it('flattens nested rules followed by trailing whitespace inside the body', function () {
+            $source = /** @lang text */ <<<'SCSS'
+            .a { .b { width: 1px; } }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .a .b { width: 1px; }
+            CSS;
+
+            expect($this->formatter->format($source))->toBe($expected);
+        });
+
+        it('does not flatten a nested rule whose selector contains a closing brace in a string', function () {
+            $source = /** @lang text */ <<<'SCSS'
+            .a {
+              .b[data-x="}"] { width: 1px; }
+            }
+            SCSS;
+
+            expect($this->formatter->format($source))->toBe($source);
+        });
+
         it('keeps a single newline between consecutive font-face rules', function () {
             $source = /** @lang text */ <<<'SCSS'
             @font-face { font-family: "A"; }

@@ -17,6 +17,7 @@ use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\States\LoadedModule;
+use Tests\Support\MemoryLoader;
 use Tests\Support\RuntimeFactory;
 
 describe('Module service', function () {
@@ -132,6 +133,30 @@ describe('Module service', function () {
             ->and($env->getGlobalScope()->getModule('theme'))->toBe($scope);
     });
 
+    it('handleUse() reuses forwarded module cache when no configuration is given', function () {
+        $env   = new Environment();
+        $scope = new Scope();
+
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
+        $this->state->forwardedModules['theme'] = ['scope' => $scope, 'css' => ''];
+
+        $this->module->handleUse(new UseNode('theme', 'theme'), $env);
+
+        expect($this->state->getByNamespace('theme')->scope)->toBe($scope)
+            ->and($env->getCurrentScope()->getModule('theme'))->toBe($scope)
+            ->and($this->state->emittedUseCss['/tmp/_theme.scss'])->toBeTrue();
+    });
+
+    it('handleUse() skips re-emitting wildcard module css that was already emitted', function () {
+        $env = new Environment();
+
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
+        $this->state->emittedUseCss['/tmp/_theme.scss'] = true;
+
+        expect($this->module->handleUse(new UseNode('theme', '*'), $env))->toBe('')
+            ->and($this->state->anonymousUseModules['/tmp/_theme.scss'])->toBeInstanceOf(LoadedModule::class);
+    });
+
     it('handleUse() throws for circular module dependencies', function () {
         $env = new Environment();
 
@@ -231,6 +256,37 @@ describe('Module service', function () {
 
         expect($to->hasFunction('keep-me'))->toBeTrue()
             ->and($to->hasFunction('skip-me'))->toBeFalse();
+    });
+
+    it('mergeScopeExports() skips already imported variables and mixins', function () {
+        $from = new Scope();
+        $to   = new Scope();
+
+        $from->setVariableLocal('imported-var', new StringNode('red'));
+        $from->markImportedMember('imported-var');
+
+        $from->defineMixin('imported-mixin', [], []);
+        $from->markImportedMember('imported-mixin');
+
+        $from->defineMixin('own-mixin', [], []);
+
+        $this->module->mergeScopeExports($from, $to);
+
+        expect($to->hasVariable('imported-var'))->toBeFalse()
+            ->and($to->hasMixin('imported-mixin'))->toBeFalse()
+            ->and($to->hasMixin('own-mixin'))->toBeTrue();
+    });
+
+    it('resolveModulePath() returns null for missing modules', function () {
+        $runtime = RuntimeFactory::createRuntime(loader: new MemoryLoader([]));
+
+        expect($runtime->module()->resolveModulePath('missing'))->toBeNull();
+    });
+
+    it('moduleCssInBranch() returns empty css for already compiling modules', function () {
+        $this->state->branchCompileFiles['/session']['/tmp/_theme.scss'] = true;
+
+        expect($this->module->moduleCssInBranch('/tmp/_theme.scss', '/session'))->toBe('');
     });
 
     it('mergeScopeExports() ignores empty forward members while exporting listed names', function () {

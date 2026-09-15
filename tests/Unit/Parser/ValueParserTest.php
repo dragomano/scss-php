@@ -29,16 +29,18 @@ describe('ValueParser', function () {
     beforeEach(function () {
         $this->parser = new Parser();
 
+        $this->inlineParser = new class implements InlineValueParserInterface {
+            public function parseInlineValue(string $expression): AstNode
+            {
+                return new StringNode($expression);
+            }
+        };
+
         $this->createValueParser = function (string $source): array {
             $stream = new TokenStream((new Tokenizer())->tokenize($source));
             $parser = new ValueParser(
                 $stream,
-                new class implements InlineValueParserInterface {
-                    public function parseInlineValue(string $expression): AstNode
-                    {
-                        return new StringNode($expression);
-                    }
-                },
+                $this->inlineParser,
             );
 
             return [$parser, $stream];
@@ -120,6 +122,15 @@ describe('ValueParser', function () {
 
             expect($value)->toBeInstanceOf(StringNode::class)
                 ->and($value->value)->toBe('#{foo}');
+        });
+
+        it('parses double hash interpolation as a string value', function () {
+            [$valueParser] = ($this->createValueParser)('##{foo}');
+
+            $value = $valueParser->parseSingleValue();
+
+            expect($value)->toBeInstanceOf(StringNode::class)
+                ->and($value->value)->toBe('##{foo}');
         });
 
         it('parses nested hash interpolation preserving inner braces', function () {
@@ -260,8 +271,37 @@ describe('ValueParser', function () {
                 ->and($value->separator)->toBe('comma')
                 ->and($value->items)->toBe([]);
         });
+
+        it('stops parsing a parenthesized value when the first entry is not parseable', function () {
+            [$valueParser] = ($this->createValueParser)('(@)');
+
+            $value = $valueParser->parseParenthesizedValue();
+
+            expect($value)->toBeInstanceOf(ListNode::class)
+                ->and($value->separator)->toBe('comma')
+                ->and($value->items)->toBe([]);
+        });
     });
 
+    describe('escaped units', function () {
+        it('decodes hex escape sequences in units', function (string $source, string $expectedUnit) {
+            [$valueParser] = ($this->createValueParser)($source);
+
+            $number = $valueParser->parseSingleValue();
+
+            expect($number)->toBeInstanceOf(NumberNode::class)
+                ->and($number->unit)->toBe($expectedUnit);
+        })->with([
+            ['5\px',         'px'],
+            ['5\\',          '\\'],
+            ['5\ab',         "\u{ab}"],
+            ['5\4e2d',       "\u{4e2d}"],
+            ['5\1f600',      "\u{1f600}"],
+            ['5' . '\\' . "\u{e9}",    "\u{e9}"],
+            ['5' . '\\' . "\u{4e2d}",  "\u{4e2d}"],
+            ['5' . '\\' . "\u{1f600}", "\u{1f600}"],
+        ]);
+    });
     describe('maps', function () {
         it('parses simple map', function () {
             $ast  = $this->parser->parse('$x: (key: value, other: thing);');
@@ -568,6 +608,30 @@ describe('ValueParser', function () {
 
             expect($decl)->toBeInstanceOf(DeclarationNode::class)
                 ->and($decl->property)->toBe('--shadow');
+        });
+
+        it('parses raw custom property value without any stop token', function () {
+            $tokenizer   = new Tokenizer();
+            $stream      = new TokenStream($tokenizer->tokenize('1 2 3'), '1 2 3');
+            $valueParser = new ValueParser($stream, $this->inlineParser);
+
+            expect($valueParser->parseCustomPropertyValue())->toBe('1 2 3');
+        });
+
+        it('collapses trailing whitespace of a custom property at the end of input', function () {
+            $tokenizer   = new Tokenizer();
+            $stream      = new TokenStream($tokenizer->tokenize('red   '), 'red   ');
+            $valueParser = new ValueParser($stream, $this->inlineParser);
+
+            expect($valueParser->parseCustomPropertyValue())->toBe('red');
+        });
+
+        it('collapses trailing whitespace of a custom property before a semicolon', function () {
+            $tokenizer   = new Tokenizer();
+            $stream      = new TokenStream($tokenizer->tokenize('red   ;'), 'red   ;');
+            $valueParser = new ValueParser($stream, $this->inlineParser);
+
+            expect($valueParser->parseCustomPropertyValue())->toBe('red ');
         });
     });
 });

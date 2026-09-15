@@ -207,11 +207,6 @@ final class ColorSpaceConverter
         );
     }
 
-    public function extractOklchColor(AstNode $color): OklchColor
-    {
-        return $this->converter->extractOklch($color, 'to-gamut');
-    }
-
     /**
      * @return array{0: float, 1: float, 2: float}
      */
@@ -491,60 +486,6 @@ final class ColorSpaceConverter
         }
 
         return $this->functionEvaluator?->serializeModifiedColor($color, $originalSpace, $working, $alpha) ?? $color;
-    }
-
-    /**
-     * @return array{0: float, 1: float, 2: float}
-     */
-    public function extractUnclampedHslChannels(FunctionNode $color): array
-    {
-        return $this->extractUnclampedHslLikeChannels($color);
-    }
-
-    /**
-     * @return array{0: float, 1: float, 2: float}
-     */
-    public function extractUnclampedHwbChannels(FunctionNode $color): array
-    {
-        return $this->extractUnclampedHslLikeChannels($color);
-    }
-
-    /**
-     * @return array{0: float, 1: float, 2: float} hue normalized, other channels scaled to 0..1
-     */
-    private function extractUnclampedHslLikeChannels(FunctionNode $color): array
-    {
-        $ap = $this->runtime->argumentParser;
-
-        /** @var array<int, AstNode> $expandedArgs */
-        $expandedArgs = $ap->expandSingleSpaceListArgument($color->arguments);
-
-        $hue   = 0.0;
-        $white = 0.0;
-        $black = 0.0;
-
-        if (isset($expandedArgs[0]) && ! $ap->isMissingChannelNode($expandedArgs[0])) {
-            $node = $expandedArgs[0];
-            if ($node instanceof NumberNode) {
-                $hue = $this->runtime->spaceConverter->normalizeHue($ap->asNumber($node, 'to-space'));
-            }
-        }
-
-        if (isset($expandedArgs[1]) && ! $ap->isMissingChannelNode($expandedArgs[1])) {
-            $node = $expandedArgs[1];
-            if ($node instanceof NumberNode) {
-                $white = ((float) $node->value) / 100.0;
-            }
-        }
-
-        if (isset($expandedArgs[2]) && ! $ap->isMissingChannelNode($expandedArgs[2])) {
-            $node = $expandedArgs[2];
-            if ($node instanceof NumberNode) {
-                $black = ((float) $node->value) / 100.0;
-            }
-        }
-
-        return [$hue, $white, $black];
     }
 
     /**
@@ -1874,6 +1815,7 @@ final class ColorSpaceConverter
 
         return $lightness < -self::LIGHTNESS_BOUNDARY_EPSILON || $lightness > 100.0 + self::LIGHTNESS_BOUNDARY_EPSILON;
     }
+
     private function convertToLch(AstNode $color): AstNode
     {
         $alpha   = $this->converter->toAlpha($color);

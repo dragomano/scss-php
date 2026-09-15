@@ -59,7 +59,7 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.php }}" = "8.5" ]; then
-            vendor/bin/pest --colors=always --coverage-clover build/logs/clover.xml
+            RUN_SASS_SPEC=1 vendor/bin/pest --colors=always --coverage-clover build/logs/clover.xml
           else
             vendor/bin/pest --colors=always
           fi

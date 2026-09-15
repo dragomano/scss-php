@@ -792,3 +792,66 @@ it('returns null when reparsed formatted declarations do not yield a declaration
         new Environment(),
     ))->toBeNull();
 });
+
+it('evaluates slash triples as division for non-compact declaration properties', function () {
+    $runtime    = RuntimeFactory::createRuntime();
+    $env        = new Environment();
+    $slashValue = new ListNode(
+        [new NumberNode(6, 'px'), new StringNode('/'), new NumberNode(2, 'px')],
+        '/',
+    );
+
+    $result = $runtime->evaluation()->evaluateDeclarationValue($slashValue, 'padding', $env);
+
+    expect($result)->toBeInstanceOf(NumberNode::class)
+        ->and($result->value)->toBe(3.0);
+});
+
+it('keeps the evaluated list when incompatible units are used in a slash mod expression', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+    $value   = new ListNode(
+        [new NumberNode(10, 's'), new StringNode('%', true), new NumberNode(2, 'px')],
+        'space',
+    );
+
+    $result = $runtime->evaluation()->evaluateValueWithSlashDivision($value, $env);
+
+    expect($result)->toBeInstanceOf(ListNode::class);
+});
+
+it('leaves multi slash chains with non numeric operands un-divided', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+
+    $env->getCurrentScope()->setVariable('x', new StringNode('red'));
+
+    $chain = new ListNode(
+        [
+            new VariableReferenceNode('x'),
+            new StringNode('/'),
+            new NumberNode(1),
+            new StringNode('/'),
+            new NumberNode(3),
+            new StringNode('/'),
+            new NumberNode(5),
+        ],
+        'space',
+    );
+
+    $result = $runtime->evaluation()->evaluateDeclarationValue($chain, 'flex', $env);
+
+    expect($result)->toBeInstanceOf(ListNode::class)
+        ->and($result->items[0])->toBeInstanceOf(StringNode::class)
+        ->and($result->items[0]->value)->toContain('red');
+});
+
+it('preserves hwb calls with non list arguments in formatting', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+
+    expect($runtime->evaluation()->format(
+        new FunctionNode('hwb', [new StringNode('red')]),
+        $env,
+    ))->toBe('hwb(red)');
+});

@@ -103,6 +103,21 @@ final readonly class ArithmeticEvaluator
         }
     }
 
+    public function applyDivision(NumberNode $left, NumberNode $right, bool $insideCalc = false): NumberNode
+    {
+        if ((float) $right->value === 0.0) {
+            if (! $insideCalc) {
+                throw new DivisionByZeroException();
+            }
+
+            return $this->applyDegenerateDivision($left, '/', $right);
+        }
+
+        [$unit, $conversionFactor] = UnitConverter::divideWithConversion($left->unit, $right->unit);
+
+        return new NumberNode((float) $left->value / (float) $right->value * $conversionFactor, $unit, false);
+    }
+
     public function applyOperator(NumberNode $left, string $operator, NumberNode $right, bool $insideCalc = false): AstNode
     {
         if ($operator === '+' || $operator === '-') {
@@ -127,7 +142,7 @@ final readonly class ArithmeticEvaluator
             return new NumberNode((float) $left->value * (float) $right->value * $conversionFactor, $unit, false);
         }
 
-        if ((float) $right->value === 0.0) {
+        if ($operator === '%' && (float) $right->value === 0.0) {
             if (! $insideCalc) {
                 throw new DivisionByZeroException();
             }
@@ -170,9 +185,7 @@ final readonly class ArithmeticEvaluator
             );
         }
 
-        [$unit, $conversionFactor] = UnitConverter::divideWithConversion($left->unit, $right->unit);
-
-        return new NumberNode((float) $left->value / (float) $right->value * $conversionFactor, $unit, false);
+        return $this->applyDivision($left, $right, $insideCalc);
     }
 
     /**
@@ -265,10 +278,6 @@ final readonly class ArithmeticEvaluator
     private function isSimpleSlashChain(array $items): bool
     {
         $count = count($items);
-
-        if ($count < 3 || $count % 2 === 0) {
-            return false;
-        }
 
         for ($i = 0; $i < $count; $i++) {
             $item = $items[$i];

@@ -753,35 +753,10 @@ final readonly class CalculationEvaluator
         }
 
         if ($parentSeparator === 'space' && $item instanceof ListNode) {
-            if ($this->isSlashTriple($item)) {
-                return $this->formatSlashTriple($item, $env);
-            }
-
             return $this->formatListValue($item->items, $item->separator, false, $env);
         }
 
         return $this->valueFormatter->format($item, $env);
-    }
-
-    private function isSlashTriple(ListNode $node): bool
-    {
-        if ($node->separator !== 'space' || count($node->items) !== 3) {
-            return false;
-        }
-
-        [$first, $mid, $last] = $node->items;
-
-        return $first instanceof NumberNode
-            && $mid instanceof StringNode
-            && $mid->value === '/'
-            && $last instanceof NumberNode;
-    }
-
-    private function formatSlashTriple(ListNode $node, Environment $env): string
-    {
-        return $this->valueFormatter->format($node->items[0], $env)
-            . '/'
-            . $this->valueFormatter->format($node->items[2], $env);
     }
 
     /**
@@ -808,10 +783,8 @@ final readonly class CalculationEvaluator
             $stepIndex = count($arguments) === 2 ? 1 : null;
         }
 
-        if (! isset($arguments[$numberIndex]) || ! ($arguments[$numberIndex] instanceof NumberNode)) {
-            $resolvedNumber = isset($arguments[$numberIndex])
-                ? $this->resolveConstant($arguments[$numberIndex])
-                : null;
+        if (! ($arguments[$numberIndex] instanceof NumberNode)) {
+            $resolvedNumber = $this->resolveConstant($arguments[$numberIndex]);
 
             if ($resolvedNumber === null) {
                 return null;

@@ -33,4 +33,17 @@ describe('NameHelper()', function () {
         expect(NameHelper::hasNamespace('math.round'))->toBeTrue()
             ->and(NameHelper::hasNamespace('math'))->toBeFalse();
     });
+
+    it('detects special css function names', function () {
+        expect(NameHelper::isSpecialCssFunctionName('element'))->toBeTrue()
+            ->and(NameHelper::isSpecialCssFunctionName('expression'))->toBeTrue()
+            ->and(NameHelper::isSpecialCssFunctionName('type'))->toBeTrue()
+            ->and(NameHelper::isSpecialCssFunctionName('ELEMENT'))->toBeTrue()
+            ->and(NameHelper::isSpecialCssFunctionName('calc'))->toBeFalse()
+            ->and(NameHelper::isSpecialCssFunctionName('-x-calc'))->toBeTrue()
+            ->and(NameHelper::isSpecialCssFunctionName('-x-element'))->toBeTrue()
+            ->and(NameHelper::isSpecialCssFunctionName('-x-expression'))->toBeTrue()
+            ->and(NameHelper::isSpecialCssFunctionName('-x-unknown'))->toBeFalse()
+            ->and(NameHelper::isSpecialCssFunctionName('-calc'))->toBeFalse();
+    });
 })->covers(NameHelper::class);

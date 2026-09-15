@@ -45,13 +45,7 @@ final class NameHelper
         $name = strtolower($name);
 
         if (str_starts_with($name, '-') && substr_count($name, '-') >= 2) {
-            $pos = strrpos($name, '-');
-
-            if ($pos === false) {
-                return false;
-            }
-
-            $tail = substr($name, $pos + 1);
+            $tail = substr($name, (int) strrpos($name, '-') + 1);
 
             return in_array($tail, ['calc', 'element', 'expression'], true);
         }

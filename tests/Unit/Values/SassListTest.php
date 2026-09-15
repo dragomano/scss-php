@@ -52,4 +52,10 @@ describe(SassList::class, function () {
 
         expect($list->toCss())->toBe('10px 20px');
     });
+
+    it('drops separator between interpolation block and hyphenated fragment', function () {
+        $list = new SassList(['.#{foo}', '-bar'], 'space');
+
+        expect($list->toCss())->toBe('.#{foo}-bar');
+    });
 });

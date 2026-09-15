@@ -502,4 +502,15 @@ describe('CssArgumentEvaluator', function () {
     it('returns null for empty named colors', function () {
         expect($this->evaluator->resolveNamedColorHex(''))->toBeNull();
     });
+
+    it('does not treat comma separated triples as slash chains', function () {
+        $env = new Environment();
+        $env->getCurrentScope()->setVariable('x', new StringNode('resolved'));
+
+        $list   = new ListNode([new NumberNode(1, 'px'), new StringNode('/'), new NumberNode(2, 'px')], 'comma');
+        $result = $this->evaluator->expandCssCallArguments([$list], $env);
+
+        expect($result[0])->toBeInstanceOf(ListNode::class)
+            ->and($result[0]->separator)->toBe('comma');
+    });
 });

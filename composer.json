@@ -59,7 +59,10 @@
     "psalm": "vendor/bin/psalm --stats --no-cache",
     "benchmark": "php benchmark.php 6",
     "test": "vendor/bin/pest --colors=always --display-warnings",
-    "test-coverage": "vendor/bin/pest -d memory_limit=1G --colors=always --coverage --min=100",
+    "test-coverage": [
+      "@putenv RUN_SASS_SPEC=1",
+      "vendor/bin/pest -d memory_limit=2G --colors=always --coverage --min=100"
+    ],
     "test-coverage-clover": "vendor/bin/pest --colors=always --min=100 --coverage-clover coverage.xml",
     "test-coverage-html": "vendor/bin/pest --colors=always --min=100 --coverage-html coverage",
     "test-mutate": "vendor/bin/pest --colors=always --mutate --clear-cache -d memory_limit=1G --path=src/Utils/UnitConverter.php tests/Unit/Utils/UnitConverterTest.php",

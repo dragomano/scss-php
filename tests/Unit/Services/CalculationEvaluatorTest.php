@@ -244,4 +244,76 @@ describe('CalculationEvaluator', function () {
             $this->env,
         ))->toBe('calc(var(--c) + infinity * 1%)');
     });
+
+    it('wraps nested calc lists with grouping markers in parentheses', function () {
+        $evaluator = createCalculationEvaluator();
+
+        $nested = new FunctionNode('calc', [
+            new ListNode([new NumberNode(1), new StringNode('+'), new NumberNode(2)], 'space'),
+        ]);
+
+        $argument = new ListNode([$nested], 'space');
+
+        expect($evaluator->formatCalculationFunction(
+            new FunctionNode('calc', [$argument]),
+            $this->env,
+        ))->toBe('calc((1 + 2))');
+    });
+
+    it('keeps parentheses around operator-free calc sub lists', function () {
+        $evaluator = createCalculationEvaluator();
+
+        $argument = new ListNode([
+            new ListNode([new NumberNode(1), new NumberNode(2)], 'space', false, 1),
+            new StringNode('+'),
+            new NumberNode(3),
+        ], 'space');
+
+        expect($evaluator->formatCalculationFunction(
+            new FunctionNode('calc', [$argument]),
+            $this->env,
+        ))->toBe('calc((1 2) + 3)');
+    });
+
+    it('strips redundant parentheses from calc sub lists without adjacent operators', function () {
+        $evaluator = createCalculationEvaluator();
+
+        $argument = new ListNode([
+            new ListNode([
+                new NumberNode(1),
+                new StringNode('+'),
+                new NumberNode(2),
+            ], 'space', false, 1),
+            new NumberNode(3),
+        ], 'space');
+
+        expect($evaluator->formatCalculationFunction(
+            new FunctionNode('calc', [$argument]),
+            $this->env,
+        ))->toBe('calc(1 + 2 3)');
+    });
+
+    it('simplifies round not-a-number values without step', function () {
+        $evaluator = createCalculationEvaluator();
+
+        $result = $evaluator->simplifyFunction('round', [new NumberNode(NAN)], $this->env);
+
+        expect($result)->toBeInstanceOf(NumberNode::class);
+
+        /** @var NumberNode $result */
+        expect($result->value)->toBeNan()->and($result->unit)->toBeNull();
+    });
+
+    it('rejects modulo arguments with mismatched unit presence', function () {
+        $evaluator = createCalculationEvaluator();
+
+        expect($evaluator->simplifyFunction('mod', [
+            new NumberNode(1),
+            new NumberNode(2, 'px'),
+        ], $this->env))->toBeNull()
+            ->and($evaluator->simplifyFunction('rem', [
+                new NumberNode(1, 'px'),
+                new NumberNode(2),
+            ], $this->env))->toBeNull();
+    });
 });

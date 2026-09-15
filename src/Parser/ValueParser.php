@@ -208,8 +208,6 @@ final readonly class ValueParser implements
             if ($identifier instanceof FunctionNode) {
                 return new FunctionNode('+' . $identifier->name, $identifier->arguments, $identifier->line);
             }
-
-            return new StringNode('+', false, 0, 0);
         }
 
         $interpolatedIdentifier = $this->tryParseInterpolatedIdentifierString();

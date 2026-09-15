@@ -290,18 +290,6 @@ final readonly class ColorNodeConverter
         return false;
     }
 
-    public function readNativeOklch(FunctionNode $color): OklchColor
-    {
-        $channels = $this->extractChannelNodes($color);
-
-        return new OklchColor(
-            l: $this->runtime->argumentParser->asPercentage($channels[0] ?? null, 'color'),
-            c: $this->runtime->argumentParser->asNumber($channels[1] ?? null, 'color'),
-            h: $this->runtime->argumentParser->asNumber($channels[2] ?? null, 'color'),
-            a: 1.0,
-        );
-    }
-
     public function readNativeLab(FunctionNode $color): LabColor
     {
         $channels = $this->extractChannelNodes($color);
@@ -312,47 +300,6 @@ final readonly class ColorNodeConverter
             b: $this->runtime->argumentParser->asNumber($channels[2] ?? null, 'color'),
             alpha: 1.0,
         );
-    }
-
-    /**
-     * @return array{l: float|null, c: float|null, h: float|null, a: float}
-     */
-    public function readNativeOklchChannels(FunctionNode $color): array
-    {
-        [$channels, $alpha] = $this->extractRawChannels($color);
-
-        $lMissing = $this->isMissing($channels[0] ?? null);
-        $cMissing = $this->isMissing($channels[1] ?? null);
-        $hMissing = $this->isMissing($channels[2] ?? null);
-
-        return [
-            'l' => $lMissing ? null : $this->parseLightness($channels[0] ?? null, 'color'),
-            'c' => $cMissing ? null : $this->parseChroma($channels[1] ?? null, 'color'),
-            'h' => $hMissing ? null : $this->parseHue($channels[2] ?? null, 'color'),
-            'a' => $this->parseAlpha($alpha, 'color'),
-        ];
-    }
-
-    public function createOklchFromRgb(RgbColor $rgb): OklchColor
-    {
-        $oklch = $this->runtime->spaceConverter->rgbToOklch(RgbChannelScale::toNormalized($rgb));
-
-        return new OklchColor(l: $oklch->l, c: $oklch->c, h: $oklch->h, a: $rgb->a);
-    }
-
-    public function createBaseOklchColor(AstNode $color): OklchColor
-    {
-        if ($this->isNativeSpace($color, 'oklch')) {
-            /** @var FunctionNode $color */
-            return $this->readNativeOklch($color);
-        }
-
-        return $this->createOklchFromRgb($this->toRgb($color));
-    }
-
-    public function convertLabToRgb(LabColor $lab): RgbColor
-    {
-        return $this->runtime->spaceConverter->labToRgb($lab);
     }
 
     /**
@@ -373,11 +320,6 @@ final readonly class ColorNodeConverter
             $this->runtime->argumentParser->asNumber($channels[2] ?? null, 'color'),
             $this->runtime->argumentParser->asNumber($channels[3] ?? null, 'color'),
         ];
-    }
-
-    public function isNativeSpace(AstNode $color, string $space): bool
-    {
-        return $color instanceof FunctionNode && strtolower($color->name) === $space;
     }
 
     public function extractOklch(AstNode $color, string $context): OklchColor
@@ -630,16 +572,6 @@ final readonly class ColorNodeConverter
         ], $alpha);
     }
 
-    public function serializeAsSrgbString(float $r, float $g, float $b, float $alpha = 1.0): FunctionNode
-    {
-        return $this->buildFunctionalColorNode('color', [
-            new StringNode('srgb'),
-            new NumberNode($r),
-            new NumberNode($g),
-            new NumberNode($b),
-        ], $alpha);
-    }
-
     public function buildHslFunctionNode(
         float $hue,
         float $saturation,
@@ -686,42 +618,6 @@ final readonly class ColorNodeConverter
         }
 
         return new FunctionNode('hsl', $arguments);
-    }
-
-    public function serializeAsUnclampedHwb(float $r, float $g, float $b, float $alpha): FunctionNode
-    {
-        $max = max($r, $g, $b);
-        $min = min($r, $g, $b);
-
-        $h = $this->runtime->spaceConverter->hueFromNormalizedRgb(
-            new NormalizedRgbChannels(
-                r: $r / 255.0,
-                g: $g / 255.0,
-                b: $b / 255.0,
-                a: 1.0,
-                max: $max / 255.0,
-                min: $min / 255.0,
-                delta: ($max - $min) / 255.0,
-            ),
-        );
-
-        $h = $this->runtime->spaceConverter->normalizeHue($h);
-
-        $precision = 10;
-        $arguments = [
-            new NumberNode((float) $this->runtime->spaceConverter->trimFloat($h, $precision)),
-            new NumberNode((float) $this->runtime->spaceConverter->trimFloat($min * 100.0 / 255.0, $precision), '%'),
-            new NumberNode((float) $this->runtime->spaceConverter->trimFloat((255.0 - $max) * 100.0 / 255.0, $precision), '%'),
-        ];
-
-        if (abs($alpha - 1.0) >= 0.000001) {
-            return new FunctionNode(
-                'hwb',
-                [$arguments[0], $arguments[1], $arguments[2], $this->buildAlphaNode($alpha)],
-            );
-        }
-
-        return new FunctionNode('hwb', $arguments);
     }
 
     public function buildRgbFunctionNode(float $red, float $green, float $blue, float $alpha): FunctionNode
@@ -819,11 +715,6 @@ final readonly class ColorNodeConverter
     public function extractRawChannelsPublic(FunctionNode $color): array
     {
         return $this->extractRawChannels($color);
-    }
-
-    public function isMissingPublic(?AstNode $node): bool
-    {
-        return $this->isMissing($node);
     }
 
     public function parseAlphaPublic(?AstNode $node, string $context): float

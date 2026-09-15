@@ -15,8 +15,6 @@ use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\ForNode;
-use Bugo\SCSS\Nodes\IfNode;
-use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
@@ -261,7 +259,7 @@ final readonly class Selector
         if ($node instanceof SupportsNode) {
             return new SupportsNode(
                 $node->condition,
-                $this->normalizeBubblingChildren($node->body, $selector, $attachParentSelector),
+                $this->normalizeBubblingChildren($node->body, $selector),
             );
         }
 
@@ -273,7 +271,7 @@ final readonly class Selector
             return new DirectiveNode(
                 $node->name,
                 $node->prelude,
-                $this->normalizeBubblingChildren($node->body, $selector, $attachParentSelector),
+                $this->normalizeBubblingChildren($node->body, $selector),
                 true,
             );
         }
@@ -813,15 +811,6 @@ final readonly class Selector
                     $nestedProperty['value'],
                 );
             } elseif ($child instanceof Visitable) {
-                if ($child instanceof IfNode || $child instanceof IncludeNode) {
-                    $ss = $env->getCurrentScope();
-                    if (! $ss->hasVariable('__parent_selector')) {
-                        $ss->setVariableLocal('__parent_selector', new StringNode(''));
-                    }
-
-                    $ss->setVariableLocal('__flow_control_declaration_guard', true);
-                }
-
                 $chunk = $this->compileNestedPropertyBlockChild($child, $env, $indent, $baseProperty);
             } else {
                 continue;
@@ -1088,7 +1077,7 @@ final readonly class Selector
      *
      * @return list<AstNode>
      */
-    private function normalizeBubblingChildren(array $children, string $selector, bool $attachParentSelector): array
+    private function normalizeBubblingChildren(array $children, string $selector): array
     {
         $result = [];
         $group  = [];
@@ -1106,7 +1095,7 @@ final readonly class Selector
                     $group = [];
                 }
 
-                $result[] = $this->normalizeBubblingChild($child, $selector, $attachParentSelector);
+                $result[] = $this->normalizeBubblingChild($child, $selector);
 
                 continue;
             }
@@ -1121,13 +1110,9 @@ final readonly class Selector
         return $result;
     }
 
-    private function normalizeBubblingChild(AstNode $child, string $selector, bool $attachParentSelector): AstNode
+    private function normalizeBubblingChild(AstNode $child, string $selector): AstNode
     {
         if ($child instanceof RuleNode) {
-            if (! $attachParentSelector) {
-                return $child;
-            }
-
             $resolvedSelector = str_contains($child->selector, '&')
                 ? SelectorHelper::resolveNested($child->selector, $selector)
                 : $this->combineNestedSelectorWithParent($child->selector, $selector);
@@ -1144,7 +1129,7 @@ final readonly class Selector
             return $this->normalizeBubblingNodeForSelector($child, $selector);
         }
 
-        return $child instanceof AtRootNode ? $child : new RuleNode($selector, [$child]);
+        return $child;
     }
 
     private function shouldAttachParentSelectorToBubbledBody(AstNode $node): bool

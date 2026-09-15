@@ -11,7 +11,8 @@ use Bugo\SCSS\Runtime\Scope;
 describe('Scope', function () {
     it('sets and gets a variable', function () {
         $scope = new Scope();
-        $node = new StringNode('red');
+        $node  = new StringNode('red');
+
         $scope->setVariable('color', $node);
 
         expect($scope->getVariable('color'))->toBe($node);
@@ -19,7 +20,8 @@ describe('Scope', function () {
 
     it('normalizes underscores to hyphens in variable names', function () {
         $scope = new Scope();
-        $node = new StringNode('value');
+        $node  = new StringNode('value');
+
         $scope->setVariable('my_var', $node);
 
         expect($scope->getVariable('my-var'))->toBe($node);
@@ -42,7 +44,9 @@ describe('Scope', function () {
 
     it('child scope inherits parent variables', function () {
         $parent = new Scope();
+
         $parent->setVariable('inherited', new StringNode('yes'));
+
         $child = new Scope($parent);
 
         expect($child->getVariable('inherited'))->toBeInstanceOf(StringNode::class);
@@ -56,24 +60,24 @@ describe('Scope', function () {
 
     it('getParent() returns parent scope', function () {
         $parent = new Scope();
-        $child = new Scope($parent);
+        $child  = new Scope($parent);
 
         expect($child->getParent())->toBe($parent);
     });
 
     it('getGlobalScope() returns root scope', function () {
         $root = new Scope();
-        $mid = new Scope($root);
+        $mid  = new Scope($root);
         $leaf = new Scope($mid);
 
         expect($leaf->getGlobalScope())->toBe($root);
     });
 
     it('global flag sets variable in root scope', function () {
-        $root = new Scope();
+        $root  = new Scope();
         $child = new Scope($root);
+        $node  = new StringNode('global-value');
 
-        $node = new StringNode('global-value');
         $child->setVariable('gvar', $node, global: true);
 
         expect($root->getVariable('gvar'))->toBe($node);
@@ -81,7 +85,7 @@ describe('Scope', function () {
 
     it('local assignment does not leak to parent', function () {
         $parent = new Scope();
-        $child = new Scope($parent);
+        $child  = new Scope($parent);
 
         $child->setVariable('local', new StringNode('child-only'));
 
@@ -89,8 +93,9 @@ describe('Scope', function () {
     });
 
     it('default flag skips assignment when variable already exists', function () {
-        $scope = new Scope();
+        $scope    = new Scope();
         $original = new StringNode('original');
+
         $scope->setVariable('x', $original);
 
         $scope->setVariable('x', new StringNode('new'), default: true);
@@ -100,15 +105,17 @@ describe('Scope', function () {
 
     it('setVariableLocal stores in current scope', function () {
         $scope = new Scope();
-        $node = new StringNode('local');
+        $node  = new StringNode('local');
+
         $scope->setVariableLocal('v', $node);
 
         expect($scope->getVariable('v'))->toBe($node);
     });
 
     it('setVariableLocal with default skips overriding non-null local values', function () {
-        $scope = new Scope();
+        $scope    = new Scope();
         $original = 'value';
+
         $scope->setVariableLocal('v', $original);
 
         $scope->setVariableLocal('v', 'new-value', default: true);
@@ -119,7 +126,6 @@ describe('Scope', function () {
     it('setVariableLocal with default replaces null local values', function () {
         $scope = new Scope();
         $scope->setVariableLocal('v', null);
-
         $scope->setVariableLocal('v', 'new-value', default: true);
 
         expect($scope->getVariable('v'))->toBe('new-value');
@@ -151,7 +157,9 @@ describe('Scope', function () {
         $scope->defineMixin('my-mixin', [], []);
 
         expect($scope->hasMixin('my-mixin'))->toBeTrue();
+
         $data = $scope->getMixin('my-mixin');
+
         expect($data->arguments)->toBe([])
             ->and($data->body)->toBe([]);
     });
@@ -164,8 +172,8 @@ describe('Scope', function () {
     });
 
     it('setMixin with global flag stores mixin in the root scope', function () {
-        $root = new Scope();
-        $child = new Scope($root);
+        $root       = new Scope();
+        $child      = new Scope($root);
         $definition = new CallableDefinition([], [], $child, 3);
 
         $child->setMixin('global-mixin', $definition, global: true);
@@ -179,21 +187,25 @@ describe('Scope', function () {
         $scope->defineFunction('my-fn', [], []);
 
         expect($scope->hasFunction('my-fn'))->toBeTrue();
+
         $data = $scope->getFunction('my-fn');
+
         expect($data->arguments)->toBe([]);
     });
 
     it('getFunction() resolves definitions from parent scopes', function () {
         $parent = new Scope();
+
         $parent->defineFunction('shared-fn', [], []);
+
         $child = new Scope($parent);
 
         expect($child->getFunction('shared-fn'))->toBe($parent->getFunction('shared-fn'));
     });
 
     it('setFunction with global flag stores function in the root scope', function () {
-        $root = new Scope();
-        $child = new Scope($root);
+        $root       = new Scope();
+        $child      = new Scope($root);
         $definition = new CallableDefinition([], [], $child, 4);
 
         $child->setFunction('global-fn', $definition, global: true);
@@ -210,8 +222,9 @@ describe('Scope', function () {
     });
 
     it('addModule and getModule work', function () {
-        $scope = new Scope();
+        $scope       = new Scope();
         $moduleScope = new Scope();
+
         $scope->addModule('math', $moduleScope);
 
         expect($scope->getModule('math'))->toBe($moduleScope);
@@ -232,13 +245,35 @@ describe('Scope', function () {
     });
 
     it('global default assignment keeps existing non-null root variables', function () {
-        $root = new Scope();
-        $child = new Scope($root);
+        $root     = new Scope();
+        $child    = new Scope($root);
         $original = new StringNode('root');
+
         $root->setVariable('v', $original);
 
         $child->setVariable('v', new StringNode('new'), global: true, default: true);
 
         expect($root->getVariable('v'))->toBe($original);
+    });
+
+    it('isCallableBody() reflects the callable body marker', function () {
+        $scope = new Scope();
+
+        expect($scope->isCallableBody())->toBeFalse();
+
+        $scope->markAsCallableBody();
+
+        expect($scope->isCallableBody())->toBeTrue();
+    });
+
+    it('default flag applies the configured value when the variable is not defined yet', function () {
+        $scope      = new Scope();
+        $configured = new StringNode('configured');
+
+        $scope->setConfiguredVariables(['x' => $configured]);
+
+        $scope->setVariable('x', new StringNode('new'), default: true);
+
+        expect($scope->getVariable('x'))->toBe($configured);
     });
 });

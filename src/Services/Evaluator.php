@@ -716,23 +716,13 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
                 }
 
                 $operands[] = $operand;
-
-                continue;
-            }
-
-            if (! $item instanceof StringNode || $item->value !== '/') {
-                return null;
             }
         }
 
         $result = $operands[0];
 
         for ($i = 1, $count = count($operands); $i < $count; $i++) {
-            if (! $result instanceof NumberNode) {
-                return $result;
-            }
-
-            $result = $this->arithmetic->applyOperator($result, '/', $operands[$i]);
+            $result = $this->arithmetic->applyDivision($result, $operands[$i]);
         }
 
         return $result;

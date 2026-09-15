@@ -127,10 +127,6 @@ final class UnitConverter
             return true;
         }
 
-        if ($left === null || $right === null) {
-            return true;
-        }
-
         return ! self::isKnownUnit($left) && ! self::isKnownUnit($right);
     }
 

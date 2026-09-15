@@ -10,6 +10,7 @@ use Bugo\SCSS\Loader;
 use Bugo\SCSS\LoaderInterface;
 use Tests\Support\ArrayLogger;
 use Tests\Support\MemoryLoader;
+use Tests\Support\RuntimeFactory;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -21,7 +22,7 @@ describe('Compiler', function () {
 
         it('qualifies CSS from used modules inside imported rules', function () {
             $loader = new MemoryLoader([
-                '/_imported.scss' => '@use "sass:meta"; @use "nested-used"; in-imported { parent: meta.inspect(&); }',
+                '/_imported.scss'    => '@use "sass:meta"; @use "nested-used"; in-imported { parent: meta.inspect(&); }',
                 '/_nested-used.scss' => '@use "sass:meta"; in-used { value: true; parent: meta.inspect(&); plain: meta.inspect(in-used); quoted: meta.inspect("in-used"); }',
             ]);
             $compiler = new Compiler(loader: $loader);
@@ -250,7 +251,7 @@ describe('Compiler', function () {
             $tmpDir = sys_get_temp_dir() . '/dart-sass-module-reassign-' . uniqid('', true);
             mkdir($tmpDir, 0777, true);
 
-            $basePath = $tmpDir . '/_base.scss';
+            $basePath     = $tmpDir . '/_base.scss';
             $overridePath = $tmpDir . '/_override.scss';
 
             file_put_contents($basePath, '$color: red;');
@@ -364,6 +365,94 @@ describe('Compiler', function () {
             CSS;
 
             expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+    });
+
+    describe('module edge cases', function () {
+        it('skips privately named and imported members while merging wildcard modules', function () {
+            $loader = new MemoryLoader([
+                '/dep.scss'    => '$shared: red; @mixin dep-mixin { color: green; } @function dep-fn($v) { @return $v; }',
+                '/_theme.scss' => "@use \"dep\" as *;\n@mixin -priv { color: blue; }\n@function -priv-fn() { @return 0; }\n.own { padding: 0; }",
+            ]);
+            $compiler = new Compiler(loader: $loader);
+
+            $source = <<<'SCSS'
+            @use "theme" as *;
+            SCSS;
+
+            $result = $compiler->compileString($source);
+
+            expect($result)->toContain('.own');
+        });
+
+        it('strips incoming configuration prefixes in forwarded modules', function () {
+            $loader = new MemoryLoader([
+                '/lib.scss'    => "\$accent: blue !default;\n.lib-rule { color: \$accent; }\n",
+                '/_theme.scss' => "\$theme-color: pink !default;\n@forward \"lib\" as lib-*;\n",
+            ]);
+            $compiler = new Compiler(loader: $loader);
+
+            $source = <<<'SCSS'
+            @use "theme" with ($theme-color: red, $lib-accent: green);
+            .result { color: theme.$lib-accent; }
+            SCSS;
+
+            $result = $compiler->compileString($source);
+
+            expect($result)->toContain('color: green');
+        });
+
+        it('throws when a forwarded target cannot be loaded', function () {
+            $loader   = new MemoryLoader(['/theme.scss' => "@forward \"missing-lib\";\n"]);
+            $compiler = new Compiler(loader: $loader);
+
+            expect(fn() => $compiler->compileString('@use "theme";'))
+                ->toThrow(ModuleResolutionException::class);
+        });
+
+        it('compiles plain css modules through a branch session', function () {
+            $loader  = new MemoryLoader(['/theme.css' => ".a {}\n"]);
+            $runtime = RuntimeFactory::createRuntime(loader: $loader);
+
+            expect($runtime->module()->moduleCssInBranch('/theme.css', '/branch'))->toBe('');
+        });
+
+        it('throws for @use configuration whose forwarded target cannot be loaded', function () {
+            $loader   = new MemoryLoader(['/theme.scss' => "@forward \"missing\";\n"]);
+            $compiler = new Compiler(loader: $loader);
+
+            expect(fn() => $compiler->compileString('@use "theme" with ($color: red);'))
+                ->toThrow(ModuleResolutionException::class);
+        });
+
+        it('throws for @use configuration whose imported css targets cannot provide defaults', function () {
+            $loader = new MemoryLoader([
+                '/theme.scss' => "@import \"style.css\";\n",
+                '/style.css'  => ".a { color: red; }\n",
+            ]);
+            $compiler = new Compiler(loader: $loader);
+
+            expect(fn() => $compiler->compileString('@use "theme" with ($color: red);'))
+                ->toThrow(ModuleResolutionException::class);
+        });
+
+        it('throws for @use configuration whose imported sass targets cannot provide defaults', function () {
+            $loader   = new MemoryLoader(['/theme.scss' => "@import \"missing-import\";\n"]);
+            $compiler = new Compiler(loader: $loader);
+
+            expect(fn() => $compiler->compileString('@use "theme" with ($color: red);'))
+                ->toThrow(ModuleResolutionException::class);
+        });
+
+        it('stops circular forward chains while collecting configurable defaults', function () {
+            $loader = new MemoryLoader([
+                '/a.scss' => "@forward \"b\";\n",
+                '/b.scss' => "@forward \"a\";\n",
+            ]);
+            $compiler = new Compiler(loader: $loader);
+
+            expect(fn() => $compiler->compileString('@use "a" with ($color: red);'))
+                ->toThrow(ModuleResolutionException::class);
         });
     });
 });

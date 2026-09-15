@@ -173,16 +173,8 @@ final class SelectorHelper
             $parentHasBreak = str_contains($parentPart, "\n");
             $trimmedParent  = ltrim($parentPart);
 
-            if ($trimmedParent === '') {
-                continue;
-            }
-
             foreach ($selectorParts as $selectorPart) {
                 $trimmedSelector = ltrim($selectorPart);
-
-                if ($trimmedSelector === '') {
-                    continue;
-                }
 
                 $break = ($parentHasBreak || ($pi > 0 && str_ends_with($parentParts[$pi - 1], "\n"))) && $pi > 0;
 
@@ -214,10 +206,6 @@ final class SelectorHelper
                 $resolved[] = $trimmedParent . ' ' . $trimmedSelector;
                 $breaks[]   = $break;
             }
-        }
-
-        if ($resolved === []) {
-            return $selector;
         }
 
         $result = '';

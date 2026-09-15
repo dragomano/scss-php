@@ -164,6 +164,23 @@ describe('Sass Selector Module Feature', function () {
 
             expect($css)->toEqualCss($expected);
         });
+
+        it('preserves leading combinator before parent part', function () {
+            $scss = <<<'SCSS'
+            @use "sass:selector";
+            .selector-nest-combinator { value: selector.nest("> c", ".b"); }
+            SCSS;
+
+            $css = $this->compiler->compileString($scss);
+
+            $expected = /** @lang text */ <<<'CSS'
+            .selector-nest-combinator {
+              value: > c .b;
+            }
+            CSS;
+
+            expect($css)->toEqualCss($expected);
+        });
     });
 
     describe('selector.parse()', function () {
@@ -182,6 +199,16 @@ describe('Sass Selector Module Feature', function () {
             CSS;
 
             expect($css)->toEqualCss($expected);
+        });
+
+        it('rejects non-string selector values', function () {
+            $scss = <<<'SCSS'
+            @use "sass:selector";
+            .selector-parse-number { value: selector.parse(1); }
+            SCSS;
+
+            expect(fn() => $this->compiler->compileString($scss))
+                ->toThrow(SassErrorException::class, 'is not a valid selector: it must be a string');
         });
     });
 

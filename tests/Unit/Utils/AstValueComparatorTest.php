@@ -12,6 +12,7 @@ use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Utils\AstValueComparator;
 
 describe('AstValueComparator', function () {
@@ -86,6 +87,19 @@ describe('AstValueComparator', function () {
             $b = new FunctionNode('rgb', [new NumberNode(255), new NumberNode(1), new NumberNode(0)]);
 
             expect(AstValueComparator::equals($a, $b))->toBeFalse();
+        });
+
+        it('compares a string with an equivalent function node', function () {
+            $fn = new FunctionNode('rgb', [new NumberNode(255), new NumberNode(0), new NumberNode(0)]);
+
+            expect(AstValueComparator::equals(new StringNode('rgb(255, 0, 0)'), $fn))->toBeTrue();
+            expect(AstValueComparator::equals(new StringNode('rgb(0, 0, 0)'), $fn))->toBeFalse();
+        });
+
+        it('compares a string with a function node holding a captured scope as unequal', function () {
+            $fn = new FunctionNode('get-function', capturedScope: new Scope());
+
+            expect(AstValueComparator::equals(new StringNode('get-function'), $fn))->toBeFalse();
         });
 
         it('compares equal lists', function () {

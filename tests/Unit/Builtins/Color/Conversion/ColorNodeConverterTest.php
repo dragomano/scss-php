@@ -14,6 +14,7 @@ use Bugo\Iris\Spaces\XyzColor;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
+use Bugo\SCSS\Builtins\Color\Support\LchChannelData;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
@@ -236,5 +237,210 @@ describe('ColorNodeConverter', function () {
 
         expect($result)->toBeInstanceOf(OklchColor::class)
             ->and($result->a)->toBe(0.5);
+    });
+
+    it('falls back to rgb conversion in toUnclampedRgb for non-color-function nodes', function () {
+        $rgb = $this->converter->toUnclampedRgb(new ColorNode('#ff0000'));
+
+        expect($rgb->r)->toBe(255.0)
+            ->and($rgb->g)->toBe(0.0)
+            ->and($rgb->b)->toBe(0.0);
+    });
+
+    it('converts unitless srgb channels to byte values in toUnclampedRgb', function () {
+        $rgb = $this->converter->toUnclampedRgb(new FunctionNode('color', [new ListNode([
+            new StringNode('srgb'),
+            new NumberNode(1.0),
+            new NumberNode(0.0),
+            new NumberNode(0.5),
+        ])]));
+
+        expect($rgb->r)->toBe(255.0)
+            ->and($rgb->g)->toBe(0.0)
+            ->and($rgb->b)->toBe(127.5);
+    });
+
+    it('treats hex and paren-less strings as legacy colors', function () {
+        expect($this->converter->isLegacyColor(new StringNode('#abc')))->toBeTrue()
+            ->and($this->converter->isLegacyColor(new StringNode('red')))->toBeTrue();
+    });
+
+    it('throws unsupported color value for non-string color node with unknown literal', function () {
+        expect(fn() => $this->converter->toRgb(new ColorNode('not-a-color')))
+            ->toThrow(UnsupportedColorValueException::class, 'not-a-color');
+    });
+
+    it('extracts oklch mix data with missing channel flags from oklch function', function () {
+        $oklch = new FunctionNode('oklch', [
+            new ListNode([
+                new StringNode('none'),
+                new NumberNode(0.1),
+                new StringNode('none'),
+                new StringNode('/'),
+                new NumberNode(0.5),
+            ], 'space'),
+        ]);
+
+        $result = $this->converter->extractOklchMixData($oklch, 'color');
+
+        expect($result)->toBeInstanceOf(LchChannelData::class)
+            ->and($result->l)->toBe(0.0)
+            ->and($result->lightnessMissing)->toBeTrue()
+            ->and($result->chromaMissing)->toBeFalse()
+            ->and($result->hueMissing)->toBeTrue()
+            ->and($result->a)->toBe(0.5);
+    });
+
+    it('extracts oklch mix data by converting non-oklch colors', function () {
+        $result = $this->converter->extractOklchMixData(new ColorNode('#ff0000'), 'color');
+
+        expect($result)->toBeInstanceOf(LchChannelData::class)
+            ->and($result->lightnessMissing)->toBeFalse()
+            ->and($result->chromaMissing)->toBeFalse()
+            ->and($result->hueMissing)->toBeFalse();
+    });
+
+    it('extracts oklch from non-oklch colors via rgb conversion', function () {
+        $result = $this->converter->extractOklch(new ColorNode('#ff0000'), 'color');
+
+        expect($result)->toBeInstanceOf(OklchColor::class)
+            ->and($result->lValue())->toBeGreaterThan(0.0)
+            ->and($result->cValue())->toBeGreaterThan(0.0);
+    });
+
+    it('serializes out of gamut rgb as unclamped hsl', function () {
+        $node = $this->converter->serializeRgbResult(new RgbColor(300.0, -10.0, 128.0, 0.5));
+
+        expect($node)->toBeInstanceOf(FunctionNode::class)
+            ->and($node->name)->toBe('hsla');
+    });
+
+    it('serializes legacy rgb functions without alpha as rgb', function () {
+        $node = $this->converter->serializeLegacyRgbFunction(new RgbColor(1.0, 0.5, 0.0, 1.0));
+
+        expect($node)->toBeInstanceOf(FunctionNode::class)
+            ->and($node->name)->toBe('rgb');
+    });
+
+    it('serializes as oklch string with zero chroma as percent', function () {
+        $zeroChroma    = $this->converter->serializeAsOklchString(new OklchColor(0.5, 0.0, 180.0));
+        $percentChroma = $this->converter->serializeAsOklchString(new OklchColor(0.5, 0.0, 180.0), true);
+        $normal        = $this->converter->serializeAsOklchString(new OklchColor(0.5, 0.1, 180.0), true);
+
+        $chromaNode = fn(FunctionNode $node): AstNode => $node->arguments[0]->items[1];
+
+        expect($chromaNode($zeroChroma)->value)->toBe(0.0)
+            ->and($chromaNode($percentChroma)->value)->toBe(0)
+            ->and($chromaNode($percentChroma)->unit)->toBe('%')
+            ->and($chromaNode($normal)->value)->toBe(0.1)
+            ->and($chromaNode($normal)->unit)->toBeNull();
+    });
+
+    it('builds oklab color node with none channels', function () {
+        $withChannels = $this->converter->buildOklabColorNodeWithNone([
+            'l' => 50.0, 'a' => 10.0, 'b' => null, 'alpha' => 0.5,
+        ]);
+        $allNone = $this->converter->buildOklabColorNodeWithNone([
+            'l' => null, 'a' => null, 'b' => null, 'alpha' => 1.0,
+        ]);
+
+        $rendered = static function (FunctionNode $node): string {
+            /** @var ListNode $list */
+            $list = $node->arguments[0];
+
+            return implode(' ', array_map(
+                static fn(AstNode $item): string => $item instanceof NumberNode
+                    ? $item->value . ($item->unit ?? '')
+                    : $item->__toString(),
+                $list->items,
+            ));
+        };
+
+        expect($withChannels->name)->toBe('oklab')
+            ->and($rendered($withChannels))->toBe('50% 10 none / 0.5')
+            ->and($allNone->name)->toBe('oklab')
+            ->and($rendered($allNone))->toBe('none none none');
+    });
+
+    it('builds lab color node with none channels', function () {
+        $node = $this->converter->buildLabColorNodeWithNone([
+            'l' => null, 'a' => 10.0, 'b' => null, 'alpha' => 0.5,
+        ]);
+
+        /** @var ListNode $list */
+        $list = $node->arguments[0];
+
+        expect($node->name)->toBe('lab')
+            ->and($list->items[0]->value)->toBe('none')
+            ->and($list->items[1]->value)->toBe(10.0)
+            ->and($list->items[2]->value)->toBe('none')
+            ->and($list->items[4]->value)->toBe(0.5);
+    });
+
+    it('builds lch color node with none channels', function () {
+        $withValues = $this->converter->buildLchColorNodeWithNone(50.0, 0.1, 180.0, 0.5);
+        $withNone   = $this->converter->buildLchColorNodeWithNone(null, null, null, 1.0);
+
+        /** @var ListNode $withValuesList */
+        $withValuesList = $withValues->arguments[0];
+
+        /** @var ListNode $withNoneList */
+        $withNoneList = $withNone->arguments[0];
+
+        expect($withValues->name)->toBe('lch')
+            ->and($withValuesList->items[0]->value)->toBe(50.0)
+            ->and($withValuesList->items[0]->unit)->toBe('%')
+            ->and($withValuesList->items[1]->value)->toBe(0.1)
+            ->and($withValuesList->items[2]->value)->toBe(180.0)
+            ->and($withNone->name)->toBe('lch')
+            ->and($withNoneList->items[0]->value)->toBe('none')
+            ->and($withNoneList->items[1]->value)->toBe('none')
+            ->and($withNoneList->items[2]->value)->toBe('none');
+    });
+
+    it('builds modern rgb function node with none channels and alpha tails', function () {
+        $withNone = $this->converter->buildModernRgbFunctionNode([null, 128.0, 255.0], null);
+        $partial  = $this->converter->buildModernRgbFunctionNode([10.0, 20.0, 30.0], 0.5);
+        $full     = $this->converter->buildModernRgbFunctionNode([10.0, 20.0, 30.0], 1.0);
+
+        /** @var ListNode $withNoneList */
+        $withNoneList = $withNone->arguments[0];
+
+        /** @var ListNode $partialList */
+        $partialList = $partial->arguments[0];
+
+        /** @var ListNode $fullList */
+        $fullList = $full->arguments[0];
+
+        expect($withNone->name)->toBe('rgb')
+            ->and($withNoneList->items[0]->value)->toBe('none')
+            ->and($withNoneList->items[3]->value)->toBe('/')
+            ->and($withNoneList->items[4]->value)->toBe('none')
+            ->and($partialList->items)->toHaveCount(5)
+            ->and($partialList->items[4]->value)->toBe(0.5)
+            ->and($fullList->items)->toHaveCount(3);
+    });
+
+    it('builds modern hsl function node with none channels and clamped saturation', function () {
+        $withNone     = $this->converter->buildModernHslFunctionNode([null, -50.0, null], 0.5);
+        $nanSaturation = $this->converter->buildModernHslFunctionNode([NAN, NAN, 50.0], 1.0);
+
+        /** @var ListNode $withNoneList */
+        $withNoneList = $withNone->arguments[0];
+
+        /** @var ListNode $nanList */
+        $nanList = $nanSaturation->arguments[0];
+
+        expect($withNone->name)->toBe('hsl')
+            ->and($withNoneList->items[0]->value)->toBe('none')
+            ->and($withNoneList->items[1]->value)->toBe(0.0)
+            ->and($withNoneList->items[2]->value)->toBe('none')
+            ->and($nanList->items[1]->value)->toBe(0.0)
+            ->and($nanList->items[2]->value)->toBe(50.0);
+    });
+
+    it('parses alpha through public wrapper', function () {
+        expect($this->converter->parseAlphaPublic(null, 'color'))->toBe(1.0)
+            ->and($this->converter->parseAlphaPublic(new NumberNode(0.3), 'color'))->toBe(0.3);
     });
 });

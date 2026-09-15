@@ -53,6 +53,21 @@ describe('StringConcatenationEvaluator', function () {
                 ->and($result->value)->toBe('/15px');
         });
 
+        it('returns null when the leading unary chain operand is not foldable', function () {
+            $list = new ListNode([new StringNode('-'), new StringNode('+'), new StringNode('-')], 'space');
+
+            expect($this->evaluator->evaluate($list))->toBeNull();
+        });
+
+        it('folds a leading unary operator chain with a foldable operand', function () {
+            $list = new ListNode([new StringNode('-'), new StringNode('+'), new StringNode('moz')], 'space');
+
+            $result = $this->evaluator->evaluate($list);
+
+            expect($result)->toBeInstanceOf(StringNode::class)
+                ->and($result->value)->toBe('-+moz');
+        });
+
         it('collapses number plus unit suffix into dimension', function () {
             $list = new ListNode([new NumberNode(42), new StringNode('+'), new StringNode('px')], 'space');
 

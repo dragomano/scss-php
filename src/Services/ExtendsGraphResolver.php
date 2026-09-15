@@ -153,6 +153,7 @@ final readonly class ExtendsGraphResolver
                 'upstream'  => $upstream,
                 'post'      => $this->collectBranchOrder($target, $upstream),
                 'exclusive' => $exclusive,
+                'ancestors' => [],
             ];
         }
 
@@ -202,6 +203,14 @@ final readonly class ExtendsGraphResolver
 
         foreach ($branches as $branchRoot => $branch) {
             $branchStore = $branchStores[$branchRoot];
+
+            $inheritedStores = [];
+
+            foreach ($branch['ancestors'] as $ancestorId) {
+                $inheritedStores[] = $graph['stores'][$ancestorId];
+            }
+
+            $this->extends->addForeignExtensionsToStore($branchStore[$branchRoot], $inheritedStores);
 
             $this->propagateExtensions($branchStore, $branch['upstream'], array_reverse($branch['post']));
 
@@ -523,7 +532,7 @@ final readonly class ExtendsGraphResolver
 
     /**
      * @param ModuleGraph $graph
-     * @return array<string, array{nodes: array<string, true>, upstream: array<string, array<string, true>>, post: list<string>, exclusive: array<string, true>}>
+     * @return array<string, array{nodes: array<string, true>, upstream: array<string, array<string, true>>, post: list<string>, exclusive: array<string, true>, ancestors: list<string>}>
      */
     private function resolveImportBranches(array $graph): array
     {
@@ -576,11 +585,56 @@ final readonly class ExtendsGraphResolver
                     'upstream'  => $upstream,
                     'post'      => $this->collectBranchOrder($branchRoot, $upstream),
                     'exclusive' => $exclusive,
+                    'ancestors' => $this->collectImportAncestors($branchRoot, $importEdges, $useReachable),
                 ];
             }
         }
 
         return $branches;
+    }
+
+    /**
+     * Modules that import $branchRoot (transitively through @import edges) and
+     * belong to an enclosing import branch. Their extends apply to the imported
+     * content as if it were inlined into the importer.
+     *
+     * @param array<string, array<string, true>> $importEdges
+     * @param array<string, true> $useReachable
+     * @return list<string>
+     */
+    private function collectImportAncestors(string $branchRoot, array $importEdges, array $useReachable): array
+    {
+        $inverse   = [];
+        $ancestors = [];
+        $visited   = [$branchRoot => true];
+        $queue     = [$branchRoot];
+
+        foreach ($importEdges as $importer => $children) {
+            foreach ($children as $dependency => $_) {
+                $inverse[$dependency][$importer] = true;
+            }
+        }
+
+        while ($queue !== []) {
+            $moduleId = array_shift($queue);
+
+            foreach ($inverse[$moduleId] ?? [] as $importer => $_) {
+                if (isset($visited[$importer])) {
+                    continue;
+                }
+
+                $visited[$importer] = true;
+
+                if (isset($useReachable[$importer])) {
+                    continue;
+                }
+
+                $ancestors[$importer] = true;
+                $queue[]              = $importer;
+            }
+        }
+
+        return array_keys($ancestors);
     }
 
     /**

@@ -138,8 +138,10 @@ final readonly class PlainCssRenderer
         $regular  = [];
 
         foreach ($node->children as $child) {
-            if ($isTopLevel && $this->isBubblingAtRule($child)) {
-                $bubbling[] = $child;
+            $bubblingAtRule = $isTopLevel ? $this->isBubblingAtRule($child) : null;
+
+            if ($bubblingAtRule !== null) {
+                $bubbling[] = $bubblingAtRule;
             } else {
                 $regular[] = $child;
             }
@@ -153,10 +155,6 @@ final readonly class PlainCssRenderer
         }
 
         foreach ($bubbling as $atRule) {
-            if (! $atRule instanceof SupportsNode && ! $atRule instanceof DirectiveNode) {
-                continue;
-            }
-
             if ($out !== '') {
                 $out .= "\n";
             }
@@ -185,17 +183,21 @@ final readonly class PlainCssRenderer
         return $prefix . $this->atRuleHeader($node) . " {\n" . $content . "\n" . $prefix . '}';
     }
 
-    private function isBubblingAtRule(AstNode $node): bool
+    private function isBubblingAtRule(AstNode $node): SupportsNode|DirectiveNode|null
     {
         if ($node instanceof SupportsNode) {
-            return true;
+            return $node;
         }
 
         if (! $node instanceof DirectiveNode || ! $node->hasBlock) {
-            return false;
+            return null;
         }
 
-        return ! in_array(strtolower($node->name), ['keyframes', 'font-face', 'layer', 'charset'], true);
+        if (in_array(strtolower($node->name), ['keyframes', 'font-face', 'layer', 'charset'], true)) {
+            return null;
+        }
+
+        return $node;
     }
 
     private function atRuleHeader(SupportsNode|DirectiveNode $node): string

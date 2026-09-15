@@ -258,13 +258,7 @@ final readonly class Text
 
                 while ($i < $length) {
                     if ($head[$i] === '/' && ($head[$i + 1] ?? '') === '*') {
-                        $close = strpos($head, '*/', $i + 2);
-
-                        if ($close === false) {
-                            break;
-                        }
-
-                        $i = $close + 2;
+                        $i = (int) strpos($head, '*/', $i + 2) + 2;
 
                         continue;
                     }
@@ -1296,12 +1290,6 @@ final readonly class Text
 
     private function isValidSupportsFeatureName(string $name): bool
     {
-        $first = $name[0];
-
-        if (! ctype_alpha($first) && $first !== '_' && $first !== '-') {
-            return false;
-        }
-
         $nameLength = strlen($name);
 
         for ($i = 1; $i < $nameLength; $i++) {
@@ -1803,12 +1791,7 @@ final readonly class Text
     private function isInterpolatedStringTemplate(string $expr): bool
     {
         $length = strlen($expr);
-
-        if ($length < 2) {
-            return false;
-        }
-
-        $quote = $expr[0];
+        $quote  = $expr[0];
 
         if (($quote !== '"' && $quote !== "'") || $expr[$length - 1] !== $quote) {
             return false;

@@ -12,6 +12,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Values\AstValueInspector;
@@ -186,6 +187,10 @@ final readonly class ColorArgumentParser
 
         $components = $slashSplit['components'];
         $alphaNode  = $slashSplit['alpha'];
+
+        if ($components instanceof MapNode && $components->isEmptyList) {
+            throw InvalidColorChannelsException::emptyList($argument);
+        }
 
         if ($components instanceof ListNode) {
             if ($components->items === []) {
