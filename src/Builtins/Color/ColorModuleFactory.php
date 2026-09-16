@@ -40,7 +40,6 @@ final class ColorModuleFactory
             $runtime,
             $components->legacyManipulator,
             $converter,
-            $spaceConverter,
             new LegacyColorMath($components->spaceConverter),
             $dartMath,
         );

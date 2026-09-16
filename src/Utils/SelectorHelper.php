@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Utils;
 
 use function array_filter;
+use function array_map;
 use function array_values;
+use function count;
 use function implode;
+use function ltrim;
 use function max;
 use function rtrim;
 use function str_contains;

@@ -26,15 +26,21 @@ use Bugo\SCSS\Services\Text;
 
 use function array_key_last;
 use function array_map;
+use function array_slice;
 use function explode;
 use function implode;
 use function in_array;
 use function is_array;
+use function ltrim;
 use function max;
+use function min;
 use function str_contains;
 use function str_ends_with;
+use function str_starts_with;
 use function strlen;
 use function strtolower;
+use function substr;
+use function trim;
 
 final readonly class DeclarationNodeHandler
 {

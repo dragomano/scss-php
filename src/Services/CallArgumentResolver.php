@@ -19,6 +19,7 @@ use Bugo\SCSS\Runtime\ResolvedCallArguments;
 use function array_filter;
 use function array_merge;
 use function array_values;
+use function is_array;
 use function str_ends_with;
 use function str_starts_with;
 use function trim;

@@ -26,6 +26,7 @@ use function count;
 use function ctype_alnum;
 use function ctype_alpha;
 use function implode;
+use function in_array;
 use function rtrim;
 use function strlen;
 use function strpos;
@@ -275,17 +276,6 @@ final readonly class ColorChannelInspector
                     RgbChannelScale::toNormalized($this->converter->toRgb($color)),
                 );
                 $powerless = abs($oklch->cValue()) < 0.000001;
-            }
-        }
-
-        if ($space === 'oklab' && $color instanceof FunctionNode && strtolower($color->name) === 'oklab') {
-            $channels = $this->runtime->argumentParser->expandSingleSpaceListArgument($color->arguments);
-
-            if ($channelName === 'a' || $channelName === 'b') {
-                $index     = $channelName === 'a' ? 1 : 2;
-                $powerless = isset($channels[$index])
-                    && $channels[$index] instanceof NumberNode
-                    && abs((float) $channels[$index]->value) < 0.000001;
             }
         }
 

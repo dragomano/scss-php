@@ -9,6 +9,7 @@ use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
@@ -42,6 +43,18 @@ describe('SassStringModule', function () {
         $result = $this->module->call('index', [new StringNode('hello'), new StringNode('ll')], []);
 
         expect($result->value)->toBe(3);
+    });
+
+    it('returns position one for an empty substring and counts unicode characters in index', function () {
+        $empty     = $this->module->call('index', [new StringNode('abc'), new StringNode('')], []);
+        $bothEmpty = $this->module->call('index', [new StringNode(''), new StringNode('')], []);
+        $unicode   = $this->module->call('index', [new StringNode('aéb'), new StringNode('é')], []);
+        $missing   = $this->module->call('index', [new StringNode('abc'), new StringNode('z')], []);
+
+        expect($empty->value)->toBe(1)
+            ->and($bothEmpty->value)->toBe(1)
+            ->and($unicode->value)->toBe(2)
+            ->and($missing)->toBeInstanceOf(NullNode::class);
     });
 
     it('evaluates insert', function () {

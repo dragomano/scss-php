@@ -953,6 +953,200 @@ describe('SassNormalizer', function () {
         expect($this->normalizer->normalize($sass))->toBe($expected);
     });
 
+    describe('Rare normalizer branches', function () {
+        it('stops collecting a loud comment at a dedented content line', function () {
+            $sass = "/* a\nb\n";
+
+            expect($this->normalizer->normalize($sass))->toBe("/* a */\nb {\n}");
+        });
+
+        it('does not treat a lone double dash as a continuation operator', function () {
+            $sass = "--\n  a: b\n";
+
+            $expected = <<<'SCSS'
+            -- {
+              a: b;
+            }
+            SCSS;
+
+            expect($this->normalizer->normalize($sass))->toBe($expected);
+        });
+
+        it('keeps a backslash before an alphanumeric escape sequence', function () {
+            $sass = "\\w\n  a: b\n";
+
+            expect($this->normalizer->normalize($sass))->toBe("\\w {\n  a: b;\n}");
+        });
+
+        it('keeps a stray loud comment close marker in a declaration', function () {
+            $sass = "a\n  color: red */\n";
+
+            expect($this->normalizer->normalize($sass))->toBe("a {\n  color: red */;\n}");
+        });
+
+        it('ignores quoted loud comments when stripping a trailing loud comment', function () {
+            $sass = "a\n  x: \"b\\\" /*c*/\" /* d */\n";
+
+            $expected = <<<'SCSS'
+            a {
+              x: "b\" /*c*/";
+            }
+            SCSS;
+
+            expect($this->normalizer->normalize($sass))->toBe($expected);
+        });
+
+        it('strips a trailing loud comment when checking a complete for header', function () {
+            $sass = "@for \$i through \"a\\\"/*b\" */\n  from 1 through 2\n    .x\n      y: z\n";
+
+            $expected = <<<'SCSS'
+            @for $i through "a\"/*b" */ from 1 through 2 {
+                .x {
+                  y: z;
+                }
+            }
+            SCSS;
+
+            expect($this->normalizer->normalize($sass))->toBe($expected);
+        });
+
+        it('treats a mixin include as a nested property child', function () {
+            $sass = "a\n  x(\"b\") y: z\n    +m\n";
+
+            $expected = <<<'SCSS'
+            a {
+              x("b") y: z {
+                @include m;
+              }
+            }
+            SCSS;
+
+            expect($this->normalizer->normalize($sass))->toBe($expected);
+        });
+
+        it('does not treat a variable as a nested property child', function () {
+            $sass = "a\n  x(\"b\") y: z\n    \$v: 1\n";
+
+            $expected = <<<'SCSS'
+            a {
+              x("b") y: z;
+                $v: 1;
+            }
+            SCSS;
+
+            expect($this->normalizer->normalize($sass))->toBe($expected);
+        });
+
+        it('does not treat a colon inside quotes as a property separator', function () {
+            $sass = "a\"b:c\"\n";
+
+            expect($this->normalizer->normalize($sass))->toBe('a"b:c";');
+        });
+
+        it('skips escaped quotes when searching for a property colon', function () {
+            $sass = "x(\"b\\\"c\") y: z\n";
+
+            expect($this->normalizer->normalize($sass))->toBe('x("b\\"c") y: z;');
+        });
+
+        it('keeps escaped quotes inside an unclosed custom property group', function () {
+            $sass = "--a: [\"b\\\"c\"\n]\n";
+
+            expect($this->normalizer->normalize($sass))->toBe("--a: [\"b\\\"c\"\n];");
+        });
+
+        it('stops merging a custom property group at an empty line', function () {
+            $sass = "--a: [\n\nb\n";
+
+            $expected = <<<'SCSS'
+            --a: [;
+
+            b {
+            }
+            SCSS;
+
+            expect($this->normalizer->normalize($sass))->toBe($expected);
+        });
+
+        it('does not merge bracketed continuations for colonless directives', function () {
+            $sass = "@if [a\n  b: c\n";
+
+            $expected = <<<'SCSS'
+            @if [a {
+              b: c;
+            }
+            SCSS;
+
+            expect($this->normalizer->normalize($sass))->toBe($expected);
+        });
+
+        it('throws when a block header parenthesis is separated by an empty line', function () {
+            $sass = "@media (\n\n)\n  a: b\n";
+
+            expect(fn() => $this->normalizer->normalize($sass))
+                ->toThrow(InvalidSyntaxException::class, "Expected closing ')' for '(' opened at line 1.");
+        });
+
+        it('stops a selector comma continuation at an empty line', function () {
+            $sass = "a,\n\nb\n  c: d\n";
+
+            $expected = <<<'SCSS'
+            a,
+
+            b {
+              c: d;
+            }
+            SCSS;
+
+            expect($this->normalizer->normalize($sass))->toBe($expected);
+        });
+
+        it('stops an interpolation continuation at an empty line', function () {
+            $sass = "a\n  b: #{\n\n  c: d\n";
+
+            $expected = <<<'SCSS'
+            a {
+              b: #{;
+              c: d;
+            }
+            SCSS;
+
+            expect($this->normalizer->normalize($sass))->toBe($expected);
+        });
+
+        it('merges a colonless single-line directive parenthesized call', function () {
+            $sass = "@debug (\n\n)\n";
+
+            expect($this->normalizer->normalize($sass))->toBe('@debug ();');
+        });
+
+        it('keeps slashes inside quotes in a directive header', function () {
+            $sass = "@for \$i from 1 through \"a//b\"\n  .x\n    y: \$i\n";
+
+            $expected = <<<'SCSS'
+            @for $i from 1 through "a//b" {
+              .x {
+                y: $i;
+              }
+            }
+            SCSS;
+
+            expect($this->normalizer->normalize($sass))->toBe($expected);
+        });
+
+        it('treats an interpolation after a colon as a block header', function () {
+            $sass = "a:#{b}\n  c: d\n";
+
+            $expected = <<<'SCSS'
+            a:#{b} {
+              c: d;
+            }
+            SCSS;
+
+            expect($this->normalizer->normalize($sass))->toBe($expected);
+        });
+    });
+
     describe('Line Ending Detection', function () {
         it('detects Windows line endings (CRLF)', function () {
             $sass = ".container\r\n  color: red\r\n";

@@ -28,16 +28,22 @@ use Bugo\SCSS\Values\AstValueInspector;
 use function abs;
 use function array_filter;
 use function array_key_exists;
+use function array_map;
 use function array_search;
+use function array_slice;
 use function array_values;
 use function count;
 use function explode;
 use function implode;
 use function in_array;
+use function max;
 use function min;
+use function round;
 use function sprintf;
 use function strtolower;
 use function trim;
+
+use const INF;
 
 /**
  * @phpstan-import-type ChannelVector from ColorSpaceConverter
@@ -135,7 +141,6 @@ final readonly class ColorFunctionEvaluator
         private ColorRuntime $runtime,
         private LegacyManipulator $legacy,
         private ColorNodeConverter $converter,
-        private ColorSpaceConverter $spaceInterop,
         private LegacyColorMath $legacyMath,
         private DartColorMath $dartMath,
     ) {}
@@ -313,16 +318,6 @@ final readonly class ColorFunctionEvaluator
                 $native   = $this->nativeChannels($color, $nativeSpace);
                 $channels = $native->channels;
 
-                if ($nativeSpace === 'hsl' && $channels[0] === null && $color instanceof FunctionNode) {
-                    [$rawChannels] = $this->converter->extractRawChannelsPublic($color);
-
-                    $rawHue = $rawChannels[0] ?? null;
-
-                    if ($rawHue instanceof NumberNode) {
-                        $channels[0] = $this->channelValueFromNode($rawHue, 'hue');
-                    }
-                }
-
                 if (($nativeSpace === 'lch' || $nativeSpace === 'oklch')
                     && $channels[2] === null
                     && $color instanceof FunctionNode
@@ -386,18 +381,7 @@ final readonly class ColorFunctionEvaluator
         $rgb = $this->converter->toRgb($color);
 
         if ($space !== 'rgb' && $space !== 'srgb') {
-            $channels  = $this->spaceInterop->rgbToWorkingSpaceChannels($rgb, $space);
-            $inverted1 = 1.0 - $channels[0];
-            $inverted2 = 1.0 - $channels[1];
-            $inverted3 = 1.0 - $channels[2];
-
-            $mixed1 = $this->runtime->spaceConverter->mixChannel($channels[0], $inverted1, 1.0 - $p);
-            $mixed2 = $this->runtime->spaceConverter->mixChannel($channels[1], $inverted2, 1.0 - $p);
-            $mixed3 = $this->runtime->spaceConverter->mixChannel($channels[2], $inverted3, 1.0 - $p);
-
-            return $this->converter->serializeRgbResult(
-                $this->spaceInterop->workingSpaceChannelsToRgb($space, [$mixed1, $mixed2, $mixed3], $rgb->a),
-            );
+            throw new UnsupportedColorSpaceException($space, $this->runtime->context->errorCtx('invert'));
         }
 
         $invertedRgb = $this->legacy->invert(RgbChannelScale::toNormalized($rgb), $p);
@@ -1029,12 +1013,8 @@ final readonly class ColorFunctionEvaluator
         string $sourceSpace,
         string $destSpace,
     ): array {
-        $sourceCategories = self::SPACE_CHANNEL_CATEGORIES[$sourceSpace] ?? null;
-        $destCategories   = self::SPACE_CHANNEL_CATEGORIES[$destSpace] ?? null;
-
-        if ($sourceCategories === null || $destCategories === null) {
-            return $destChannels;
-        }
+        $sourceCategories = self::SPACE_CHANNEL_CATEGORIES[$sourceSpace];
+        $destCategories   = self::SPACE_CHANNEL_CATEGORIES[$destSpace];
 
         foreach ([0, 1, 2] as $sourceIndex) {
             if (($sourceChannels[$sourceIndex] ?? null) !== null) {
@@ -1548,10 +1528,8 @@ final readonly class ColorFunctionEvaluator
     private function emitModifiedLegacyColor(AstNode $color, callable $modify, bool $alphaOnly = false): AstNode
     {
         $rgb       = $this->converter->toRgb($color);
-        $legacyHsl = $this->extractLegacyHsl($color, $rgb) ?? [
-            'channels' => $this->legacyMath->rgbToHsl($rgb),
-            'origin'   => 'rgb',
-        ];
+        $legacyHsl = $this->extractLegacyHsl($color, $rgb)
+            ?? ['channels' => $this->legacyMath->rgbToHsl($rgb), 'origin' => 'rgb'];
 
         $modified = $modify($legacyHsl['channels']);
 

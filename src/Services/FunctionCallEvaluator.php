@@ -30,6 +30,7 @@ use Throwable;
 use function count;
 use function implode;
 use function in_array;
+use function min;
 use function str_contains;
 use function str_starts_with;
 use function strlen;
@@ -205,8 +206,6 @@ final readonly class FunctionCallEvaluator
             if ($userFunction !== null) {
                 $userFunctionName = $functionName;
             }
-        } elseif ($node->capturedScope !== null) {
-            $userFunction = $node->capturedScope->findFunction($node->name)?->definition;
         }
 
         $userFunction ??= $currentScope->findFunction($node->name)?->definition;
@@ -291,14 +290,6 @@ final readonly class FunctionCallEvaluator
                         }
 
                         continue;
-                    }
-
-                    if (! ($item instanceof NumberNode)) {
-                        return false;
-                    }
-
-                    if ($item->unit === '%') {
-                        $hasPercentage = true;
                     }
                 }
 

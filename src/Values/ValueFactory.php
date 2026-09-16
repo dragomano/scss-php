@@ -18,9 +18,12 @@ use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 
+use function array_values;
+use function count;
 use function strrpos;
 use function strtolower;
 use function substr;
+use function trim;
 
 final readonly class ValueFactory
 {

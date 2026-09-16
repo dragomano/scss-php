@@ -21,6 +21,7 @@ use function str_contains;
 use function str_starts_with;
 use function strpos;
 use function substr;
+use function substr_count;
 use function trim;
 
 final readonly class CallableDirectiveParser
@@ -150,13 +151,7 @@ final readonly class CallableDirectiveParser
 
         if (str_starts_with($name, '--')) {
             // Resolve interpolation in the name: --#{a} → --a
-            while (str_contains($name, '#{')) {
-                $start = strpos($name, '#{');
-
-                if ($start === false) {
-                    break;
-                }
-
+            while (($start = strpos($name, '#{')) !== false) {
                 $end = strpos($name, '}', $start + 2);
 
                 if ($end === false) {

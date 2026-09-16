@@ -175,25 +175,9 @@ final class SassStringModule extends AbstractModule
         $string    = $this->requireStringArg($positional, 0, 'string.index');
         $substring = $this->requireStringArg($positional, 1, 'string.index');
 
-        $characters          = $this->characters($string);
-        $substringCharacters = $this->characters($substring);
-        $substringLength     = count($substringCharacters);
+        $index = $this->findCharacters($this->characters($string), $this->characters($substring));
 
-        if ($substringLength === 0) {
-            return new NumberNode(1);
-        }
-
-        foreach ($characters as $index => $_) {
-            if ($substringLength > count($characters) - $index) {
-                break;
-            }
-
-            if (array_slice($characters, $index, $substringLength) === $substringCharacters) {
-                return new NumberNode($index + 1);
-            }
-        }
-
-        return $this->nullNode();
+        return $index === null ? $this->nullNode() : new NumberNode($index + 1);
     }
 
     /**

@@ -17,6 +17,7 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Values\AstValueInspector;
 
+use function array_map;
 use function array_merge;
 use function array_slice;
 use function array_values;
@@ -27,6 +28,7 @@ use function in_array;
 use function is_finite;
 use function is_nan;
 use function str_contains;
+use function str_ends_with;
 use function str_starts_with;
 use function strlen;
 use function strpos;

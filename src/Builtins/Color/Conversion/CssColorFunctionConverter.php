@@ -16,6 +16,8 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Values\AstValueInspector;
 
 use function abs;
+use function count;
+use function in_array;
 use function round;
 use function strtolower;
 

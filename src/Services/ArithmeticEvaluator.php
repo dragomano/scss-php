@@ -21,6 +21,7 @@ use function fdiv;
 use function floor;
 use function in_array;
 use function is_infinite;
+use function strtolower;
 use function trim;
 
 final readonly class ArithmeticEvaluator

@@ -132,5 +132,90 @@ describe('Compiler', function () {
                 expect($this->compiler->compileString($case[0]))->toContain($case[1]);
             }
         });
+
+        it('preserves unresolved rgb channels when the resolved color function differs from the input', function () {
+            $cases = [
+                ['.a { color: hsl(120, 50%, 50%, var(--a)); }', 'color: hsl(120, 50%, 50%, var(--a))'],
+                ['.a { color: rgb(1 2 3 / var(--a)); }',        'color: rgb(1, 2, 3, var(--a))'],
+                ['.a { color: rgba(1, 2, 3, var(--a)); }',      'color: rgba(1, 2, 3, var(--a))'],
+            ];
+
+            foreach ($cases as $case) {
+                expect($this->compiler->compileString($case[0]))->toEqualCss(
+                    /** @lang text */
+                    ".a {\n  {$case[1]};\n}",
+                );
+            }
+        });
+
+        it('compares two insensitive function refs', function () {
+            $css = $this->compiler->compileString(
+                ".a { content: meta.get-function('quote', \$css: true) == meta.get-function('quote', \$css: true); }",
+            );
+
+            expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+            .a {
+              content: true;
+            }
+            CSS);
+        });
+
+        it('compares a missing missing function ref against another css function ref', function () {
+            $css = $this->compiler->compileString(
+                ".a { content: meta.get-function('quote', \$css: true) == meta.get-function('unquote', \$css: true); }",
+            );
+
+            expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+            .a {
+              content: false;
+            }
+            CSS);
+        });
+
+        it('preserves lab constructor results with missing channels in css output', function () {
+            $cases = [
+                ['.a { color: lab(50% 20 30); }',           'color: lab(50% 20 30)'],
+                ['.a { color: hsl(120deg 50% 50% / none); }', 'color: hsl(120deg 50% 50% / none)'],
+                ['.a { color: rgb(1 2 3 / var(--a)); }',    'color: rgb(1, 2, 3, var(--a))'],
+                ['.a { color: rgb(none 1 2); }',            'color: rgb(none 1 2)'],
+            ];
+
+            foreach ($cases as $case) {
+                expect($this->compiler->compileString($case[0]))->toEqualCss(
+                    /** @lang text */
+                    ".a {\n  {$case[1]};\n}",
+                );
+            }
+        });
+
+        it('serializes uppercase rgb constructors with top-level none channels as css functions', function () {
+            $css = $this->compiler->compileString('.a { color: RGBA(none, 0, 0); }');
+
+            expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+            .a {
+              color: rgba(none, 0, 0);
+            }
+            CSS);
+        });
+
+        it('serializes uppercase rgb constructors with a non-none top-level string channel as css functions', function () {
+            $css = $this->compiler->compileString('.a { color: RGBA(foo, 0, 0); }');
+
+            expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+            .a {
+              color: rgba(foo, 0, 0);
+            }
+            CSS);
+        });
+
+        it('serializes uppercase rgb constructors with unresolved top-level channels as css functions', function () {
+            $css = $this->compiler->compileString('.a { color: RGBA(var(--r), 0, 0); }');
+
+            expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+            .a {
+              color: rgba(var(--r), 0, 0);
+            }
+            CSS);
+        });
     });
 });

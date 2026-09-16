@@ -27,6 +27,8 @@ use Bugo\SCSS\Services\Render;
 
 use function count;
 use function is_array;
+use function ltrim;
+use function str_ends_with;
 use function str_replace;
 
 final readonly class ChildrenCompilationStep implements CompilationStepInterface

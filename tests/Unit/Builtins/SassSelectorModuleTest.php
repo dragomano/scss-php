@@ -249,3 +249,113 @@ describe('SassSelectorModule', function () {
             ->toThrow(SassErrorException::class);
     });
 });
+
+describe('SassSelectorModule edge cases', function () {
+    beforeEach(function () {
+        $this->module = new SassSelectorModule();
+    });
+
+    it('rejects complex replacement target with multiple compounds', function () {
+        expect(fn() => $this->module->call(
+            'replace',
+            [new StringNode('.a .b'), new StringNode('.x .y'), new StringNode('.z')],
+            [],
+        ))->toThrow(SassErrorException::class, "Can't extend complex selector .x .y.");
+    });
+
+    it('rejects parent selectors in extend and replace', function () {
+        expect(fn() => $this->module->call('extend', [new StringNode('.a'), new StringNode('.b'), new StringNode('&')], []))
+            ->toThrow(SassErrorException::class, "Parent selectors aren't allowed here.")
+            ->and(fn() => $this->module->call('replace', [new StringNode('.a'), new StringNode('&'), new StringNode('.b')], []))
+            ->toThrow(SassErrorException::class, "Parent selectors aren't allowed here.");
+    });
+
+    it('rejects unbalanced selector syntax', function () {
+        expect(fn() => $this->module->call('parse', [new StringNode('a)')], []))
+            ->toThrow(SassErrorException::class, 'expected more input.')
+            ->and(fn() => $this->module->call('parse', [new StringNode('.a]')], []))
+            ->toThrow(SassErrorException::class, 'expected more input.');
+    });
+
+    it('normalizes quoted and bracketed syntax when parsing', function () {
+        $quoted  = $this->module->call('parse', [new StringNode('a[foo="("]')], []);
+        $pseudo  = $this->module->call('nest', [new StringNode('.a'), new StringNode(':foo("x&y")')], []);
+        $attrib  = $this->module->call('nest', [new StringNode('.a'), new StringNode('[b="c"]')], []);
+        $nested  = $this->module->call('nest', [new StringNode('.a'), new StringNode('[[b]]')], []);
+
+        expect(renderSelectorValue($quoted))->toBe('a[foo="("]')
+            ->and(renderSelectorValue($pseudo))->toBe('.a :foo("x&y")')
+            ->and(renderSelectorValue($attrib))->toBe('.a [b="c"]')
+            ->and(renderSelectorValue($nested))->toBe('.a [[b]]');
+    });
+
+    it('describes invalid selector values with a nested list of non-strings', function () {
+        expect(fn() => $this->module->call('parse', [new ListNode([new StringNode('.a'), new NullNode()], 'space', true)], []))
+            ->toThrow(SassErrorException::class, '.a nullNode is not a valid selector');
+    });
+
+    it('rejects appending child selectors with leading combinators', function () {
+        expect(fn() => $this->module->call('append', [new StringNode('.a'), new StringNode('> .b')], []))
+            ->toThrow(SassErrorException::class, "Can't append > .b to .a.")
+            ->and(fn() => $this->module->call('append', [new StringNode('.a'), new StringNode('+')], []))
+            ->toThrow(SassErrorException::class, "Can't append + to .a.");
+    });
+
+    it('rejects appending namespaced and universal child selectors', function () {
+        expect(fn() => $this->module->call('append', [new StringNode('.a'), new StringNode('ns|b')], []))
+            ->toThrow(SassErrorException::class, "Can't append ns|b to .a.")
+            ->and(fn() => $this->module->call('append', [new StringNode('.a'), new StringNode('*')], []))
+            ->toThrow(SassErrorException::class, "Can't append * to .a.");
+    });
+
+    it('applies leading combinators when nesting parent references', function () {
+        $withParentRef = $this->module->call('nest', [new StringNode('.a'), new StringNode('> &.b')], []);
+        $alreadyLead   = $this->module->call('nest', [new StringNode('> .x'), new StringNode('> &:y')], []);
+
+        expect(renderSelectorValue($withParentRef))->toBe('> .a.b')
+            ->and(renderSelectorValue($alreadyLead))->toBe('> .x:y');
+    });
+
+    it('expands escaped parent references across multiple parents', function () {
+        $single = $this->module->call('nest', [new StringNode('.a'), new StringNode('x\\&y')], []);
+        $empty  = $this->module->call('nest', [new StringNode(''), new StringNode('x\\&y')], []);
+
+        expect(renderSelectorValue($single))->toBe('.a')
+            ->and(renderSelectorValue($empty))->toBe('x\\&y');
+    });
+
+    it('resolves escaped pseudo tokens containing parent references', function () {
+        $noParen = $this->module->call('nest', [new StringNode('.a'), new StringNode('&((a):b\\&\\)')], []);
+        $noAmp   = $this->module->call('nest', [new StringNode('.a'), new StringNode('&:a\\&(b)')], []);
+
+        expect(renderSelectorValue($noParen))->toBe('.aa.a')
+            ->and(renderSelectorValue($noAmp))->toBe('.a.a');
+    });
+
+    it('rejects trailing-combinator parents in compound selectors', function () {
+        expect(fn() => $this->module->call('nest', [new StringNode('.a>'), new StringNode('&.c')], []))
+            ->toThrow(SassErrorException::class, "can't be used as a parent in a compound selector");
+    });
+
+    it('keeps parent reference when parent compound has no tokens', function () {
+        $result = $this->module->call('nest', [new StringNode('#'), new StringNode('&.c')], []);
+
+        expect(renderSelectorValue($result))->toBe('&.c');
+    });
+
+    it('deduplicates identical complexes after nesting and unifying', function () {
+        $unified = $this->module->call('unify', [new StringNode('.a,.a'), new StringNode('.b')], []);
+        $nested  = $this->module->call('nest', [new StringNode('.a, .a'), new StringNode('&.b')], []);
+
+        expect(renderSelectorValue($unified))->toBe('.a.b')
+            ->and(renderSelectorValue($nested))->toBe('.a.b');
+    });
+
+    it('resolves parent references inside pseudo selector arguments', function () {
+        $single = $this->module->call('nest', [new StringNode('.a'), new StringNode('a:not(&)')], []);
+        $multi  = $this->module->call('nest', [new StringNode('.a, .b'), new StringNode('a:not(&)')], []);
+
+        expect(renderSelectorValue($single))->toBe('a:not(.a)')
+            ->and(renderSelectorValue($multi))->toBe('a:not(.a, .b)');
+    });
+});

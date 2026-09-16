@@ -302,4 +302,94 @@ describe('Compiler extend module graph', function () {
         expect(fn() => $compiler->compileString(file_get_contents($tmpDir . '/root.scss')))
             ->toThrow(\Bugo\SCSS\Exceptions\ModuleResolutionException::class);
     });
+
+    it('merges import edges into the use-reachable load-css branch without promoting the imported module to a branch root', function () {
+        $tmpDir = sys_get_temp_dir() . '/scss-php-modbranchuse-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        file_put_contents($tmpDir . '/_sub.scss', <<<'SCSS'
+        .sub-x {
+          color: green;
+        }
+        SCSS);
+
+        file_put_contents($tmpDir . '/_a.scss', <<<'SCSS'
+        @import '_sub';
+        SCSS);
+
+        file_put_contents($tmpDir . '/root.scss', <<<'SCSS'
+        @use 'sass:meta';
+        @use '_a';
+        @include meta.load-css('_a');
+        .base {
+          color: red;
+        }
+        .every {
+          @extend .base;
+        }
+        SCSS);
+
+        $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
+
+        $css = $compiler->compileString(@file_get_contents($tmpDir . '/root.scss'));
+
+        expect($css)->toContain('.base, .every')
+            ->and($css)->toContain('.sub-x');
+    });
+
+    it('abandons the extend graph when a dependency fails to parse during the sweep', function () {
+        $tmpDir = sys_get_temp_dir() . '/scss-php-modparse-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        file_put_contents($tmpDir . '/_bad.scss', <<<'SCSS'
+        .foo {
+          color: red;
+        }
+
+        @use 'never-reached';
+        SCSS);
+
+        file_put_contents($tmpDir . '/root.scss', <<<'SCSS'
+        @use 'bad';
+        .base {
+          color: red;
+        }
+        SCSS);
+
+        $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
+
+        expect(fn() => $compiler->compileString(file_get_contents($tmpDir . '/root.scss')))
+            ->toThrow(\Bugo\SCSS\Exceptions\ModuleResolutionException::class);
+    });
+
+    it('abandons the extend graph when collecting a module store raises a loop boundary error', function () {
+        $tmpDir = sys_get_temp_dir() . '/scss-php-modfor-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        file_put_contents($tmpDir . '/_loop.scss', <<<'SCSS'
+        @for $i from oops through 1 {
+          .x {
+            color: red;
+          }
+        }
+        SCSS);
+
+        file_put_contents($tmpDir . '/root.scss', <<<'SCSS'
+        @use 'loop';
+        .base {
+          color: red;
+        }
+        .every {
+          @extend .base;
+        }
+        SCSS);
+
+        $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
+
+        expect(fn() => $compiler->compileString(file_get_contents($tmpDir . '/root.scss')))
+            ->toThrow(\Bugo\SCSS\Exceptions\InvalidLoopBoundaryException::class);
+    });
 });

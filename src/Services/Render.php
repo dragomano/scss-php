@@ -16,6 +16,8 @@ use Bugo\SCSS\Utils\OutputChunk;
 use Bugo\SCSS\Utils\SourceMapOptions;
 use Bugo\SCSS\Utils\SourceMapPosition;
 
+use function array_slice;
+use function array_splice;
 use function count;
 use function explode;
 use function implode;

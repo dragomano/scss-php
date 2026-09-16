@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Lexer\Token;
+use Bugo\SCSS\Lexer\TokenStream;
+use Bugo\SCSS\Lexer\TokenType;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\DebugNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
@@ -16,10 +20,142 @@ use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\MixinNode;
 use Bugo\SCSS\Nodes\ReturnNode;
 use Bugo\SCSS\Nodes\RuleNode;
+use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Parser;
+use Bugo\SCSS\Parser\CallableDirectiveParsingContextInterface;
+use Bugo\SCSS\Parser\CallableDirectiveValueContextInterface;
+use Bugo\SCSS\Parser\DirectiveParser;
+use Bugo\SCSS\Parser\InlineValueParserInterface;
+use Bugo\SCSS\Parser\ModuleDirectiveContextInterface;
+use Bugo\SCSS\Parser\TokenStreamHelper;
+
+function directiveTestToken(
+    TokenType $type,
+    string $value = '',
+    int $line = 1,
+    int $column = 1,
+): Token {
+    return new Token($type, $value, $line, $column);
+}
+
+/**
+ * @param array<int, Token> $tokens
+ * @param array<string, mixed> $overrides
+ */
+function createDirectiveParserForTest(array $tokens, array $overrides = []): DirectiveParser
+{
+    $stream = new TokenStream($tokens);
+
+    $consumeIdentifier = $overrides['consumeIdentifier'] ?? static function () use ($stream): string {
+        return TokenStreamHelper::consumeIdentifier($stream);
+    };
+
+    $parseBlock = $overrides['parseBlock'] ?? static fn(): array => [];
+    $parseStatementsInsideBlock = $overrides['parseStatementsInsideBlock'] ?? static fn(): array => [];
+    $parseValueUntil = $overrides['parseValueUntil'] ?? static fn(array $stopTypes): ?AstNode => null;
+
+    $parseRuleFromSelector = $overrides['parseRuleFromSelector']
+        ?? static fn(string $selector, int $line, int $column): RuleNode => new RuleNode($selector, [], $line, $column);
+
+    $parsingContext = new class (
+        $parseBlock,
+        $parseStatementsInsideBlock,
+        $consumeIdentifier,
+        $parseRuleFromSelector,
+    ) implements CallableDirectiveParsingContextInterface {
+        public function __construct(
+            private readonly Closure $parseBlock,
+            private readonly Closure $parseStatementsInsideBlock,
+            private readonly Closure $consumeIdentifier,
+            private readonly Closure $parseRuleFromSelector,
+        ) {}
+
+        public function parseBlock(): array
+        {
+            return ($this->parseBlock)();
+        }
+
+        public function parseStatementsInsideBlock(): array
+        {
+            return ($this->parseStatementsInsideBlock)();
+        }
+
+        public function consumeIdentifier(): string
+        {
+            return ($this->consumeIdentifier)();
+        }
+
+        public function parseRuleFromSelector(string $selector, int $line = 1, int $column = 1): RuleNode
+        {
+            return ($this->parseRuleFromSelector)($selector, $line, $column);
+        }
+
+        public function incrementBlockDepth(): void {}
+
+        public function decrementBlockDepth(): void {}
+    };
+
+    $inlineValueParser = new class implements InlineValueParserInterface {
+        public function parseInlineValue(string $expression): AstNode
+        {
+            return new StringNode($expression);
+        }
+    };
+
+    $callableValueContext = new class ($parseValueUntil) implements CallableDirectiveValueContextInterface {
+        public function __construct(private readonly Closure $parseValueUntil) {}
+
+        public function parseValue(): AstNode
+        {
+            return new StringNode('value');
+        }
+
+        public function parseValueUntil(array $stopTokens): ?AstNode
+        {
+            return ($this->parseValueUntil)($stopTokens);
+        }
+
+        public function parseArgumentList(): array
+        {
+            return [];
+        }
+    };
+
+    $moduleValueContext = new class ($consumeIdentifier, $parseValueUntil) implements ModuleDirectiveContextInterface {
+        public function __construct(
+            private readonly Closure $consumeIdentifier,
+            private readonly Closure $parseValueUntil,
+        ) {}
+
+        public function parseString(): string
+        {
+            return '';
+        }
+
+        public function consumeIdentifier(): string
+        {
+            return ($this->consumeIdentifier)();
+        }
+
+        public function parseValueUntil(array $stopTokens): ?AstNode
+        {
+            return ($this->parseValueUntil)($stopTokens);
+        }
+
+        /**
+         * @return array{default: bool, global: bool, important: bool}
+         */
+        public function parseValueModifiers(): array
+        {
+            return ['default' => false, 'global' => false, 'important' => false];
+        }
+    };
+
+    return new DirectiveParser($stream, $parsingContext, $inlineValueParser, $callableValueContext, $moduleValueContext);
+}
 
 describe('DirectiveParser', function () {
     beforeEach(function () {
@@ -478,5 +614,125 @@ describe('DirectiveParser', function () {
                 ->and($node->body)->toBe([])
                 ->and($node->hasBlock)->toBeFalse();
         });
+    });
+});
+
+describe('DirectiveParser without raw source', function () {
+    it('tokenizes a plain prelude of a generic directive', function () {
+        $parser = createDirectiveParserForTest([
+            directiveTestToken(TokenType::AT, '@'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'u'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'a'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::NUMBER, '1'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::SEMICOLON, ';'),
+            directiveTestToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseDirective();
+
+        /** @var DirectiveNode $node */
+        expect($node)->toBeInstanceOf(DirectiveNode::class)
+            ->and($node->name)->toBe('u')
+            ->and($node->prelude)->toBe('a 1')
+            ->and($node->hasBlock)->toBeFalse();
+    });
+
+    it('keeps interpolation fragments inside a tokenized prelude', function () {
+        $parser = createDirectiveParserForTest([
+            directiveTestToken(TokenType::AT, '@'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'v'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::HASH, '#'),
+            directiveTestToken(TokenType::LBRACE, '{'),
+            directiveTestToken(TokenType::IDENTIFIER, 'x'),
+            directiveTestToken(TokenType::RBRACE, '}'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::SEMICOLON, ';'),
+            directiveTestToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseDirective();
+
+        /** @var DirectiveNode $node */
+        expect($node)->toBeInstanceOf(DirectiveNode::class)
+            ->and($node->name)->toBe('v')
+            ->and($node->prelude)->toBe('#{x}');
+    });
+
+    it('drops silent comments and keeps loud comments in a tokenized prelude', function () {
+        $parser = createDirectiveParserForTest([
+            directiveTestToken(TokenType::AT, '@'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'k'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'a'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::COMMENT_SILENT, 'x'),
+            directiveTestToken(TokenType::WHITESPACE, "\n"),
+            directiveTestToken(TokenType::COMMENT_LOUD, 'y'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'b'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::SEMICOLON, ';'),
+            directiveTestToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseDirective();
+
+        /** @var DirectiveNode $node */
+        expect($node)->toBeInstanceOf(DirectiveNode::class)
+            ->and($node->name)->toBe('k')
+            ->and($node->prelude)->toBe('a /*y*/ b');
+    });
+
+    it('opens a block for a generic directive with a tokenized prelude', function () {
+        $parser = createDirectiveParserForTest([
+            directiveTestToken(TokenType::AT, '@'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'q'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'p'),
+            directiveTestToken(TokenType::LBRACE, '{'),
+            directiveTestToken(TokenType::RBRACE, '}'),
+            directiveTestToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseDirective();
+
+        /** @var DirectiveNode $node */
+        expect($node)->toBeInstanceOf(DirectiveNode::class)
+            ->and($node->name)->toBe('q')
+            ->and($node->prelude)->toBe('p')
+            ->and($node->hasBlock)->toBeTrue();
+    });
+
+    it('falls back to a selector for an at-root query with an unclosed quote', function () {
+        $parser = createDirectiveParserForTest([
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::LPAREN, '('),
+            directiveTestToken(TokenType::IDENTIFIER, 'without'),
+            directiveTestToken(TokenType::COLON, ':'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'media"x'),
+            directiveTestToken(TokenType::RPAREN, ')'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::LBRACE, '{'),
+            directiveTestToken(TokenType::RBRACE, '}'),
+            directiveTestToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseAtRootDirective();
+
+        /** @var AtRootNode $node */
+        expect($node)->toBeInstanceOf(AtRootNode::class)
+            ->and($node->queryMode)->toBeNull()
+            ->and($node->body)->toHaveCount(1)
+            ->and($node->body[0])->toBeInstanceOf(RuleNode::class)
+            ->and($node->body[0]->selector)->toBe('(without: media"x)');
     });
 });

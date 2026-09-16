@@ -24,6 +24,9 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 
+use function abs;
+use function array_filter;
+use function array_slice;
 use function count;
 use function in_array;
 use function is_finite;
@@ -33,6 +36,7 @@ use function round;
 use function sprintf;
 use function str_contains;
 use function strtolower;
+use function trim;
 
 final readonly class ColorConstructorEvaluator
 {

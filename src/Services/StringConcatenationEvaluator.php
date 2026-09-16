@@ -18,6 +18,7 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Values\SassCalculation;
 use Closure;
 
+use function array_slice;
 use function count;
 use function ctype_alpha;
 use function in_array;

@@ -21,6 +21,7 @@ use Bugo\SCSS\Utils\CssNamedColors;
 use Bugo\SCSS\Values\AstValueTransformer;
 
 use function array_merge;
+use function count;
 use function in_array;
 use function str_contains;
 use function strtolower;

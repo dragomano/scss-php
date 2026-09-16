@@ -38,12 +38,14 @@ use Bugo\SCSS\Values\SassCalculation;
 use LogicException;
 
 use function array_diff;
+use function array_map;
 use function array_slice;
 use function array_values;
 use function count;
 use function get_debug_type;
 use function implode;
 use function in_array;
+use function str_starts_with;
 
 final class SassMetaModule extends AbstractModule
 {
@@ -255,9 +257,7 @@ final class SassMetaModule extends AbstractModule
      */
     private function callFunction(array $positional, array $named, ?BuiltinCallContext $context): AstNode
     {
-        if (! isset($positional[0]) && isset($named['function'])) {
-            $positional[0] = $named['function'];
-
+        if (isset($named['function']) && ($positional[0] ?? null) === $named['function']) {
             unset($named['function']);
         }
 

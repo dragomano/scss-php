@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Utils;
 
+use function ctype_xdigit;
 use function in_array;
+use function ltrim;
+use function rtrim;
 use function strlen;
 use function substr;
 

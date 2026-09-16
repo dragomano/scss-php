@@ -325,3 +325,103 @@ describe('CallableDirectiveParser', function () {
             ->and($node->arguments)->toBe([]);
     });
 });
+
+describe('CallableDirectiveParser CSS function names', function () {
+    it('closes a dangling interpolation brace from the stream', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::CSS_VARIABLE, '--f-#{a'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /* @var $node RuleNode */
+        $node = $parser->parseFunctionDirective('function', 2, 3);
+
+        expect($node)->toBeInstanceOf(RuleNode::class)
+            ->and($node->selector)->toBe('@function --f-a')
+            ->and($node->line)->toBe(2)
+            ->and($node->column)->toBe(3);
+    });
+
+    it('keeps an unresolved interpolation when the closing brace is absent', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::CSS_VARIABLE, '--f-#{a'),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /* @var $node RuleNode */
+        $node = $parser->parseFunctionDirective('function', 1, 1);
+
+        expect($node)->toBeInstanceOf(RuleNode::class)
+            ->and($node->selector)->toBe('@function --f-#{a');
+    });
+
+    it('drops sass-style parameters from a glued css function signature', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::CSS_VARIABLE, '--f($x'),
+            callableDirectiveToken(TokenType::LPAREN, '('),
+            callableDirectiveToken(TokenType::IDENTIFIER, 'y'),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /* @var $node RuleNode */
+        $node = $parser->parseFunctionDirective('function', 1, 1);
+
+        expect($node)->toBeInstanceOf(RuleNode::class)
+            ->and($node->selector)->toBe('@function --f()');
+    });
+
+    it('keeps a css-style signature glued into the custom property token', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::CSS_VARIABLE, '--f(1'),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::IDENTIFIER, 'p'),
+            callableDirectiveToken(TokenType::LPAREN, '('),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /* @var $node RuleNode */
+        $node = $parser->parseFunctionDirective('function', 1, 1);
+
+        expect($node)->toBeInstanceOf(RuleNode::class)
+            ->and($node->selector)->toBe('@function --f(1 p())');
+    });
+
+    it('completes an empty signature from a glued closing parenthesis', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::CSS_VARIABLE, '--f'),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /* @var $node RuleNode */
+        $node = $parser->parseFunctionDirective('function', 1, 1);
+
+        expect($node)->toBeInstanceOf(RuleNode::class)
+            ->and($node->selector)->toBe('@function --f()');
+    });
+});

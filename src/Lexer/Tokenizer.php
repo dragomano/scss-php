@@ -478,11 +478,7 @@ final class Tokenizer
                     $escapedChar = $escapeResult[1];
 
                     // Line continuation: a backslash before a newline produces nothing
-                    if ($escapedChar === "\n" || $escapedChar === "\r") {
-                        if ($escapedChar === "\r" && $this->peekChar() === "\n") {
-                            $this->advance();
-                        }
-
+                    if ($escapedChar === "\n") {
                         continue;
                     }
 
@@ -664,13 +660,7 @@ final class Tokenizer
                 $char = $this->source[$this->position];
 
                 if ($char === '\\') {
-                    $escapeEnd = $this->scanEscapeEnd();
-
-                    if ($escapeEnd === null) {
-                        break;
-                    }
-
-                    $this->position = $escapeEnd;
+                    $this->position = $this->scanEscapeEnd();
 
                     $hasUnitChars = true;
 
@@ -702,22 +692,6 @@ final class Tokenizer
 
                 if (! $hasUnitChars && ($next === '-' || ! $this->isNameStartCodePoint($next))) {
                     break;
-                }
-
-                if (! $hasUnitChars && $next === '\\') {
-                    $this->position++;
-
-                    $escapeEnd = $this->scanEscapeEnd();
-
-                    if ($escapeEnd === null) {
-                        break;
-                    }
-
-                    $this->position = $escapeEnd;
-
-                    $hasUnitChars = true;
-
-                    continue;
                 }
 
                 $this->position++;
@@ -766,12 +740,8 @@ final class Tokenizer
         return false;
     }
 
-    private function scanEscapeEnd(): ?int
+    private function scanEscapeEnd(): int
     {
-        if ($this->source[$this->position] !== '\\') {
-            return null;
-        }
-
         if ($this->position + 1 >= $this->length) {
             return $this->position + 1;
         }

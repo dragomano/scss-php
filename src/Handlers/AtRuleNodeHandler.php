@@ -30,7 +30,9 @@ use function ltrim;
 use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
+use function strlen;
 use function strtolower;
+use function substr;
 use function substr_count;
 use function trim;
 
@@ -168,8 +170,7 @@ final readonly class AtRuleNodeHandler
         $orderedChunks      = [];
         $parentSegmentSaved = $this->render->savePosition();
         $hasParentContent   = false;
-
-        $parentAtRuleStack = $this->selector->getCurrentAtRuleStack($ctx->env);
+        $parentAtRuleStack  = $this->selector->getCurrentAtRuleStack($ctx->env);
 
         $currentAtRuleStack   = $parentAtRuleStack;
         $currentAtRuleStack[] = AtRuleContextEntry::directive(
@@ -212,23 +213,11 @@ final readonly class AtRuleNodeHandler
 
                 $ctx->env->exitScope();
 
-                $outsideChunks = $this->selector->drainDeferredAtRuleEscapes();
+                $this->selector->drainDeferredAtRuleEscapes();
 
-                $result    = '';
-                $separator = "\n" . Render::CONTINUATION_MARK;
+                $result = '';
 
-                foreach ($orderedChunks as $index => $entry) {
-                    if ($index > 0) {
-                        $this->render->appendChunk($result, $separator);
-                    }
-
-                    $this->appendResolvedChunk($result, $entry['chunk']);
-                }
-
-                foreach ($outsideChunks as $chunk) {
-                    $this->render->appendChunk($result, $separator);
-                    $this->appendResolvedChunk($result, new RawChunk($chunk));
-                }
+                $this->appendResolvedChunk($result, $orderedChunks[0]['chunk']);
 
                 return $result;
             }
@@ -671,16 +660,8 @@ final readonly class AtRuleNodeHandler
         $ruleDefinition      = $scope->findVariableDefinition('__parent_selector');
         $directiveDefinition = $scope->findVariableDefinition('__at_rule_stack');
 
-        if ($ruleDefinition === null) {
-            return false;
-        }
-
-        if ($directiveDefinition === null) {
-            return true;
-        }
-
-        for ($current = $ruleDefinition->scope; $current !== null; $current = $current->getParent()) {
-            if ($current === $directiveDefinition->scope) {
+        for ($current = $ruleDefinition?->scope; $current !== null; $current = $current->getParent()) {
+            if ($current === $directiveDefinition?->scope) {
                 return true;
             }
         }

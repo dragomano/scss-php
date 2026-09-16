@@ -13,6 +13,7 @@ use function fmod;
 use function in_array;
 use function max;
 use function min;
+use function round;
 use function sin;
 use function sqrt;
 
@@ -778,11 +779,13 @@ final readonly class DartColorMath
         $lValue = $lightness ?? 0.0;
         $f1     = ($lValue + 16.0) / 116.0;
 
+        $y = $lValue > self::LAB_KAPPA * self::LAB_EPSILON
+            ? $this->cube(($lValue + 16.0) / 116.0) * 1.0
+            : $lValue / self::LAB_KAPPA;
+
         return $this->xyzD50Convert($to, [
             $this->convertFToXorZ($a / 500.0 + $f1) * self::D50[0],
-            ($lValue > self::LAB_KAPPA * self::LAB_EPSILON
-                ? $this->cube(($lValue + 16.0) / 116.0) * 1.0
-                : $lValue / self::LAB_KAPPA) * self::D50[1],
+            $y * self::D50[1],
             $this->convertFToXorZ($f1 - $b / 200.0) * self::D50[2],
         ]);
     }

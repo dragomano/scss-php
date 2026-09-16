@@ -8,6 +8,7 @@ use Bugo\SCSS\Exceptions\InvalidSyntaxException;
 use Bugo\SCSS\Syntax;
 
 use function array_pop;
+use function count;
 use function ctype_alnum;
 use function ctype_alpha;
 use function ctype_digit;
@@ -25,6 +26,8 @@ use function str_repeat;
 use function str_starts_with;
 use function strlen;
 use function strpos;
+use function strrpos;
+use function strtolower;
 use function substr;
 use function substr_count;
 use function trim;
@@ -302,8 +305,10 @@ final readonly class SassNormalizer implements SourceNormalizer
 
         $collected = [$prefix . ltrim($head)];
 
-        if (str_contains(ltrim($head), '*/')) {
-            $collected = [$prefix . $this->stripCommentAfterLoudCommentClose(ltrim($head))];
+        $closePos = strpos(ltrim($head), '*/');
+
+        if ($closePos !== false) {
+            $collected = [$prefix . $this->stripCommentAfterLoudCommentClose(ltrim($head), $closePos)];
 
             return [$collected, $index];
         }
@@ -346,14 +351,8 @@ final readonly class SassNormalizer implements SourceNormalizer
         return [$collected, $index];
     }
 
-    private function stripCommentAfterLoudCommentClose(string $head): string
+    private function stripCommentAfterLoudCommentClose(string $head, int $closePos): string
     {
-        $closePos = strpos($head, '*/');
-
-        if ($closePos === false) {
-            return $head;
-        }
-
         $tail      = substr($head, $closePos + 2);
         $tailStart = ltrim($tail);
 
@@ -1676,19 +1675,16 @@ final readonly class SassNormalizer implements SourceNormalizer
     {
         $char = $line[$position] ?? '';
 
-        if ($char === '') {
-            return false;
-        }
-
         if ($char === '#') {
             return ($line[$position + 1] ?? '') === '{';
         }
 
-        return ctype_alpha($char)
-            || $char === '_'
-            || $char === '-'
-            || $char === '\\'
-            || ord($char) >= 0x80;
+        return $char !== ''
+            && (ctype_alpha($char)
+                || $char === '_'
+                || $char === '-'
+                || $char === '\\'
+                || ord($char) >= 0x80);
     }
 
     private function ensureBlockHeaderHasOpeningBrace(string $line): string

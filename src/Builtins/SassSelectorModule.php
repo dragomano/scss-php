@@ -14,6 +14,8 @@ use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Utils\SelectorComponent;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 
+use function array_filter;
+use function array_flip;
 use function array_map;
 use function array_slice;
 use function array_unique;
@@ -22,10 +24,12 @@ use function count;
 use function explode;
 use function implode;
 use function in_array;
+use function lcfirst;
 use function method_exists;
 use function str_contains;
 use function str_ends_with;
 use function str_replace;
+use function str_starts_with;
 use function strlen;
 use function strpos;
 use function substr;
@@ -609,10 +613,6 @@ final class SassSelectorModule extends AbstractModule
 
     private function prependParentToCompound(string $sel): ?string
     {
-        if ($sel === '') {
-            return '&';
-        }
-
         if (in_array($sel[0], ['.', '#', '%', ':', '['], true)) {
             return '&' . $sel;
         }
@@ -705,10 +705,6 @@ final class SassSelectorModule extends AbstractModule
         $result = [];
 
         foreach ($variants as $variant) {
-            if ($variant === []) {
-                continue;
-            }
-
             $last = $variant[count($variant) - 1];
 
             $result[] = [...array_slice($variant, 0, -1), new SelectorComponent($last->sel, $combinator, $last->lead)];
@@ -742,10 +738,6 @@ final class SassSelectorModule extends AbstractModule
     private function applyLeadingCombinator(array $complexes, string $lead): array
     {
         foreach ($complexes as $index => $complex) {
-            if ($complex === []) {
-                continue;
-            }
-
             $first = $complex[0];
 
             if (($first->lead ?? '') !== '') {
@@ -972,10 +964,6 @@ final class SassSelectorModule extends AbstractModule
         }
 
         $count = count($parent);
-
-        if ($count === 0) {
-            return $child;
-        }
 
         $last = $parent[$count - 1];
         $last = new SelectorComponent(

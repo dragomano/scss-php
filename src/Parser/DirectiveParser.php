@@ -27,8 +27,11 @@ use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Utils\StringHelper;
 
+use function array_reverse;
 use function ctype_alnum;
 use function in_array;
+use function ltrim;
+use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;

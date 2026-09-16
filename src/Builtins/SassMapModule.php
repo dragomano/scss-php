@@ -17,6 +17,7 @@ use Bugo\SCSS\Utils\AstValueComparator;
 
 use function array_filter;
 use function array_map;
+use function array_pop;
 use function array_slice;
 use function array_values;
 use function count;
@@ -93,7 +94,7 @@ final class SassMapModule extends AbstractModule
             return match ($name) {
                 'deep-merge'  => $this->deepMerge($positional, $named),
                 'deep-remove' => $this->deepRemove($positional),
-                'get'         => $this->get($positional, $named, $context),
+                'get'         => $this->get($positional, $context),
                 'has-key'     => $this->hasKey($positional, $context),
                 'keys'        => $this->keys($positional, $context),
                 'merge'       => $this->merge($positional, $context),
@@ -149,11 +150,10 @@ final class SassMapModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
-     * @param array<string, AstNode> $named
      */
-    private function get(array $positional, array $named, ?BuiltinCallContext $context): AstNode
+    private function get(array $positional, ?BuiltinCallContext $context): AstNode
     {
-        $map = $positional[0] ?? $named['map'] ?? null;
+        $map = $positional[0] ?? null;
 
         if ($map === null) {
             throw new MissingFunctionArgumentsException(
@@ -168,16 +168,10 @@ final class SassMapModule extends AbstractModule
         $allKeys = array_slice($positional, 1);
 
         if ($allKeys === []) {
-            $keyArg = $named['key'] ?? null;
-
-            if ($keyArg === null) {
-                throw new MissingFunctionArgumentsException(
-                    $this->builtinErrorContext('map.get'),
-                    'map and key arguments',
-                );
-            }
-
-            $allKeys = [$keyArg];
+            throw new MissingFunctionArgumentsException(
+                $this->builtinErrorContext('map.get'),
+                'map and key arguments',
+            );
         }
 
         $lastKey = array_pop($allKeys);
@@ -213,7 +207,7 @@ final class SassMapModule extends AbstractModule
 
         $this->warnAboutDeprecatedMapFunction($context, 'has-key', $positional);
 
-        $value = $this->get($positional, [], null);
+        $value = $this->get($positional, null);
 
         return $this->boolNode(! ($value instanceof NullNode));
     }

@@ -10,6 +10,7 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
+use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Utils\DeferredChunk;
@@ -597,5 +598,93 @@ describe('DeferredChunkManager', function () {
         expect($output)->toContain('.outside')
             ->and($output)->toContain('color: red')
             ->and($state->first)->toBeFalse();
+    });
+
+    it('returns early when a merged media chunk compiles to nothing', function () {
+        $scope = $this->ctx->env->getCurrentScope();
+        $scope->setVariableLocal('__at_rule_stack', [
+            AtRuleContextEntry::directive('media', 'screen'),
+        ]);
+
+        $output = '';
+        $state  = new class {
+            public bool $first = true;
+        };
+        $child  = new DirectiveNode('media', 'print', [], true);
+
+        $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx);
+
+        expect($output)->toBe('')
+            ->and($state->first)->toBeTrue();
+    });
+
+    it('appends a merged media chunk to output when at-rule deferral is unavailable', function () {
+        $scope = $this->ctx->env->getCurrentScope();
+        $scope->setVariableLocal('__at_rule_stack', [
+            AtRuleContextEntry::directive('media', 'screen'),
+        ]);
+
+        $output = '';
+        $state  = new class {
+            public bool $first = true;
+        };
+        $child  = new DirectiveNode('media', '(min-width: 1)', [
+            new RuleNode('.item', [
+                new DeclarationNode('color', new StringNode('red')),
+            ]),
+        ], true);
+
+        $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx);
+
+        expect($output)->toContain('@media screen and (min-width: 1)')
+            ->and($output)->toContain('color: red')
+            ->and($state->first)->toBeFalse();
+    });
+
+    it('falls back to combining media preludes when the merge cannot be represented', function () {
+        $scope = $this->ctx->env->getCurrentScope();
+        $scope->setVariableLocal('__at_rule_stack', [
+            AtRuleContextEntry::directive('media', 'not screen'),
+        ]);
+
+        $output = '';
+        $state  = new class {
+            public bool $first = true;
+        };
+        $child  = new DirectiveNode('media', 'not print', [
+            new RuleNode('.item', [
+                new DeclarationNode('color', new StringNode('red')),
+            ]),
+        ], true);
+
+        $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx);
+
+        expect($output)->toContain('@media not screen and not print')
+            ->and($output)->toContain('color: red')
+            ->and($state->first)->toBeFalse();
+    });
+
+    it('splits the parent rule block around a bubbling directive with a renderable sibling', function () {
+        $scope = $this->ctx->env->getCurrentScope();
+        $scope->setVariableLocal('__parent_selector', new StringNode('.host'));
+
+        $body = [
+            new DeclarationNode('color', new StringNode('red')),
+            new DirectiveNode('media', '(min-width: 1)', [
+                new RuleNode('.m', [
+                    new DeclarationNode('color', new StringNode('green')),
+                ]),
+            ], true),
+            new VariableDeclarationNode('x', new StringNode('y')),
+            new RuleNode('.b', [
+                new DeclarationNode('margin', new StringNode('0')),
+            ]),
+        ];
+
+        $result = $this->manager->compileBodyChunks($body, $this->ctx, $scope);
+
+        expect($result)->toContain('@media (min-width: 1)')
+            ->and($result)->toContain('.host .m')
+            ->and($result)->toContain('.host .b');
     });
 });

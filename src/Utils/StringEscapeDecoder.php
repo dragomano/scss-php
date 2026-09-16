@@ -12,6 +12,7 @@ use function hexdec;
 use function ord;
 use function strcspn;
 use function strlen;
+use function strpos;
 use function substr;
 
 /**

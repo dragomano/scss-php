@@ -222,3 +222,80 @@ describe('Tokenizer', function () {
             ->and($euroIdentifier[0]->value)->toBe("\xE2\x82\xAC");
     });
 });
+
+describe('Tokenizer raw interpolations and escapes', function () {
+    beforeEach(function () {
+        $this->tokenizer = new Tokenizer();
+    });
+
+    it('keeps a lone hash inside a raw interpolation', function () {
+        $tokens = $this->tokenizer->tokenize('a: "#{a#b}";');
+
+        expect($tokens[3]->type)->toBe(TokenType::STRING)
+            ->and($tokens[3]->value)->toBe('#{a#b}');
+    });
+
+    it('tracks brace depth inside a raw interpolation', function () {
+        $tokens = $this->tokenizer->tokenize('a: "#{ {} }";');
+
+        expect($tokens[3]->type)->toBe(TokenType::STRING)
+            ->and($tokens[3]->value)->toBe('#{ {} }');
+    });
+
+    it('keeps a lone hash inside a quoted chunk of a raw interpolation', function () {
+        $tokens = $this->tokenizer->tokenize('a: "#{ "a#b" }";');
+
+        expect($tokens[3]->type)->toBe(TokenType::STRING)
+            ->and($tokens[3]->value)->toBe('#{ "a#b" }');
+    });
+
+    it('decodes raw utf-8 escape sequences of two and four bytes in identifiers', function () {
+        $twoBytes = $this->tokenizer->tokenize('\\é');
+        $fourBytes = $this->tokenizer->tokenize('\\🎉');
+
+        expect($twoBytes[0]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($twoBytes[0]->value)->toBe('é')
+            ->and($fourBytes[0]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($fourBytes[0]->value)->toBe('🎉');
+    });
+
+    it('treats a multibyte lead byte as a name start after a unit minus', function () {
+        $tokens = $this->tokenizer->tokenize('5-é');
+
+        expect($tokens[0]->type)->toBe(TokenType::NUMBER)
+            ->and($tokens[0]->value)->toBe('5-')
+            ->and($tokens[1]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($tokens[1]->value)->toBe('é');
+    });
+
+    it('treats a leading plus before digits as a unary sign', function () {
+        $tokens = $this->tokenizer->tokenize('+5');
+
+        expect($tokens[0]->type)->toBe(TokenType::NUMBER)
+            ->and($tokens[0]->value)->toBe('+5');
+    });
+
+    it('accepts a single-line comment right after a leading colon', function () {
+        $tokens = $this->tokenizer->tokenize("://c\n");
+
+        expect($tokens[0]->type)->toBe(TokenType::COLON)
+            ->and($tokens[1]->type)->toBe(TokenType::COMMENT_SILENT)
+            ->and($tokens[1]->value)->toBe('c');
+    });
+
+    it('accepts a single-line comment after a colon following a non-word char', function () {
+        $tokens = $this->tokenizer->tokenize("&://c\n");
+
+        expect($tokens[0]->type)->toBe(TokenType::AMPERSAND)
+            ->and($tokens[1]->type)->toBe(TokenType::COLON)
+            ->and($tokens[2]->type)->toBe(TokenType::COMMENT_SILENT)
+            ->and($tokens[2]->value)->toBe('c');
+    });
+
+    it('drops line continuations of normalized carriage returns inside strings', function () {
+        $tokens = $this->tokenizer->tokenize("\"foo\\\r\nbar\"");
+
+        expect($tokens[0]->type)->toBe(TokenType::STRING)
+            ->and($tokens[0]->value)->toBe('foobar');
+    });
+});

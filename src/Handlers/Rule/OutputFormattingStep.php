@@ -122,12 +122,6 @@ final readonly class OutputFormattingStep implements CompilationStepInterface
 
             $parentIndex = count($outputState->deferral->atRootStack) - 1;
 
-            if ($parentIndex < 0) {
-                $chunks[$index] = new GroupStartChunk($chunk->inner(), true);
-
-                continue;
-            }
-
             $outputState->deferral->atRootStack[$parentIndex][] = new GroupStartChunk($chunk->inner(), true);
         }
 

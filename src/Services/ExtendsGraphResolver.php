@@ -27,7 +27,9 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Syntax;
 use Throwable;
 
+use function array_keys;
 use function array_reverse;
+use function array_shift;
 use function str_contains;
 use function str_starts_with;
 

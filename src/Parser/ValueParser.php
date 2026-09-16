@@ -21,11 +21,17 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 
 use function abs;
+use function chr;
 use function count;
 use function ctype_digit;
+use function ctype_space;
+use function ctype_xdigit;
 use function dechex;
+use function hexdec;
 use function in_array;
 use function max;
+use function min;
+use function ord;
 use function str_contains;
 use function str_starts_with;
 use function strlen;

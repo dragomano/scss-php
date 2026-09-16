@@ -21,7 +21,10 @@ use function realpath;
 use function rtrim;
 use function str_ends_with;
 use function str_starts_with;
+use function strlen;
+use function strrpos;
 use function strtolower;
+use function substr;
 
 final class Loader implements LoaderInterface
 {

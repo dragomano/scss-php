@@ -17,6 +17,7 @@ use function in_array;
 use function max;
 use function rtrim;
 use function str_contains;
+use function str_ends_with;
 use function str_starts_with;
 use function strlen;
 use function strpbrk;

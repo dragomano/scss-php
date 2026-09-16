@@ -6,6 +6,8 @@ namespace Bugo\SCSS\Nodes;
 
 use Stringable;
 
+use function abs;
+use function floor;
 use function is_float;
 use function is_infinite;
 use function is_nan;

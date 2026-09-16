@@ -25,14 +25,18 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Values\AstValueInspector;
-use LogicException;
 
 use function abs;
+use function array_merge;
 use function cos;
 use function count;
 use function deg2rad;
 use function in_array;
+use function max;
+use function min;
+use function round;
 use function sin;
+use function sqrt;
 use function strtolower;
 
 use const M_PI;
@@ -45,8 +49,6 @@ use const M_PI;
 final class ColorSpaceConverter
 {
     public ?ColorFunctionEvaluator $functionEvaluator;
-
-    private const RGB_FAMILY_SPACES = ['srgb', 'srgb-linear', 'display-p3', 'display-p3-linear', 'a98-rgb', 'rec2020'];
 
     private const UNBOUNDED_GAMUT_SPACES = ['xyz', 'xyz-d50', 'lab', 'lch', 'oklab', 'oklch'];
 
@@ -559,12 +561,8 @@ final class ColorSpaceConverter
         return $this->areChannelsInGamut($gamutSpace, $channels);
     }
 
-    private function hasMissingChannelNode(AstNode $color): bool
+    private function hasMissingChannelNode(FunctionNode $color): bool
     {
-        if (! ($color instanceof FunctionNode)) {
-            return false;
-        }
-
         foreach ($this->converter->extractChannelNodes($color) as $node) {
             if ($node instanceof NumberNode) {
                 continue;
@@ -924,456 +922,35 @@ final class ColorSpaceConverter
     {
         $alpha = $this->converter->toAlpha($color);
 
-        $isGenericFunction = $color instanceof FunctionNode && strtolower($color->name) === 'color';
-
-        if ($isGenericFunction) {
-            $inputSpace = $this->converter->detectNativeColorSpace($color);
-
-            if ($inputSpace !== $space) {
-                if ($this->isRgbFamilySpace($inputSpace) && $this->isRgbFamilySpace($space)) {
-                    return $this->convertGenericRgbFamilySpace($color, $inputSpace, $space);
-                }
-
-                $channels = $this->converter->extractChannelNodes($color);
-
-                $noneChannels  = [];
-                $numericValues = [];
-
-                for ($i = 0; $i < 3; $i++) {
-                    $node = $channels[$i + 1] ?? new StringNode('none');
-                    if ($this->runtime->argumentParser->isMissingChannelNode($node)) {
-                        $noneChannels[$i]  = true;
-                        $numericValues[$i] = 0.0;
-                    } else {
-                        $noneChannels[$i]  = false;
-                        $numericValues[$i] = $this->runtime->argumentParser->asNumber($node, 'to-space');
-                    }
-                }
-
-                $forwardXyz = $this->forwardToXyzD65Unclamped($inputSpace, $numericValues);
-
-                return $this->buildOutputFromXyzD65($space, $forwardXyz, $alpha, $noneChannels);
-            }
-        }
-
-        if ($color instanceof FunctionNode) {
-            $legacyChannels = $this->extractLegacySrgbChannelsUnclamped($color);
-
-            if ($legacyChannels !== null) {
-                if ($this->isRgbFamilySpace($space)) {
-                    return $this->convertLegacyRgbFamilySpace($color, $space);
-                }
-
-                [$r, $g, $b] = $legacyChannels;
-
-                $forwardXyz = $this->runtime->spaceConverter->srgbToXyzD65(
-                    $r / 255.0,
-                    $g / 255.0,
-                    $b / 255.0,
-                );
-
-                $noneChannels = null;
-
-                $name = strtolower($color->name);
-
-                if ($name === 'rgb' || $name === 'rgba') {
-                    /** @var array<int, AstNode> $expandedArgs */
-                    $expandedArgs = $this->runtime->argumentParser->expandSingleSpaceListArgument($color->arguments);
-
-                    $noneChannels = [
-                        $this->runtime->argumentParser->isMissingChannelNode($expandedArgs[0] ?? new StringNode('none')),
-                        $this->runtime->argumentParser->isMissingChannelNode($expandedArgs[1] ?? new StringNode('none')),
-                        $this->runtime->argumentParser->isMissingChannelNode($expandedArgs[2] ?? new StringNode('none')),
-                    ];
-                }
-
-                return $this->buildOutputFromXyzD65($space, $forwardXyz, $alpha, $noneChannels);
-            }
-        }
-
-        if ($this->isRgbFamilySpace($space)) {
-            [$r, $g, $b] = $this->extractUnclampedSrgbChannels($color);
-
-            $resultChannels = $this->dartMath->convertNumeric(
-                'srgb',
-                $space,
-                [$r / 255.0, $g / 255.0, $b / 255.0],
-            );
-
-            return $this->buildRgbFamilyOutput($space, $resultChannels, $alpha, [false, false, false]);
-        }
-
-        $xyzD65 = $this->converter->toXyzD65($color);
-
-        return $this->buildOutputFromXyzD65($space, $xyzD65, $alpha);
-    }
-
-    /**
-     * @param array<int, float> $channels
-     */
-    private function forwardToXyzD65Unclamped(string $inputSpace, array $channels): XyzColor
-    {
-        $sc = $this->runtime->spaceConverter;
-
-        return match ($inputSpace) {
-            'a98-rgb'           => $this->convertedToXyz('a98-rgb', $channels),
-            'rec2020'           => $sc->rec2020ToXyzD65($channels[0], $channels[1], $channels[2]),
-            'display-p3'        => $sc->p3ToXyzD65($channels[0], $channels[1], $channels[2]),
-            'display-p3-linear' => $sc->linP3ToXyzD65($channels[0], $channels[1], $channels[2]),
-            'srgb-linear'       => $sc->linSrgbToXyzD65($channels[0], $channels[1], $channels[2]),
-            'prophoto-rgb'      => $this->convertedToXyz('prophoto-rgb', $channels),
-            'xyz'               => new XyzColor(x: $channels[0], y: $channels[1], z: $channels[2]),
-            'xyz-d50'           => $sc->xyzD50ToXyzD65(new XyzColor(x: $channels[0], y: $channels[1], z: $channels[2])),
-            default             => $sc->srgbToXyzD65($channels[0], $channels[1], $channels[2]),
-        };
-    }
-
-    /**
-     * @param array<int, float> $channels
-     */
-    private function convertedToXyz(string $from, array $channels): XyzColor
-    {
-        $converted = $this->dartMath->convertNumeric($from, 'xyz-d65', $channels);
-
-        return new XyzColor($converted[0], $converted[1], $converted[2]);
-    }
-
-    /**
-     * @param array<int, float> $channels
-     */
-    private function convertedToXyzD50(string $from, array $channels): XyzColor
-    {
-        $converted = $this->dartMath->convertNumeric($from, 'xyz-d50', $channels);
-
-        return new XyzColor($converted[0], $converted[1], $converted[2]);
-    }
-
-    private function convertGenericRgbFamilySpace(FunctionNode $color, string $inputSpace, string $targetSpace): AstNode
-    {
-        $channels = $this->converter->extractChannelNodes($color);
-        $alpha    = $this->converter->toAlpha($color);
-
-        $noneChannels  = [];
-        $numericValues = [0.0, 0.0, 0.0];
-
-        for ($i = 0; $i < 3; $i++) {
-            $node = $channels[$i + 1] ?? new StringNode('none');
-            if ($this->runtime->argumentParser->isMissingChannelNode($node)) {
-                $noneChannels[$i]  = true;
-                $numericValues[$i] = 0.0;
-            } else {
-                $noneChannels[$i]  = false;
-                $numericValues[$i] = $this->runtime->argumentParser->asNumber($node, 'to-space');
-            }
-        }
-
-        $resultChannels = $this->dartMath->convertNumeric($inputSpace, $targetSpace, $numericValues);
-
-        return $this->buildRgbFamilyOutput($targetSpace, $resultChannels, $alpha, $noneChannels);
-    }
-
-    private function convertLegacyRgbFamilySpace(FunctionNode $color, string $targetSpace): AstNode
-    {
-        $alpha = $this->converter->toAlpha($color);
-
-        $legacyChannels = $this->extractLegacySrgbChannelsUnclamped($color);
-
-        if ($legacyChannels === null) {
-            throw new LogicException('Legacy srgb channels are required for rgb-family conversion.');
-        }
-
-        [$r, $g, $b] = $legacyChannels;
+        [$r, $g, $b] = $this->extractUnclampedSrgbChannels($color);
 
         $resultChannels = $this->dartMath->convertNumeric(
             'srgb',
-            $targetSpace,
+            $space,
             [$r / 255.0, $g / 255.0, $b / 255.0],
         );
 
-        $noneChannels = [false, false, false];
-
-        if (in_array(strtolower($color->name), ['rgb', 'rgba'], true)) {
-            /** @var array<int, AstNode> $expandedArgs */
-            $expandedArgs = $this->runtime->argumentParser->expandSingleSpaceListArgument($color->arguments);
-
-            $noneChannels = [
-                $this->runtime->argumentParser->isMissingChannelNode($expandedArgs[0] ?? new StringNode('none')),
-                $this->runtime->argumentParser->isMissingChannelNode($expandedArgs[1] ?? new StringNode('none')),
-                $this->runtime->argumentParser->isMissingChannelNode($expandedArgs[2] ?? new StringNode('none')),
-            ];
-        }
-
-        return $this->buildRgbFamilyOutput($targetSpace, $resultChannels, $alpha, $noneChannels);
+        return $this->buildRgbFamilyOutput($space, $resultChannels, $alpha);
     }
 
     /**
      * @param array{0: float, 1: float, 2: float} $resultChannels
-     * @param array<int, bool> $noneChannels
      */
-    private function buildRgbFamilyOutput(string $targetSpace, array $resultChannels, float $alpha, array $noneChannels): AstNode
+    private function buildRgbFamilyOutput(string $targetSpace, array $resultChannels, float $alpha): AstNode
     {
         $outputNodes = [new StringNode($targetSpace)];
 
         for ($i = 0; $i < 3; $i++) {
-            $outputNodes[] = $noneChannels[$i]
-                ? new StringNode('none')
-                : new NumberNode($resultChannels[$i]);
+            $outputNodes[] = new NumberNode($resultChannels[$i]);
         }
 
         return $this->converter->buildFunctionalColorNode('color', $outputNodes, $alpha);
     }
 
-
-    private function convertGenericToXyzD65(FunctionNode $color, string $space): AstNode
-    {
-        $channels   = $this->converter->extractChannelNodes($color);
-        $alpha      = $this->converter->toAlpha($color);
-        $inputSpace = $this->converter->detectNativeColorSpace($color);
-
-        $noneChannels  = [];
-        $numericValues = [];
-
-        for ($i = 0; $i < 3; $i++) {
-            $node = $channels[$i + 1] ?? new StringNode('none');
-            if ($this->runtime->argumentParser->isMissingChannelNode($node)) {
-                $noneChannels[$i]  = true;
-                $numericValues[$i] = 0.0;
-            } else {
-                $noneChannels[$i]  = false;
-                $numericValues[$i] = $this->runtime->argumentParser->asNumber($node, 'to-space');
-            }
-        }
-
-        $xyz = $this->forwardToXyzD65Unclamped($inputSpace, $numericValues);
-
-        $outputNodes = [new StringNode($space)];
-
-        for ($i = 0; $i < 3; $i++) {
-            $outputNodes[] = $noneChannels[$i]
-                ? new StringNode('none')
-                : new NumberNode((float) match ($i) {
-                    0 => $xyz->x,
-                    1 => $xyz->y,
-                    2 => $xyz->z,
-                });
-        }
-
-        return $this->converter->buildFunctionalColorNode('color', $outputNodes, $alpha);
-    }
-
-    private function convertGenericToXyzD50(FunctionNode $color): AstNode
-    {
-        $channels   = $this->converter->extractChannelNodes($color);
-        $alpha      = $this->converter->toAlpha($color);
-        $inputSpace = $this->converter->detectNativeColorSpace($color);
-
-        $noneChannels  = [];
-        $numericValues = [];
-
-        for ($i = 0; $i < 3; $i++) {
-            $node = $channels[$i + 1] ?? new StringNode('none');
-            if ($this->runtime->argumentParser->isMissingChannelNode($node)) {
-                $noneChannels[$i]  = true;
-                $numericValues[$i] = 0.0;
-            } else {
-                $noneChannels[$i]  = false;
-                $numericValues[$i] = $this->runtime->argumentParser->asNumber($node, 'to-space');
-            }
-        }
-
-        if ($inputSpace === 'prophoto-rgb') {
-            $xyzD50 = $this->convertedToXyzD50('prophoto-rgb', $numericValues);
-        } else {
-            $xyzD65 = $this->forwardToXyzD65Unclamped($inputSpace, $numericValues);
-            $xyzD50 = $this->runtime->spaceConverter->xyzD65ToXyzD50($xyzD65);
-        }
-
-        $outputNodes = [new StringNode('xyz-d50')];
-
-        for ($i = 0; $i < 3; $i++) {
-            $outputNodes[] = $noneChannels[$i]
-                ? new StringNode('none')
-                : new NumberNode((float) match ($i) {
-                    0 => $xyzD50->x,
-                    1 => $xyzD50->y,
-                    2 => $xyzD50->z,
-                });
-        }
-
-        return $this->converter->buildFunctionalColorNode('color', $outputNodes, $alpha);
-    }
-
-    /** @param array<int, bool> $noneChannels */
-    private function buildOutputFromXyzD65(string $space, XyzColor $xyz, float $alpha, ?array $noneChannels = null): AstNode
-    {
-        if ($space === 'display-p3-linear') {
-            $linearValues = $this->runtime->spaceConverter->xyzD65ToLinP3($xyz);
-
-            if ($noneChannels !== null) {
-                $outputNodes = [new StringNode($space)];
-
-                for ($i = 0; $i < 3; $i++) {
-                    $outputNodes[] = $noneChannels[$i]
-                        ? new StringNode('none')
-                        : new NumberNode($linearValues[$i]);
-                }
-
-                return $this->converter->buildFunctionalColorNode('color', $outputNodes, $alpha);
-            }
-
-            return $this->converter->buildFunctionalColorNode('color', [
-                new StringNode($space),
-                new NumberNode($linearValues[0]),
-                new NumberNode($linearValues[1]),
-                new NumberNode($linearValues[2]),
-            ], $alpha);
-        }
-
-        if ($space === 'srgb-linear') {
-            $linearValues = $this->runtime->spaceConverter->xyzD65ToLinSrgb($xyz);
-
-            if ($noneChannels !== null) {
-                $outputNodes = [new StringNode($space)];
-
-                for ($i = 0; $i < 3; $i++) {
-                    $outputNodes[] = $noneChannels[$i]
-                        ? new StringNode('none')
-                        : new NumberNode($linearValues[$i]);
-                }
-
-                return $this->converter->buildFunctionalColorNode('color', $outputNodes, $alpha);
-            }
-
-            return $this->converter->buildFunctionalColorNode('color', [
-                new StringNode($space),
-                new NumberNode($linearValues[0]),
-                new NumberNode($linearValues[1]),
-                new NumberNode($linearValues[2]),
-            ], $alpha);
-        }
-
-        $sc = $this->runtime->spaceConverter;
-
-        $resultChannels = match ($space) {
-            'display-p3'   => $sc->xyzD65ToP3Channels($xyz),
-            'a98-rgb'      => $sc->xyzD65ToA98Channels($xyz),
-            'rec2020'      => $sc->xyzD65ToRec2020Channels($xyz),
-            'prophoto-rgb' => $this->dartMath->convertNumeric('xyz-d65', 'prophoto-rgb', [
-                $xyz->x ?? 0.0,
-                $xyz->y ?? 0.0,
-                $xyz->z ?? 0.0,
-            ]),
-            default        => $sc->xyzD65ToSrgbChannels($xyz),
-        };
-
-        if ($noneChannels !== null) {
-            $outputNodes = [new StringNode($space)];
-
-            for ($i = 0; $i < 3; $i++) {
-                $outputNodes[] = $noneChannels[$i]
-                    ? new StringNode('none')
-                    : new NumberNode($resultChannels[$i]);
-            }
-
-            return $this->converter->buildFunctionalColorNode('color', $outputNodes, $alpha);
-        }
-
-        return $this->converter->buildFunctionalColorNode('color', [
-            new StringNode($space),
-            new NumberNode($resultChannels[0]),
-            new NumberNode($resultChannels[1]),
-            new NumberNode($resultChannels[2]),
-        ], $alpha);
-    }
 
     private function toXyzD50GenericSpace(AstNode $color, string $space): AstNode
     {
         $alpha = $this->converter->toAlpha($color);
-
-        $isGenericFunction = $color instanceof FunctionNode && strtolower($color->name) === 'color';
-
-        if ($isGenericFunction) {
-            $inputSpace = $this->converter->detectNativeColorSpace($color);
-            $channels   = $this->converter->extractChannelNodes($color);
-
-            $noneChannels  = [];
-            $numericValues = [];
-
-            for ($i = 0; $i < 3; $i++) {
-                $node = $channels[$i + 1] ?? new StringNode('none');
-                if ($this->runtime->argumentParser->isMissingChannelNode($node)) {
-                    $noneChannels[$i]  = true;
-                    $numericValues[$i] = 0.0;
-                } else {
-                    $noneChannels[$i]  = false;
-                    $numericValues[$i] = $this->runtime->argumentParser->asNumber($node, 'to-space');
-                }
-            }
-
-            if ($inputSpace === 'prophoto-rgb') {
-                $xyzD50 = $this->convertedToXyzD50('prophoto-rgb', $numericValues);
-            } else {
-                $xyzD65 = $this->forwardToXyzD65Unclamped($inputSpace, $numericValues);
-                $xyzD50 = $this->runtime->spaceConverter->xyzD65ToXyzD50($xyzD65);
-            }
-
-            $prophotoChannels = $this->encodeProphotoChannels(
-                $this->runtime->spaceConverter->xyzD50ToLinProphoto($xyzD50),
-            );
-
-            $outputNodes = [new StringNode($space)];
-
-            for ($i = 0; $i < 3; $i++) {
-                $outputNodes[] = $noneChannels[$i]
-                    ? new StringNode('none')
-                    : new NumberNode($prophotoChannels[$i]);
-            }
-
-            return $this->converter->buildFunctionalColorNode('color', $outputNodes, $alpha);
-        }
-
-        if ($color instanceof FunctionNode) {
-            $legacyChannels = $this->extractLegacySrgbChannelsUnclamped($color);
-
-            if ($legacyChannels !== null) {
-                [$r, $g, $b] = $legacyChannels;
-
-                $xyzD65 = $this->runtime->spaceConverter->srgbToXyzD65(
-                    $r / 255.0,
-                    $g / 255.0,
-                    $b / 255.0,
-                );
-
-                $noneChannels     = null;
-                $xyzD50           = $this->runtime->spaceConverter->xyzD65ToXyzD50($xyzD65);
-                $prophotoChannels = $this->encodeProphotoChannels(
-                    $this->runtime->spaceConverter->xyzD50ToLinProphoto($xyzD50),
-                );
-
-                $name = strtolower($color->name);
-
-                if ($name === 'rgb' || $name === 'rgba') {
-                    /** @var array<int, AstNode> $expandedArgs */
-                    $expandedArgs = $this->runtime->argumentParser->expandSingleSpaceListArgument($color->arguments);
-
-                    $noneChannels = [
-                        $this->runtime->argumentParser->isMissingChannelNode($expandedArgs[0] ?? new StringNode('none')),
-                        $this->runtime->argumentParser->isMissingChannelNode($expandedArgs[1] ?? new StringNode('none')),
-                        $this->runtime->argumentParser->isMissingChannelNode($expandedArgs[2] ?? new StringNode('none')),
-                    ];
-                }
-
-                $outputNodes = [new StringNode($space)];
-
-                for ($i = 0; $i < 3; $i++) {
-                    $outputNodes[] = $noneChannels !== null && $noneChannels[$i]
-                        ? new StringNode('none')
-                        : new NumberNode($prophotoChannels[$i]);
-                }
-
-                return $this->converter->buildFunctionalColorNode('color', $outputNodes, $alpha);
-            }
-        }
 
         $xyzD50           = $this->converter->toXyzD50($color);
         $prophotoChannels = $this->encodeProphotoChannels(
@@ -1401,11 +978,6 @@ final class ColorSpaceConverter
             $converter->gamProphoto($channels[1]),
             $converter->gamProphoto($channels[2]),
         ];
-    }
-
-    private function isRgbFamilySpace(string $space): bool
-    {
-        return in_array($space, self::RGB_FAMILY_SPACES, true);
     }
 
     /**
@@ -1493,41 +1065,25 @@ final class ColorSpaceConverter
         ]);
     }
 
-    private function extractXyzD65ForColorMix(AstNode $color, string $destSpace): XyzColor
+    private function extractXyzD65ForColorMix(FunctionNode $color, string $destSpace): XyzColor
     {
-        if ($color instanceof FunctionNode) {
-            $native = $this->extractNativeSpaceAndChannels($color);
+        [$srcSpace, $channels] = $this->extractNativeSpaceAndChannels($color) ?? ['', [0.0, 0.0, 0.0]];
 
-            if ($native !== null) {
-                [$srcSpace, $channels] = $native;
-
-                if ($srcSpace === 'hsl' && $color->originSrgbChannels !== null) {
-                    $srcSpace = 'srgb';
-                    $channels = $color->originSrgbChannels;
-                }
-
-                $converted = $srcSpace === $destSpace
-                    ? $channels
-                    : $this->dartMath->convert($srcSpace, $destSpace, $channels);
-
-                $xyzChannels = $this->dartMath->convert($destSpace, 'xyz-d65', $converted);
-
-                return new XyzColor(
-                    x: (float) $xyzChannels[0],
-                    y: (float) $xyzChannels[1],
-                    z: (float) $xyzChannels[2],
-                );
-            }
-
-            $xyz = $this->converter->toXyzD65WithAlpha($color);
-
-            if ($xyz !== null) {
-                return $xyz[0];
-            }
+        if ($srcSpace === 'hsl' && $color->originSrgbChannels !== null) {
+            $srcSpace = 'srgb';
+            $channels = $color->originSrgbChannels;
         }
 
-        return $this->runtime->spaceConverter->rgbToXyzD65(
-            RgbChannelScale::toNormalized($this->converter->toRgb($color)),
+        $converted = $srcSpace === $destSpace
+            ? $channels
+            : $this->dartMath->convert($srcSpace, $destSpace, $channels);
+
+        $xyzChannels = $this->dartMath->convert($destSpace, 'xyz-d65', $converted);
+
+        return new XyzColor(
+            x: (float) $xyzChannels[0],
+            y: (float) $xyzChannels[1],
+            z: (float) $xyzChannels[2],
         );
     }
 
@@ -1577,15 +1133,11 @@ final class ColorSpaceConverter
     }
 
     /**
-     * @return array{0: float, 1: float, 2: float}|null
+     * @return array{0: float, 1: float, 2: float}
      */
-    private function dartConvertChannels(FunctionNode $color, string $dest): ?array
+    private function dartConvertChannels(FunctionNode $color, string $dest): array
     {
         $converted = $this->dartConvertChannelsNullable($color, $dest);
-
-        if ($converted === null) {
-            return null;
-        }
 
         return [($converted[0] ?? 0.0), ($converted[1] ?? 0.0), ($converted[2] ?? 0.0)];
     }
@@ -1740,62 +1292,9 @@ final class ColorSpaceConverter
         };
     }
 
-    private function computeUnclampedXyzD65(FunctionNode $color): ?XyzColor
-    {
-        $native = $this->extractNativeSpaceAndChannels($color);
-
-        if ($native === null) {
-            return null;
-        }
-
-        [$space, $channels] = $native;
-
-        $converted = $this->dartMath->convert($space, 'xyz-d65', $channels);
-
-        return new XyzColor(
-            x: (float) $converted[0],
-            y: (float) $converted[1],
-            z: (float) $converted[2],
-        );
-    }
-
-    private function buildLegacyXyzOutput(FunctionNode $color, string $space, XyzColor $xyz): AstNode
-    {
-        $values = [(float) $xyz->x, (float) $xyz->y, (float) $xyz->z];
-        $name   = strtolower($color->name);
-
-        if ($name !== 'rgb' && $name !== 'rgba') {
-            return $this->converter->buildGenericColorFunctionNode(
-                $space,
-                $values,
-                $this->converter->toAlpha($color),
-            );
-        }
-
-        /** @var array<int, AstNode> $channels */
-        $channels = $this->runtime->argumentParser->expandSingleSpaceListArgument($color->arguments);
-        $nodes    = [new StringNode($space)];
-
-        for ($i = 0; $i < 3; $i++) {
-            $nodes[] = $this->runtime->argumentParser->isMissingChannelNode($channels[$i] ?? new StringNode('none'))
-                ? new StringNode('none')
-                : new NumberNode($values[$i]);
-        }
-
-        return $this->converter->buildFunctionalColorNode(
-            'color',
-            $nodes,
-            $this->converter->toAlpha($color),
-        );
-    }
-
-    private function isLightnessOutOfRange(AstNode $color, string $nativeSpace): bool
+    private function isLightnessOutOfRange(FunctionNode $color, string $nativeSpace): bool
     {
         $ap = $this->runtime->argumentParser;
-
-        if (! ($color instanceof FunctionNode)) {
-            return false;
-        }
 
         $expandedArgs  = $this->runtime->argumentParser->expandSingleSpaceListArgument($color->arguments);
         [$channels]    = $this->runtime->arguments->splitChannelsAndAlpha($expandedArgs);
@@ -1871,7 +1370,9 @@ final class ColorSpaceConverter
         }
 
         if (
-            ! $this->isSemanticChannelMissing($color) && ($lch->lValue() < -self::LIGHTNESS_BOUNDARY_EPSILON
+            $color instanceof FunctionNode
+            && ! $this->isSemanticChannelMissing($color)
+            && ($lch->lValue() < -self::LIGHTNESS_BOUNDARY_EPSILON
             || $lch->lValue() > 100.0 + self::LIGHTNESS_BOUNDARY_EPSILON)
         ) {
             return $this->buildColorMixNode('lch', $this->extractXyzD65ForColorMix($color, 'lch'), $alpha);
@@ -1884,16 +1385,10 @@ final class ColorSpaceConverter
         ) {
             $dartLchDest = $this->dartConvertChannels($color, 'lch');
 
-            if ($dartLchDest !== null) {
-                $unclampedLch = new LchColor(l: $dartLchDest[0], c: $dartLchDest[1], h: $dartLchDest[2]);
+            $unclampedLch = new LchColor(l: $dartLchDest[0], c: $dartLchDest[1], h: $dartLchDest[2]);
 
-                if ($unclampedLch->lValue() < -self::LIGHTNESS_BOUNDARY_EPSILON || $unclampedLch->lValue() > 100.0 + self::LIGHTNESS_BOUNDARY_EPSILON) {
-                    return $this->buildColorMixNode('lch', $this->extractXyzD65ForColorMix($color, 'lch'), $alpha);
-                }
-
-                if ($this->isOutOfGamutLegacyChannels($legacyUnclamped)) {
-                    return $this->converter->buildLchColorNode($unclampedLch, $this->converter->toAlpha($color));
-                }
+            if ($this->isOutOfGamutLegacyChannels($legacyUnclamped)) {
+                return $this->converter->buildLchColorNode($unclampedLch, $this->converter->toAlpha($color));
             }
         }
 
@@ -1988,7 +1483,9 @@ final class ColorSpaceConverter
             && in_array(strtolower($color->name), ['lab', 'oklab'], true);
 
         if (
-            ! $this->isSemanticChannelMissing($color) && ($oklch->lValue() < -self::LIGHTNESS_BOUNDARY_EPSILON
+            $color instanceof FunctionNode
+            && ! $this->isSemanticChannelMissing($color)
+            && ($oklch->lValue() < -self::LIGHTNESS_BOUNDARY_EPSILON
             || $oklch->lValue() > 100.0 + self::LIGHTNESS_BOUNDARY_EPSILON)
         ) {
             return $this->buildColorMixNode('oklch', $this->extractXyzD65ForColorMix($color, 'oklch'), $oklch->a);
@@ -2001,24 +1498,15 @@ final class ColorSpaceConverter
         ) {
             $dartOklchDest = $this->dartConvertChannels($color, 'oklch');
 
-            if ($dartOklchDest !== null) {
+            if ($this->isOutOfGamutLegacyChannels($legacyUnclamped)) {
                 $unclampedAlpha = $this->converter->toAlpha($color);
                 $unclampedOklch = new OklchColor(l: $dartOklchDest[0] * 100.0, c: $dartOklchDest[1], h: $dartOklchDest[2], a: $unclampedAlpha);
 
-                if (
-                    $unclampedOklch->lValue() < -self::LIGHTNESS_BOUNDARY_EPSILON
-                    || $unclampedOklch->lValue() > 100.0 + self::LIGHTNESS_BOUNDARY_EPSILON
-                ) {
-                    return $this->buildColorMixNode('oklch', $this->extractXyzD65ForColorMix($color, 'oklch'), $unclampedOklch->a);
-                }
-
-                if ($this->isOutOfGamutLegacyChannels($legacyUnclamped)) {
-                    return $this->converter->buildFunctionalColorNode('oklch', [
-                        new NumberNode($unclampedOklch->lValue(), '%'),
-                        new NumberNode($unclampedOklch->cValue()),
-                        new NumberNode($unclampedOklch->hValue(), 'deg'),
-                    ], $unclampedOklch->a);
-                }
+                return $this->converter->buildFunctionalColorNode('oklch', [
+                    new NumberNode($unclampedOklch->lValue(), '%'),
+                    new NumberNode($unclampedOklch->cValue()),
+                    new NumberNode($unclampedOklch->hValue(), 'deg'),
+                ], $unclampedOklch->a);
             }
         }
 
@@ -2205,7 +1693,9 @@ final class ColorSpaceConverter
         }
 
         if (
-            ! $this->isSemanticChannelMissing($color) && ($labColor->lValue() < -self::LIGHTNESS_BOUNDARY_EPSILON
+            $color instanceof FunctionNode
+            && ! $this->isSemanticChannelMissing($color)
+            && ($labColor->lValue() < -self::LIGHTNESS_BOUNDARY_EPSILON
             || $labColor->lValue() > 100.0 + self::LIGHTNESS_BOUNDARY_EPSILON)
         ) {
             return $this->buildColorMixNode('lab', $this->extractXyzD65ForColorMix($color, 'lab'), $labColor->alpha);
@@ -2218,37 +1708,18 @@ final class ColorSpaceConverter
         ) {
             $dartLabDest = $this->dartConvertChannels($color, 'lab');
 
-            if ($dartLabDest !== null) {
+            if ($this->isOutOfGamutLegacyChannels($legacyUnclamped)) {
                 $unclampedLab = new LabColor(l: $dartLabDest[0], a: $dartLabDest[1], b: $dartLabDest[2], alpha: $this->converter->toAlpha($color));
 
-                if ($unclampedLab->lValue() < -self::LIGHTNESS_BOUNDARY_EPSILON || $unclampedLab->lValue() > 100.0 + self::LIGHTNESS_BOUNDARY_EPSILON) {
-                    return $this->buildColorMixNode('lab', $this->extractXyzD65ForColorMix($color, 'lab'), $unclampedLab->alpha);
-                }
-
-                if ($this->isOutOfGamutLegacyChannels($legacyUnclamped)) {
-                    return $this->converter->buildLabColorNode($unclampedLab);
-                }
+                return $this->converter->buildLabColorNode($unclampedLab);
             }
         }
 
         if ($this->isSemanticChannelMissing($color)) {
-            $hsl = $this->toHslWithMissingChannels($color);
-
-            if ($hsl !== null) {
-                $lightnessMissing = $hsl->l === null;
-                $chromaMissing    = $hsl->s === null;
-
-                return $this->converter->buildFunctionalColorNode('lab', [
-                    $lightnessMissing ? $this->missingStringNode() : new NumberNode($labColor->lValue(), '%'),
-                    $lightnessMissing || $chromaMissing ? new NumberNode(0.0) : new NumberNode($labColor->aValue()),
-                    $lightnessMissing || $chromaMissing ? new NumberNode(0.0) : new NumberNode($labColor->bValue()),
-                ], $labColor->alpha);
-            }
-
             return $this->converter->buildFunctionalColorNode('lab', [
                 $this->missingStringNode(),
-                $this->missingStringNode(),
-                $this->missingStringNode(),
+                new NumberNode(0.0),
+                new NumberNode(0.0),
             ], $labColor->alpha);
         }
 
@@ -2372,7 +1843,9 @@ final class ColorSpaceConverter
         }
 
         if (
-            ! $this->isSemanticChannelMissing($color) && ($oklab->lValue() < -self::LIGHTNESS_BOUNDARY_EPSILON
+            $color instanceof FunctionNode
+            && ! $this->isSemanticChannelMissing($color)
+            && ($oklab->lValue() < -self::LIGHTNESS_BOUNDARY_EPSILON
             || $oklab->lValue() > 100.0 + self::LIGHTNESS_BOUNDARY_EPSILON)
         ) {
             return $this->buildColorMixNode('oklab', $this->extractXyzD65ForColorMix($color, 'oklab'), $oklab->alpha);
@@ -2385,41 +1858,19 @@ final class ColorSpaceConverter
         ) {
             $dartOklabDest = $this->dartConvertChannels($color, 'oklab');
 
-            if ($dartOklabDest !== null) {
+            if ($this->isOutOfGamutLegacyChannels($legacyUnclamped)) {
                 $unclampedAlpha = $this->converter->toAlpha($color);
                 $unclampedOklab = new OklabColor(l: $dartOklabDest[0] * 100.0, a: $dartOklabDest[1], b: $dartOklabDest[2], alpha: $unclampedAlpha);
 
-                if (
-                    $unclampedOklab->lValue() < -self::LIGHTNESS_BOUNDARY_EPSILON
-                    || $unclampedOklab->lValue() > 100.0 + self::LIGHTNESS_BOUNDARY_EPSILON
-                ) {
-                    return $this->buildColorMixNode('oklab', $this->extractXyzD65ForColorMix($color, 'oklab'), $unclampedOklab->alpha);
-                }
-
-                if ($this->isOutOfGamutLegacyChannels($legacyUnclamped)) {
-                    return $this->converter->buildOklabColorNode($unclampedOklab);
-                }
+                return $this->converter->buildOklabColorNode($unclampedOklab);
             }
         }
 
         if ($this->isSemanticChannelMissing($color)) {
-            $hsl = $this->toHslWithMissingChannels($color);
-
-            if ($hsl !== null) {
-                $lightnessMissing = $hsl->l === null;
-                $chromaMissing    = $hsl->s === null;
-
-                return $this->converter->buildFunctionalColorNode('oklab', [
-                    $lightnessMissing ? $this->missingStringNode() : new NumberNode($oklab->lValue(), '%'),
-                    $lightnessMissing || $chromaMissing ? new NumberNode(0.0) : new NumberNode($oklab->aValue()),
-                    $lightnessMissing || $chromaMissing ? new NumberNode(0.0) : new NumberNode($oklab->bValue()),
-                ], $oklab->alpha);
-            }
-
             return $this->converter->buildFunctionalColorNode('oklab', [
                 $this->missingStringNode(),
-                $this->missingStringNode(),
-                $this->missingStringNode(),
+                new NumberNode(0.0),
+                new NumberNode(0.0),
             ], $oklab->alpha);
         }
 
@@ -2444,14 +1895,6 @@ final class ColorSpaceConverter
             return $this->buildGenericColorNodePreservingMissing('xyz-d50', $dartXyz, $this->converter->toAlpha($color));
         }
 
-        if ($color instanceof FunctionNode && strtolower($color->name) === 'color') {
-            $inputSpace = $this->converter->detectNativeColorSpace($color);
-
-            if ($inputSpace !== 'xyz-d50') {
-                return $this->convertGenericToXyzD50($color);
-            }
-        }
-
         $xyz = $this->converter->toXyzD50($color);
 
         return $this->converter->buildGenericColorFunctionNode(
@@ -2467,22 +1910,6 @@ final class ColorSpaceConverter
 
         if ($dartXyz !== null) {
             return $this->buildGenericColorNodePreservingMissing($space, $dartXyz, $this->converter->toAlpha($color));
-        }
-
-        if ($color instanceof FunctionNode && strtolower($color->name) === 'color') {
-            $inputSpace = $this->converter->detectNativeColorSpace($color);
-
-            if (! in_array($inputSpace, [$space, 'xyz'], true)) {
-                return $this->convertGenericToXyzD65($color, $space);
-            }
-        }
-
-        if ($color instanceof FunctionNode && $this->extractLegacySrgbChannelsUnclamped($color) !== null) {
-            $xyz = $this->computeUnclampedXyzD65($color);
-
-            if ($xyz !== null) {
-                return $this->buildLegacyXyzOutput($color, $space, $xyz);
-            }
         }
 
         $xyz = $this->converter->toXyzD65($color);

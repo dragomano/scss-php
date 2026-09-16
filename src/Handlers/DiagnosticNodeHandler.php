@@ -20,6 +20,7 @@ use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Style;
 
 use function get_object_vars;
+use function is_int;
 
 final readonly class DiagnosticNodeHandler
 {

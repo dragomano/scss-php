@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Values;
 use Bugo\SCSS\Utils\UnitConverter;
 
 use function abs;
+use function count;
 use function fdiv;
 use function is_infinite;
 use function is_int;

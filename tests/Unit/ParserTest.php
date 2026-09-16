@@ -875,6 +875,16 @@ describe('Parser', function () {
             ->and($ast->children[0]->body)->toBe([]);
     });
 
+    it('returns an empty rule for a custom property function declaration without a body', function () {
+        $ast = $this->parser->parse('@function --foo()');
+
+        expect($ast)->toBeInstanceOf(RootNode::class)
+            ->and($ast->children)->toHaveCount(1)
+            ->and($ast->children[0])->toBeInstanceOf(RuleNode::class)
+            ->and($ast->children[0]->selector)->toBe('@function --foo()')
+            ->and($ast->children[0]->children)->toBe([]);
+    });
+
     it('returns an empty string node for blank inline expressions through public api', function () {
         $value = $this->parser->parseInlineValue('   ');
 

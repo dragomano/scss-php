@@ -32,9 +32,11 @@ use Bugo\SCSS\Syntax;
 use Bugo\SCSS\Utils\NameNormalizer;
 use Throwable;
 
+use function array_filter;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function array_merge;
 use function array_unique;
 use function count;
 use function dirname;

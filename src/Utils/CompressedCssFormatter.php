@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Utils;
 
+use function count;
 use function ctype_space;
 use function ctype_xdigit;
 use function implode;

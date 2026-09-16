@@ -20,6 +20,7 @@ use Bugo\SCSS\Values\SassList;
 use Bugo\SCSS\Values\SassNumber;
 use Bugo\SCSS\Values\SassValue;
 
+use function array_values;
 use function ceil;
 use function count;
 use function exp;
@@ -29,10 +30,14 @@ use function fmod;
 use function implode;
 use function in_array;
 use function is_finite;
+use function is_infinite;
 use function is_int;
 use function is_nan;
+use function max;
 use function round;
 use function sqrt;
+use function str_repeat;
+use function strlen;
 use function strtolower;
 use function trim;
 

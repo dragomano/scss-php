@@ -15,6 +15,7 @@ use Closure;
 use function in_array;
 use function is_string;
 use function str_starts_with;
+use function strtolower;
 use function substr;
 
 final class FunctionRegistry
@@ -331,11 +332,7 @@ final class FunctionRegistry
         $normalizedName = $this->normalizeName($functionName);
 
         foreach ($this->starModules as $moduleName) {
-            $module = $this->getModule($moduleName);
-
-            if ($module === null) {
-                continue;
-            }
+            $module = $this->loadModule($moduleName);
 
             foreach ($module->getFunctions() as $function) {
                 if ($this->normalizeName($function) === $normalizedName) {

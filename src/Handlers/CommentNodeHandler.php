@@ -11,12 +11,16 @@ use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Style;
 
+use function array_slice;
+use function count;
+use function explode;
 use function ltrim;
 use function max;
 use function min;
 use function rtrim;
 use function str_contains;
 use function str_starts_with;
+use function strlen;
 use function strtolower;
 use function substr;
 

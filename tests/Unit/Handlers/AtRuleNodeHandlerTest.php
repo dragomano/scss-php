@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Handlers\AtRuleNodeHandler;
 use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\NodeDispatcherInterface;
@@ -365,6 +366,49 @@ it('does not wrap @content when the at-rule stack contains non-directive entries
         new DeclarationNode('color', new StringNode('red')),
     ]);
     $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', [$layerEntry]);
+
+    expect($runtime->atRule()->handleDirective(new DirectiveNode('content', '', [], false), $ctx))
+        ->toEqualCss('color: red;');
+});
+
+it('drops empty children inside directive bodies while source mappings are collected', function () {
+    $context = new CompilerContext();
+    $context->sourceMapState->startCollection();
+
+    $runtime = RuntimeFactory::createRuntime(context: $context);
+    $ctx     = RuntimeFactory::context();
+    $node    = new DirectiveNode('media', 'screen', [
+        new RuleNode('.a', [new DeclarationNode('color', new StringNode('red'))]),
+        new DirectiveNode('charset', 'UTF-8', [], false),
+        new RuleNode('.b', [new DeclarationNode('color', new StringNode('blue'))]),
+    ], true);
+
+    $expected = /** @lang text */ <<<'CSS'
+    @media screen {
+      .a {
+        color: red;
+      }
+      .b {
+        color: blue;
+      }
+    }
+    CSS;
+
+    expect($runtime->atRule()->handleDirective($node, $ctx))->toEqualCss($expected);
+});
+
+it('skips empty compiled children when @content runs inside a non-wrapping at-rule stack', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+    $scope   = $ctx->env->getCurrentScope();
+
+    $scope->setVariableLocal('__at_rule_stack', [
+        AtRuleContextEntry::directive('media', 'screen'),
+    ]);
+    $scope->setVariableLocal('__meta_content_block', [
+        new DirectiveNode('charset', 'UTF-8', [], false),
+        new DeclarationNode('color', new StringNode('red')),
+    ]);
 
     expect($runtime->atRule()->handleDirective(new DirectiveNode('content', '', [], false), $ctx))
         ->toEqualCss('color: red;');

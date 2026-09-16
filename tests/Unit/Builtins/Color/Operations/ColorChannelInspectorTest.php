@@ -12,7 +12,10 @@ use Bugo\SCSS\Builtins\Color\Operations\ColorChannelInspector;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
+use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnknownColorChannelException;
+use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
+use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
@@ -231,5 +234,98 @@ describe('ColorChannelReader', function () {
 
         expect($result)->toBeInstanceOf(BooleanNode::class)
             ->and($result->value)->toBeTrue();
+    });
+
+    describe('channel alpha fallbacks', function () {
+        it('rethrows unsupported color values for non-global alpha calls', function () {
+            expect(fn() => $this->reader->channelAlpha(
+                [new FunctionNode('color', [new StringNode('srgb')])],
+                'alpha',
+                null,
+            ))->toThrow(UnsupportedColorValueException::class, "Unsupported color value 'srgb'.");
+        });
+
+        it('defers microsoft-style alpha filters with valid identifiers', function () {
+            expect(fn() => $this->reader->channelAlpha([new StringNode('ab=1')], 'alpha', null))
+                ->toThrow(DeferToCssFunctionException::class, 'alpha(ab=1)');
+        });
+
+        it('rejects malformed microsoft filter identifiers before parsing colors', function () {
+            expect(fn() => $this->reader->channelAlpha([new StringNode('=1')], 'alpha', null))
+                ->toThrow(UnsupportedColorValueException::class, "Unsupported color value '=1'.")
+                ->and(fn() => $this->reader->channelAlpha([new StringNode('1a=2')], 'alpha', null))
+                ->toThrow(UnsupportedColorValueException::class, "Unsupported color value '1a=2'.")
+                ->and(fn() => $this->reader->channelAlpha([new StringNode('a.b=1')], 'alpha', null))
+                ->toThrow(UnsupportedColorValueException::class, "Unsupported color value 'a.b=1'.");
+        });
+
+        it('requires a color argument when the alpha call has no positional arguments', function () {
+            expect(fn() => $this->reader->channelAlpha([], 'alpha', null))
+                ->toThrow(MissingFunctionArgumentsException::class, "alpha() expects required argument 'color'.");
+        });
+    });
+
+    describe('powerless channels across space forms', function () {
+        it('treats oklab a and b channels as powerless for non-extreme lightness', function () {
+            $result = $this->reader->isPowerless([
+                new FunctionNode('oklab', [
+                    new NumberNode(50, '%'),
+                    new NumberNode(0),
+                    new NumberNode(0),
+                ]),
+                new StringNode('a'),
+                new StringNode('oklab'),
+            ], []);
+
+            expect($result)->toBeInstanceOf(BooleanNode::class)
+                ->and($result->value)->toBeTrue();
+        });
+
+        it('treats oklch hue as powerless for colors outside the oklch function form', function () {
+            $result = $this->reader->isPowerless([
+                new ColorNode('#808080'),
+                new StringNode('hue'),
+                new StringNode('oklch'),
+            ], []);
+
+            expect($result)->toBeInstanceOf(BooleanNode::class)
+                ->and($result->value)->toBeTrue();
+        });
+    });
+
+    describe('arbitrary space channel resolution', function () {
+        it('reads alpha from a literal xyz-d50 color function node', function () {
+            $result = $this->reader->resolveChannelValue(
+                new FunctionNode('color', [
+                    new StringNode('xyz-d50'),
+                    new NumberNode(0.3),
+                    new NumberNode(0.5),
+                    new NumberNode(0.6),
+                ]),
+                'xyz-d50',
+                'alpha',
+            );
+
+            expect($result)->toBeInstanceOf(NumberNode::class)
+                ->and($result->value)->toBe(1.0);
+        });
+
+        it('throws for unsupported channels and spaces in arbitrary color spaces', function () {
+            expect(fn() => $this->reader->channel([
+                new ColorNode('#336699'),
+                new StringNode('alpha'),
+                new StringNode('display-p3'),
+            ], []))->toThrow(UnsupportedColorSpaceException::class, "Unsupported color space 'display-p3' in channel().")
+                ->and(fn() => $this->reader->channel([
+                    new FunctionNode('color', [
+                        new StringNode('display-p3'),
+                        new StringNode('none'),
+                        new NumberNode(0),
+                        new NumberNode(0),
+                    ]),
+                    new StringNode('red'),
+                    new StringNode('display-p3'),
+                ], []))->toThrow(UnsupportedColorSpaceException::class, "Unsupported color space 'display-p3' in channel().");
+        });
     });
 });

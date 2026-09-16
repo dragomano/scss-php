@@ -500,4 +500,34 @@ describe('SassMetaModule', function () {
         expect(fn() => $this->module->call('content-exists', [], [], null))
             ->toThrow(LogicException::class);
     });
+
+    it('returns an unpinned reference when a module function name matches a builtin', function () {
+        $this->registry->registerUse('sass:math', null);
+
+        $moduleScope = new Scope();
+        $moduleScope->defineFunction('div', [], []);
+
+        $this->env->getCurrentScope()->addModule('math', $moduleScope);
+
+        $reference = $this->module->call('get-function', [new StringNode('div')], ['module' => new StringNode('math')], $this->context);
+
+        expect($reference)->toBeInstanceOf(FunctionRefNode::class)
+            ->and($reference->name)->toBe('div')
+            ->and($reference->module)->toBe('math')
+            ->and($reference->lockedDefinition)->toBeNull();
+    });
+
+    it('consumes the named function argument of call instead of forwarding it', function () {
+        $this->registry->registerUse('sass:list', null);
+
+        $fn = $this->module->call('get-function', [new StringNode('length')], ['module' => new StringNode('list')], $this->context);
+
+        $result = $this->module->call('call', [], [
+            'function' => $fn,
+            'list'     => new ListNode([new StringNode('a'), new StringNode('b')], 'space'),
+        ], $this->context);
+
+        expect($result)->toBeInstanceOf(NumberNode::class)
+            ->and($result->value)->toBe(2);
+    });
 });

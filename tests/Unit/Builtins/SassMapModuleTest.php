@@ -266,4 +266,21 @@ describe('SassMapModule', function () {
             ->and($warnings[0])->toContain('map-get() is deprecated')
             ->and($warnings[0])->toContain('map.get(raw-map, raw-key)');
     });
+
+    it('throws for get without a map or without a key', function () {
+        expect(fn() => $this->module->call('get', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'get() (map module) expects map and key arguments.')
+            ->and(fn() => $this->module->call('get', [], ['key' => new StringNode('a')]))
+            ->toThrow(MissingFunctionArgumentsException::class, 'get() (map module) expects map and key arguments.')
+            ->and(fn() => $this->module->call('get', [$this->map], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'get() (map module) expects map and key arguments.')
+            ->and(fn() => $this->module->call('get', [], ['map' => $this->map]))
+            ->toThrow(MissingFunctionArgumentsException::class, 'get() (map module) expects map and key arguments.');
+    });
+
+    it('resolves get from named map and key arguments', function () {
+        $result = $this->module->call('get', [], ['map' => $this->map, 'key' => new StringNode('a')]);
+
+        expect($result->value)->toBe(1);
+    });
 });

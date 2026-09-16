@@ -163,6 +163,30 @@ describe('Sass Meta Module Feature', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('does not forward the named function argument to the target', function () {
+            $scss = <<<'SCSS'
+            @use "sass:meta";
+
+            @function keyword-check($args...) {
+              @return meta.keywords($args);
+            }
+
+            .meta-call {
+              value: inspect(meta.call($function: meta.get-function("keyword-check"), $x: 1));
+            }
+            SCSS;
+
+            $css = $this->compiler->compileString($scss);
+
+            $expected = /** @lang text */ <<<'CSS'
+            .meta-call {
+              value: (x: 1);
+            }
+            CSS;
+
+            expect($css)->toEqualCss($expected);
+        });
+
         it('filters list using local function reference', function () {
             $scss = <<<'SCSS'
             @use "sass:list";

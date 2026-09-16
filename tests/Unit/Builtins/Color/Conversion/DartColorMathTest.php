@@ -183,4 +183,28 @@ describe('DartColorMath', function () {
 
         expect($r)->toBeGreaterThan(0.5);
     });
+
+    it('maps missing lab lightness to the linear branch when converting to rgb', function () {
+        [$r, $g, $b] = $this->math->convert('lab', 'srgb', [null, 10.0, 10.0]);
+
+        expect($r)->toBe(0.10216251549686692)
+            ->and($g)->toBe(-0.03360919240230562)
+            ->and($b)->toBe(-0.08056928864254612);
+    });
+
+    it('maps missing lch lightness to the linear branch when converting through lab', function () {
+        [$r, $g, $b] = $this->math->convert('lch', 'srgb', [null, 10.0, 30.0]);
+
+        expect($r)->toBe(0.0862659476834951)
+            ->and($g)->toBe(-0.028268530029264636)
+            ->and($b)->toBe(-0.045798549198733475);
+    });
+
+    it('replaces the null lightness with zero on the numeric lab to oklch route', function () {
+        [$lightness, $chroma, $hue] = $this->math->convert('lab', 'oklch', [null, 10.0, 10.0]);
+
+        expect($lightness)->toBeCloseTo(-0.02698352493658759, 12)
+            ->and($chroma)->toBeCloseTo(0.3755088046188234, 12)
+            ->and($hue)->toBeCloseTo(12.384827352227262, 9);
+    });
 });

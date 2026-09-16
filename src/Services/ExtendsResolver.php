@@ -29,7 +29,9 @@ use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 
 use function array_flip;
+use function array_key_exists;
 use function array_keys;
+use function array_merge;
 use function array_pop;
 use function array_reverse;
 use function array_slice;
@@ -42,11 +44,14 @@ use function explode;
 use function implode;
 use function in_array;
 use function is_numeric;
+use function ltrim;
 use function max;
 use function str_contains;
+use function str_ends_with;
 use function str_starts_with;
 use function strlen;
 use function strpos;
+use function strrpos;
 use function strtolower;
 use function substr;
 use function trim;
@@ -552,10 +557,6 @@ final readonly class ExtendsResolver
         foreach ($complexes as $complex) {
             foreach ($complex as $component) {
                 foreach ($this->tokenizer->tokenizeCompound($component->sel) as $simple) {
-                    if ($simple === '') {
-                        continue;
-                    }
-
                     $store['selectors'][$simple][$boxId] = true;
 
                     $pseudo = $this->tokenizer->parsePseudoToken($simple);
@@ -694,11 +695,7 @@ final readonly class ExtendsResolver
                 $variant    = $extendedExtender[$i];
                 $variantKey = $this->complexKey($variant);
 
-                if ($variantKey === $this->complexKey($extension['extender'])) {
-                    continue;
-                }
-
-                $withExtender           = $extension;
+                $withExtender             = $extension;
                 $withExtender['extender'] = $variant;
 
                 if (isset($store['extensions'][$target][$variantKey])) {
@@ -712,10 +709,6 @@ final readonly class ExtendsResolver
 
                 foreach ($variant as $component) {
                     foreach ($this->tokenizer->tokenizeCompound($component->sel) as $simple) {
-                        if ($simple === '') {
-                            continue;
-                        }
-
                         $store['byExtender'][$simple][] = $withExtender;
                     }
                 }
@@ -852,10 +845,6 @@ final readonly class ExtendsResolver
                 $filtered = [];
 
                 foreach ($extended as $newComplex) {
-                    if (! isset($newComplex[0])) {
-                        continue;
-                    }
-
                     $newLead = $newComplex[0]->lead ?? '';
 
                     if ($newLead === '' || $newLead === $lead) {
@@ -903,20 +892,13 @@ final readonly class ExtendsResolver
         string $context,
         bool $inOriginal,
     ): ?array {
-        /** @var list<string>|null $targetsUsed */
-        $targetsUsed = null;
-
         $simples = $this->tokenizer->tokenizeCompound($component->sel);
 
         /** @var list<list<Extender>>|null $options */
         $options = null;
 
         foreach ($simples as $index => $simple) {
-            if ($simple === '') {
-                continue;
-            }
-
-            $extended = $this->extendSimpleSelector($store, $simple, $extensionsMap, $context, $targetsUsed);
+            $extended = $this->extendSimpleSelector($store, $simple, $extensionsMap, $context);
 
             if ($extended === null) {
                 if ($options !== null) {
@@ -938,10 +920,6 @@ final readonly class ExtendsResolver
         }
 
         if ($options === null) {
-            return null;
-        }
-
-        if ($targetsUsed !== null && count($targetsUsed) !== count($extensionsMap)) {
             return null;
         }
 
@@ -1058,19 +1036,11 @@ final readonly class ExtendsResolver
      */
     private function unifyComplexList(array $complexes): ?array
     {
-        if (count($complexes) === 1) {
-            return $complexes;
-        }
-
         $lead     = '';
         $trailing = '';
         $base     = null;
 
         foreach ($complexes as $complex) {
-            if ($this->isUselessComplex($complex)) {
-                return null;
-            }
-
             $complexLead = $complex[0]->lead ?? '';
 
             if (count($complex) === 1 && $complexLead !== '') {
@@ -1103,11 +1073,7 @@ final readonly class ExtendsResolver
             $base = $candidate;
         }
 
-        if ($base === null) {
-            return null;
-        }
-
-        $baseComplex = [new SelectorComponent($base, $trailing, $lead !== '' ? $lead : null)];
+        $baseComplex = [new SelectorComponent($base ?? '', $trailing, $lead !== '' ? $lead : null)];
 
         /** @var list<Complex> $prefixes */
         $prefixes = [];
@@ -1132,7 +1098,6 @@ final readonly class ExtendsResolver
      * @param ExtensionStore $store
      * @param string $simple
      * @param ExtensionMap $extensionsMap
-     * @param list<string>|null $targetsUsed
      * @return list<list<Extender>>|null
      */
     private function extendSimpleSelector(
@@ -1140,18 +1105,17 @@ final readonly class ExtendsResolver
         string $simple,
         array $extensionsMap,
         string $context,
-        ?array &$targetsUsed,
     ): ?array {
         $pseudo = $this->tokenizer->parsePseudoToken($simple);
 
         if ($pseudo !== null && $pseudo['selector'] !== null) {
-            $extendedPseudos = $this->extendPseudoSelector($store, $simple, $extensionsMap, $context);
+            $extendedPseudos = $this->extendPseudoSelector($store, $simple, $pseudo, $extensionsMap, $context);
 
             if ($extendedPseudos !== null) {
                 $choices = [];
 
                 foreach ($extendedPseudos as $pseudoToken) {
-                    $choices[] = $this->withoutPseudoChoices($pseudoToken, $extensionsMap, $targetsUsed)
+                    $choices[] = $this->withoutPseudoChoices($pseudoToken, $extensionsMap)
                         ?? [$this->extenderForSimple($pseudoToken)];
                 }
 
@@ -1159,7 +1123,7 @@ final readonly class ExtendsResolver
             }
         }
 
-        $direct = $this->withoutPseudoChoices($simple, $extensionsMap, $targetsUsed);
+        $direct = $this->withoutPseudoChoices($simple, $extensionsMap);
 
         return $direct === null ? null : [$direct];
     }
@@ -1167,19 +1131,14 @@ final readonly class ExtendsResolver
     /**
      * @param string $simple
      * @param array<string, array<string, Extension>> $extensionsMap
-     * @param list<string>|null $targetsUsed
      * @return list<Extender>|null
      */
-    private function withoutPseudoChoices(string $simple, array $extensionsMap, ?array &$targetsUsed): ?array
+    private function withoutPseudoChoices(string $simple, array $extensionsMap): ?array
     {
         $extensionsForSimple = $extensionsMap[$simple] ?? null;
 
         if ($extensionsForSimple === null) {
             return null;
-        }
-
-        if ($targetsUsed !== null) {
-            $targetsUsed[] = $simple;
         }
 
         $choices = [$this->extenderForSimple($simple)];
@@ -1198,16 +1157,11 @@ final readonly class ExtendsResolver
     /**
      * @param ExtensionStore $store
      * @param ExtensionMap $extensionsMap
+     * @param array{name: string, argument: string, selector: string, isElement: bool} $pseudo
      * @return list<string>|null
      */
-    private function extendPseudoSelector(array &$store, string $token, array $extensionsMap, string $context): ?array
+    private function extendPseudoSelector(array &$store, string $token, array $pseudo, array $extensionsMap, string $context): ?array
     {
-        $pseudo = $this->tokenizer->parsePseudoToken($token);
-
-        if ($pseudo === null || $pseudo['selector'] === null) {
-            return null;
-        }
-
         $inner = $this->tokenizer->parseSelectorList($pseudo['selector']);
 
         $extendedInner = $this->extendComplexListInStore($store, $inner, $extensionsMap, $context);
@@ -1277,27 +1231,18 @@ final readonly class ExtendsResolver
 
             $innerNormalizedName = $this->normalizePseudoName($innerPseudo['name']);
 
-            $matched = match ($normalizedName) {
-                'not'            => in_array($innerNormalizedName, ['is', 'matches', 'where'], true),
-                'is',
-                'matches',
-                'where',
-                'any',
-                'current'        => $innerNormalizedName === $normalizedName,
-                'nth-child',
-                'nth-last-child' => $innerPseudo['name'] === $name && $innerPseudo['argument'] === $pseudo['argument'],
-                'has',
-                'host',
-                'host-context',
-                'slotted'        => true,
-                default          => false,
-            };
+            $isPlainPseudo = in_array($normalizedName, ['has', 'host', 'host-context', 'slotted'], true);
+            $isNotPseudo   = $normalizedName === 'not' && in_array($innerNormalizedName, ['is', 'matches', 'where'], true);
+            $isGroupPseudo = in_array($normalizedName, ['is', 'matches', 'where', 'any', 'current'], true) && $innerNormalizedName === $normalizedName;
+            $isNthPseudo   = in_array($normalizedName, ['nth-child', 'nth-last-child'], true) && $innerPseudo['name'] === $name && $innerPseudo['argument'] === $pseudo['argument'];
+
+            $matched = $isPlainPseudo || $isNotPseudo || $isGroupPseudo || $isNthPseudo;
 
             if (! $matched) {
                 continue;
             }
 
-            if (in_array($normalizedName, ['has', 'host', 'host-context', 'slotted'], true)) {
+            if ($isPlainPseudo) {
                 $expanded[] = $complex;
 
                 continue;
@@ -1325,16 +1270,12 @@ final readonly class ExtendsResolver
         }
 
         $replaced = implode(', ', $joined);
-        $position = strrpos($token, $pseudo['selector']);
-
-        if ($position === false || $pseudo['selector'] === '') {
-            return [':' . $name . '(' . $replaced . ')'];
-        }
+        $offset   = ($found = strrpos($token, $pseudo['selector'])) === false ? 0 : $found;
 
         return [
-            substr($token, 0, $position)
+            substr($token, 0, $offset)
             . $replaced
-            . substr($token, $position + strlen($pseudo['selector'])),
+            . substr($token, $offset + strlen($pseudo['selector'])),
         ];
     }
 
@@ -1381,6 +1322,7 @@ final readonly class ExtendsResolver
                 }
 
                 $numOriginals++;
+
                 array_unshift($result, $complex);
 
                 continue;
@@ -1589,10 +1531,6 @@ final readonly class ExtendsResolver
         $specificity = 0;
 
         foreach ($this->tokenizer->tokenizeCompound($compound) as $token) {
-            if ($token === '') {
-                continue;
-            }
-
             $specificity = max($specificity, $store['sourceSpecificity'][$token] ?? 0);
         }
 
@@ -1646,10 +1584,6 @@ final readonly class ExtendsResolver
 
         foreach ($complex as $component) {
             foreach ($this->tokenizer->tokenizeCompound($component->sel) as $simple) {
-                if ($simple === '') {
-                    continue;
-                }
-
                 $simples[] = $simple;
 
                 $pseudo = $this->tokenizer->parsePseudoToken($simple);
@@ -1773,9 +1707,7 @@ final readonly class ExtendsResolver
         $trimmed   = trim($selectorPart);
         $complexes = $this->tokenizer->parseSelectorList($trimmed);
 
-        return $complexes === []
-            ? $trimmed
-            : $this->tokenizer->complexComponentsToString($complexes[0]);
+        return $this->tokenizer->complexComponentsToString($complexes[0] ?? []);
     }
 
     /**
@@ -1855,10 +1787,6 @@ final readonly class ExtendsResolver
         $kept = [];
 
         foreach ($parts as $raw) {
-            if ($raw === '') {
-                continue;
-            }
-
             $compound = $this->stripPseudoPlaceholdersFromCompound($raw);
 
             if ($compound === null) {
@@ -1940,10 +1868,6 @@ final readonly class ExtendsResolver
         $kept = [];
 
         foreach ($parts as $raw) {
-            if (trim($raw) === '') {
-                continue;
-            }
-
             $cleaned = $this->stripPseudoPlaceholdersFromPart($raw);
 
             if ($cleaned === null || $cleaned === '*') {
@@ -2033,23 +1957,11 @@ final readonly class ExtendsResolver
             $outputState->extends->partLineBreaks += [$part => $hasBreak];
         }
 
-        $rawParts = [];
-
-        foreach ($this->splitTopLevelSelectorList($rawSelector) as $selectorPart) {
-            if ($selectorPart === '') {
-                continue;
-            }
-
-            $rawParts[] = $selectorPart;
-        }
+        $rawParts = $this->splitTopLevelSelectorList($rawSelector);
 
         $resolvedParts = [];
 
         foreach ($this->splitTopLevelSelectorList($selector) as $selectorPart) {
-            if ($selectorPart === '') {
-                continue;
-            }
-
             $selectorPart = $this->tokenizer->normalizeSelectorAttributes($selectorPart);
 
             $resolvedParts[] = $selectorPart;
@@ -2368,13 +2280,9 @@ final readonly class ExtendsResolver
             return null;
         }
 
-        $separatorIndex = strpos($token, '|');
+        $parts = explode('|', $token);
 
-        if ($separatorIndex === false) {
-            return null;
-        }
-
-        return substr($token, 0, $separatorIndex);
+        return count($parts) > 1 ? $parts[0] : null;
     }
 
     /**
@@ -2382,10 +2290,6 @@ final readonly class ExtendsResolver
      */
     private function lastCompoundPseudoElement(array $compounds): ?string
     {
-        if ($compounds === []) {
-            return null;
-        }
-
         $lastCompound = $compounds[count($compounds) - 1];
 
         foreach ($this->tokenizer->tokenizeCompound($lastCompound) as $token) {

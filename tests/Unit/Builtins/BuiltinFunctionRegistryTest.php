@@ -7,6 +7,7 @@ use Bugo\SCSS\Builtins\ModuleInterface;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
@@ -337,5 +338,39 @@ describe('BuiltinFunctionRegistry', function () {
         $registry->reset();
 
         expect($registry->tryCall('test.echo', [new StringNode('ok')]))->toBeNull();
+    });
+
+    it('returns null when forwarding to an unknown module or function', function () {
+        $registry = new FunctionRegistry();
+
+        expect($registry->tryCallForwardedBuiltin('unknown', 'abs', []))->toBeNull()
+            ->and($registry->tryCallForwardedBuiltin('math', 'unknown', []))->toBeNull();
+    });
+
+    it('resolves forwarded builtin calls with normalized function names', function () {
+        $registry = new FunctionRegistry();
+
+        $result = $registry->tryCallForwardedBuiltin('math', 'is_unitless', [new NumberNode(3)]);
+
+        /** @var BooleanNode $result */
+        expect($result)->toBeInstanceOf(BooleanNode::class)
+            ->and($result->value)->toBeTrue();
+    });
+
+    it('returns null when a forwarded builtin defers to a css function', function () {
+        $registry = new FunctionRegistry();
+
+        expect($registry->tryCallForwardedBuiltin('math', 'abs', [new StringNode('pi', true)]))->toBeNull();
+    });
+
+    it('resolves star-registered module functions that are not global aliases', function () {
+        $registry = new FunctionRegistry();
+        $registry->registerUse('sass:math', '*');
+
+        $result = $registry->tryCall('div', [new NumberNode(10), new NumberNode(2)]);
+
+        /** @var NumberNode $result */
+        expect($result)->toBeInstanceOf(NumberNode::class)
+            ->and($result->value)->toBe(5.0);
     });
 });

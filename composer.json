@@ -33,7 +33,7 @@
     "bugo/iris": "^0.4",
     "psr/log": "^3.0",
     "psr/simple-cache": "^3.0",
-    "symfony/filesystem": "^7.4|^8.1"
+    "symfony/filesystem": "^7|^8"
   },
   "require-dev": {
     "axy/sourcemap": "^1.1",
@@ -43,18 +43,18 @@
     "friendsofphp/php-cs-fixer": "^3.95",
     "mockery/mockery": "^1.6.15",
     "monolog/monolog": "^3.10",
-    "pestphp/pest": "^3.8|^4.7|^5.1",
+    "pestphp/pest": "^3|^4|^5",
     "phpstan/phpstan": "^2.2",
     "rector/rector": "^2.6",
     "scssphp/scssphp": "^2.1",
-    "symfony/cache": "^7.4|^8.1",
-    "symfony/var-dumper": "^7.4|^8.1",
+    "symfony/cache": "^7|^8",
+    "symfony/var-dumper": "^7|^8",
     "vimeo/psalm": "^6.16"
   },
   "scripts": {
     "fix": "vendor/bin/php-cs-fixer fix",
-    "rector": "vendor/bin/rector process --clear-cache",
     "check": "vendor/bin/rector process --dry-run --clear-cache",
+    "rector": "vendor/bin/rector process --clear-cache",
     "phpstan": "vendor/bin/phpstan analyse -l 10 src --memory-limit=512M --debug --no-progress",
     "psalm": "vendor/bin/psalm --stats --no-cache",
     "benchmark": "php benchmark.php 6",
@@ -63,8 +63,8 @@
       "@putenv RUN_SASS_SPEC=1",
       "vendor/bin/pest -d memory_limit=2G --colors=always --coverage --min=100"
     ],
-    "test-coverage-clover": "vendor/bin/pest --colors=always --min=100 --coverage-clover coverage.xml",
-    "test-coverage-html": "vendor/bin/pest --colors=always --min=100 --coverage-html coverage",
+    "test-coverage-clover": "vendor/bin/pest --min=100 -d memory_limit=1G --coverage-clover coverage.xml",
+    "test-coverage-html": "vendor/bin/pest --min=100 -d memory_limit=1G --coverage-html coverage",
     "test-mutate": "vendor/bin/pest --colors=always --mutate --clear-cache -d memory_limit=1G --path=src/Utils/UnitConverter.php tests/Unit/Utils/UnitConverterTest.php",
     "test-spec": [
       "@putenv RUN_SASS_SPEC=1",

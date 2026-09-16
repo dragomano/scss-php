@@ -415,11 +415,7 @@ final readonly class FunctionCallParser
 
     private function captureRawCssArgument(): string
     {
-        $open = $this->stream->consume(TokenType::LPAREN);
-
-        if ($open === null) {
-            return '';
-        }
+        $open = $this->stream->expect(TokenType::LPAREN);
 
         $depth      = 1;
         $closeStart = null;
