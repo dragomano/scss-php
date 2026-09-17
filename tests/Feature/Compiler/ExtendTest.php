@@ -807,6 +807,6 @@ describe('Compiler', function () {
             expect($css)->toContain('.a-1 .b-1-1')
                 ->and($css)->toContain('.a-30 .b-30-30')
                 ->and($elapsed)->toBeLessThan(3.0);
-        });
+        })->group('performance');
     });
 });
