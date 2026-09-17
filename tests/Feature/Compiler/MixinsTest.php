@@ -537,4 +537,38 @@ describe('Compiler', function () {
 
         expect($css)->toEqualCss($expected);
     });
+
+    it('keeps declarations after @include with nested rule inside the parent rule block', function () {
+        $source = <<<'SCSS'
+        @mixin button-style($color) {
+          background-color: $color;
+          &:hover {
+            opacity: 0.9;
+          }
+        }
+
+        .btn {
+          width: 100px;
+          @include button-style(#007bff);
+          border-radius: 4px;
+          font-size: 14px;
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .btn {
+          width: 100px;
+          background-color: #007bff;
+        }
+        .btn:hover {
+          opacity: 0.9;
+        }
+        .btn {
+          border-radius: 4px;
+          font-size: 14px;
+        }
+        CSS;
+
+        expect($this->compiler->compileString($source))->toEqualCss($expected);
+    });
 });

@@ -744,6 +744,7 @@ final readonly class DeferredChunkManager
 
                     $parentReopen = false;
                     $parentOpened = true;
+                    $blockSplit   = false;
                 }
             }
 
@@ -790,6 +791,8 @@ final readonly class DeferredChunkManager
 
             $first = false;
         }
+
+        $callScope->setVariableLocal('__include_block_was_split', $blockSplit);
 
         return $output;
     }

@@ -141,6 +141,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
 
             if ($inlinesBody) {
                 $scope->setVariableLocal('__parent_rule_has_rendered_children', $ruleCtx->hasRenderedChildren);
+                $scope->setVariableLocal('__include_block_was_split', false);
             }
 
             if ($atRootStackIndex >= 0) {
@@ -207,6 +208,11 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
                     $deferredAtRootCount,
                     $ruleCtx->leadingRootChunks,
                 );
+            }
+
+            if ($inlinesBody && $scope->hasVariable('__include_block_was_split') && $scope->getVariable('__include_block_was_split') === true) {
+                $ruleCtx->hasRenderedChildren                = false;
+                $ruleCtx->containsStandaloneNestedRuleChunks = true;
             }
         }
 
