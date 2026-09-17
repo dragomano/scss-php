@@ -164,7 +164,7 @@ final class Tokenizer
         }
 
         if ($char === '+') {
-            if ($this->peekChar() !== '' && ctype_digit($this->peekChar()) && $this->isUnarySignPosition()) {
+            if ($this->isDigit($this->peekChar()) && $this->isUnarySignPosition()) {
                 return $this->tokenizeNumber();
             }
 
@@ -178,7 +178,7 @@ final class Tokenizer
                 return $this->tokenizeCssVariable();
             }
 
-            $shouldTokenizeAsNumber = ($next !== '' && (ctype_digit($next) || $next === '.'))
+            $shouldTokenizeAsNumber = ($next !== '' && ($this->isDigit($next) || $next === '.'))
                 && (
                     $lastToken === null
                     || $lastToken->type === TokenType::WHITESPACE
@@ -190,7 +190,7 @@ final class Tokenizer
                 return $this->tokenizeNumber();
             }
 
-            if ($next !== '' && (ctype_alpha($next) || $next === '_' || $next === '\\')) {
+            if ($next !== '' && ($this->isAlpha($next) || $next === '_' || $next === '\\')) {
                 return $this->tokenizeIdentifier($lastToken);
             }
 
@@ -201,7 +201,7 @@ final class Tokenizer
             return $this->tokenizeString();
         }
 
-        if (ctype_digit($char)) {
+        if ($this->isDigit($char)) {
             return $this->tokenizeNumber();
         }
 
@@ -302,7 +302,7 @@ final class Tokenizer
         $start = $this->position;
 
         // Try hex chars first
-        while ($this->position < $this->length && ctype_xdigit($this->source[$this->position])) {
+        while ($this->position < $this->length && $this->isHexDigit($this->source[$this->position])) {
             $this->position++;
         }
 
@@ -326,7 +326,7 @@ final class Tokenizer
                             continue;
                         }
 
-                        if (! ctype_alnum($char) && $char !== '_' && $char !== '-') {
+                        if (! $this->isAlnum($char) && $char !== '_' && $char !== '-') {
                             break;
                         }
 
@@ -339,7 +339,7 @@ final class Tokenizer
                     return new Token(TokenType::HASH, $value, $line, $column, $tokenStart);
                 }
 
-                if (! ctype_alnum($c) && $c !== '_' && $c !== '-') {
+                if (! $this->isAlnum($c) && $c !== '_' && $c !== '-') {
                     break;
                 }
 
@@ -359,7 +359,7 @@ final class Tokenizer
         while ($this->position < $this->length) {
             $c = $this->source[$this->position];
 
-            if (! ctype_alnum($c) && $c !== '_' && $c !== '-') {
+            if (! $this->isAlnum($c) && $c !== '_' && $c !== '-') {
                 break;
             }
 
@@ -402,12 +402,12 @@ final class Tokenizer
             $this->advance();
         }
 
-        if ($sawWildcard && ($this->source[$this->position] ?? '') === '-' && ctype_digit($this->peekChar())) {
+        if ($sawWildcard && ($this->source[$this->position] ?? '') === '-' && $this->isDigit($this->peekChar())) {
             $value .= '-';
 
             $this->advance();
 
-            while ($this->position < $this->length && ctype_digit($this->source[$this->position])) {
+            while ($this->position < $this->length && $this->isDigit($this->source[$this->position])) {
                 $value .= $this->source[$this->position];
 
                 $this->advance();
@@ -415,8 +415,8 @@ final class Tokenizer
         }
 
         if ($sawWildcard && (
-            ctype_alpha($this->source[$this->position] ?? '')
-            || (($this->source[$this->position] ?? '') === '-' && ctype_alpha($this->peekChar()))
+            $this->isAlpha($this->source[$this->position] ?? '')
+            || (($this->source[$this->position] ?? '') === '-' && $this->isAlpha($this->peekChar()))
         )) {
             $value .= ' ';
         }
@@ -617,7 +617,7 @@ final class Tokenizer
         }
 
         // Integer part
-        while ($this->position < $this->length && ctype_digit($this->source[$this->position])) {
+        while ($this->position < $this->length && $this->isDigit($this->source[$this->position])) {
             $this->position++;
         }
 
@@ -625,11 +625,11 @@ final class Tokenizer
             $this->position < $this->length
             && $this->source[$this->position] === '.'
             && $this->position + 1 < $this->length
-            && ctype_digit($this->source[$this->position + 1])
+            && $this->isDigit($this->source[$this->position + 1])
         ) {
             $this->position++;
 
-            while ($this->position < $this->length && ctype_digit($this->source[$this->position])) {
+            while ($this->position < $this->length && $this->isDigit($this->source[$this->position])) {
                 $this->position++;
             }
         }
@@ -646,7 +646,7 @@ final class Tokenizer
                 }
             }
 
-            while ($this->position < $this->length && ctype_digit($this->source[$this->position])) {
+            while ($this->position < $this->length && $this->isDigit($this->source[$this->position])) {
                 $this->position++;
             }
         }
@@ -667,7 +667,7 @@ final class Tokenizer
                     continue;
                 }
 
-                if (ctype_alnum($char) || $char === '_') {
+                if ($this->isAlnum($char) || $char === '_') {
                     $this->position++;
 
                     $hasUnitChars = true;
@@ -681,12 +681,12 @@ final class Tokenizer
 
                 $next = $this->position + 1 < $this->length ? $this->source[$this->position + 1] : null;
 
-                if ($next === null || ctype_digit($next)) {
+                if ($next === null || $this->isDigit($next)) {
                     break;
                 }
 
                 if ($next === '.' && $this->position + 2 < $this->length
-                    && ctype_digit($this->source[$this->position + 2])) {
+                    && $this->isDigit($this->source[$this->position + 2])) {
                     break;
                 }
 
@@ -725,14 +725,14 @@ final class Tokenizer
 
         $next = $this->source[$this->position + 1];
 
-        if (ctype_digit($next)) {
+        if ($this->isDigit($next)) {
             return true;
         }
 
         if (
             ($next === '+' || $next === '-')
             && $this->position + 2 < $this->length
-            && ctype_digit($this->source[$this->position + 2])
+            && $this->isDigit($this->source[$this->position + 2])
         ) {
             return true;
         }
@@ -748,18 +748,18 @@ final class Tokenizer
 
         $after = $this->source[$this->position + 1];
 
-        if (ctype_xdigit($after)) {
+        if ($this->isHexDigit($after)) {
             $end = $this->position + 1;
 
             $hexLength = 0;
 
-            while ($end < $this->length && $hexLength < 6 && ctype_xdigit($this->source[$end])) {
+            while ($end < $this->length && $hexLength < 6 && $this->isHexDigit($this->source[$end])) {
                 $end++;
 
                 $hexLength++;
             }
 
-            if ($end < $this->length && ctype_space($this->source[$end])) {
+            if ($end < $this->length && $this->isSpace($this->source[$end])) {
                 $end++;
             }
 
@@ -776,6 +776,31 @@ final class Tokenizer
         }
 
         return ctype_alpha($char) || $char === '_' || $char === '-';
+    }
+
+    private function isDigit(string $char): bool
+    {
+        return $char !== '' && $char < "\x80" && ctype_digit($char);
+    }
+
+    private function isAlpha(string $char): bool
+    {
+        return $char !== '' && $char < "\x80" && ctype_alpha($char);
+    }
+
+    private function isAlnum(string $char): bool
+    {
+        return $char !== '' && $char < "\x80" && ctype_alnum($char);
+    }
+
+    private function isSpace(string $char): bool
+    {
+        return $char !== '' && $char < "\x80" && ctype_space($char);
+    }
+
+    private function isHexDigit(string $char): bool
+    {
+        return $char !== '' && $char < "\x80" && ctype_xdigit($char);
     }
 
     private function utf8SequenceWidthAt(int $position): int
@@ -894,16 +919,16 @@ final class Tokenizer
             return '\\';
         }
 
-        if (ctype_xdigit($this->source[$this->position])) {
+        if ($this->isHexDigit($this->source[$this->position])) {
             $hex = '';
 
-            while ($this->position < $this->length && strlen($hex) < 6 && ctype_xdigit($this->source[$this->position])) {
+            while ($this->position < $this->length && strlen($hex) < 6 && $this->isHexDigit($this->source[$this->position])) {
                 $hex .= $this->source[$this->position];
 
                 $this->advance();
             }
 
-            if ($this->position < $this->length && ctype_space($this->source[$this->position])) {
+            if ($this->position < $this->length && $this->isSpace($this->source[$this->position])) {
                 $this->advance();
             }
 
@@ -1002,7 +1027,7 @@ final class Tokenizer
         while ($this->position < $this->length) {
             $char = $this->source[$this->position];
 
-            if ($char === ')' || $char === '(' || $char === '[' || $char === ']' || $char === ',' || $char === ';' || $char === '}' || $char === '{' || $char === '#' || ctype_space($char)) {
+            if ($char === ')' || $char === '(' || $char === '[' || $char === ']' || $char === ',' || $char === ';' || $char === '}' || $char === '{' || $char === '#' || $this->isSpace($char)) {
                 break;
             }
 
@@ -1041,7 +1066,7 @@ final class Tokenizer
 
     private function tokenizeNumberOrSingleChar(TokenType $singleType): Token
     {
-        if (ctype_digit($this->peekChar())) {
+        if ($this->isDigit($this->peekChar())) {
             return $this->tokenizeNumber();
         }
 
@@ -1139,7 +1164,7 @@ final class Tokenizer
                 continue;
             }
 
-            if (ctype_alnum($ch) || $ch === '_' || $ch === ')' || $ch === ']' || $ch === '%' || $ch === '}') {
+            if ($this->isAlnum($ch) || $ch === '_' || $ch === ')' || $ch === ']' || $ch === '%' || $ch === '}') {
                 return false;
             }
 
@@ -1161,7 +1186,7 @@ final class Tokenizer
             return false;
         }
 
-        if ($prev === '}' || $prev === '/' || $prev === '_' || ctype_alnum($prev)) {
+        if ($prev === '}' || $prev === '/' || $prev === '_' || $this->isAlnum($prev)) {
             return false;
         }
 
@@ -1172,7 +1197,7 @@ final class Tokenizer
         if ($this->position >= 2) {
             $beforeColon = $this->source[$this->position - 2];
 
-            if (ctype_alnum($beforeColon) || in_array($beforeColon, ['}', '"', "'"], true)) {
+            if ($this->isAlnum($beforeColon) || in_array($beforeColon, ['}', '"', "'"], true)) {
                 return false;
             }
         }
@@ -1197,6 +1222,6 @@ final class Tokenizer
 
     private function isUnicodeRangePartChar(string $char): bool
     {
-        return $char === '?' || $char === '-' || ctype_xdigit($char);
+        return $char === '?' || $char === '-' || $this->isHexDigit($char);
     }
 }
