@@ -9,19 +9,27 @@ use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DiagnosticNode;
 use Bugo\SCSS\Nodes\ExtendNode;
+use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\ReturnNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\Visitable;
+use Bugo\SCSS\Runtime\AtRuleContextEntry;
+use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 
 use function count;
+use function is_array;
+use function ltrim;
+use function str_ends_with;
+use function str_replace;
 
 final readonly class ChildrenCompilationStep implements CompilationStepInterface
 {
@@ -35,11 +43,15 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
     public function execute(RuleCompilationContext $ruleCtx): ?string
     {
         $childCtx    = $ruleCtx->childCtx;
-        $selector    = $ruleCtx->selector;
+        $selector    = $ruleCtx->parentSelector !== '' ? $ruleCtx->parentSelector : $ruleCtx->selector;
         $scope       = $ruleCtx->outerCtx->env->getCurrentScope();
         $outputState = $this->render->outputState();
 
+        $lastRenderedLine = $ruleCtx->node->openBraceLine ?: $ruleCtx->node->line;
+
         foreach ($ruleCtx->node->children as $child) {
+            $inlinesBody = $child instanceof IncludeNode || $child instanceof ImportNode;
+
             if (
                 $child instanceof VariableDeclarationNode
                 || $child instanceof ModuleVarDeclarationNode
@@ -54,12 +66,13 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
                 continue;
             }
 
-            if ($child instanceof IncludeNode) {
+            if ($inlinesBody) {
                 $ruleCtx->requiresRuleBlockOptimization = true;
             }
 
             if ($child instanceof AtRootNode) {
                 $this->chunks->collectRuleAtRootChunk(
+                    $ruleCtx->leadingRootChunks,
                     $ruleCtx->trailingRootChunks,
                     $child,
                     $ruleCtx->outerCtx,
@@ -68,7 +81,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
                 continue;
             }
 
-            if ($this->evaluation->isBubblingAtRuleNode($child)) {
+            if ($this->evaluation->isBubblingAtRuleNode($child) && ! $this->isInsideKeyframes($scope)) {
                 if ($ruleCtx->hasRenderedChildren) {
                     $ruleCtx->output = $this->render->trimTrailingNewlines($ruleCtx->output);
 
@@ -86,7 +99,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
 
                     if ($interleavedChunk !== null) {
                         if ($ruleCtx->output !== '') {
-                            $this->render->appendChunk($ruleCtx->output, $this->render->outputSeparator());
+                            $this->render->appendChunk($ruleCtx->output, "\n" . Render::CONTINUATION_MARK);
                         }
 
                         $this->chunks->appendResolvedChunk($ruleCtx->output, $interleavedChunk);
@@ -100,6 +113,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
                         $scope,
                         $child,
                         $ruleCtx->outerCtx,
+                        $ruleCtx->containsStandaloneNestedRuleChunks || $ruleCtx->output !== '',
                     );
                 }
 
@@ -123,9 +137,14 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
             }
 
             $deferredAtRootCount = null;
+            $atRootStackIndex    = count($outputState->deferral->atRootStack) - 1;
 
-            if ($child instanceof IncludeNode) {
-                $atRootStackIndex    = count($outputState->deferral->atRootStack) - 1;
+            if ($inlinesBody) {
+                $scope->setVariableLocal('__parent_rule_has_rendered_children', $ruleCtx->hasRenderedChildren);
+                $scope->setVariableLocal('__include_block_was_split', false);
+            }
+
+            if ($atRootStackIndex >= 0) {
                 $deferredAtRootCount = count($outputState->deferral->atRootStack[$atRootStackIndex]);
             }
 
@@ -143,11 +162,23 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
             );
 
             if ($compiled !== '' && ! $ruleCtx->omitOwnRuleOutput) {
-                if ($child instanceof DeclarationNode) {
+                if ($child instanceof CommentNode && $child->line === $lastRenderedLine) {
+                    $this->renderRuleOpeningIfNeeded($ruleCtx);
+
+                    if ($savedPosition !== null) {
+                        $this->render->restorePosition($savedPosition);
+                    }
+
+                    $this->render->appendChunk($ruleCtx->output, ' ' . ltrim($compiled), $child);
+
+                    $lastRenderedLine = $child->line;
+                } elseif ($child instanceof DeclarationNode) {
                     $this->renderRuleOpeningIfNeeded($ruleCtx);
 
                     $this->render->appendChunk($ruleCtx->output, "\n");
                     $this->render->appendChunk($ruleCtx->output, $compiled, $child);
+
+                    $lastRenderedLine = $child->line;
                 } else {
                     if ($savedPosition !== null) {
                         $deferredChunk = $this->render->createDeferredChunk($compiled, $savedPosition);
@@ -168,11 +199,20 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
                 }
             }
 
-            if ($child instanceof IncludeNode && $deferredAtRootCount !== null) {
-                $this->chunks->collectDeferredIncludeRootChunks(
-                    $ruleCtx->trailingRootChunks,
+            if ($deferredAtRootCount !== null) {
+                $this->chunks->interleaveDeferredRootChunks(
+                    $ruleCtx->output,
+                    $ruleCtx->hasRenderedChildren,
+                    $ruleCtx->prefix,
+                    $ruleCtx->containsStandaloneNestedRuleChunks,
                     $deferredAtRootCount,
+                    $ruleCtx->leadingRootChunks,
                 );
+            }
+
+            if ($inlinesBody && $scope->hasVariable('__include_block_was_split') && $scope->getVariable('__include_block_was_split') === true) {
+                $ruleCtx->hasRenderedChildren                = false;
+                $ruleCtx->containsStandaloneNestedRuleChunks = true;
             }
         }
 
@@ -193,15 +233,45 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
         }
 
         if ($ruleCtx->output !== '') {
-            $this->render->appendChunk($ruleCtx->output, "\n");
+            $separator = $ruleCtx->containsStandaloneNestedRuleChunks
+                ? "\n" . Render::CONTINUATION_MARK
+                : "\n";
+
+            $this->render->appendChunk($ruleCtx->output, $separator);
         }
+
+        $formattedSelector = str_replace("\n", "\n" . $ruleCtx->prefix, $ruleCtx->selector);
 
         $this->render->appendChunk(
             $ruleCtx->output,
-            $ruleCtx->prefix . $ruleCtx->selector . ' {',
+            $ruleCtx->prefix . $formattedSelector . ' {',
             $ruleCtx->node,
         );
 
         $ruleCtx->hasRenderedChildren = true;
+
+        $this->render->outputState()->deferral->currentRuleHasOutput = true;
+    }
+
+    private function isInsideKeyframes(Scope $scope): bool
+    {
+        if (! $scope->hasVariable('__at_rule_stack')) {
+            return false;
+        }
+
+        $atRuleStack = $scope->getVariable('__at_rule_stack');
+
+        if (! is_array($atRuleStack)) {
+            return false;
+        }
+
+        /** @var list<AtRuleContextEntry|array<string, mixed>> $atRuleStack */
+        foreach ($atRuleStack as $entry) {
+            if ($entry instanceof AtRuleContextEntry && $entry->name !== null && str_ends_with($entry->name, 'keyframes')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

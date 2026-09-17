@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Builtins\SassMathModule;
 use Bugo\SCSS\Exceptions\BuiltinArgumentException;
 use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
+use Bugo\SCSS\Exceptions\InvalidArgumentTypeException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\NumberNode;
@@ -193,8 +194,9 @@ describe('SassMathModule', function () {
         $baseOne  = $this->module->call('log', [new NumberNode(8), new NumberNode(1)], []);
         $natural  = $this->module->call('log', [new NumberNode(8)], []);
 
-        expect(is_nan($baseZero->value))->toBeTrue()
-            ->and(is_nan($baseOne->value))->toBeTrue()
+        expect($baseZero->value)->toBe(-0.0)
+            ->and(fdiv(1.0, $baseZero->value))->toBe(-INF)
+            ->and($baseOne->value)->toBe(INF)
             ->and($natural->value)->toBeCloseTo(log(8), 0.000001);
     });
 
@@ -316,5 +318,73 @@ describe('SassMathModule', function () {
     it('throws for unsupported trig units', function () {
         expect(fn() => $this->module->call('tan', [new NumberNode(1, 'px')], []))
             ->toThrow(BuiltinArgumentException::class, 'unitless, deg, rad, grad, or turn');
+    });
+
+    it('rethrows non-css errors for inverse trigonometric, periodic and logarithmic functions', function () {
+        expect(fn() => $this->module->call('acos', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'acos() (math module) expects required number argument')
+            ->and(fn() => $this->module->call('asin', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'asin() (math module) expects required number argument')
+            ->and(fn() => $this->module->call('atan', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'atan() (math module) expects required number argument')
+            ->and(fn() => $this->module->call('atan2', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'atan2() (math module) expects required number argument')
+            ->and(fn() => $this->module->call('cos', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'cos() (math module) expects required number argument')
+            ->and(fn() => $this->module->call('sin', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'sin() (math module) expects required number argument')
+            ->and(fn() => $this->module->call('tan', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'tan() (math module) expects required number argument')
+            ->and(fn() => $this->module->call('log', [], []))
+            ->toThrow(MissingFunctionArgumentsException::class, 'log() (math module) expects required number argument');
+    });
+
+    it('throws for atan2 mixing unitless and unitful arguments', function () {
+        expect(fn() => $this->module->call('atan2', [new NumberNode(1, 'px'), new NumberNode(2)], []))
+            ->toThrow(IncompatibleUnitsException::class, 'atan2() (math module) arguments must have compatible units')
+            ->and(fn() => $this->module->call('atan2', [new NumberNode(1), new NumberNode(2, 'px')], []))
+            ->toThrow(IncompatibleUnitsException::class, 'atan2() (math module) arguments must have compatible units');
+    });
+
+    it('rethrows invalid argument type errors from math.div for non-string values', function () {
+        expect(fn() => $this->module->call('div', [new BooleanNode(true), new BooleanNode(true)], []))
+            ->toThrow(InvalidArgumentTypeException::class, 'div() (math module) expects number, got');
+    });
+
+    it('rebaselines comparison unit when a unitless number is followed by unitful numbers', function () {
+        $max = $this->module->call('max', [new NumberNode(1), new NumberNode(2, 'px')], []);
+        $min = $this->module->call('min', [new NumberNode(3), new NumberNode(1, 'px'), new NumberNode(2, 'px')], []);
+
+        expect($max->value)->toBe(2)
+            ->and($max->unit)->toBe('px')
+            ->and($min->value)->toBe(1)
+            ->and($min->unit)->toBe('px');
+    });
+
+    it('accepts named mathematical constants as unquoted string arguments', function () {
+        $pi    = $this->module->call('abs', [new StringNode('PI')], []);
+        $e     = $this->module->call('abs', [new StringNode(' e ')], []);
+        $nan   = $this->module->call('abs', [new StringNode('nan')], []);
+        $sqrt  = $this->module->call('sqrt', [new StringNode('pi')], []);
+
+        expect($pi->value)->toBeCloseTo(M_PI, 0.0001)
+            ->and($e->value)->toBeCloseTo(M_E, 0.0001)
+            ->and(is_nan($nan->value))->toBeTrue()
+            ->and($sqrt->value)->toBeCloseTo(sqrt(M_PI), 0.0001);
+    });
+
+    it('falls back to evaluated positional arguments in deprecated suggestions without raw arguments', function () {
+        $warnings = [];
+        $context  = new BuiltinCallContext(
+            logWarning: static function (string $message) use (&$warnings): void {
+                $warnings[] = $message;
+            },
+        );
+
+        $this->module->call('max', [new NumberNode(1), new NumberNode(2)], [], $context);
+
+        expect($warnings)->toHaveCount(1)
+            ->and($warnings[0])->toContain('max() is deprecated')
+            ->and($warnings[0])->toContain('math.max(1, 2)');
     });
 });

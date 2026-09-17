@@ -17,6 +17,7 @@ use Bugo\SCSS\Utils\AstValueComparator;
 
 use function array_filter;
 use function array_map;
+use function array_pop;
 use function array_slice;
 use function array_values;
 use function count;
@@ -47,6 +48,21 @@ final class SassMapModule extends AbstractModule
         'map-values'  => 'values',
     ];
 
+    /**
+     * @var array<string, array<int, string>>
+     */
+    private const PARAMETER_NAMES = [
+        'deep-merge'  => ['map1', 'map2'],
+        'deep-remove' => ['map', 'key'],
+        'get'         => ['map', 'key'],
+        'has-key'     => ['map', 'key'],
+        'keys'        => ['map'],
+        'merge'       => ['map1', 'map2'],
+        'remove'      => ['map', 'key'],
+        'set'         => ['map', 'key', 'value'],
+        'values'      => ['map'],
+    ];
+
     public function getName(): string
     {
         return 'map';
@@ -71,8 +87,12 @@ final class SassMapModule extends AbstractModule
         $previousDisplayName = $this->beginBuiltinCall($name, $context);
 
         try {
+            if ($named !== []) {
+                $positional = $this->mergeNamedArguments($positional, $named, self::PARAMETER_NAMES[$name] ?? []);
+            }
+
             return match ($name) {
-                'deep-merge'  => $this->deepMerge($positional),
+                'deep-merge'  => $this->deepMerge($positional, $named),
                 'deep-remove' => $this->deepRemove($positional),
                 'get'         => $this->get($positional, $context),
                 'has-key'     => $this->hasKey($positional, $context),
@@ -90,10 +110,14 @@ final class SassMapModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    private function deepMerge(array $positional): AstNode
+    private function deepMerge(array $positional, array $named): AstNode
     {
-        if (count($positional) < 2) {
+        $map1 = $positional[0] ?? $named['map1'] ?? null;
+        $map2 = $positional[1] ?? $named['map2'] ?? null;
+
+        if ($map1 === null || $map2 === null) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('map.deep-merge'),
                 'two map arguments',
@@ -101,8 +125,8 @@ final class SassMapModule extends AbstractModule
         }
 
         return $this->deepMergeMaps(
-            $this->asMap($positional[0], 'map.deep-merge'),
-            $this->asMap($positional[1], 'map.deep-merge'),
+            $this->asMap($map1, 'map.deep-merge'),
+            $this->asMap($map2, 'map.deep-merge'),
         );
     }
 
@@ -129,7 +153,9 @@ final class SassMapModule extends AbstractModule
      */
     private function get(array $positional, ?BuiltinCallContext $context): AstNode
     {
-        if (count($positional) < 2) {
+        $map = $positional[0] ?? null;
+
+        if ($map === null) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('map.get'),
                 'map and key arguments',
@@ -138,11 +164,19 @@ final class SassMapModule extends AbstractModule
 
         $this->warnAboutDeprecatedMapFunction($context, 'get', $positional);
 
-        $current = $this->asMap($positional[0], 'map.get');
-        $keys    = array_slice($positional, 1, -1);
-        $lastKey = $positional[count($positional) - 1];
+        $current = $this->asMap($map, 'map.get');
+        $allKeys = array_slice($positional, 1);
 
-        foreach ($keys as $key) {
+        if ($allKeys === []) {
+            throw new MissingFunctionArgumentsException(
+                $this->builtinErrorContext('map.get'),
+                'map and key arguments',
+            );
+        }
+
+        $lastKey = array_pop($allKeys);
+
+        foreach ($allKeys as $key) {
             $value = $this->findByKey($current, $key);
 
             if ($value === null) {
@@ -363,7 +397,7 @@ final class SassMapModule extends AbstractModule
 
             foreach ($result as $idx => $existing) {
                 if (AstValueComparator::equals($existing->key, $rightPair->key)) {
-                    $result[$idx] = $rightPair;
+                    $result[$idx] = new MapPair($existing->key, $rightPair->value);
                     $replaced     = true;
 
                     break;
@@ -397,7 +431,7 @@ final class SassMapModule extends AbstractModule
                             $this->deepMergeMaps($existing->value, $rightPair->value),
                         );
                     } else {
-                        $result[$idx] = $rightPair;
+                        $result[$idx] = new MapPair($existing->key, $rightPair->value);
                     }
 
                     $matched = true;

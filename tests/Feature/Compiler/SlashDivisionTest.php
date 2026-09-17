@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 beforeEach(function () {
     $this->logger   = new ArrayLogger();
@@ -32,7 +32,7 @@ describe('Slash-separated values vs division', function () {
 
         $css = $this->compiler->compileString($source);
 
-        expect($css)->toContain('width: .5');
+        expect($css)->toContain('width: 0.5');
     });
 
     it('evaluates division when assigned to variable', function () {
@@ -45,7 +45,7 @@ describe('Slash-separated values vs division', function () {
 
         $css = $this->compiler->compileString($source);
 
-        expect($css)->toContain('width: .5');
+        expect($css)->toContain('width: 0.5');
     });
 
     it('evaluates division when returned from function', function () {
@@ -60,7 +60,7 @@ describe('Slash-separated values vs division', function () {
 
         $css = $this->compiler->compileString($source);
 
-        expect($css)->toContain('width: .5');
+        expect($css)->toContain('width: 0.5');
     });
 
     it('evaluates division in parentheses', function () {
@@ -72,7 +72,7 @@ describe('Slash-separated values vs division', function () {
 
         $css = $this->compiler->compileString($source);
 
-        expect($css)->toContain('width: .5');
+        expect($css)->toContain('width: 0.5');
     });
 
     it('evaluates division when part of arithmetic expression', function () {
@@ -108,7 +108,7 @@ describe('Slash-separated values vs division', function () {
 
         $css = $this->compiler->compileString($source);
 
-        expect($css)->toContain('grid-row: 2 / 4');
+        expect($css)->toContain('grid-row: 2/4');
     });
 
     describe('@debug slash handling', function () {
@@ -117,7 +117,7 @@ describe('Slash-separated values vs division', function () {
 
             $this->compiler->compileString($source);
 
-            expect($this->logger->records[0]['message'])->toContain('15px / 30px');
+            expect($this->logger->records[0]['message'])->toContain('15px/30px');
         });
 
         it('evaluates division in (10px+5px)/30px expression', function () {
@@ -141,7 +141,7 @@ describe('Slash-separated values vs division', function () {
 
             $this->compiler->compileString($source);
 
-            expect($this->logger->records[0]['message'])->toContain('bold 15px / 30px sans-serif');
+            expect($this->logger->records[0]['message'])->toContain('bold 15px/30px sans-serif');
         });
 
         it('preserves spaced slash in grid-row-like list in @debug', function () {

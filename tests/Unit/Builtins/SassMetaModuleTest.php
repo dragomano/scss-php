@@ -13,6 +13,7 @@ use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\ElseIfNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
@@ -61,8 +62,6 @@ describe('SassMetaModule', function () {
                 'inspect',
                 'type-of',
                 'keywords',
-                'calc-name',
-                'calc-args',
                 'global-variable-exists',
                 'variable-exists',
                 'function-exists',
@@ -78,9 +77,11 @@ describe('SassMetaModule', function () {
             ]);
     });
 
-    it('does not expose apply or load-css as global aliases', function () {
+    it('does not expose apply, load-css, calc-args or calc-name as global aliases', function () {
         expect($this->module->getGlobalAliases())->not->toHaveKey('apply')
-            ->and($this->module->getGlobalAliases())->not->toHaveKey('load-css');
+            ->and($this->module->getGlobalAliases())->not->toHaveKey('load-css')
+            ->and($this->module->getGlobalAliases())->not->toHaveKey('calc-args')
+            ->and($this->module->getGlobalAliases())->not->toHaveKey('calc-name');
     });
 
     it('evaluates accepts-content false without a mixin reference', function () {
@@ -234,8 +235,9 @@ describe('SassMetaModule', function () {
 
         $fn = $this->module->call('get-function', [new StringNode('length')], ['module' => new StringNode('list')], $this->context);
 
-        expect($fn)->toBeInstanceOf(StringNode::class)
-            ->and($fn->value)->toContain('length');
+        expect($fn)->toBeInstanceOf(FunctionRefNode::class)
+            ->and($fn->module)->toBe('list')
+            ->and($fn->name)->toBe('length');
     });
 
     it('evaluates get-function for user functions and throws when missing', function () {
@@ -243,7 +245,7 @@ describe('SassMetaModule', function () {
 
         $userFunction = $this->module->call('get-function', [new StringNode('custom-fn')], [], $this->context);
 
-        expect($userFunction)->toBeInstanceOf(FunctionNode::class)
+        expect($userFunction)->toBeInstanceOf(FunctionRefNode::class)
             ->and($userFunction->name)->toBe('custom-fn')
             ->and(fn() => $this->module->call('get-function', [new StringNode('missing-fn')], [], $this->context))
             ->toThrow(ModuleResolutionException::class)
@@ -296,7 +298,7 @@ describe('SassMetaModule', function () {
 
         $result = $this->module->call('inspect', [$value], []);
 
-        expect($result->value)->toBe('(a: 1, b: x, y)');
+        expect($result->value)->toBe('(a: 1, b: (x, y))');
     });
 
     it('evaluates inspect for scalar values', function () {
@@ -429,7 +431,7 @@ describe('SassMetaModule', function () {
 
         expect($functions)->toBeInstanceOf(MapNode::class)
             ->and($functions->pairs[0]->key->value)->toBe('custom-fn')
-            ->and($functions->pairs[0]->value)->toBeInstanceOf(FunctionNode::class)
+            ->and($functions->pairs[0]->value)->toBeInstanceOf(FunctionRefNode::class)
             ->and($mixins)->toBeInstanceOf(MapNode::class)
             ->and($mixins->pairs[0]->key->value)->toBe('custom-mixin')
             ->and($variables)->toBeInstanceOf(MapNode::class)
@@ -497,5 +499,35 @@ describe('SassMetaModule', function () {
     it('requires compiler context for scope-dependent meta functions', function () {
         expect(fn() => $this->module->call('content-exists', [], [], null))
             ->toThrow(LogicException::class);
+    });
+
+    it('returns an unpinned reference when a module function name matches a builtin', function () {
+        $this->registry->registerUse('sass:math', null);
+
+        $moduleScope = new Scope();
+        $moduleScope->defineFunction('div', [], []);
+
+        $this->env->getCurrentScope()->addModule('math', $moduleScope);
+
+        $reference = $this->module->call('get-function', [new StringNode('div')], ['module' => new StringNode('math')], $this->context);
+
+        expect($reference)->toBeInstanceOf(FunctionRefNode::class)
+            ->and($reference->name)->toBe('div')
+            ->and($reference->module)->toBe('math')
+            ->and($reference->lockedDefinition)->toBeNull();
+    });
+
+    it('consumes the named function argument of call instead of forwarding it', function () {
+        $this->registry->registerUse('sass:list', null);
+
+        $fn = $this->module->call('get-function', [new StringNode('length')], ['module' => new StringNode('list')], $this->context);
+
+        $result = $this->module->call('call', [], [
+            'function' => $fn,
+            'list'     => new ListNode([new StringNode('a'), new StringNode('b')], 'space'),
+        ], $this->context);
+
+        expect($result)->toBeInstanceOf(NumberNode::class)
+            ->and($result->value)->toBe(2);
     });
 });

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Sass List Module Feature', function () {
     beforeEach(function () {
@@ -39,7 +39,7 @@ describe('Sass List Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .list-append {
-              value: 10px 20px (30px 40px);
+              value: 10px 20px 30px 40px;
             }
             CSS;
 
@@ -258,7 +258,7 @@ describe('Sass List Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .list-global-append {
-                  value: 10px 20px (30px 40px);
+                  value: 10px 20px 30px 40px;
                 }
                 CSS;
 
@@ -462,7 +462,7 @@ describe('Sass List Module Feature', function () {
 
         expect($this->logger->records)->toHaveCount(18)
             ->and($this->logger->records[0]['message'])->toContain('append() is deprecated. Suggestion: list.append(10px 20px, 30px 40px)')
-            ->and($this->logger->records[1]['message'])->toContain('10px 20px (30px 40px)')
+            ->and($this->logger->records[1]['message'])->toContain('10px 20px 30px 40px')
             ->and($this->logger->records[2]['message'])->toContain('index() is deprecated. Suggestion: list.index(1px solid red, 1px)')
             ->and($this->logger->records[3]['message'])->toContain('1')
             ->and($this->logger->records[4]['message'])->toContain('is-bracketed() is deprecated. Suggestion: list.is-bracketed(1px 2px 3px)')

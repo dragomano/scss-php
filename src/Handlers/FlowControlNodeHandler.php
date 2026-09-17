@@ -5,21 +5,28 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Handlers;
 
 use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
-use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
+use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\EachNode;
+use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\ForNode;
 use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\NumberNode;
+use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\Visitable;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
+use Bugo\SCSS\Services\LoopIterator;
 use Bugo\SCSS\Services\Render;
+use Bugo\SCSS\Services\Selector;
+use Bugo\SCSS\Utils\UnitConverter;
 
 use function is_numeric;
+use function round;
 use function str_ends_with;
 
 final readonly class FlowControlNodeHandler
@@ -28,6 +35,9 @@ final readonly class FlowControlNodeHandler
         private NodeDispatcherInterface $dispatcher,
         private Evaluator $evaluation,
         private Render $render,
+        private LoopIterator $loopIterator,
+        private DeferredChunkManager $chunks,
+        private Selector $selector,
     ) {}
 
     public function handleIf(IfNode $node, TraversalContext $ctx): string
@@ -36,26 +46,34 @@ final readonly class FlowControlNodeHandler
         $first  = true;
         $branch = null;
 
-        if ($this->evaluation->evaluateFunctionCondition($node->condition, $ctx->env)) {
+        if ($this->evaluation->evaluateFunctionCondition($node->condition, $ctx->env, $node->line)) {
             $branch = $node->body;
         } else {
             foreach ($node->elseIfBranches as $elseIfBranch) {
                 $condition = $elseIfBranch->condition;
                 $body      = $elseIfBranch->body;
 
-                if ($this->evaluation->evaluateFunctionCondition($condition, $ctx->env)) {
+                if ($this->evaluation->evaluateFunctionCondition($condition, $ctx->env, $elseIfBranch->line)) {
                     $branch = $body;
 
                     break;
                 }
             }
 
-            if ($branch === null) {
-                $branch = $node->elseBody;
-            }
+            $branch ??= $node->elseBody;
         }
 
-        $this->compileBody($branch, $ctx, $output, $first);
+        $ctx->env->enterScope();
+
+        try {
+            $ctx->env->getCurrentScope()->markAsFlowControlScope();
+
+            $bodyCtx = new TraversalContext($ctx->env, $ctx->indent);
+
+            $this->compileBody($branch, $bodyCtx, $output, $first);
+        } finally {
+            $ctx->env->exitScope();
+        }
 
         return $output;
     }
@@ -73,6 +91,8 @@ final readonly class FlowControlNodeHandler
         $ctx->env->enterScope();
 
         try {
+            $ctx->env->getCurrentScope()->markAsFlowControlScope();
+
             $bodyCtx = new TraversalContext($ctx->env, $ctx->indent);
 
             foreach ($items as $item) {
@@ -89,35 +109,33 @@ final readonly class FlowControlNodeHandler
 
     public function handleFor(ForNode $node, TraversalContext $ctx): string
     {
-        $output = '';
-        $first  = true;
-        $from   = (int) $this->toLoopNumber($node->from, $ctx->env);
-        $to     = (int) $this->toLoopNumber($node->to, $ctx->env);
-
-        if (! $node->inclusive) {
-            $to += $from <= $to ? -1 : 1;
-        }
-
-        $step          = $from <= $to ? 1 : -1;
-        $iterations    = 0;
-        $maxIterations = 10000;
+        $output   = '';
+        $first    = true;
+        $fromNode = $this->toLoopNumber($node->from, $ctx->env);
+        $toNode   = $this->toLoopNumber($node->to, $ctx->env);
+        $unit     = $fromNode->unit;
+        $from     = (int) $fromNode->value;
+        $to       = (int) round(UnitConverter::convert((float) $toNode->value, $toNode->unit, $unit));
 
         $ctx->env->enterScope();
 
         try {
+            $ctx->env->getCurrentScope()->markAsFlowControlScope();
+
             $bodyCtx = new TraversalContext($ctx->env, $ctx->indent);
 
-            for ($i = $from; $step > 0 ? $i <= $to : $i >= $to; $i += $step) {
-                $iterations++;
+            $this->loopIterator->forLoop(
+                $from,
+                $to,
+                $node->inclusive,
+                function (int $i) use ($node, $unit, $ctx, $bodyCtx, &$output, &$first) {
+                    $ctx->env->getCurrentScope()->setVariable($node->variable, new NumberNode($i, $unit));
 
-                if ($iterations > $maxIterations) {
-                    throw new MaxIterationsExceededException('@for');
-                }
+                    $this->compileBody($node->body, $bodyCtx, $output, $first);
 
-                $ctx->env->getCurrentScope()->setVariable($node->variable, new NumberNode($i));
-
-                $this->compileBody($node->body, $bodyCtx, $output, $first);
-            }
+                    return true;
+                },
+            );
         } finally {
             $ctx->env->exitScope();
         }
@@ -127,20 +145,26 @@ final readonly class FlowControlNodeHandler
 
     public function handleWhile(WhileNode $node, TraversalContext $ctx): string
     {
-        $output        = '';
-        $first         = true;
-        $iterations    = 0;
-        $maxIterations = 10000;
-        $bodyCtx       = new TraversalContext($ctx->env, $ctx->indent);
+        $output = '';
+        $first  = true;
 
-        while ($this->evaluation->evaluateFunctionCondition($node->condition, $ctx->env)) {
-            $iterations++;
+        $ctx->env->enterScope();
 
-            if ($iterations > $maxIterations) {
-                throw new MaxIterationsExceededException('@while');
-            }
+        try {
+            $ctx->env->getCurrentScope()->markAsFlowControlScope();
 
-            $this->compileBody($node->body, $bodyCtx, $output, $first);
+            $bodyCtx = new TraversalContext($ctx->env, $ctx->indent);
+
+            $this->loopIterator->whileLoop(
+                fn(): bool => $this->evaluation->evaluateFunctionCondition($node->condition, $ctx->env, $node->line),
+                function () use ($node, $bodyCtx, &$output, &$first): bool {
+                    $this->compileBody($node->body, $bodyCtx, $output, $first);
+
+                    return true;
+                },
+            );
+        } finally {
+            $ctx->env->exitScope();
         }
 
         return $output;
@@ -163,6 +187,38 @@ final readonly class FlowControlNodeHandler
                     continue;
                 }
 
+                if ($child instanceof ExtendNode) {
+                    continue;
+                }
+
+                if ($this->evaluation->isBubblingAtRuleNode($child)) {
+                    $this->chunks->appendIncludeBubblingChunk($output, $first, $child, $ctx);
+
+                    continue;
+                }
+
+                if ($child instanceof RuleNode) {
+                    $parentSelector = $ctx->env->getCurrentScope()->getStringVariable('__parent_selector');
+                    $atRootNoRule   = $ctx->env->getCurrentScope()->getAstVariable('__at_root_without_rule');
+
+                    if (
+                        $parentSelector !== null
+                        && $parentSelector->value !== ''
+                        && ! ($atRootNoRule instanceof BooleanNode && $atRootNoRule->value)
+                    ) {
+                        $childSelector   = $this->chunks->resolveRuleSelector($child, $ctx);
+                        $isPropertyBlock = $this->selector->parseNestedPropertyBlockSelector($childSelector) !== null;
+
+                        if (! $isPropertyBlock) {
+                            $dummyOutput = '';
+
+                            $this->chunks->appendIncludedRuleChunk($dummyOutput, $first, $child, $ctx, false);
+
+                            continue;
+                        }
+                    }
+                }
+
                 /** @var Visitable $child */
                 $compiled = $this->dispatcher->compileWithContext($child, $ctx);
 
@@ -175,20 +231,19 @@ final readonly class FlowControlNodeHandler
                 }
 
                 $output .= $compiled;
-
-                $first = false;
+                $first   = false;
             }
         } finally {
             $scope->setVariableLocal('__flow_control_declaration_guard', $hadGuard ? $previousGuardSet : false);
         }
     }
 
-    private function toLoopNumber(AstNode $node, Environment $env): float
+    private function toLoopNumber(AstNode $node, Environment $env): NumberNode
     {
         $resolved = $this->evaluation->evaluateValue($node, $env);
 
         if ($resolved instanceof NumberNode) {
-            return (float) $resolved->value;
+            return $resolved;
         }
 
         $formatted = $this->render->format($resolved, $env);
@@ -197,6 +252,6 @@ final readonly class FlowControlNodeHandler
             throw new InvalidLoopBoundaryException($formatted);
         }
 
-        return (float) $formatted;
+        return new NumberNode((float) $formatted);
     }
 }

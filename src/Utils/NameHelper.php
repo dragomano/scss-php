@@ -4,8 +4,14 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Utils;
 
-use function explode;
+use function in_array;
 use function str_contains;
+use function str_starts_with;
+use function strpos;
+use function strrpos;
+use function strtolower;
+use function substr;
+use function substr_count;
 
 final class NameHelper
 {
@@ -34,21 +40,34 @@ final class NameHelper
         return str_contains($name, '.');
     }
 
+    public static function isSpecialCssFunctionName(string $name): bool
+    {
+        $name = strtolower($name);
+
+        if (str_starts_with($name, '-') && substr_count($name, '-') >= 2) {
+            $tail = substr($name, (int) strrpos($name, '-') + 1);
+
+            return in_array($tail, ['calc', 'element', 'expression'], true);
+        }
+
+        return in_array($name, ['element', 'expression', 'type'], true);
+    }
+
     /**
      * @return array{namespace: string, member: string|null}
      */
     private static function split(string $name, ?string $defaultMember): array
     {
         // @pest-mutate-ignore
-        if (! str_contains($name, '.')) {
+        $dot = strpos($name, '.');
+
+        if ($dot === false) {
             return ['namespace' => $name, 'member' => $defaultMember];
         }
 
-        $parts = explode('.', $name, 2);
-
         return [
-            'namespace' => $parts[0],
-            'member'    => $parts[1] ?? $defaultMember,
+            'namespace' => substr($name, 0, $dot),
+            'member'    => substr($name, $dot + 1),
         ];
     }
 }

@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Handlers\AtRuleNodeHandler;
+use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
@@ -18,8 +20,9 @@ use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\States\OutputState;
 use Bugo\SCSS\Utils\DeferredChunk;
+use Bugo\SCSS\Utils\GroupStartChunk;
 use Bugo\SCSS\Utils\OutputChunk;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('handles @at-root blocks', function () {
     $runtime = RuntimeFactory::createRuntime();
@@ -104,6 +107,7 @@ it('defers non-escaped @at-root chunks into the deferred root stack when a paren
     $evaluation = mock(Evaluator::class);
     $render     = mock(Render::class);
     $selector   = mock(Selector::class);
+    $chunks     = mock(DeferredChunkManager::class);
 
     $render->shouldReceive('savePosition')->once()->andReturn($savedPosition);
     $selector->shouldReceive('compileAtRootBody')->once()->andReturn([
@@ -112,7 +116,7 @@ it('defers non-escaped @at-root chunks into the deferred root stack when a paren
     ]);
     $render->shouldReceive('createDeferredChunk')->once()->with('.outside { color: red; }', $savedPosition)
         ->andReturn($deferredChunk);
-    $render->shouldReceive('outputState')->once()->andReturn($outputState);
+    $render->shouldReceive('outputState')->twice()->andReturn($outputState);
     $render->shouldReceive('restorePosition')->once()->with($savedPosition);
     $render->shouldReceive('appendOutputChunk')->zeroOrMoreTimes()->withArgs(
         /**
@@ -125,10 +129,16 @@ it('defers non-escaped @at-root chunks into the deferred root stack when a paren
         },
     );
 
-    $handler = new AtRuleNodeHandler($dispatcher, $evaluation, $render, $selector);
+    $handler = new AtRuleNodeHandler($dispatcher, $evaluation, $render, $selector, $chunks);
 
-    expect($handler->handleAtRoot(new AtRootNode(), $ctx))->toBe('')
-        ->and($outputState->deferral->atRootStack[0])->toBe([$deferredChunk]);
+    expect($handler->handleAtRoot(new AtRootNode(), $ctx))->toBe('');
+
+    /** @var list<OutputChunk> $stack */
+    $stack = $outputState->deferral->atRootStack[0];
+
+    expect($stack)->toHaveCount(1)
+        ->and($stack[0])->toBeInstanceOf(GroupStartChunk::class)
+        ->and($stack[0]->inner())->toBe($deferredChunk);
 
     Mockery::close();
 });
@@ -189,6 +199,32 @@ it('ignores empty merged nested media chunks and keeps other directive content',
     expect($runtime->atRule()->handleDirective($node, $ctx))->toEqualCss($expected);
 });
 
+it('renders merged nested media blocks before following parent media content', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+    $node    = new DirectiveNode('media', '(a: b)', [
+        new DirectiveNode('media', '(c: d)', [
+            new RuleNode('e', [new DeclarationNode('f', new StringNode('g'))]),
+        ], true),
+        new RuleNode('h', [new DeclarationNode('i', new StringNode('j'))]),
+    ], true);
+
+    $expected = /** @lang text */ <<<'CSS'
+    @media (a: b) and (c: d) {
+      e {
+        f: g;
+      }
+    }
+    @media (a: b) {
+      h {
+        i: j;
+      }
+    }
+    CSS;
+
+    expect($runtime->atRule()->handleDirective($node, $ctx))->toEqualCss($expected);
+});
+
 it('returns an empty string for block directives with no rendered content or escaped chunks', function () {
     $runtime = RuntimeFactory::createRuntime();
     $ctx     = RuntimeFactory::context();
@@ -212,14 +248,7 @@ it('joins multiple outside chunks when a directive body renders only escaped con
         ]),
     ], true);
 
-    $expected = /** @lang text */ <<<'CSS'
-    .x {
-      color: red;
-    }
-    .y {
-      color: blue;
-    }
-    CSS;
+    $expected = ".x {\n  color: red;\n}\n" . Render::CONTINUATION_MARK . ".y {\n  color: blue;\n}";
 
     expect($runtime->atRule()->handleDirective($node, $ctx))->toEqualCss($expected);
 });
@@ -281,11 +310,13 @@ it('wraps @content in the parent rule when the current at-rule stack requires it
     $ctx     = RuntimeFactory::context();
     $scope   = $ctx->env->getCurrentScope();
 
-    $scope->setVariableLocal('__meta_content_block', [
+    $scope->setVariableLocal('__parent_selector', new StringNode('.host'));
+
+    $ctx->env->enterScope();
+    $ctx->env->getCurrentScope()->setVariableLocal('__meta_content_block', [
         new DeclarationNode('color', new StringNode('red')),
     ]);
-    $scope->setVariableLocal('__parent_selector', new StringNode('.host'));
-    $scope->setVariableLocal('__at_rule_stack', [
+    $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', [
         AtRuleContextEntry::supports('(display: grid)'),
     ]);
 
@@ -328,11 +359,56 @@ it('does not wrap @content when the at-rule stack contains non-directive entries
         ['allowed_classes' => [AtRuleContextEntry::class]],
     );
 
-    $scope->setVariableLocal('__meta_content_block', [
+    $scope->setVariableLocal('__parent_selector', new StringNode('.host'));
+
+    $ctx->env->enterScope();
+    $ctx->env->getCurrentScope()->setVariableLocal('__meta_content_block', [
         new DeclarationNode('color', new StringNode('red')),
     ]);
-    $scope->setVariableLocal('__parent_selector', new StringNode('.host'));
-    $scope->setVariableLocal('__at_rule_stack', [$layerEntry]);
+    $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', [$layerEntry]);
+
+    expect($runtime->atRule()->handleDirective(new DirectiveNode('content', '', [], false), $ctx))
+        ->toEqualCss('color: red;');
+});
+
+it('drops empty children inside directive bodies while source mappings are collected', function () {
+    $context = new CompilerContext();
+    $context->sourceMapState->startCollection();
+
+    $runtime = RuntimeFactory::createRuntime(context: $context);
+    $ctx     = RuntimeFactory::context();
+    $node    = new DirectiveNode('media', 'screen', [
+        new RuleNode('.a', [new DeclarationNode('color', new StringNode('red'))]),
+        new DirectiveNode('charset', 'UTF-8', [], false),
+        new RuleNode('.b', [new DeclarationNode('color', new StringNode('blue'))]),
+    ], true);
+
+    $expected = /** @lang text */ <<<'CSS'
+    @media screen {
+      .a {
+        color: red;
+      }
+      .b {
+        color: blue;
+      }
+    }
+    CSS;
+
+    expect($runtime->atRule()->handleDirective($node, $ctx))->toEqualCss($expected);
+});
+
+it('skips empty compiled children when @content runs inside a non-wrapping at-rule stack', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+    $scope   = $ctx->env->getCurrentScope();
+
+    $scope->setVariableLocal('__at_rule_stack', [
+        AtRuleContextEntry::directive('media', 'screen'),
+    ]);
+    $scope->setVariableLocal('__meta_content_block', [
+        new DirectiveNode('charset', 'UTF-8', [], false),
+        new DeclarationNode('color', new StringNode('red')),
+    ]);
 
     expect($runtime->atRule()->handleDirective(new DirectiveNode('content', '', [], false), $ctx))
         ->toEqualCss('color: red;');

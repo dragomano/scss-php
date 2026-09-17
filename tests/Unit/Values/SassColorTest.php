@@ -5,16 +5,16 @@ declare(strict_types=1);
 use Bugo\SCSS\Values\SassColor;
 
 describe('SassColor', function () {
-    it('six-digit hex color is normalized and shortened when possible', function () {
+    it('six-digit hex color preserves original format', function () {
         $color = new SassColor('#FF0000');
 
-        expect($color->toCss())->toBe('#f00');
+        expect($color->toCss())->toBe('#FF0000');
     });
 
-    it('three-digit hex is returned lowercased', function () {
+    it('three-digit hex is returned as-is', function () {
         $color = new SassColor('#F00');
 
-        expect($color->toCss())->toBe('#f00');
+        expect($color->toCss())->toBe('#F00');
     });
 
     it('named color passes through unchanged (no hash prefix)', function () {
@@ -36,16 +36,16 @@ describe('SassColor', function () {
         expect((string) $color)->toBe('blue');
     });
 
-    it('lowercase six-digit hex is shortened when possible', function () {
+    it('lowercase six-digit hex is returned as-is', function () {
         $color = new SassColor('#aabbcc');
 
-        expect($color->toCss())->toBe('#abc');
+        expect($color->toCss())->toBe('#aabbcc');
     });
 
-    it('uppercase six-digit hex is lowercased and shortened when possible', function () {
+    it('uppercase six-digit hex is returned as-is', function () {
         $color = new SassColor('#AABBCC');
 
-        expect($color->toCss())->toBe('#abc');
+        expect($color->toCss())->toBe('#AABBCC');
     });
 
     it('preserves rgb colors when hex output is disabled', function () {
@@ -54,10 +54,57 @@ describe('SassColor', function () {
         expect($color->toCss())->toBe('rgb(255, 0, 0)');
     });
 
-    it('converts rgb colors to hex when hex output is enabled', function () {
-        $color = new SassColor('rgb(102, 175.8, 255)', true);
+    it('converts rgb colors to hex when compressed', function () {
+        $color = new SassColor('rgb(102, 175.8, 255)', compressed: true);
 
         expect($color->toCss())->toBe('#66b0ff');
     });
 
+    it('expands four-digit hex with digits to rgba', function () {
+        $color = new SassColor('#0123');
+
+        expect($color->toCss())->toBe('rgba(0, 17, 34, 0.2)');
+    });
+
+    it('expands four-digit hex with letters to rgba', function () {
+        $color = new SassColor('#AbCd');
+
+        expect($color->toCss())->toBe('rgba(170, 187, 204, 0.8666666667)');
+    });
+
+    it('expands eight-digit hex to rgba', function () {
+        $color = new SassColor('#98765432');
+
+        expect($color->toCss())->toBe('rgba(152, 118, 84, 0.1960784314)');
+    });
+
+    it('expands eight-digit hex with mixed case to rgba', function () {
+        $color = new SassColor('#aBcDeF12');
+
+        expect($color->toCss())->toBe('rgba(171, 205, 239, 0.0705882353)');
+    });
+
+    it('removes leading zero from alpha when compressed', function () {
+        $color = new SassColor('#0123', compressed: true);
+
+        expect($color->toCss())->toBe('rgba(0, 17, 34, .2)');
+    });
+
+    it('preserves four-digit hex with full alpha as rgba', function () {
+        $color = new SassColor('#ff0000ff');
+
+        expect($color->toCss())->toBe('rgba(255, 0, 0, 1)');
+    });
+
+    it('returns five-digit hex with invalid characters as-is', function () {
+        $color = new SassColor('#zzzz');
+
+        expect($color->toCss())->toBe('#zzzz');
+    });
+
+    it('returns nine-digit hex with invalid characters as-is', function () {
+        $color = new SassColor('#zzzzzzzz');
+
+        expect($color->toCss())->toBe('#zzzzzzzz');
+    });
 });

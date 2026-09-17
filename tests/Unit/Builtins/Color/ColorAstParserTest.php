@@ -39,4 +39,14 @@ describe('ColorAstParser', function () {
             ->and($parsed?->arguments[0])->toBeInstanceOf(StringNode::class)
             ->and($parsed?->arguments[0]->value)->toBe('foo+bar');
     });
+
+    it('parses url arguments with arithmetic operators through the inline value parser', function () {
+        $parsed = $this->parser->parse('url(a + b)');
+
+        expect($parsed)->toBeInstanceOf(FunctionNode::class)
+            ->and($parsed?->name)->toBe('url')
+            ->and($parsed?->arguments)->toHaveCount(1)
+            ->and($parsed?->arguments[0])->toBeInstanceOf(StringNode::class)
+            ->and($parsed?->arguments[0]->value)->toBe('a + b');
+    });
 });

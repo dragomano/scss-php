@@ -4,20 +4,28 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Services;
 
+use Bugo\Iris\LiteralParser;
+use Bugo\Iris\Spaces\RgbColor;
+use Bugo\SCSS\Builtins\Color\Conversion\CssColorFunctionConverter;
+use Bugo\SCSS\Builtins\Color\Support\RgbChannelScale;
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MixinRefNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Utils\CssNamedColors;
+use Bugo\SCSS\Utils\StringHelper;
 use Bugo\SCSS\Utils\UnitConverter;
 use Bugo\SCSS\Values\SassNumber;
 use Bugo\SCSS\Values\SassValue;
@@ -51,11 +59,11 @@ final readonly class Condition
         private AstValueFormatterInterface $valueFormatter,
     ) {}
 
-    public function evaluate(string $condition, Environment $env): bool
+    public function evaluate(string $condition, Environment $env, ?int $line = null): bool
     {
         $parsed = $this->parse($condition);
 
-        return $this->evaluateParsed($parsed, $env);
+        return $this->evaluateParsed($parsed, $env, $line);
     }
 
     public function isTruthy(AstNode $value): bool
@@ -236,7 +244,7 @@ final readonly class Condition
     /**
      * @param array<string, mixed> $condition
      */
-    private function evaluateParsed(array $condition, Environment $env): bool
+    private function evaluateParsed(array $condition, Environment $env, ?int $line = null): bool
     {
         $type = 'empty';
 
@@ -252,7 +260,7 @@ final readonly class Condition
             $orItems = $this->text->extractStringKeyedArrayItems($condition['items'] ?? null);
 
             foreach ($orItems as $item) {
-                if ($this->evaluateParsed($item, $env)) {
+                if ($this->evaluateParsed($item, $env, $line)) {
                     return true;
                 }
             }
@@ -264,7 +272,7 @@ final readonly class Condition
             $andItems = $this->text->extractStringKeyedArrayItems($condition['items'] ?? null);
 
             foreach ($andItems as $item) {
-                if (! $this->evaluateParsed($item, $env)) {
+                if (! $this->evaluateParsed($item, $env, $line)) {
                     return false;
                 }
             }
@@ -280,7 +288,7 @@ final readonly class Condition
                 $innerCondition = $condition['item'];
             }
 
-            return ! $this->evaluateParsed($innerCondition, $env);
+            return ! $this->evaluateParsed($innerCondition, $env, $line);
         }
 
         if ($type === 'comparison') {
@@ -300,8 +308,8 @@ final readonly class Condition
                 $operator = $condition['operator'];
             }
 
-            $left  = $this->resolveValue($leftRaw, $env);
-            $right = $this->resolveValue($rightRaw, $env);
+            $left  = $this->resolveValue($leftRaw, $env, $line);
+            $right = $this->resolveValue($rightRaw, $env, $line);
 
             return $this->compare($left, $operator, $right, $env);
         }
@@ -312,7 +320,7 @@ final readonly class Condition
             $rawValue = $condition['raw'];
         }
 
-        $value = $this->resolveValue($rawValue, $env);
+        $value = $this->resolveValue($rawValue, $env, $line);
 
         return $this->isTruthy($value);
     }
@@ -347,8 +355,20 @@ final readonly class Condition
             return $this->areMapsEqual($left, $right, $env);
         }
 
+        if ($left instanceof FunctionRefNode && $right instanceof FunctionRefNode) {
+            return $this->areFunctionRefsEqual($left, $right);
+        }
+
+        if ($left instanceof MixinRefNode && $right instanceof MixinRefNode) {
+            return $this->areMixinRefsEqual($left, $right);
+        }
+
         if ($left instanceof FunctionNode && $right instanceof FunctionNode) {
-            return $this->areFunctionsEqual($left, $right);
+            return $this->areFunctionsEqual($left, $right, $env);
+        }
+
+        if ($this->areColorsCrossType($left, $right)) {
+            return true;
         }
 
         return false;
@@ -388,7 +408,14 @@ final readonly class Condition
 
     private function areColorsEqual(ColorNode $left, ColorNode $right): bool
     {
-        return strtolower($left->value) === strtolower($right->value);
+        $leftRgb  = $this->resolveNamedColorToRgb($left);
+        $rightRgb = $this->resolveNamedColorToRgb($right);
+
+        if ($leftRgb === null || $rightRgb === null) {
+            return strtolower($left->value) === strtolower($right->value);
+        }
+
+        return $this->areRgbColorsEqual($leftRgb, $rightRgb);
     }
 
     private function areListsEqual(ListNode $left, ListNode $right, Environment $env): bool
@@ -420,14 +447,28 @@ final readonly class Condition
             return false;
         }
 
-        foreach ($left->pairs as $index => $leftPair) {
-            $rightPair = $right->pairs[$index];
+        $remaining = $right->pairs;
 
-            if (! $this->areValuesEqual($leftPair->key, $rightPair->key, $env)) {
-                return false;
+        foreach ($left->pairs as $leftPair) {
+            $matched = false;
+
+            foreach ($remaining as $index => $rightPair) {
+                if (! $this->areValuesEqual($leftPair->key, $rightPair->key, $env)) {
+                    continue;
+                }
+
+                if (! $this->areValuesEqual($leftPair->value, $rightPair->value, $env)) {
+                    return false;
+                }
+
+                unset($remaining[$index]);
+
+                $matched = true;
+
+                break;
             }
 
-            if (! $this->areValuesEqual($leftPair->value, $rightPair->value, $env)) {
+            if (! $matched) {
                 return false;
             }
         }
@@ -435,9 +476,213 @@ final readonly class Condition
         return true;
     }
 
-    private function areFunctionsEqual(FunctionNode $left, FunctionNode $right): bool
+    private function areFunctionsEqual(FunctionNode $left, FunctionNode $right, Environment $env): bool
     {
-        return $left === $right;
+        if ($left === $right) {
+            return true;
+        }
+
+        if ($left->name !== $right->name) {
+            return false;
+        }
+
+        if (count($left->arguments) === count($right->arguments)) {
+            $allMatch = true;
+
+            foreach ($left->arguments as $index => $argument) {
+                if (! $this->areValuesEqual($argument, $right->arguments[$index], $env)) {
+                    $allMatch = false;
+
+                    break;
+                }
+            }
+
+            if ($allMatch) {
+                return true;
+            }
+        }
+
+        $nameLower = strtolower($left->name);
+
+        if (! $this->hasNoneChannel($left) && ! $this->hasNoneChannel($right) && $nameLower !== 'color') {
+            $leftRgb  = $this->resolveNamedColorToRgb($left);
+            $rightRgb = $this->resolveNamedColorToRgb($right);
+
+            if ($leftRgb !== null && $rightRgb !== null) {
+                return $this->areRgbColorsEqual($leftRgb, $rightRgb);
+            }
+        }
+
+        return false;
+    }
+
+    private function hasNoneChannel(FunctionNode $function): bool
+    {
+        foreach ($function->arguments as $argument) {
+            if ($argument instanceof ListNode) {
+                foreach ($argument->items as $item) {
+                    if ($this->isNoneChannelNode($item)) {
+                        return true;
+                    }
+                }
+            } elseif ($this->isNoneChannelNode($argument)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isNoneChannelNode(AstNode $node): bool
+    {
+        return $node instanceof StringNode
+            && ! $node->quoted
+            && strtolower(trim($node->value)) === 'none';
+    }
+
+    private function hasSignificantMissingChannel(FunctionNode $function): bool
+    {
+        $name = strtolower($function->name);
+
+        if (! in_array($name, ['hsl', 'hsla', 'hwb'], true)) {
+            return $name !== 'color' && $this->hasNoneChannel($function);
+        }
+
+        $arguments = $function->arguments;
+
+        if (count($arguments) !== 1 || ! $arguments[0] instanceof ListNode) {
+            return $this->hasNoneChannel($function);
+        }
+
+        $items = $arguments[0]->items;
+
+        $valueOf = static function (int $index) use ($items): ?float {
+            $item = $items[$index] ?? null;
+
+            if (! $item instanceof NumberNode) {
+                return null;
+            }
+
+            return (float) $item->value;
+        };
+
+        foreach ($items as $index => $item) {
+            if (! $this->isNoneChannelNode($item)) {
+                continue;
+            }
+
+            $isPowerless = false;
+
+            if ($name === 'hsl' || $name === 'hsla') {
+                $isPowerless = match ($index) {
+                    0       => $valueOf(1) === 0.0 || $valueOf(2) === 0.0 || $valueOf(2) === 100.0,
+                    1       => $valueOf(2) === 0.0 || $valueOf(2) === 100.0,
+                    2       => $valueOf(1) === 0.0,
+                    default => false,
+                };
+            } else {
+                $whiteness = $valueOf(1);
+                $blackness = $valueOf(2);
+
+                $isPowerless = match ($index) {
+                    0       => $whiteness !== null && $blackness !== null && $whiteness + $blackness >= 100.0,
+                    default => false,
+                };
+            }
+
+            if (! $isPowerless) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function areFunctionRefsEqual(FunctionRefNode $left, FunctionRefNode $right): bool
+    {
+        if ($left->lockedDefinition !== null && $right->lockedDefinition !== null) {
+            return $left->lockedDefinition === $right->lockedDefinition;
+        }
+
+        if ($left->lockedDefinition === null && $right->lockedDefinition === null) {
+            return $left->name === $right->name && $left->module === $right->module;
+        }
+
+        return false;
+    }
+
+    private function areMixinRefsEqual(MixinRefNode $left, MixinRefNode $right): bool
+    {
+        if ($left->lockedDefinition !== null && $right->lockedDefinition !== null) {
+            return $left->lockedDefinition === $right->lockedDefinition;
+        }
+
+        if ($left->lockedDefinition === null && $right->lockedDefinition === null) {
+            return $left->name === $right->name;
+        }
+
+        return false;
+    }
+
+    private function areColorsCrossType(AstNode $left, AstNode $right): bool
+    {
+        if (
+            ($left instanceof FunctionNode && $this->hasSignificantMissingChannel($left))
+            || ($right instanceof FunctionNode && $this->hasSignificantMissingChannel($right))
+        ) {
+            return false;
+        }
+
+        $leftRgb  = $this->resolveNamedColorToRgb($left);
+        $rightRgb = $this->resolveNamedColorToRgb($right);
+
+        if ($leftRgb === null || $rightRgb === null) {
+            return false;
+        }
+
+        return $this->areRgbColorsEqual($leftRgb, $rightRgb);
+    }
+
+    private function resolveNamedColorToRgb(AstNode $node): ?RgbColor
+    {
+        if ($node instanceof ColorNode) {
+            $literalParser = new LiteralParser();
+            $parsed        = $literalParser->toRgb($node->value);
+
+            if ($parsed === null) {
+                return null;
+            }
+
+            return RgbChannelScale::toByte($parsed);
+        }
+
+        if ($node instanceof FunctionNode) {
+            $converter = new CssColorFunctionConverter();
+            $rgba      = $converter->tryConvertToRgba($node);
+
+            if ($rgba === null) {
+                return null;
+            }
+
+            return new RgbColor(
+                r: $rgba->rValue() * 255.0,
+                g: $rgba->gValue() * 255.0,
+                b: $rgba->bValue() * 255.0,
+                a: $rgba->a,
+            );
+        }
+
+        return null;
+    }
+
+    private function areRgbColorsEqual(RgbColor $left, RgbColor $right): bool
+    {
+        $epsilon = 0.000000001;
+
+        return abs($left->rValue() - $right->rValue()) < $epsilon
+            && abs($left->gValue() - $right->gValue()) < $epsilon
+            && abs($left->bValue() - $right->bValue()) < $epsilon
+            && abs($left->a - $right->a) < $epsilon;
     }
 
     private function compareNumbers(NumberNode $left, string $operator, NumberNode $right): bool
@@ -537,6 +782,23 @@ final readonly class Condition
             return $literal;
         }
 
+        if (StringHelper::isQuoted($value)) {
+            $unquoted = StringHelper::unquote($value);
+            $literal  = new StringNode($unquoted, true);
+
+            $this->ctx->conditionCacheState->literalValue[$value] = $literal;
+
+            return $literal;
+        }
+
+        if (isset(CssNamedColors::NAMED_HEX[strtolower($value)])) {
+            $literal = new ColorNode($value);
+
+            $this->ctx->conditionCacheState->literalValue[$value] = $literal;
+
+            return $literal;
+        }
+
         $literal = new StringNode($value);
 
         $this->ctx->conditionCacheState->literalValue[$value] = $literal;
@@ -544,16 +806,24 @@ final readonly class Condition
         return $literal;
     }
 
-    private function resolveValue(string $raw, Environment $env): AstNode
+    private function resolveValue(string $raw, Environment $env, ?int $line = null): AstNode
     {
         $value = trim($raw);
+
+        if ($value === '&') {
+            return $this->valueEvaluator->evaluate(new StringNode('&'), $env);
+        }
 
         if (str_starts_with($value, '$')) {
             return $this->valueEvaluator->evaluate(new VariableReferenceNode(substr($value, 1)), $env);
         }
 
-        if (str_contains($value, '(')) {
+        if (str_contains($value, '(') || str_contains($value, '&')) {
             $valueNode = $this->parser->parseInlineExpression($value);
+
+            if ($line !== null && $valueNode instanceof FunctionNode) {
+                $valueNode = $valueNode->withLine($line);
+            }
 
             if (! ($valueNode instanceof StringNode && $valueNode->value === $value)) {
                 return $this->valueEvaluator->evaluate($valueNode, $env);

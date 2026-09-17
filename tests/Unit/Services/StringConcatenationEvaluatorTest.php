@@ -7,6 +7,7 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Services\ArithmeticEvaluator;
 use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\StringConcatenationEvaluator;
 
@@ -23,6 +24,7 @@ describe('StringConcatenationEvaluator', function () {
                     };
                 }
             },
+            new ArithmeticEvaluator(),
         );
     });
 
@@ -49,6 +51,21 @@ describe('StringConcatenationEvaluator', function () {
 
             expect($result)->toBeInstanceOf(StringNode::class)
                 ->and($result->value)->toBe('/15px');
+        });
+
+        it('returns null when the leading unary chain operand is not foldable', function () {
+            $list = new ListNode([new StringNode('-'), new StringNode('+'), new StringNode('-')], 'space');
+
+            expect($this->evaluator->evaluate($list))->toBeNull();
+        });
+
+        it('folds a leading unary operator chain with a foldable operand', function () {
+            $list = new ListNode([new StringNode('-'), new StringNode('+'), new StringNode('moz')], 'space');
+
+            $result = $this->evaluator->evaluate($list);
+
+            expect($result)->toBeInstanceOf(StringNode::class)
+                ->and($result->value)->toBe('-+moz');
         });
 
         it('collapses number plus unit suffix into dimension', function () {
@@ -143,22 +160,34 @@ describe('StringConcatenationEvaluator', function () {
                 ->and($result->unit)->toBe('%');
         });
 
-        it('does not collapse numbers with invalid or empty unit suffixes', function () {
+        it('concatenates numbers with non-unit string suffixes like the reference compiler', function () {
             $invalidUnit = new ListNode([new NumberNode(42), new StringNode('+'), new StringNode('p2')], 'space');
             $emptyUnit   = new ListNode([new NumberNode(42), new StringNode('+'), new StringNode('')], 'space');
 
-            expect($this->evaluator->evaluate($invalidUnit))->toBeNull()
-                ->and($this->evaluator->evaluate($emptyUnit))->toBeNull();
+            $invalidResult = $this->evaluator->evaluate($invalidUnit);
+            $emptyResult   = $this->evaluator->evaluate($emptyUnit);
+
+            expect($invalidResult)->toBeInstanceOf(StringNode::class)
+                ->and($invalidResult->value)->toBe('42p2')
+                ->and($emptyResult)->toBeInstanceOf(StringNode::class)
+                ->and($emptyResult->value)->toBe('42');
         });
 
-        it('treats numeric-like unquoted string operands as non-concatenable', function () {
+        it('concatenates numeric-like unquoted string operands like the reference compiler', function () {
             $leadingDigits = new ListNode([new StringNode('12px'), new StringNode('+'), new StringNode('solid')], 'space');
             $leadingDot    = new ListNode([new StringNode('.5rem'), new StringNode('+'), new StringNode('solid')], 'space');
             $signedDot     = new ListNode([new StringNode('-.5rem'), new StringNode('+'), new StringNode('solid')], 'space');
 
-            expect($this->evaluator->evaluate($leadingDigits))->toBeNull()
-                ->and($this->evaluator->evaluate($leadingDot))->toBeNull()
-                ->and($this->evaluator->evaluate($signedDot))->toBeNull();
+            $digitsResult = $this->evaluator->evaluate($leadingDigits);
+            $dotResult    = $this->evaluator->evaluate($leadingDot);
+            $signedResult = $this->evaluator->evaluate($signedDot);
+
+            expect($digitsResult)->toBeInstanceOf(StringNode::class)
+                ->and($digitsResult->value)->toBe('12pxsolid')
+                ->and($dotResult)->toBeInstanceOf(StringNode::class)
+                ->and($dotResult->value)->toBe('.5remsolid')
+                ->and($signedResult)->toBeInstanceOf(StringNode::class)
+                ->and($signedResult->value)->toBe('-.5remsolid');
         });
 
         it('does not treat empty unquoted strings as numeric-like operands', function () {

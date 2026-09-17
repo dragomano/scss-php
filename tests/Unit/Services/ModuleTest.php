@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
+use Bugo\SCSS\LoadedFile;
 use Bugo\SCSS\LoaderInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ForwardNode;
@@ -16,7 +17,8 @@ use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\States\LoadedModule;
-use Tests\RuntimeFactory;
+use Tests\Support\MemoryLoader;
+use Tests\Support\RuntimeFactory;
 
 describe('Module service', function () {
     beforeEach(function () {
@@ -30,14 +32,16 @@ describe('Module service', function () {
                 $this->paths[] = $path;
             }
 
-            public function load(string $url, bool $fromImport = false): array
+            public function load(string $url, bool $fromImport = false): LoadedFile
             {
-                return $this->files[$url] ?? ['path' => $url, 'content' => ''];
+                return $this->files[$url] ?? new LoadedFile($url, '');
             }
         };
 
         $this->parser = new class implements ParserInterface {
             public function setTrackSourceLocations(bool $track): void {}
+
+            public function setPlainCss(bool $plainCss): void {}
 
             public function parse(string $source): RootNode
             {
@@ -104,7 +108,7 @@ describe('Module service', function () {
     it('handleUse() throws when configuring a non-default module variable', function () {
         $env = new Environment();
 
-        $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
 
         expect(fn() => $this->module->handleUse(
             new UseNode('theme', 'theme', ['color' => new StringNode('red')]),
@@ -121,7 +125,7 @@ describe('Module service', function () {
         $module = new LoadedModule('/tmp/_theme.scss', $scope, '');
 
         $this->state->addByNamespace('/tmp/_theme.scss', $module);
-        $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
         $this->module->handleUse(new UseNode('theme', 'theme'), $env);
 
         expect($this->state->getByNamespace('theme'))->toBeInstanceOf(LoadedModule::class)
@@ -129,10 +133,34 @@ describe('Module service', function () {
             ->and($env->getGlobalScope()->getModule('theme'))->toBe($scope);
     });
 
+    it('handleUse() reuses forwarded module cache when no configuration is given', function () {
+        $env   = new Environment();
+        $scope = new Scope();
+
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
+        $this->state->forwardedModules['theme'] = ['scope' => $scope, 'css' => ''];
+
+        $this->module->handleUse(new UseNode('theme', 'theme'), $env);
+
+        expect($this->state->getByNamespace('theme')->scope)->toBe($scope)
+            ->and($env->getCurrentScope()->getModule('theme'))->toBe($scope)
+            ->and($this->state->emittedUseCss['/tmp/_theme.scss'])->toBeTrue();
+    });
+
+    it('handleUse() skips re-emitting wildcard module css that was already emitted', function () {
+        $env = new Environment();
+
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
+        $this->state->emittedUseCss['/tmp/_theme.scss'] = true;
+
+        expect($this->module->handleUse(new UseNode('theme', '*'), $env))->toBe('')
+            ->and($this->state->anonymousUseModules['/tmp/_theme.scss'])->toBeInstanceOf(LoadedModule::class);
+    });
+
     it('handleUse() throws for circular module dependencies', function () {
         $env = new Environment();
 
-        $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
         $this->state->loadingFiles['/tmp/_theme.scss'] = true;
 
         expect(fn() => $this->module->handleUse(new UseNode('theme', 'theme'), $env))
@@ -156,9 +184,9 @@ describe('Module service', function () {
             ->toBe(['type' => 'css', 'raw' => 'theme screen and (color)']);
     });
 
-    it('resolveImport() keeps unquoted css paths as css', function () {
+    it('resolveImport() quotes unquoted css paths', function () {
         expect($this->module->resolveImport('theme.css'))
-            ->toBe(['type' => 'css', 'raw' => 'theme.css']);
+            ->toBe(['type' => 'css', 'raw' => '"theme.css"']);
     });
 
     it('resolveImport() resolves plain unquoted sass imports as sass', function () {
@@ -177,7 +205,7 @@ describe('Module service', function () {
     });
 
     it('loadAndEvaluateModule() throws for circular dependencies during import evaluation', function () {
-        $this->loader->files['theme'] = ['path' => '/tmp/_theme.scss', 'content' => ''];
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
         $this->state->loadingFiles['/tmp/_theme.scss'] = true;
 
         expect(fn() => $this->module->loadAndEvaluateModule('theme', fromImport: true))
@@ -230,6 +258,37 @@ describe('Module service', function () {
             ->and($to->hasFunction('skip-me'))->toBeFalse();
     });
 
+    it('mergeScopeExports() skips already imported variables and mixins', function () {
+        $from = new Scope();
+        $to   = new Scope();
+
+        $from->setVariableLocal('imported-var', new StringNode('red'));
+        $from->markImportedMember('imported-var');
+
+        $from->defineMixin('imported-mixin', [], []);
+        $from->markImportedMember('imported-mixin');
+
+        $from->defineMixin('own-mixin', [], []);
+
+        $this->module->mergeScopeExports($from, $to);
+
+        expect($to->hasVariable('imported-var'))->toBeFalse()
+            ->and($to->hasMixin('imported-mixin'))->toBeFalse()
+            ->and($to->hasMixin('own-mixin'))->toBeTrue();
+    });
+
+    it('resolveModulePath() returns null for missing modules', function () {
+        $runtime = RuntimeFactory::createRuntime(loader: new MemoryLoader([]));
+
+        expect($runtime->module()->resolveModulePath('missing'))->toBeNull();
+    });
+
+    it('moduleCssInBranch() returns empty css for already compiling modules', function () {
+        $this->state->branchCompileFiles['/session']['/tmp/_theme.scss'] = true;
+
+        expect($this->module->moduleCssInBranch('/tmp/_theme.scss', '/session'))->toBe('');
+    });
+
     it('mergeScopeExports() ignores empty forward members while exporting listed names', function () {
         $from = new Scope();
         $to   = new Scope();
@@ -239,5 +298,20 @@ describe('Module service', function () {
         $this->module->mergeScopeExports($from, $to, visibility: 'show', members: ['', 'keep-me']);
 
         expect($to->hasFunction('keep-me'))->toBeTrue();
+    });
+
+    it('loadAndEvaluateModule() returns empty css when compilation is disabled', function () {
+        $this->loader->files['theme'] = new LoadedFile('/tmp/_theme.scss', '');
+
+        $result = $this->module->loadAndEvaluateModule('theme', compileCss: false);
+
+        expect($result['css'])->toBe('');
+    });
+
+    it('qualifyImportedCssWithParentSelector() preserves bare brace lines', function () {
+        $css = "{\n  color: red;\n}\n";
+
+        expect($this->module->qualifyImportedCssWithParentSelector($css, '.parent'))
+            ->toBe($css);
     });
 });

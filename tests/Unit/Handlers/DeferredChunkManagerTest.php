@@ -10,10 +10,12 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
+use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
+use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Utils\DeferredChunk;
 use Bugo\SCSS\Utils\RawChunk;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('DeferredChunkManager', function () {
     beforeEach(function () {
@@ -35,7 +37,7 @@ describe('DeferredChunkManager', function () {
     it('adds a newline between multiple leading root chunks when building the rule result', function () {
         $result = $this->manager->buildRuleResult('', [new RawChunk('first'), new RawChunk('second')], []);
 
-        expect($result)->toBe("first\nsecond\n");
+        expect($result)->toBe("first\n" . Render::CONTINUATION_MARK . "second\n");
     });
 
     it('collects merged media chunks into leading root chunks when children were not rendered yet', function () {
@@ -46,7 +48,7 @@ describe('DeferredChunkManager', function () {
 
         $leading  = [];
         $trailing = [];
-        $child    = new DirectiveNode('media', 'print', [
+        $child    = new DirectiveNode('media', '(min-width: 1)', [
             new RuleNode('.item', [
                 new DeclarationNode('color', new StringNode('red')),
             ]),
@@ -63,7 +65,7 @@ describe('DeferredChunkManager', function () {
         );
 
         expect($leading)->toHaveCount(1)
-            ->and($leading[0]->content())->toContain('@media screen and print')
+            ->and($leading[0]->content())->toContain('@media screen and (min-width: 1)')
             ->and($trailing)->toBe([])
             ->and($scope->getVariable('__at_rule_stack'))->toEqual([
                 AtRuleContextEntry::directive('media', 'screen'),
@@ -80,7 +82,7 @@ describe('DeferredChunkManager', function () {
 
         $leading  = [];
         $trailing = [];
-        $child    = new DirectiveNode('media', 'print', [
+        $child    = new DirectiveNode('media', '(min-width: 1)', [
             new RuleNode('.item', [
                 new DeclarationNode('color', new StringNode('red')),
             ]),
@@ -101,7 +103,7 @@ describe('DeferredChunkManager', function () {
             ->and($this->runtime->render()->outputState()->deferral->atRuleStack[0])->toHaveCount(1)
             ->and($this->runtime->render()->outputState()->deferral->atRuleStack[0][0]->levels)->toBe(1)
             ->and($this->runtime->render()->outputState()->deferral->atRuleStack[0][0]->chunk)
-            ->toContain('@media screen and print');
+            ->toContain('@media screen and (min-width: 1)');
     });
 
     it('collects merged media chunks into trailing root chunks after children were rendered', function () {
@@ -112,7 +114,7 @@ describe('DeferredChunkManager', function () {
 
         $leading  = [];
         $trailing = [];
-        $child    = new DirectiveNode('media', 'print', [
+        $child    = new DirectiveNode('media', '(min-width: 1)', [
             new RuleNode('.item', [
                 new DeclarationNode('color', new StringNode('red')),
             ]),
@@ -130,7 +132,7 @@ describe('DeferredChunkManager', function () {
 
         expect($leading)->toBe([])
             ->and($trailing)->toHaveCount(1)
-            ->and($trailing[0]->content())->toContain('@media screen and print');
+            ->and($trailing[0]->content())->toContain('@media screen and (min-width: 1)');
     });
 
     it('collects non-media bubbling chunks into trailing root chunks after children were rendered', function () {
@@ -160,11 +162,13 @@ describe('DeferredChunkManager', function () {
     });
 
     it('ignores empty @at-root chunks when collecting rule output', function () {
+        $leading  = [];
         $trailing = [];
 
-        $this->manager->collectRuleAtRootChunk($trailing, new AtRootNode(), $this->ctx);
+        $this->manager->collectRuleAtRootChunk($leading, $trailing, new AtRootNode(), $this->ctx);
 
-        expect($trailing)->toBe([]);
+        expect($leading)->toBe([])
+            ->and($trailing)->toBe([]);
     });
 
     it('appends escaped @at-root chunks to trailing root chunks when deferral is unavailable', function () {
@@ -172,6 +176,7 @@ describe('DeferredChunkManager', function () {
             AtRuleContextEntry::directive('media', 'screen'),
         ]);
 
+        $leading  = [];
         $trailing = [];
         $child    = new AtRootNode([
             new RuleNode('.outside', [
@@ -179,14 +184,15 @@ describe('DeferredChunkManager', function () {
             ]),
         ]);
 
-        $this->manager->collectRuleAtRootChunk($trailing, $child, $this->ctx);
+        $this->manager->collectRuleAtRootChunk($leading, $trailing, $child, $this->ctx);
 
         expect($trailing)->toHaveCount(1)
             ->and($trailing[0]->content())->toContain('.outside')
             ->and($trailing[0]->content())->toContain('color: red');
     });
 
-    it('collects non-escaped @at-root chunks into trailing root chunks', function () {
+    it('collects non-escaped @at-root chunks into leading root chunks while the rule has no output', function () {
+        $leading  = [];
         $trailing = [];
         $child    = new AtRootNode([
             new RuleNode('.outside', [
@@ -194,35 +200,46 @@ describe('DeferredChunkManager', function () {
             ]),
         ], 'without', ['all']);
 
-        $this->manager->collectRuleAtRootChunk($trailing, $child, $this->ctx);
+        $this->manager->collectRuleAtRootChunk($leading, $trailing, $child, $this->ctx);
 
-        expect($trailing)->toHaveCount(1)
-            ->and($trailing[0]->content())->toContain('.outside')
-            ->and($trailing[0]->content())->toContain('color: red');
+        expect($leading)->toHaveCount(1)
+            ->and($leading[0]->content())->toContain('.outside')
+            ->and($leading[0]->content())->toContain('color: red')
+            ->and($trailing)->toBe([]);
     });
 
-    it('returns immediately when there are no deferred include root chunks to collect', function () {
-        $existing = new RawChunk('existing');
-        $trailing = [$existing];
+    it('returns immediately when there are no deferred include root chunks to interleave', function () {
+        $output      = '.foo { color: red; }';
+        $hasRendered = true;
+        $leading     = [];
+        $contains    = false;
 
-        $this->manager->collectDeferredIncludeRootChunks($trailing, 0);
+        $this->manager->interleaveDeferredRootChunks($output, $hasRendered, '', $contains, 0, $leading);
 
-        expect($trailing)->toBe([$existing]);
+        expect($leading)->toBe([])
+            ->and($output)->toBe('.foo { color: red; }')
+            ->and($hasRendered)->toBeTrue();
     });
 
-    it('moves deferred include root chunks into trailing root chunks when new chunks exist', function () {
+    it('interleaves deferred include root chunks into the output when new chunks exist', function () {
         $deferredChunk = new DeferredChunk('.outside { color: red; }', 1, 0, []);
         $outputState   = $this->runtime->render()->outputState();
         $keep          = new RawChunk('keep');
 
         $outputState->deferral->atRootStack[] = [$keep, $deferredChunk];
 
-        $trailing = [];
+        $output      = '';
+        $hasRendered = false;
+        $leading     = [];
+        $contains    = false;
 
-        $this->manager->collectDeferredIncludeRootChunks($trailing, 1);
+        $this->manager->interleaveDeferredRootChunks($output, $hasRendered, '', $contains, 1, $leading);
 
-        expect($trailing)->toBe([$deferredChunk])
-            ->and($outputState->deferral->atRootStack[0])->toBe([$keep]);
+        expect($output)->toBe('.outside { color: red; }')
+            ->and($leading)->toBe([])
+            ->and($outputState->deferral->atRootStack[0])->toBe([$keep])
+            ->and($hasRendered)->toBeFalse()
+            ->and($contains)->toBeTrue();
     });
 
     it('returns immediately for empty included @at-root chunks', function () {
@@ -260,7 +277,7 @@ describe('DeferredChunkManager', function () {
             ->and($state->first)->toBeFalse();
     });
 
-    it('returns immediately for empty included bubbling chunks without a parent selector', function () {
+    it('appends empty included bubbling directives directly to output without a parent selector', function () {
         $output = '';
         $state  = new class {
             public bool $first = true;
@@ -269,8 +286,60 @@ describe('DeferredChunkManager', function () {
 
         $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx);
 
+        expect($output)->toBe('@foo bar {}')
+            ->and($state->first)->toBeFalse();
+    });
+
+    it('returns immediately for included bubbling chunks that compile to an empty chunk', function () {
+        $output = '';
+        $state  = new class {
+            public bool $first = true;
+        };
+        $child  = new RuleNode('@font-face', []);
+
+        $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx);
+
         expect($output)->toBe('')
             ->and($state->first)->toBeTrue();
+    });
+
+    it('defers @font-face include bubbling chunks to the at-root stack after children were rendered', function () {
+        $outputState = $this->runtime->render()->outputState();
+        $outputState->deferral->bubblingStack[] = [];
+        $outputState->deferral->atRootStack[]   = [];
+
+        $output = '';
+        $state  = new class {
+            public bool $first = true;
+        };
+        $child  = new RuleNode('@font-face', [
+            new DeclarationNode('font-family', new StringNode('Custom')),
+        ]);
+
+        $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx, true);
+
+        expect($output)->toBe('')
+            ->and($outputState->deferral->atRootStack[0])->toHaveCount(1)
+            ->and($outputState->deferral->atRootStack[0][0]->content())->toContain('@font-face');
+    });
+
+    it('defers non-directive include bubbling chunks to the bubbling stack', function () {
+        $outputState = $this->runtime->render()->outputState();
+        $outputState->deferral->bubblingStack[] = [];
+
+        $output = '';
+        $state  = new class {
+            public bool $first = true;
+        };
+        $child  = new RuleNode('.item', [
+            new DeclarationNode('color', new StringNode('red')),
+        ]);
+
+        $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx);
+
+        expect($output)->toBe('')
+            ->and($outputState->deferral->bubblingStack[0])->toHaveCount(1)
+            ->and($outputState->deferral->bubblingStack[0][0]->content())->toContain('.item');
     });
 
     it('defers supports include bubbling chunks when only the bubbling stack is available', function () {
@@ -350,7 +419,7 @@ describe('DeferredChunkManager', function () {
         $this->manager->appendOutputChunk($output, $state->first, new RawChunk('first'));
         $this->manager->appendOutputChunk($output, $state->first, new RawChunk('second'));
 
-        expect($output)->toBe("first\nsecond")
+        expect($output)->toBe("first\n" . Render::CONTINUATION_MARK . 'second')
             ->and($state->first)->toBeFalse();
     });
 
@@ -364,7 +433,7 @@ describe('DeferredChunkManager', function () {
             AtRuleContextEntry::directive('media', 'screen'),
         ]);
 
-        $child = new DirectiveNode('media', 'print', [
+        $child = new DirectiveNode('media', '(min-width: 1)', [
             new RuleNode('.item', [
                 new DeclarationNode('color', new StringNode('red')),
             ]),
@@ -378,7 +447,7 @@ describe('DeferredChunkManager', function () {
         );
 
         expect($chunk)->not->toBeNull()
-            ->and($chunk->content())->toContain('@media screen and print')
+            ->and($chunk->content())->toContain('@media screen and (min-width: 1)')
             ->and($chunk->content())->toContain('.host .item')
             ->and($scope->getVariable('__at_rule_stack'))->toEqual([
                 AtRuleContextEntry::directive('media', 'screen'),
@@ -393,7 +462,7 @@ describe('DeferredChunkManager', function () {
 
         $this->runtime->render()->outputState()->deferral->atRuleStack[] = [];
 
-        $child = new DirectiveNode('media', 'print', [
+        $child = new DirectiveNode('media', '(min-width: 1)', [
             new RuleNode('.item', [
                 new DeclarationNode('color', new StringNode('red')),
             ]),
@@ -410,14 +479,26 @@ describe('DeferredChunkManager', function () {
             ->and($this->runtime->render()->outputState()->deferral->atRuleStack[0])->toHaveCount(1)
             ->and($this->runtime->render()->outputState()->deferral->atRuleStack[0][0]->levels)->toBe(1)
             ->and($this->runtime->render()->outputState()->deferral->atRuleStack[0][0]->chunk)
-            ->toContain('@media screen and print');
+            ->toContain('@media screen and (min-width: 1)');
     });
 
-    it('returns null for empty interleaved bubbling chunks', function () {
+    it('returns an interleaved chunk for empty bubbling directives', function () {
         $chunk = $this->manager->compileInterleavedBubblingChunk(
             '.host',
             $this->ctx->env->getCurrentScope(),
             new DirectiveNode('foo', 'bar', [], true),
+            $this->ctx,
+        );
+
+        expect($chunk)->not->toBeNull()
+            ->and($chunk->content())->toBe('@foo bar {}');
+    });
+
+    it('returns null for non-media interleaved chunks that compile to nothing', function () {
+        $chunk = $this->manager->compileInterleavedBubblingChunk(
+            '.host',
+            $this->ctx->env->getCurrentScope(),
+            new RuleNode('.empty', []),
             $this->ctx,
         );
 
@@ -453,7 +534,7 @@ describe('DeferredChunkManager', function () {
         $chunk = $this->manager->compileInterleavedBubblingChunk(
             '.host',
             $scope,
-            new DirectiveNode('media', 'print', [
+            new DirectiveNode('media', '(min-width: 1)', [
                 new RuleNode('.item', [
                     new DeclarationNode('color', new StringNode('red')),
                 ]),
@@ -462,7 +543,7 @@ describe('DeferredChunkManager', function () {
         );
 
         expect($chunk)->not->toBeNull()
-            ->and($chunk->content())->toContain('@media screen and print')
+            ->and($chunk->content())->toContain('@media screen and (min-width: 1)')
             ->and($scope->getVariable('__at_rule_stack'))->toEqual([
                 AtRuleContextEntry::directive('media', 'screen'),
                 AtRuleContextEntry::supports('(display: grid)'),
@@ -495,8 +576,8 @@ describe('DeferredChunkManager', function () {
             $this->ctx,
         );
 
-        expect($output)->toContain(".host {\n  color: red;\n}\n}\n.outside")
-            ->and($output)->toContain(".outside {\n  color: blue;\n}\n.host .child")
+        expect($output)->toContain(".host {\n  color: red;\n}\n}\n" . Render::CONTINUATION_MARK . '.outside')
+            ->and($output)->toContain(".outside {\n  color: blue;\n}\n" . Render::CONTINUATION_MARK . '.host .child')
             ->and($trailingRootChunks)->toBe([])
             ->and($state->containsStandaloneNestedRuleChunks)->toBeTrue();
     });
@@ -517,5 +598,93 @@ describe('DeferredChunkManager', function () {
         expect($output)->toContain('.outside')
             ->and($output)->toContain('color: red')
             ->and($state->first)->toBeFalse();
+    });
+
+    it('returns early when a merged media chunk compiles to nothing', function () {
+        $scope = $this->ctx->env->getCurrentScope();
+        $scope->setVariableLocal('__at_rule_stack', [
+            AtRuleContextEntry::directive('media', 'screen'),
+        ]);
+
+        $output = '';
+        $state  = new class {
+            public bool $first = true;
+        };
+        $child  = new DirectiveNode('media', 'print', [], true);
+
+        $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx);
+
+        expect($output)->toBe('')
+            ->and($state->first)->toBeTrue();
+    });
+
+    it('appends a merged media chunk to output when at-rule deferral is unavailable', function () {
+        $scope = $this->ctx->env->getCurrentScope();
+        $scope->setVariableLocal('__at_rule_stack', [
+            AtRuleContextEntry::directive('media', 'screen'),
+        ]);
+
+        $output = '';
+        $state  = new class {
+            public bool $first = true;
+        };
+        $child  = new DirectiveNode('media', '(min-width: 1)', [
+            new RuleNode('.item', [
+                new DeclarationNode('color', new StringNode('red')),
+            ]),
+        ], true);
+
+        $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx);
+
+        expect($output)->toContain('@media screen and (min-width: 1)')
+            ->and($output)->toContain('color: red')
+            ->and($state->first)->toBeFalse();
+    });
+
+    it('falls back to combining media preludes when the merge cannot be represented', function () {
+        $scope = $this->ctx->env->getCurrentScope();
+        $scope->setVariableLocal('__at_rule_stack', [
+            AtRuleContextEntry::directive('media', 'not screen'),
+        ]);
+
+        $output = '';
+        $state  = new class {
+            public bool $first = true;
+        };
+        $child  = new DirectiveNode('media', 'not print', [
+            new RuleNode('.item', [
+                new DeclarationNode('color', new StringNode('red')),
+            ]),
+        ], true);
+
+        $this->manager->appendIncludeBubblingChunk($output, $state->first, $child, $this->ctx);
+
+        expect($output)->toContain('@media not screen and not print')
+            ->and($output)->toContain('color: red')
+            ->and($state->first)->toBeFalse();
+    });
+
+    it('splits the parent rule block around a bubbling directive with a renderable sibling', function () {
+        $scope = $this->ctx->env->getCurrentScope();
+        $scope->setVariableLocal('__parent_selector', new StringNode('.host'));
+
+        $body = [
+            new DeclarationNode('color', new StringNode('red')),
+            new DirectiveNode('media', '(min-width: 1)', [
+                new RuleNode('.m', [
+                    new DeclarationNode('color', new StringNode('green')),
+                ]),
+            ], true),
+            new VariableDeclarationNode('x', new StringNode('y')),
+            new RuleNode('.b', [
+                new DeclarationNode('margin', new StringNode('0')),
+            ]),
+        ];
+
+        $result = $this->manager->compileBodyChunks($body, $this->ctx, $scope);
+
+        expect($result)->toContain('@media (min-width: 1)')
+            ->and($result)->toContain('.host .m')
+            ->and($result)->toContain('.host .b');
     });
 });

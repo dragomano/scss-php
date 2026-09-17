@@ -10,5 +10,5 @@ use Bugo\SCSS\Runtime\Environment;
 
 interface ArithmeticListEvaluatorInterface
 {
-    public function evaluate(ListNode $list, bool $strict, Environment $env): ?AstNode;
+    public function evaluate(ListNode $list, bool $strict, Environment $env, bool $insideCalc = false): ?AstNode;
 }

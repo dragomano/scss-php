@@ -1,4 +1,5 @@
 .idea/
+.opencode/
 .php-cs-fixer.cache
 .phpunit.cache/
 .phpunit.result.cache
@@ -11,12 +12,11 @@ coverage/
 custom-output.css.map
 custom/
 generated.scss
-node_modules/
 output.css.map
 result-*
 vendor/
 
-accepted/
+packages/
 spec/
 
 *.yaml

@@ -147,8 +147,6 @@ file_put_contents(__DIR__ . '/assets/app.css', $css);
 | `outputFile`      | `string`  | `'output.css'`    | Имя выходного файла для source map                             |
 | `sourceMapFile`   | `?string` | `null`            | Путь к файлу source map; `null` отключает генерацию source map |
 | `includeSources`  | `bool`    | `false`           | Встроить исходный код в source map (`sourcesContent`)          |
-| `outputHexColors` | `bool`    | `false`           | Нормализовать поддержанные функциональные цвета в hex          |
-| `splitRules`      | `bool`    | `false`           | Разбить правила с несколькими селекторами на отдельные         |
 | `verboseLogging`  | `bool`    | `false`           | Логировать все `@debug` (иначе только `@warn`/`@error`)        |
 
 ### Логирование `@debug`, `@warn`, `@error` через любой PSR-3 логгер

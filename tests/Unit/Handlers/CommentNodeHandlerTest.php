@@ -6,7 +6,7 @@ use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Style;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('renders preserved and interpolated comments', function () {
     $runtime = RuntimeFactory::createRuntime();
@@ -16,7 +16,7 @@ it('renders preserved and interpolated comments', function () {
 
     $comment = new CommentNode('hello #{$name}', true);
 
-    expect($runtime->comment()->handle($comment, $ctx))->toBe('  /*! hello box */');
+    expect($runtime->comment()->handle($comment, $ctx))->toBe('  /*!hello box*/');
 });
 
 it('drops non preserved comments in compressed mode', function () {

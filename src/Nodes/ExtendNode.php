@@ -6,5 +6,5 @@ namespace Bugo\SCSS\Nodes;
 
 final class ExtendNode extends AstNode
 {
-    public function __construct(public string $selector) {}
+    public function __construct(public string $selector, public bool $optional = false) {}
 }

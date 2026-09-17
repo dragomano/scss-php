@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Parser;
 
+use Bugo\SCSS\Lexer\Token;
 use Bugo\SCSS\Lexer\TokenStream;
 use Bugo\SCSS\Lexer\TokenType;
 use Bugo\SCSS\Nodes\AstNode;
@@ -24,9 +25,13 @@ use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Nodes\WhileNode;
+use Bugo\SCSS\Utils\StringHelper;
 
+use function array_reverse;
 use function ctype_alnum;
 use function in_array;
+use function ltrim;
+use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;
@@ -64,9 +69,27 @@ final readonly class DirectiveParser
     {
         $atToken = $this->stream->expect(TokenType::AT);
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         $name = $this->moduleValueContext->consumeIdentifier();
+
+        if ($name === '' && $this->stream->is(TokenType::HASH) && $this->stream->peek()->type === TokenType::LBRACE) {
+            $name = $this->readInterpolatedDirectiveName();
+        } elseif (
+            $name !== ''
+            && $this->stream->is(TokenType::HASH)
+            && $this->stream->peek()->type === TokenType::LBRACE
+        ) {
+            $name = $this->readInterpolatedDirectiveName($name);
+        }
+
+        if (strtolower($name) === 'function') {
+            $isCssFunctionName = $this->isCssFunctionNameAhead();
+
+            if ($name === 'function' || $isCssFunctionName) {
+                return $this->parseFunctionDirective($name, $atToken->line, $atToken->column);
+            }
+        }
 
         return match ($name) {
             'use'       => $this->parseUseDirective(),
@@ -75,19 +98,18 @@ final readonly class DirectiveParser
             'font-face' => $this->parsingContext->parseRuleFromSelector('@font-face', $atToken->line, $atToken->column),
             'include'   => $this->parseIncludeDirective(),
             'mixin'     => $this->parseMixinDirective($atToken->line),
-            'function'  => $this->parseFunctionDirective($atToken->line, $atToken->column),
             'extend'    => $this->parseExtendDirective(),
             'at-root'   => $this->parseAtRootDirective(),
             'debug'     => $this->parseDebugDirective($atToken->line, $atToken->column),
             'warn'      => $this->parseWarnDirective($atToken->line, $atToken->column),
             'error'     => $this->parseErrorDirective($atToken->line, $atToken->column),
             'return'    => $this->parseReturnDirective(),
-            'if'        => $this->parseIfDirective(),
+            'if'        => $this->parseIfDirective($atToken->line),
             'each'      => $this->parseEachDirective(),
             'for'       => $this->parseForDirective(),
-            'while'     => $this->parseWhileDirective(),
+            'while'     => $this->parseWhileDirective($atToken->line),
             'supports'  => $this->parseSupportsDirective(),
-            default     => $this->parseGenericDirective($name),
+            default     => $this->parseGenericDirective($name, $atToken->line, $atToken->column),
         };
     }
 
@@ -116,9 +138,9 @@ final readonly class DirectiveParser
         return $this->callable->parseMixinDirective($line);
     }
 
-    public function parseFunctionDirective(int $line = 1, int $column = 1): AstNode
+    public function parseFunctionDirective(string $keyword = 'function', int $line = 1, int $column = 1): AstNode
     {
-        return $this->callable->parseFunctionDirective($line, $column);
+        return $this->callable->parseFunctionDirective($keyword, $line, $column);
     }
 
     public function parseReturnDirective(): AstNode
@@ -130,11 +152,22 @@ final readonly class DirectiveParser
     {
         $this->stream->skipWhitespace();
 
-        $selector = StreamUtils::readRawUntilToken($this->stream, TokenType::SEMICOLON);
+        $selector = TokenStreamHelper::readRawUntil(
+            $this->stream,
+            fn(Token $token): bool => $token->type === TokenType::SEMICOLON || $token->type === TokenType::RBRACE,
+        );
 
-        StreamUtils::consumeSemicolonFromStream($this->stream);
+        TokenStreamHelper::consumeSemicolonFromStream($this->stream);
 
-        return new ExtendNode(trim($selector));
+        $selector = trim($selector);
+        $optional = false;
+
+        if (str_ends_with($selector, '!optional')) {
+            $optional = true;
+            $selector = trim(substr($selector, 0, -strlen('!optional')));
+        }
+
+        return new ExtendNode($selector, $optional);
     }
 
     public function parseAtRootDirective(): AtRootNode
@@ -177,11 +210,11 @@ final readonly class DirectiveParser
         return new ErrorNode($this->parseDiagnosticDirectiveMessage(), $line, $column);
     }
 
-    public function parseIfDirective(): IfNode
+    public function parseIfDirective(int $line = 1): IfNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
-        $condition = $this->parseCondition();
+        $condition = $this->parseCondition(true);
         $ifBody    = $this->parsingContext->parseBlock();
 
         $elseIfBranches = [];
@@ -192,26 +225,40 @@ final readonly class DirectiveParser
         while ($iterations < $maxIterations) {
             $iterations++;
 
-            $this->stream->skipWhitespace();
+            $lookbackPos = $this->stream->getPosition();
+
+            $this->stream->skipWhitespaceAndComments();
 
             if (! $this->stream->is(TokenType::AT)) {
+                $this->stream->setPosition($lookbackPos);
+
                 break;
             }
 
-            $savedPos = $this->stream->getPosition();
+            $savedPos  = $this->stream->getPosition();
+            $elseToken = $this->stream->current();
 
             $this->stream->advance();
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             $keyword = $this->moduleValueContext->consumeIdentifier();
 
-            if ($keyword !== 'else') {
-                $this->stream->setPosition($savedPos);
+            if ($keyword !== 'else' && $keyword !== 'elseif') {
+                $this->stream->setPosition($lookbackPos);
 
                 break;
             }
 
-            $this->stream->skipWhitespace();
+            if ($keyword === 'elseif') {
+                $elseIfCondition = $this->parseCondition(true);
+                $elseIfBody      = $this->parsingContext->parseBlock();
+
+                $elseIfBranches[] = new ElseIfNode($elseIfCondition, $elseIfBody, $elseToken->line);
+
+                continue;
+            }
+
+            $this->stream->skipWhitespaceAndComments();
 
             $nextWord = '';
 
@@ -221,12 +268,12 @@ final readonly class DirectiveParser
 
             if ($nextWord === 'if') {
                 $this->stream->advance();
-                $this->stream->skipWhitespace();
+                $this->stream->skipWhitespaceAndComments();
 
-                $elseIfCondition = $this->parseCondition();
+                $elseIfCondition = $this->parseCondition(true);
                 $elseIfBody      = $this->parsingContext->parseBlock();
 
-                $elseIfBranches[] = new ElseIfNode($elseIfCondition, $elseIfBody);
+                $elseIfBranches[] = new ElseIfNode($elseIfCondition, $elseIfBody, $elseToken->line);
             } else {
                 $elseBody = $this->parsingContext->parseBlock();
 
@@ -234,12 +281,12 @@ final readonly class DirectiveParser
             }
         }
 
-        return new IfNode($condition, $ifBody, $elseIfBranches, $elseBody);
+        return new IfNode($condition, $ifBody, $elseIfBranches, $elseBody, $line);
     }
 
     public function parseForDirective(): AstNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         if (! $this->stream->consume(TokenType::DOLLAR)) {
             return $this->parseGenericDirective('for');
@@ -247,13 +294,15 @@ final readonly class DirectiveParser
 
         $variable = $this->moduleValueContext->consumeIdentifier();
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
-        if (! StreamUtils::consumeKeyword($this->stream, 'from')) {
+        if (! TokenStreamHelper::consumeKeyword($this->stream, 'from')) {
             return $this->parseGenericDirective('for');
         }
 
-        $startExpr = StreamUtils::readRawUntilIdentifier($this->stream, ['through', 'to']);
+        $this->stream->skipWhitespaceAndComments();
+
+        $startExpr = TokenStreamHelper::readRawUntilIdentifier($this->stream, ['through', 'to']);
 
         if (! $this->stream->is(TokenType::IDENTIFIER)) {
             return $this->parseGenericDirective('for');
@@ -262,9 +311,9 @@ final readonly class DirectiveParser
         $inclusive = $this->stream->current()->value === 'through';
 
         $this->stream->advance();
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
-        $endExpr = StreamUtils::readRawUntilToken($this->stream, TokenType::LBRACE);
+        $endExpr = TokenStreamHelper::readRawUntilToken($this->stream, TokenType::LBRACE);
         $body    = $this->parsingContext->parseBlock();
 
         return new ForNode(
@@ -278,7 +327,7 @@ final readonly class DirectiveParser
 
     public function parseEachDirective(): AstNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         if (! $this->stream->consume(TokenType::DOLLAR)) {
             return $this->parseGenericDirective('each');
@@ -289,7 +338,7 @@ final readonly class DirectiveParser
         while (true) {
             $savedPos = $this->stream->getPosition();
 
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             if (! $this->stream->consume(TokenType::COMMA)) {
                 $this->stream->setPosition($savedPos);
@@ -297,7 +346,7 @@ final readonly class DirectiveParser
                 break;
             }
 
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             if (! $this->stream->consume(TokenType::DOLLAR)) {
                 $this->stream->setPosition($savedPos);
@@ -308,23 +357,23 @@ final readonly class DirectiveParser
             $variables[] = $this->moduleValueContext->consumeIdentifier();
         }
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
-        if (! StreamUtils::consumeKeyword($this->stream, 'in')) {
+        if (! TokenStreamHelper::consumeKeyword($this->stream, 'in')) {
             return $this->parseGenericDirective('each');
         }
 
-        $listExpr = StreamUtils::readRawUntilToken($this->stream, TokenType::LBRACE);
+        $listExpr = TokenStreamHelper::readRawUntilToken($this->stream, TokenType::LBRACE);
         $body     = $this->parsingContext->parseBlock();
 
         return new EachNode($variables, $this->inlineValueParser->parseInlineValue($listExpr), $body);
     }
 
-    public function parseWhileDirective(): AstNode
+    public function parseWhileDirective(int $line = 1): AstNode
     {
         [$condition, $body] = $this->parseConditionAndBlock();
 
-        return new WhileNode($condition, $body);
+        return new WhileNode($condition, $body, $line);
     }
 
     public function parseSupportsDirective(): AstNode
@@ -334,7 +383,7 @@ final readonly class DirectiveParser
         return new SupportsNode($condition, $body);
     }
 
-    public function parseCondition(): string
+    public function parseCondition(bool $dropComments = false): string
     {
         $condition          = '';
         $loopCount          = 0;
@@ -351,11 +400,11 @@ final readonly class DirectiveParser
 
             $token = $this->stream->current();
 
-            if (StreamUtils::consumeInterpolationFragment($this->stream, $condition, $interpolationDepth, $token)) {
+            if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $condition, $interpolationDepth, $token)) {
                 continue;
             }
 
-            StreamUtils::updateNestingDepth($token, $parenDepth, $bracketDepth);
+            TokenStreamHelper::updateNestingDepth($token, $parenDepth, $bracketDepth);
 
             if (
                 $interpolationDepth === 0
@@ -366,7 +415,36 @@ final readonly class DirectiveParser
                 break;
             }
 
-            StreamUtils::appendTokenToBuffer($condition, $token, true);
+            if ($token->type === TokenType::COMMENT_SILENT) {
+                $this->stream->advance();
+
+                // Preserve actual whitespace after silent comments
+                if ($this->stream->is(TokenType::WHITESPACE)) {
+                    $wsToken = $this->stream->current();
+
+                    $condition .= $wsToken->value;
+
+                    $this->stream->advance();
+                }
+
+                continue;
+            }
+
+            $wrapped = TokenStreamHelper::wrapComment($token);
+
+            if ($wrapped !== null) {
+                $condition .= $dropComments ? ' ' : $wrapped;
+
+                $this->stream->advance();
+
+                continue;
+            }
+
+            if ($token->type === TokenType::WHITESPACE && str_contains($token->value, "\n")) {
+                $condition .= ltrim($token->value, " \t");
+            } else {
+                TokenStreamHelper::appendTokenToBuffer($condition, $token, true);
+            }
 
             $this->stream->advance();
         }
@@ -374,43 +452,16 @@ final readonly class DirectiveParser
         return trim($condition);
     }
 
-    public function parseGenericDirective(string $name): AstNode
+    public function parseGenericDirective(string $name, int $line = 0, int $column = 0): AstNode
     {
-        $prelude            = '';
-        $parenDepth         = 0;
-        $bracketDepth       = 0;
-        $interpolationDepth = 0;
+        $this->stream->skipWhitespace();
 
-        while (! $this->stream->isEof()) {
-            $token = $this->stream->current();
-
-            if (StreamUtils::consumeInterpolationFragment($this->stream, $prelude, $interpolationDepth, $token)) {
-                continue;
-            }
-
-            if (
-                $interpolationDepth === 0
-                && $parenDepth === 0
-                && $bracketDepth === 0
-                && in_array($token->type, [
-                    TokenType::SEMICOLON,
-                    TokenType::LBRACE,
-                    TokenType::EOF,
-                ], true)
-            ) {
-                break;
-            }
-
-            StreamUtils::updateNestingDepth($token, $parenDepth, $bracketDepth);
-            StreamUtils::appendTokenToBuffer($prelude, $token, true);
-
-            $this->stream->advance();
-        }
-
-        $prelude = trim($prelude);
+        $prelude = $this->stream->getSource() !== ''
+            ? $this->readPreludeVerbatim()
+            : $this->readPreludeTokenized();
 
         if ($this->stream->consume(TokenType::SEMICOLON)) {
-            return new DirectiveNode($name, $prelude, [], false);
+            return new DirectiveNode($name, $prelude, [], false, $line, $column);
         }
 
         if ($this->stream->consume(TokenType::LBRACE)) {
@@ -422,10 +473,10 @@ final readonly class DirectiveParser
 
             $this->stream->consume(TokenType::RBRACE);
 
-            return new DirectiveNode($name, $prelude, $body, true);
+            return new DirectiveNode($name, $prelude, $body, true, $line, $column);
         }
 
-        return new DirectiveNode($name, $prelude, [], false);
+        return new DirectiveNode($name, $prelude, [], false, $line, $column);
     }
 
     /**
@@ -464,9 +515,26 @@ final readonly class DirectiveParser
         $rules   = [];
         $current = '';
         $length  = strlen($rulesText);
+        $quote   = '';
 
         for ($index = 0; $index < $length; $index++) {
             $char = $rulesText[$index];
+
+            if ($quote !== '') {
+                if ($char === $quote) {
+                    $quote = '';
+                } else {
+                    $current .= strtolower($char);
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                continue;
+            }
 
             if (ctype_alnum($char) || $char === '-' || $char === '_') {
                 $current .= strtolower($char);
@@ -486,6 +554,10 @@ final readonly class DirectiveParser
             return null;
         }
 
+        if ($quote !== '') {
+            return null;
+        }
+
         if ($current !== '') {
             $rules[] = $current;
         }
@@ -500,6 +572,161 @@ final readonly class DirectiveParser
         ];
     }
 
+    private function isCssFunctionNameAhead(): bool
+    {
+        $savedPosition = $this->stream->getPosition();
+
+        $this->stream->skipWhitespaceAndComments();
+
+        $isCssFunctionName = $this->stream->is(TokenType::CSS_VARIABLE)
+            && str_starts_with($this->stream->current()->value, '--');
+
+        $this->stream->setPosition($savedPosition);
+
+        return $isCssFunctionName;
+    }
+
+    private function readPreludeVerbatim(): string
+    {
+        if ($this->stream->isEof()) {
+            return '';
+        }
+
+        $startPos = $this->stream->current()->start;
+
+        $parenDepth         = 0;
+        $bracketDepth       = 0;
+        $interpolationDepth = 0;
+        $silentSpans        = [];
+
+        while (! $this->stream->isEof()) {
+            $token = $this->stream->current();
+
+            if (
+                $interpolationDepth === 0
+                && $parenDepth === 0
+                && $bracketDepth === 0
+                && $token->type !== TokenType::EOF
+                && in_array($token->type, [
+                    TokenType::SEMICOLON,
+                    TokenType::LBRACE,
+                    TokenType::RBRACE,
+                ], true)
+            ) {
+                break;
+            }
+
+            TokenStreamHelper::updateNestingDepth($token, $parenDepth, $bracketDepth);
+
+            if ($token->type === TokenType::COMMENT_SILENT) {
+                $silentSpans[] = [$token->start - $startPos, strlen($token->value) + 2];
+            }
+
+            if (TokenStreamHelper::consumeInterpolationFragmentOnly($this->stream, $interpolationDepth, $token)) {
+                continue;
+            }
+
+            $this->stream->advance();
+        }
+
+        $source  = $this->stream->getSource();
+        $endPos  = $this->stream->current()->start;
+        $prelude = substr($source, $startPos, $endPos - $startPos);
+
+        foreach (array_reverse($silentSpans) as [$offset, $length]) {
+            $prelude = substr($prelude, 0, $offset) . substr($prelude, $offset + $length);
+        }
+
+        return StringHelper::trimPreservingEscapeTerminator($prelude);
+    }
+
+    private function readPreludeTokenized(): string
+    {
+        $prelude            = '';
+        $parenDepth         = 0;
+        $bracketDepth       = 0;
+        $interpolationDepth = 0;
+
+        while (! $this->stream->isEof()) {
+            $token = $this->stream->current();
+
+            if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $prelude, $interpolationDepth, $token)) {
+                continue;
+            }
+
+            if (
+                $parenDepth === 0
+                && $bracketDepth === 0
+                && in_array($token->type, [
+                    TokenType::SEMICOLON,
+                    TokenType::LBRACE,
+                    TokenType::RBRACE,
+                    TokenType::EOF,
+                ], true)
+            ) {
+                break;
+            }
+
+            TokenStreamHelper::updateNestingDepth($token, $parenDepth, $bracketDepth);
+
+            if ($token->type === TokenType::COMMENT_SILENT) {
+                $this->stream->advance();
+                $this->stream->skipWhitespace();
+
+                continue;
+            }
+
+            if (in_array($token->type, [
+                TokenType::COMMENT_LOUD,
+                TokenType::COMMENT_PRESERVED,
+            ], true)) {
+                $prelude .= TokenStreamHelper::wrapComment($token) ?? '';
+
+                $this->stream->advance();
+
+                continue;
+            }
+
+            TokenStreamHelper::appendTokenToBuffer($prelude, $token, true);
+
+            $this->stream->advance();
+        }
+
+        return StringHelper::trimPreservingEscapeTerminator($prelude);
+    }
+
+    private function readInterpolatedDirectiveName(string $initial = ''): string
+    {
+        $buffer             = $initial;
+        $interpolationDepth = 0;
+
+        while (! $this->stream->isEof()) {
+            $token = $this->stream->current();
+
+            if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
+                continue;
+            }
+
+            if ($interpolationDepth === 0) {
+                if ($buffer !== '' && $token->type === TokenType::IDENTIFIER) {
+                    $buffer .= $token->value;
+
+                    $this->stream->advance();
+
+                    continue;
+                }
+
+                break;
+            }
+
+            TokenStreamHelper::appendTokenToBuffer($buffer, $token, true);
+
+            $this->stream->advance();
+        }
+
+        return $buffer;
+    }
+
     private function readPreludeUntilBlock(): string
     {
         $buffer             = '';
@@ -510,7 +737,7 @@ final readonly class DirectiveParser
         while (! $this->stream->isEof()) {
             $token = $this->stream->current();
 
-            if (StreamUtils::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
+            if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
                 continue;
             }
 
@@ -518,8 +745,8 @@ final readonly class DirectiveParser
                 break;
             }
 
-            StreamUtils::updateNestingDepth($token, $parenDepth, $bracketDepth);
-            StreamUtils::appendTokenToBuffer($buffer, $token, true);
+            TokenStreamHelper::updateNestingDepth($token, $parenDepth, $bracketDepth);
+            TokenStreamHelper::appendTokenToBuffer($buffer, $token, true);
 
             $this->stream->advance();
         }
@@ -533,7 +760,7 @@ final readonly class DirectiveParser
 
         $message = $this->callableValueContext->parseValue();
 
-        StreamUtils::consumeSemicolonFromStream($this->stream);
+        TokenStreamHelper::consumeSemicolonFromStream($this->stream);
 
         return $message;
     }

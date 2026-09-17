@@ -22,8 +22,10 @@ describe('Compiler', function () {
             SCSS;
 
             $expected = <<<'CSS'
-            /* This is a multiline comment
-                that spans multiple lines */
+            /*
+            This is a multiline comment
+                that spans multiple lines
+            */
             body {
               color: red;
             }

@@ -14,15 +14,18 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Utils\AstValueComparator;
+use Bugo\SCSS\Utils\UnitConverter;
 use Bugo\SCSS\Values\AstValueSuggestionDescriber;
 
 use function abs;
 use function array_map;
 use function array_merge;
+use function array_slice;
 use function count;
 use function get_debug_type;
 use function implode;
@@ -61,6 +64,22 @@ final class SassListModule extends AbstractModule
         'list-slash'     => 'slash',
     ];
 
+    /**
+     * @var array<string, array<int, string>>
+     */
+    private const PARAMETER_NAMES = [
+        'append'       => ['list', 'val', 'separator', 'bracketed'],
+        'index'        => ['list', 'value'],
+        'is-bracketed' => ['list'],
+        'join'         => ['list1', 'list2', 'separator', 'bracketed'],
+        'length'       => ['list'],
+        'nth'          => ['list', 'n'],
+        'separator'    => ['list'],
+        'set-nth'      => ['list', 'n', 'value'],
+        'slash'        => ['elements'],
+        'zip'          => ['lists'],
+    ];
+
     public function getName(): string
     {
         return 'list';
@@ -85,6 +104,10 @@ final class SassListModule extends AbstractModule
         $previousDisplayName = $this->beginBuiltinCall($name, $context);
 
         try {
+            if ($named !== []) {
+                $positional = $this->mergeNamedArguments($positional, $named, self::PARAMETER_NAMES[$name] ?? []);
+            }
+
             return match ($name) {
                 'append'       => $this->append($positional, $named, $context),
                 'index'        => $this->index($positional, $context),
@@ -146,12 +169,33 @@ final class SassListModule extends AbstractModule
         $needle = $positional[1];
 
         foreach ($list->items as $index => $item) {
+            if ($item instanceof NumberNode
+                && $needle instanceof NumberNode
+                && $item->unit !== $needle->unit
+                && $this->convertedNumbersEqual($item, $needle)
+            ) {
+                return new NumberNode($index + 1);
+            }
+
             if (AstValueComparator::equals($item, $needle)) {
                 return new NumberNode($index + 1);
             }
         }
 
         return $this->nullNode();
+    }
+
+    private function convertedNumbersEqual(NumberNode $left, NumberNode $right): bool
+    {
+        if ($left->unit === null || $right->unit === null) {
+            return false;
+        }
+
+        if (! UnitConverter::compatible($left->unit, $right->unit)) {
+            return false;
+        }
+
+        return abs((float) $left->value - UnitConverter::convert((float) $right->value, $right->unit, $left->unit)) < 0.00000000001;
     }
 
     /**
@@ -191,7 +235,7 @@ final class SassListModule extends AbstractModule
         $second = $this->asList($positional[1]);
 
         $separatorArg = $named['separator'] ?? ($positional[2] ?? new StringNode('auto'));
-        $separator    = $this->resolveSeparator($separatorArg, $this->autoJoinSeparator($first->separator, $second->separator));
+        $separator    = $this->resolveSeparator($separatorArg, $this->autoJoinSeparator($first, $second));
         $bracketedArg = $named['bracketed'] ?? ($positional[3] ?? new StringNode('auto'));
         $bracketed    = $this->resolveBracketed($bracketedArg, $first->bracketed);
 
@@ -257,10 +301,6 @@ final class SassListModule extends AbstractModule
         $this->warnAboutDeprecatedListFunction($context, 'separator', $positional);
 
         $list = $this->asList($positional[0]);
-
-        if ($list->items === []) {
-            return new StringNode('space');
-        }
 
         return new StringNode($list->separator);
     }
@@ -371,6 +411,19 @@ final class SassListModule extends AbstractModule
             return $value;
         }
 
+        if ($value instanceof MapNode) {
+            if ($value->pairs === []) {
+                return new ListNode([], 'space');
+            }
+
+            $items = array_map(
+                static fn($pair): ListNode => new ListNode([$pair->key, $pair->value]),
+                $value->pairs,
+            );
+
+            return new ListNode($items, 'comma');
+        }
+
         return new ListNode([$value], 'space');
     }
 
@@ -399,7 +452,7 @@ final class SassListModule extends AbstractModule
      */
     private function appendSuggestionArguments(array $positional, array $named): array
     {
-        $arguments = $this->describeArguments($positional);
+        $arguments = $this->describeArguments(array_slice($positional, 0, 2));
 
         if (isset($named['separator'])) {
             $arguments[] = '$separator: ' . $this->describeValue($named['separator']);
@@ -415,7 +468,7 @@ final class SassListModule extends AbstractModule
      */
     private function joinSuggestionArguments(array $positional, array $named): array
     {
-        $arguments = $this->describeArguments($positional);
+        $arguments = $this->describeArguments(array_slice($positional, 0, 2));
 
         if (isset($named['separator'])) {
             $arguments[] = '$separator: ' . $this->describeValue($named['separator']);
@@ -512,15 +565,19 @@ final class SassListModule extends AbstractModule
             return $bracketed->value;
         }
 
+        if ($bracketed instanceof NullNode) {
+            return false;
+        }
+
         return true;
     }
 
-    private function autoJoinSeparator(string $first, string $second): string
+    private function autoJoinSeparator(ListNode $first, ListNode $second): string
     {
-        if ($first === 'space' && $second === 'space') {
-            return 'space';
+        if (count($first->items) <= 1 && $first->separator === 'space') {
+            return $second->separator;
         }
 
-        return $first !== 'space' ? $first : $second;
+        return $first->separator;
     }
 }

@@ -8,6 +8,7 @@ use Bugo\SCSS\Exceptions\DivisionByZeroException;
 use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
 use Bugo\SCSS\Exceptions\UndefinedOperationException;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -16,7 +17,11 @@ use Bugo\SCSS\Values\SassNumber;
 use Closure;
 
 use function count;
-use function fmod;
+use function fdiv;
+use function floor;
+use function in_array;
+use function is_infinite;
+use function strtolower;
 use function trim;
 
 final readonly class ArithmeticEvaluator
@@ -33,7 +38,7 @@ final readonly class ArithmeticEvaluator
     /**
      * @param Closure(array<int, AstNode>): ?string|null $onUnsupportedOperation
      */
-    public function evaluate(ListNode $node, bool $strict, ?Closure $onUnsupportedOperation = null): ?AstNode
+    public function evaluate(ListNode $node, bool $strict, ?Closure $onUnsupportedOperation = null, bool $insideCalc = false): ?AstNode
     {
         if ($node->separator !== 'space') {
             return null;
@@ -50,15 +55,26 @@ final readonly class ArithmeticEvaluator
                 return null;
             }
 
-            if (count($node->items) % 2 !== 0) {
-                $strictResult = $this->evaluateStrictList($node->items, $node->bracketed);
+            $items         = $this->mergeUnarySigns($node->items);
+            $parenthesized = $node->parenthesized > 0;
+
+            if (count($items) % 2 !== 0) {
+                try {
+                    $strictResult = $this->evaluateStrictList($items, $node->bracketed, $insideCalc, $strict, $parenthesized);
+                } catch (IncompatibleUnitsException $exception) {
+                    if (! $insideCalc) {
+                        throw $exception;
+                    }
+
+                    $strictResult = null;
+                }
 
                 if ($strictResult !== null) {
                     return $strictResult;
                 }
             }
 
-            $items = $this->evaluateSegments($node->items, $node->bracketed);
+            $items = $this->evaluateSegments($items, $node->bracketed, $insideCalc);
 
             if ($items === null) {
                 if (! $strict && $onUnsupportedOperation !== null) {
@@ -88,7 +104,22 @@ final readonly class ArithmeticEvaluator
         }
     }
 
-    public function applyOperator(NumberNode $left, string $operator, NumberNode $right): NumberNode
+    public function applyDivision(NumberNode $left, NumberNode $right, bool $insideCalc = false): NumberNode
+    {
+        if ((float) $right->value === 0.0) {
+            if (! $insideCalc) {
+                throw new DivisionByZeroException();
+            }
+
+            return $this->applyDegenerateDivision($left, '/', $right);
+        }
+
+        [$unit, $conversionFactor] = UnitConverter::divideWithConversion($left->unit, $right->unit);
+
+        return new NumberNode((float) $left->value / (float) $right->value * $conversionFactor, $unit, false);
+    }
+
+    public function applyOperator(NumberNode $left, string $operator, NumberNode $right, bool $insideCalc = false): AstNode
     {
         if ($operator === '+' || $operator === '-') {
             if (! UnitConverter::compatible($left->unit, $right->unit)) {
@@ -107,13 +138,17 @@ final readonly class ArithmeticEvaluator
         }
 
         if ($operator === '*') {
-            $unit = UnitConverter::multiply($left->unit, $right->unit);
+            [$unit, $conversionFactor] = UnitConverter::multiplyWithConversion($left->unit, $right->unit);
 
-            return new NumberNode((float) $left->value * (float) $right->value, $unit, false);
+            return new NumberNode((float) $left->value * (float) $right->value * $conversionFactor, $unit, false);
         }
 
-        if ((float) $right->value === 0.0) {
-            throw new DivisionByZeroException();
+        if ($operator === '%' && (float) $right->value === 0.0) {
+            if (! $insideCalc) {
+                throw new DivisionByZeroException();
+            }
+
+            return $this->applyDegenerateDivision($left, $operator, $right);
         }
 
         if ($operator === '%') {
@@ -126,16 +161,85 @@ final readonly class ArithmeticEvaluator
 
             $rightValue = UnitConverter::convert((float) $right->value, $right->unit, $left->unit);
 
+            if (is_infinite($rightValue)) {
+                $sameSign = ($left->value >= 0) === ($rightValue >= 0);
+
+                if ($sameSign) {
+                    return new NumberNode((float) $left->value, $left->unit ?? $right->unit, false);
+                }
+
+                return new FunctionNode('calc', [
+                    new ListNode([
+                        new StringNode('NaN'),
+                        new StringNode('*'),
+                        new NumberNode(1.0, $left->unit ?? $right->unit, false),
+                    ], 'space'),
+                ]);
+            }
+
+            $leftValue = (float) $left->value;
+
             return new NumberNode(
-                fmod((float) $left->value, $rightValue),
+                $leftValue - $rightValue * floor($leftValue / $rightValue),
                 $left->unit ?? $right->unit,
                 false,
             );
         }
 
-        $unit = UnitConverter::divide($left->unit, $right->unit);
+        return $this->applyDivision($left, $right, $insideCalc);
+    }
 
-        return new NumberNode((float) $left->value / (float) $right->value, $unit, false);
+    /**
+     * @param array<int, AstNode> $items
+     * @return array<int, AstNode>
+     */
+    private function mergeUnarySigns(array $items): array
+    {
+        $merged = [];
+        $count  = count($items);
+
+        for ($i = 0; $i < $count; $i++) {
+            $item     = $items[$i];
+            $next     = $items[$i + 1] ?? null;
+            $previous = $items[$i - 1] ?? null;
+
+            $sign = $item instanceof StringNode ? trim($item->value) : null;
+
+            if ($sign !== null
+                && ($sign === '+' || $sign === '-')
+                && $next instanceof NumberNode
+                && ($i === 0 || ($previous instanceof StringNode && isset(self::ARITHMETIC_OPERATORS[$previous->value])))
+            ) {
+                $merged[] = new NumberNode(
+                    $sign === '-' ? -$next->value : $next->value,
+                    $next->unit,
+                    false,
+                );
+
+                $i++;
+
+                continue;
+            }
+
+            $merged[] = $item;
+        }
+
+        return $merged;
+    }
+
+    private function applyDegenerateDivision(NumberNode $left, string $operator, NumberNode $right): NumberNode
+    {
+        if ($operator === '%') {
+            return new NumberNode(fdiv(0.0, 0.0), $left->unit ?? $right->unit, false);
+        }
+
+        [$unit, $conversionFactor] = UnitConverter::divideWithConversion($left->unit, $right->unit);
+
+        return new NumberNode(
+            fdiv((float) $left->value * $conversionFactor, (float) $right->value),
+            $unit,
+            false,
+        );
     }
 
     /**
@@ -164,24 +268,60 @@ final readonly class ArithmeticEvaluator
         return new NumberNode(-((float) $items[1]->value), $items[1]->unit);
     }
 
+    private function isSimpleSlashOperand(NumberNode $number): bool
+    {
+        return $number->isLiteral && ! $number->parenthesized;
+    }
+
     /**
      * @param array<int, AstNode> $items
      */
-    private function evaluateStrictList(array $items, bool $bracketed): ?NumberNode
+    private function isSimpleSlashChain(array $items): bool
+    {
+        $count = count($items);
+
+        for ($i = 0; $i < $count; $i++) {
+            $item = $items[$i];
+
+            if ($i % 2 === 0) {
+                if (! $item instanceof NumberNode
+                    || ! $this->isSimpleSlashOperand($item)
+                    || $item->unit !== null
+                ) {
+                    return false;
+                }
+            } elseif (! $item instanceof StringNode || $item->value !== '/') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     */
+    private function evaluateStrictList(array $items, bool $bracketed, bool $insideCalc = false, bool $strict = true, bool $parenthesized = false): ?AstNode
     {
         $first = $items[0] ?? null;
         $mid   = $items[1] ?? null;
         $last  = $items[2] ?? null;
 
         if (! $bracketed
+            && ! $insideCalc
+            && ! $parenthesized
             && count($items) === 3
             && $first instanceof NumberNode
-            && $first->isLiteral
+            && $this->isSimpleSlashOperand($first)
             && $mid instanceof StringNode
             && $mid->value === '/'
             && $last instanceof NumberNode
-            && $last->isLiteral
+            && $this->isSimpleSlashOperand($last)
         ) {
+            return null;
+        }
+
+        if (! $bracketed && ! $insideCalc && ! $parenthesized && $this->isSimpleSlashChain($items)) {
             return null;
         }
 
@@ -200,7 +340,7 @@ final readonly class ArithmeticEvaluator
 
         $collapsed = [];
 
-        /** @var NumberNode $current */
+        /** @var AstNode $current */
         $current   = $items[0];
         $itemCount = count($items);
 
@@ -212,11 +352,22 @@ final readonly class ArithmeticEvaluator
             $next = $items[$i + 1];
 
             if (
-                $operator->value === '*'
-                || $operator->value === '/'
-                || $operator->value === '%'
+                ($operator->value === '*'
+                    || $operator->value === '/'
+                    || $operator->value === '%')
+                && $current instanceof NumberNode
             ) {
-                $current = $this->applyOperator($current, $operator->value, $next);
+                $leftOperand = $current;
+
+                try {
+                    $current = $this->applyOperator($current, $operator->value, $next, $insideCalc);
+                } catch (DivisionByZeroException $divisionByZero) {
+                    if ($strict) {
+                        throw $divisionByZero;
+                    }
+
+                    return $this->applyDegenerateDivision($leftOperand, $operator->value, $next);
+                }
 
                 continue;
             }
@@ -229,7 +380,7 @@ final readonly class ArithmeticEvaluator
 
         $collapsed[] = $current;
 
-        /** @var NumberNode $result */
+        /** @var AstNode $result */
         $result         = $collapsed[0];
         $collapsedCount = count($collapsed);
 
@@ -238,8 +389,13 @@ final readonly class ArithmeticEvaluator
             $operator = $collapsed[$i];
 
             /** @var NumberNode $next */
-            $next   = $collapsed[$i + 1];
-            $result = $this->applyOperator($result, $operator->value, $next);
+            $next = $collapsed[$i + 1];
+
+            if (! $result instanceof NumberNode) {
+                return $result;
+            }
+
+            $result = $this->applyOperator($result, $operator->value, $next, $insideCalc);
         }
 
         return $result;
@@ -249,61 +405,180 @@ final readonly class ArithmeticEvaluator
      * @param array<int, AstNode> $items
      * @return array<int, AstNode>|null
      */
-    private function evaluateSegments(array $items, bool $bracketed): ?array
+    private function evaluateSegments(array $items, bool $bracketed, bool $insideCalc = false): ?array
     {
-        $result  = [];
-        $count   = count($items);
-        $changed = false;
+        $count = count($items);
 
         if (! $bracketed
+            && ! $insideCalc
             && $count >= 3
             && $items[0] instanceof NumberNode
-            && $items[0]->isLiteral
+            && $this->isSimpleSlashOperand($items[0])
             && $items[1] instanceof StringNode
             && $items[1]->value === '/'
             && $items[2] instanceof NumberNode
-            && $items[2]->isLiteral
+            && $this->isSimpleSlashOperand($items[2])
+            && ! $this->hasArithmeticContinuation($items, 3)
         ) {
             return null;
         }
 
+        $first = $items[0] ?? null;
+
+        if ($first instanceof StringNode
+            && ! $first->quoted
+            && strtolower(trim($first->value)) === 'not'
+        ) {
+            return null;
+        }
+
+        $changed = false;
+        $pass1   = $this->foldMultiplicativeSegments($items, $changed, $insideCalc);
+        $result  = $this->foldAdditiveSegments($pass1, $changed);
+
+        if (! $changed) {
+            return null;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     */
+    private function hasArithmeticContinuation(array $items, int $index): bool
+    {
+        $node = $items[$index] ?? null;
+
+        return $node instanceof StringNode
+            && ! $node->quoted
+            && in_array(trim($node->value), ['*', '%'], true);
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     * @return array<int, AstNode>
+     */
+    private function foldMultiplicativeSegments(array $items, bool &$changed, bool $insideCalc): array
+    {
+        $result = [];
+        $count  = count($items);
+
         for ($i = 0; $i < $count; $i++) {
-            $current   = $items[$i];
-            $nextToken = $items[$i + 1] ?? null;
+            $item = $items[$i];
+            $op   = $items[$i + 1] ?? null;
+            $next = $items[$i + 2] ?? null;
 
             if (
-                ! ($current instanceof NumberNode)
-                || $i + 2 >= $count
-                || ! ($nextToken instanceof StringNode)
-                || ! isset(self::ARITHMETIC_OPERATORS[$nextToken->value])
-                || ! ($items[$i + 2] instanceof NumberNode)
+                ! ($item instanceof NumberNode)
+                || ! ($op instanceof StringNode)
+                || ! in_array($op->value, ['*', '/', '%'], true)
+                || ! ($next instanceof NumberNode)
             ) {
-                $result[] = $current;
+                $result[] = $item;
 
                 continue;
             }
 
-            $value = $current;
+            $value = $item;
 
             while (
                 $i + 2 < $count
-                && ($nextToken = $items[$i + 1] ?? null) instanceof StringNode
-                && isset(self::ARITHMETIC_OPERATORS[$nextToken->value])
+                && ($op = $items[$i + 1] ?? null) instanceof StringNode
+                && in_array($op->value, ['*', '/', '%'], true)
                 && ($nextItem = $items[$i + 2]) instanceof NumberNode
-                && ! ($nextToken->value === '/' && $value->isLiteral && $nextItem->isLiteral)
+                && $value instanceof NumberNode
+                && (
+                    $insideCalc
+                    || ! (
+                        $op->value === '/'
+                        && $this->isSimpleSlashOperand($value)
+                        && $this->isSimpleSlashOperand($nextItem)
+                        && ! $this->hasArithmeticContinuation($items, $i + 3)
+                    )
+                )
             ) {
-                $next    = $nextItem;
-                $value   = $this->applyOperator($value, $nextToken->value, $next);
+                $value   = $this->applyOperator($value, $op->value, $nextItem, $insideCalc);
                 $changed = true;
 
                 $i += 2;
             }
 
             $result[] = $value;
+
+            if ($i + 1 < $count) {
+                $result[] = $items[$i + 1];
+
+                $i++;
+            }
         }
 
-        if (! $changed) {
-            return null;
+        return $result;
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     * @return array<int, AstNode>
+     */
+    private function foldAdditiveSegments(array $items, bool &$changed): array
+    {
+        $result = [];
+        $count  = count($items);
+        $i      = 0;
+
+        while ($i < $count) {
+            $next = $items[$i + 1] ?? null;
+
+            $isChainStart = $items[$i] instanceof NumberNode
+                && $next instanceof StringNode
+                && in_array($next->value, ['+', '-'], true)
+                && isset($items[$i + 2])
+                && $items[$i + 2] instanceof NumberNode;
+
+            if (! $isChainStart) {
+                $result[] = $items[$i];
+
+                $i++;
+
+                continue;
+            }
+
+            $value = $items[$i];
+            $j     = $i;
+
+            while (
+                $j + 2 < $count
+                && ($op = $items[$j + 1] ?? null) instanceof StringNode
+                && in_array($op->value, ['+', '-'], true)
+                && ($nextItem = $items[$j + 2]) instanceof NumberNode
+                && $value instanceof NumberNode
+            ) {
+                try {
+                    $value   = $this->applyOperator($value, $op->value, $nextItem);
+                    $changed = true;
+
+                    $j += 2;
+                } catch (IncompatibleUnitsException) {
+                    break;
+                }
+            }
+
+            $result[] = $value;
+
+            $chainOp        = $items[$j + 1] ?? null;
+            $chainContinues = $j + 1 < $count
+                && $chainOp instanceof StringNode
+                && in_array($chainOp->value, ['+', '-'], true);
+
+            if ($chainContinues) {
+                for ($k = $j + 1; $k < $count; $k++) {
+                    $result[] = $items[$k];
+                }
+
+                break;
+            }
+
+            $i = $j + 1;
         }
 
         return $result;

@@ -4,16 +4,25 @@ declare(strict_types=1);
 
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\ColorNode;
+use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
+use Bugo\SCSS\Nodes\ExtendNode;
+use Bugo\SCSS\Nodes\ForNode;
+use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NullNode;
+use Bugo\SCSS\Nodes\NumberNode;
+use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
+use Bugo\SCSS\Nodes\VariableReferenceNode;
+use Bugo\SCSS\Parser;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
 use Bugo\SCSS\Runtime\Environment;
@@ -26,7 +35,7 @@ use Bugo\SCSS\Services\ModuleVariableAssigner;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\SelectorTokenizer;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('Selector', function () {
     beforeEach(function () {
@@ -159,17 +168,17 @@ describe('Selector', function () {
             expect($this->selector->optimizeRuleBlock($input))->toBe($input);
         });
 
-        it('deduplicates repeated declarations', function () {
+        it('keeps repeated identical declarations', function () {
             $result = $this->selector->optimizeRuleBlock(".a {\n  color: red;\n  color: red;\n}");
 
-            expect($result)->toBe(".a {\n  color: red;\n}");
+            expect($result)->toBe(".a {\n  color: red;\n  color: red;\n}");
         });
 
-        it('keeps last value when property repeated with different values', function () {
+        it('keeps both values when property repeated with different values', function () {
             $result = $this->selector->optimizeRuleBlock(".a {\n  color: red;\n  color: blue;\n}");
 
-            expect($result)->toContain('color: blue')
-                ->and($result)->not->toContain('color: red');
+            expect($result)->toContain('color: red')
+                ->and($result)->toContain('color: blue');
         });
 
         it('leaves block unchanged when no duplicates', function () {
@@ -191,10 +200,10 @@ describe('Selector', function () {
             expect($this->selector->optimizeRuleBlock($input))->toBe($input);
         });
 
-        it('removes inner blank lines when optimizing duplicate declarations', function () {
+        it('removes inner blank lines while keeping repeated declarations', function () {
             $input = ".a {\n  color: red;\n\n  color: red;\n}";
 
-            expect($this->selector->optimizeRuleBlock($input))->toBe(".a {\n  color: red;\n}");
+            expect($this->selector->optimizeRuleBlock($input))->toBe(".a {\n  color: red;\n  color: red;\n}");
         });
     });
 
@@ -321,6 +330,7 @@ describe('Selector', function () {
                         return '';
                     }
                 },
+                new Parser(),
             );
         });
 
@@ -380,6 +390,159 @@ describe('Selector', function () {
 
             expect($result)->toBe("border: solid;\nborder-accent-shade: #00f;");
         });
+
+        it('prefixes the active nested property during recursion and restores it', function () {
+            $env = new Environment();
+
+            $this->ctx->outputState->nestedPropertyName = 'border';
+
+            $result = $this->testSelector->compileNestedPropertyBlockChildren([
+                new DeclarationNode('style', new StringNode('solid')),
+            ], $env, 0, 'style', null);
+
+            expect($result)->toBe('border-style-style: solid;')
+                ->and($this->ctx->outputState->nestedPropertyName)->toBe('border');
+        });
+
+        it('converts numeric string boundaries of for nodes inside nested property blocks', function () {
+            $env = new Environment();
+
+            $result = $this->testSelector->compileNestedPropertyBlockChildren([
+                new ForNode('i', new StringNode('1'), new StringNode('3'), false, [
+                    new DeclarationNode('style', new StringNode('red')),
+                ]),
+            ], $env, 0, 'border');
+
+            expect($result)->toBe("border-style: #f00;\nborder-style: #f00;");
+        });
+
+        it('throws for non-numeric for-loop boundaries inside nested property blocks', function () {
+            $env = new Environment();
+
+            expect(fn() => $this->testSelector->compileNestedPropertyBlockChildren(
+                [new ForNode('i', new StringNode('bad'), new NumberNode(3), true)],
+                $env,
+                0,
+                'border',
+            ))->toThrow(InvalidLoopBoundaryException::class)
+                ->and(fn() => $this->testSelector->compileNestedPropertyBlockChildren(
+                    [new ForNode('i', new NumberNode(1), new StringNode('bad'), true)],
+                    $env,
+                    0,
+                    'border',
+                ))->toThrow(InvalidLoopBoundaryException::class);
+        });
+
+        it('handles unresolved variable references as for-loop boundaries inside nested property blocks', function () {
+            $env = new Environment();
+
+            expect(fn() => $this->testSelector->compileNestedPropertyBlockChildren(
+                [new ForNode('i', new VariableReferenceNode('undefined'), new NumberNode(3), true)],
+                $env,
+                0,
+                'border',
+            ))->toThrow(InvalidLoopBoundaryException::class);
+        });
+
+        it('attaches a comment to the previous same-line declaration inside nested property blocks', function () {
+            $env = new Environment();
+
+            $result = $this->testSelector->compileNestedPropertyBlockChildren([
+                new DeclarationNode('style', new StringNode('red'), 1, 1),
+                new CommentNode('x', false, 1, 1),
+            ], $env, 0, 'border');
+
+            expect($result)->toContain('border-style: #f00; /*x*/');
+        });
+
+        it('sets the flow control parent selector default when compiling nested conditionals', function () {
+            $env = new Environment();
+
+            $result = $this->testSelector->compileNestedPropertyBlockChildren([
+                new IfNode('true', [
+                    new DeclarationNode('style', new StringNode('red')),
+                ]),
+            ], $env, 0, 'border');
+
+            expect($env->getCurrentScope()->getVariable('__parent_selector'))->toBeInstanceOf(StringNode::class);
+        });
+
+        describe('base value evaluation', function () {
+            it('emits an empty value for null evaluation results', function () {
+                $env = new Environment();
+
+                $result = $this->testSelector->compileNestedPropertyBlockChildren([], $env, 0, 'border', 'nullish');
+
+                expect($result)->toBe('border: ;');
+            });
+
+            it('interpolates interpolation markers in the formatted base value', function () {
+                $env = new Environment();
+                $env->getCurrentScope()->setVariable('x', new StringNode('1'));
+
+                $result = $this->testSelector->compileNestedPropertyBlockChildren([], $env, 0, 'border', 'a#{$x}b');
+
+                expect($result)->toBe('border: a1b;');
+            });
+        });
+    });
+
+    it('keeps the raw nested property base value when its evaluation throws', function () {
+        $env = new Environment();
+
+        $result = $this->selector->compileNestedPropertyBlockChildren([], $env, 0, 'border', '$missing-var');
+
+        expect($result)->toBe('border: $missing-var;');
+    });
+
+    describe('normalizeSelectorList()', function () {
+        it('returns the selector unchanged when all parts are blank', function () {
+            expect($this->selector->normalizeSelectorList(' , , '))->toBe(' , , ');
+        });
+
+        it('joins parts with a newline when blank parts between them contain newlines', function () {
+            expect($this->selector->normalizeSelectorList("a, \n, b"))->toBe("a,\nb");
+        });
+
+        it('joins parts with a newline when the previous part ends with one', function () {
+            expect($this->selector->normalizeSelectorList("a\n, b"))->toBe("a,\nb");
+        });
+    });
+
+    describe('mergeMediaQueryPreludes()', function () {
+        it('falls back to string combination when the prelude cannot be parsed as queries', function () {
+            expect($this->selector->mergeMediaQueryPreludes('???', 'screen'))->toBe('??? and screen');
+        });
+
+        it('returns null when two negated queries have different types', function () {
+            expect($this->selector->mergeMediaQueryPreludes('not screen', 'not print'))->toBeNull();
+        });
+    });
+
+    describe('mergeMediaPreludeParts()', function () {
+        it('keeps a single part when the other prelude is empty or all', function () {
+            expect($this->selector->combineMediaQueryPreludes('all', 'screen'))->toBe('screen')
+                ->and($this->selector->combineMediaQueryPreludes('screen', 'all'))->toBe('screen');
+        });
+    });
+
+    it('finalizes collected extends through the selector service', function () {
+        $env = new Environment();
+
+        $this->selector->collectExtends(
+            new RootNode([
+                new RuleNode('.a', [new ExtendNode('.b')]),
+            ]),
+            $env,
+        );
+
+        $this->selector->finalizeCollectedExtends();
+
+        expect(true)->toBeTrue();
+    });
+
+    it('delegates comment stripping to the text service', function () {
+        expect($this->selector->stripAllComments('a { /* x */ color: red; }'))->toBe('a {  color: red; }');
     });
 
     describe('compileAtRootBody()', function () {
@@ -475,6 +638,22 @@ describe('Selector', function () {
             ]);
         });
 
+        it('resolves parent references in kept rules inside at-root bodies', function () {
+            $env = new Environment();
+            $env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.parent'));
+
+            $result = $this->selector->compileAtRootBody(
+                new AtRootNode([
+                    new RuleNode('&-child', [
+                        new DeclarationNode('color', new StringNode('red')),
+                    ]),
+                ], 'with', ['rule']),
+                $env,
+            );
+
+            expect($result['chunk'])->toContain('.parent-child');
+        });
+
         it('wraps declarations with the parent selector but leaves rules and nested at-root nodes unchanged', function () {
             $env = new Environment();
             $env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.parent'));
@@ -534,8 +713,20 @@ describe('Selector', function () {
         expect($directive)->toBeInstanceOf(DirectiveNode::class)
             ->and($directive->body[0])->toBeInstanceOf(RuleNode::class)
             ->and($directive->body[0]->selector)->toBe('.child')
-            ->and($directive->body[1])->toBeInstanceOf(RuleNode::class)
-            ->and($directive->body[1]->selector)->toBe('.parent');
+            ->and($directive->body[1])->toBeInstanceOf(DeclarationNode::class)
+            ->and($directive->body[1]->property)->toBe('color');
+    });
+
+    it('keeps at-root nodes inside bubbling directive bodies', function () {
+        $supports = $this->selector->normalizeBubblingNodeForSelector(
+            new SupportsNode('(display: grid)', [
+                new AtRootNode([]),
+            ]),
+            '.parent',
+        );
+
+        expect($supports)->toBeInstanceOf(SupportsNode::class)
+            ->and($supports->body[0])->toBeInstanceOf(AtRootNode::class);
     });
 
     it('leaves non-directive non-supports bubbling nodes unchanged', function () {

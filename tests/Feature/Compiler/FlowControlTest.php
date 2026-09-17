@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Syntax;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -34,15 +34,19 @@ describe('Compiler', function () {
             .item {
               order: 1;
             }
+
             .item {
               order: 2;
             }
+
             .item {
               order: 3;
             }
+
             .counter {
               value: 1;
             }
+
             .counter {
               value: 2;
             }
@@ -148,6 +152,7 @@ describe('Compiler', function () {
             .a {
               has-space: yes;
             }
+
             .b {
               has-space: no;
             }
@@ -177,7 +182,8 @@ describe('Compiler', function () {
               .article-container {
                 grid-template-columns: 1fr !important;
               }
-              .article-container .featured-article, .article-container .article {
+              .article-container .featured-article,
+              .article-container .article {
                 grid-column: span 1 !important;
               }
             }

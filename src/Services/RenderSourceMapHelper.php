@@ -14,7 +14,6 @@ use function intdiv;
 use function is_numeric;
 use function max;
 use function min;
-use function property_exists;
 use function strlen;
 
 final class RenderSourceMapHelper
@@ -73,15 +72,15 @@ final class RenderSourceMapHelper
      */
     public function appendMapping(array &$mappings, int $generatedLine, int $generatedColumn, Visitable $origin): void
     {
-        if (! property_exists($origin, 'line') || ! property_exists($origin, 'column')) {
-            return;
-        }
-
         $originData   = (array) $origin;
         $originLine   = $originData['line'] ?? null;
         $originColumn = $originData['column'] ?? null;
 
         if (! is_numeric($originLine) || ! is_numeric($originColumn)) {
+            return;
+        }
+
+        if ((int) $originLine < 1) {
             return;
         }
 

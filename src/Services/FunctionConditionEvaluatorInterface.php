@@ -8,5 +8,5 @@ use Bugo\SCSS\Runtime\Environment;
 
 interface FunctionConditionEvaluatorInterface
 {
-    public function evaluate(string $condition, Environment $env): bool;
+    public function evaluate(string $condition, Environment $env, ?int $line = null): bool;
 }

@@ -26,16 +26,18 @@ final readonly class ModuleDirectiveParser
 
     public function parseUseDirective(): UseNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         $path = $this->context->parseString();
 
         $namespace     = null;
         $configuration = [];
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
-        if (StreamUtils::consumeKeyword($this->stream, 'as')) {
+        if (TokenStreamHelper::consumeKeyword($this->stream, 'as')) {
+            $this->stream->skipWhitespaceAndComments();
+
             if ($this->stream->consume(TokenType::STAR)) {
                 $namespace = '*';
             } else {
@@ -43,13 +45,17 @@ final readonly class ModuleDirectiveParser
             }
         }
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
-        if (StreamUtils::consumeKeyword($this->stream, 'with')) {
+        if (TokenStreamHelper::consumeKeyword($this->stream, 'with')) {
+            $this->stream->skipWhitespaceAndComments();
+
             $configuration = $this->parseUseConfiguration();
         }
 
-        StreamUtils::consumeSemicolonFromStream($this->stream);
+        $this->stream->skipWhitespaceAndComments();
+
+        TokenStreamHelper::consumeSemicolonFromStream($this->stream);
 
         return new UseNode($path, $namespace, $configuration);
     }
@@ -67,19 +73,19 @@ final readonly class ModuleDirectiveParser
                 $imports[] = $entry;
             }
 
-            if (! StreamUtils::consumeCommaSeparator($this->stream)) {
+            if (! TokenStreamHelper::consumeCommaSeparator($this->stream)) {
                 break;
             }
         }
 
-        StreamUtils::consumeSemicolonFromStream($this->stream);
+        TokenStreamHelper::consumeSemicolonFromStream($this->stream);
 
         return new ImportNode($imports);
     }
 
     public function parseForwardDirective(): ForwardNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         $path = $this->context->parseString();
 
@@ -89,7 +95,7 @@ final readonly class ModuleDirectiveParser
         $configuration = [];
 
         while (! $this->stream->isEof() && ! $this->stream->is(TokenType::SEMICOLON)) {
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             if (! $this->stream->is(TokenType::IDENTIFIER)) {
                 break;
@@ -98,16 +104,20 @@ final readonly class ModuleDirectiveParser
             $keyword = strtolower($this->stream->current()->value);
 
             if ($keyword === 'as') {
-                StreamUtils::consumeKeyword($this->stream, $keyword, true);
+                TokenStreamHelper::consumeKeyword($this->stream, $keyword, true);
+
+                $this->stream->skipWhitespaceAndComments();
 
                 $prefix = $this->context->consumeIdentifier();
 
-                $this->stream->skipWhitespace();
+                $this->stream->skipWhitespaceAndComments();
                 $this->stream->consume(TokenType::STAR);
             } elseif ($keyword === 'hide' || $keyword === 'show') {
                 $visibility = $keyword;
 
-                StreamUtils::consumeKeyword($this->stream, $keyword, true);
+                TokenStreamHelper::consumeKeyword($this->stream, $keyword, true);
+
+                $this->stream->skipWhitespaceAndComments();
 
                 while (! $this->stream->isEof() && ! $this->stream->is(TokenType::SEMICOLON)) {
                     $isVariable = $this->stream->consume(TokenType::DOLLAR) !== null;
@@ -117,12 +127,14 @@ final readonly class ModuleDirectiveParser
                         $members[] = $isVariable ? '$' . $name : $name;
                     }
 
-                    if (! StreamUtils::consumeCommaSeparator($this->stream)) {
+                    if (! TokenStreamHelper::consumeCommaSeparator($this->stream)) {
                         break;
                     }
                 }
             } elseif ($keyword === 'with') {
-                StreamUtils::consumeKeyword($this->stream, $keyword, true);
+                TokenStreamHelper::consumeKeyword($this->stream, $keyword, true);
+
+                $this->stream->skipWhitespaceAndComments();
 
                 $configuration = $this->parseForwardConfiguration();
             } else {
@@ -130,7 +142,7 @@ final readonly class ModuleDirectiveParser
             }
         }
 
-        StreamUtils::consumeSemicolonFromStream($this->stream);
+        TokenStreamHelper::consumeSemicolonFromStream($this->stream);
 
         return new ForwardNode($path, $prefix, $visibility, $members, $configuration);
     }
@@ -155,7 +167,11 @@ final readonly class ModuleDirectiveParser
             if (
                 $parenDepth === 0
                 && $bracketDepth === 0
-                && ($token->type === TokenType::COMMA || $token->type === TokenType::SEMICOLON)
+                && (
+                    $token->type === TokenType::COMMA
+                    || $token->type === TokenType::SEMICOLON
+                    || $token->type === TokenType::RBRACE
+                )
             ) {
                 break;
             }
@@ -173,9 +189,9 @@ final readonly class ModuleDirectiveParser
             if ($token->type === TokenType::WHITESPACE) {
                 $entry .= ' ';
             } elseif ($token->type === TokenType::STRING) {
-                $entry .= '"' . $token->value . '"';
+                $entry .= '"' . ($token->rawValue ?? $token->value) . '"';
             } else {
-                $entry .= StreamUtils::tokenToRawString($token->type, $token->value);
+                $entry .= TokenStreamHelper::tokenToRawString($token->type, $token->value);
             }
 
             $this->stream->advance();
@@ -235,7 +251,7 @@ final readonly class ModuleDirectiveParser
         }
 
         while (! $this->stream->isEof()) {
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             if ($this->stream->consume(TokenType::RPAREN)) {
                 break;
@@ -247,7 +263,7 @@ final readonly class ModuleDirectiveParser
 
             $name = $this->context->consumeIdentifier();
 
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             if (! $this->stream->consume(TokenType::COLON)) {
                 break;
@@ -258,7 +274,7 @@ final readonly class ModuleDirectiveParser
 
             $configuration[$name] = $buildEntry($value);
 
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             if ($this->stream->consume(TokenType::COMMA)) {
                 continue;

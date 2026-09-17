@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Builtins\Color\Conversion;
 
 use Bugo\Iris\Encoders\HexEncoder;
-use Bugo\Iris\Encoders\HexShortener;
 use Bugo\SCSS\Builtins\Color\Support\ColorFunctionArgumentList;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
@@ -13,6 +12,7 @@ use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\NumberNode;
 
 use function abs;
+use function count;
 use function in_array;
 use function max;
 use function min;
@@ -21,9 +21,10 @@ use function strtolower;
 
 final readonly class HexColorConverter
 {
+    private const ROUND_EPSILON = 1e-9;
+
     public function __construct(
         private HexEncoder $hexColorEncoder = new HexEncoder(),
-        private HexShortener $hexColorShortener = new HexShortener(),
         private CssColorFunctionConverter $cssColorFunctionConverter = new CssColorFunctionConverter(),
         private ColorFunctionArgumentList $arguments = new ColorFunctionArgumentList(),
     ) {}
@@ -120,20 +121,33 @@ final readonly class HexColorConverter
 
     private function rgbaToHexColorNode(float $red, float $green, float $blue, float $alpha): ColorNode
     {
-        $rByte = (int) round($this->clampFloat($red) * 255.0);
-        $gByte = (int) round($this->clampFloat($green) * 255.0);
-        $bByte = (int) round($this->clampFloat($blue) * 255.0);
-        $aByte = (int) round($this->clampFloat($alpha) * 255.0);
+        $rByte = $this->roundCssByte($this->clampFloat($red) * 255.0);
+        $gByte = $this->roundCssByte($this->clampFloat($green) * 255.0);
+        $bByte = $this->roundCssByte($this->clampFloat($blue) * 255.0);
+        $aByte = $this->roundCssByte($this->clampFloat($alpha) * 255.0);
 
         $hex = $aByte < 255
             ? $this->hexColorEncoder->encodeRgba($rByte, $gByte, $bByte, $aByte)
             : $this->hexColorEncoder->encodeRgb($rByte, $gByte, $bByte);
 
-        return new ColorNode($this->hexColorShortener->shorten($hex));
+        return new ColorNode($hex);
     }
 
     private function clampFloat(float $value): float
     {
         return max(0.0, min(1.0, $value));
+    }
+
+    private function roundCssByte(float $value): int
+    {
+        if (abs($value - round($value)) < self::ROUND_EPSILON) {
+            $value = round($value);
+        }
+
+        if (abs(($value * 2.0) - round($value * 2.0)) < self::ROUND_EPSILON) {
+            $value += $value >= 0.0 ? self::ROUND_EPSILON : -self::ROUND_EPSILON;
+        }
+
+        return (int) round($value);
     }
 }

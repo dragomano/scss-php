@@ -12,6 +12,7 @@ use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Utils\AstValueComparator;
 
 describe('AstValueComparator', function () {
@@ -88,6 +89,19 @@ describe('AstValueComparator', function () {
             expect(AstValueComparator::equals($a, $b))->toBeFalse();
         });
 
+        it('compares a string with an equivalent function node', function () {
+            $fn = new FunctionNode('rgb', [new NumberNode(255), new NumberNode(0), new NumberNode(0)]);
+
+            expect(AstValueComparator::equals(new StringNode('rgb(255, 0, 0)'), $fn))->toBeTrue();
+            expect(AstValueComparator::equals(new StringNode('rgb(0, 0, 0)'), $fn))->toBeFalse();
+        });
+
+        it('compares a string with a function node holding a captured scope as unequal', function () {
+            $fn = new FunctionNode('get-function', capturedScope: new Scope());
+
+            expect(AstValueComparator::equals(new StringNode('get-function'), $fn))->toBeFalse();
+        });
+
         it('compares equal lists', function () {
             $a = new ListNode([new StringNode('a'), new StringNode('b')], 'space');
             $b = new ListNode([new StringNode('a'), new StringNode('b')], 'space');
@@ -102,11 +116,16 @@ describe('AstValueComparator', function () {
             expect(AstValueComparator::equals($a, $b))->toBeFalse();
         });
 
-        it('compares lists with different separators as unequal', function () {
-            $a = new ListNode([new StringNode('a')], 'space');
-            $b = new ListNode([new StringNode('a')], 'comma');
+        it('ignores separators for single-element lists but not for multi-element ones', function () {
+            $singleSpace = new ListNode([new StringNode('a')], 'space');
+            $singleComma = new ListNode([new StringNode('a')], 'comma');
 
-            expect(AstValueComparator::equals($a, $b))->toBeFalse();
+            expect(AstValueComparator::equals($singleSpace, $singleComma))->toBeTrue();
+
+            $multiSpace = new ListNode([new StringNode('a'), new StringNode('b')], 'space');
+            $multiComma = new ListNode([new StringNode('a'), new StringNode('b')], 'comma');
+
+            expect(AstValueComparator::equals($multiSpace, $multiComma))->toBeFalse();
         });
 
         it('compares lists with different bracketed flag as unequal', function () {

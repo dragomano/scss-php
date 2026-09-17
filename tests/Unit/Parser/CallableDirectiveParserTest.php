@@ -15,7 +15,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Parser\CallableDirectiveParser;
 use Bugo\SCSS\Parser\CallableDirectiveParsingContextInterface;
 use Bugo\SCSS\Parser\CallableDirectiveValueContextInterface;
-use Bugo\SCSS\Parser\StreamUtils;
+use Bugo\SCSS\Parser\TokenStreamHelper;
 
 function callableDirectiveToken(
     TokenType $type,
@@ -51,7 +51,7 @@ function createCallableDirectiveParser(array $tokens, array $overrides = []): Ca
         while (! $stream->isEof() && ! $stream->match(...$stopTypes)) {
             $buffer .= $stream->current()->type === TokenType::WHITESPACE
                 ? ' '
-                : StreamUtils::tokenToRawString($stream->current()->type, $stream->current()->value);
+                : TokenStreamHelper::tokenToRawString($stream->current()->type, $stream->current()->value);
 
             $stream->advance();
         }
@@ -63,7 +63,7 @@ function createCallableDirectiveParser(array $tokens, array $overrides = []): Ca
 
     $parseArgumentList = $overrides['parseArgumentList'] ?? static fn(): array => [];
     $consumeIdentifier = $overrides['consumeIdentifier'] ?? function () use ($stream): string {
-        return StreamUtils::consumeIdentifier($stream);
+        return TokenStreamHelper::consumeIdentifier($stream);
     };
 
     $parseRuleFromSelector = $overrides['parseRuleFromSelector']
@@ -180,7 +180,7 @@ describe('CallableDirectiveParser', function () {
         ]);
 
         /* @var $node RuleNode */
-        $node = $parser->parseFunctionDirective(3, 5);
+        $node = $parser->parseFunctionDirective('function', 3, 5);
 
         expect($node)->toBeInstanceOf(RuleNode::class)
             ->and($node->selector)->toBe('@function --token($value, calc(1 + 2))')
@@ -281,6 +281,31 @@ describe('CallableDirectiveParser', function () {
             ->and($node->arguments)->toBe([]);
     });
 
+    it('consumes trailing comma after rest parameter', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::IDENTIFIER, 'mixin'),
+            callableDirectiveToken(TokenType::LPAREN, '('),
+            callableDirectiveToken(TokenType::DOLLAR, '$'),
+            callableDirectiveToken(TokenType::IDENTIFIER, 'args'),
+            callableDirectiveToken(TokenType::DOT),
+            callableDirectiveToken(TokenType::DOT),
+            callableDirectiveToken(TokenType::DOT),
+            callableDirectiveToken(TokenType::COMMA, ','),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /** @var MixinNode $node */
+        $node = $parser->parseMixinDirective();
+
+        expect($node)->toBeInstanceOf(MixinNode::class)
+            ->and($node->arguments)->toHaveCount(1)
+            ->and($node->arguments[0]->name)->toBe('args')
+            ->and($node->arguments[0]->rest)->toBeTrue();
+    });
+
     it('stops parsing parameter lists when a bare identifier cannot be read', function () {
         $parser = createCallableDirectiveParser([
             callableDirectiveToken(TokenType::IDENTIFIER, 'sample'),
@@ -298,5 +323,105 @@ describe('CallableDirectiveParser', function () {
         expect($node)->toBeInstanceOf(MixinNode::class)
             ->and($node->name)->toBe('sample')
             ->and($node->arguments)->toBe([]);
+    });
+});
+
+describe('CallableDirectiveParser CSS function names', function () {
+    it('closes a dangling interpolation brace from the stream', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::CSS_VARIABLE, '--f-#{a'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /* @var $node RuleNode */
+        $node = $parser->parseFunctionDirective('function', 2, 3);
+
+        expect($node)->toBeInstanceOf(RuleNode::class)
+            ->and($node->selector)->toBe('@function --f-a')
+            ->and($node->line)->toBe(2)
+            ->and($node->column)->toBe(3);
+    });
+
+    it('keeps an unresolved interpolation when the closing brace is absent', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::CSS_VARIABLE, '--f-#{a'),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /* @var $node RuleNode */
+        $node = $parser->parseFunctionDirective('function', 1, 1);
+
+        expect($node)->toBeInstanceOf(RuleNode::class)
+            ->and($node->selector)->toBe('@function --f-#{a');
+    });
+
+    it('drops sass-style parameters from a glued css function signature', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::CSS_VARIABLE, '--f($x'),
+            callableDirectiveToken(TokenType::LPAREN, '('),
+            callableDirectiveToken(TokenType::IDENTIFIER, 'y'),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /* @var $node RuleNode */
+        $node = $parser->parseFunctionDirective('function', 1, 1);
+
+        expect($node)->toBeInstanceOf(RuleNode::class)
+            ->and($node->selector)->toBe('@function --f()');
+    });
+
+    it('keeps a css-style signature glued into the custom property token', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::CSS_VARIABLE, '--f(1'),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::IDENTIFIER, 'p'),
+            callableDirectiveToken(TokenType::LPAREN, '('),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /* @var $node RuleNode */
+        $node = $parser->parseFunctionDirective('function', 1, 1);
+
+        expect($node)->toBeInstanceOf(RuleNode::class)
+            ->and($node->selector)->toBe('@function --f(1 p())');
+    });
+
+    it('completes an empty signature from a glued closing parenthesis', function () {
+        $parser = createCallableDirectiveParser([
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::CSS_VARIABLE, '--f'),
+            callableDirectiveToken(TokenType::RPAREN, ')'),
+            callableDirectiveToken(TokenType::WHITESPACE, ' '),
+            callableDirectiveToken(TokenType::LBRACE, '{'),
+            callableDirectiveToken(TokenType::RBRACE, '}'),
+            callableDirectiveToken(TokenType::EOF),
+        ]);
+
+        /* @var $node RuleNode */
+        $node = $parser->parseFunctionDirective('function', 1, 1);
+
+        expect($node)->toBeInstanceOf(RuleNode::class)
+            ->and($node->selector)->toBe('@function --f()');
     });
 });

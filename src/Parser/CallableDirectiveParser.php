@@ -17,9 +17,11 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Utils\NameHelper;
 
 use function count;
+use function str_contains;
 use function str_starts_with;
 use function strpos;
 use function substr;
+use function substr_count;
 use function trim;
 
 final readonly class CallableDirectiveParser
@@ -32,9 +34,9 @@ final readonly class CallableDirectiveParser
 
     public function parseIncludeDirective(): IncludeNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
-        $identifier = StreamUtils::parseQualifiedIdentifier($this->stream);
+        $identifier = TokenStreamHelper::parseQualifiedIdentifier($this->stream);
 
         $namespace = null;
         $mixin     = $identifier;
@@ -50,7 +52,7 @@ final readonly class CallableDirectiveParser
 
         $arguments = [];
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         if ($this->stream->is(TokenType::LPAREN)) {
             $arguments = $this->valueContext->parseArgumentList();
@@ -58,62 +60,153 @@ final readonly class CallableDirectiveParser
 
         $contentBlock     = [];
         $contentArguments = [];
+        $hasContent       = false;
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
-        if (StreamUtils::consumeKeyword($this->stream, 'using', true)) {
+        if (TokenStreamHelper::consumeKeyword($this->stream, 'using', true)) {
             $contentArguments = $this->parseParameterList();
 
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
         }
 
         if ($this->stream->consume(TokenType::LBRACE)) {
             $this->parsingContext->incrementBlockDepth();
 
+            $hasContent   = true;
             $contentBlock = $this->parsingContext->parseStatementsInsideBlock();
 
             $this->parsingContext->decrementBlockDepth();
             $this->stream->consume(TokenType::RBRACE);
         } else {
-            StreamUtils::consumeSemicolonFromStream($this->stream);
+            TokenStreamHelper::consumeSemicolonFromStream($this->stream);
         }
 
-        return new IncludeNode($namespace, $mixin, $arguments, $contentBlock, $contentArguments);
+        return new IncludeNode($namespace, $mixin, $arguments, $contentBlock, $contentArguments, $hasContent);
     }
 
     public function parseMixinDirective(int $line = 1): AstNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         $name      = $this->parsingContext->consumeIdentifier();
         $arguments = $this->parseParameterList();
-        $body      = $this->parsingContext->parseBlock();
+
+        $this->stream->skipWhitespaceAndComments();
+
+        $body = $this->parsingContext->parseBlock();
 
         return new MixinNode($name, $arguments, $body, $line);
     }
 
-    public function parseFunctionDirective(int $line = 1, int $column = 1): AstNode
+    public function parseFunctionDirective(string $keyword = 'function', int $line = 1, int $column = 1): AstNode
     {
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
-        $name = '';
+        $name          = '';
+        $rawName       = '';
+        $parenPosition = false;
 
         if ($this->stream->is(TokenType::IDENTIFIER)) {
             $name = $this->parsingContext->consumeIdentifier();
         } elseif ($this->stream->is(TokenType::CSS_VARIABLE)) {
-            $rawName = $this->stream->current()->value;
-
+            $rawName       = $this->stream->current()->value;
             $parenPosition = strpos($rawName, '(');
-
-            $name = $parenPosition === false ? $rawName : substr($rawName, 0, $parenPosition);
+            $name          = $parenPosition === false ? $rawName : substr($rawName, 0, $parenPosition);
 
             $this->stream->advance();
+
+            if (
+                str_starts_with($name, '--')
+                && $this->stream->is(TokenType::HASH)
+                && $this->stream->peek()->type === TokenType::LBRACE
+            ) {
+                $interpolationDepth = 0;
+
+                while (! $this->stream->isEof()) {
+                    $token = $this->stream->current();
+
+                    if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $name, $interpolationDepth, $token)) {
+                        continue;
+                    }
+
+                    if ($interpolationDepth === 0) {
+                        break;
+                    }
+
+                    TokenStreamHelper::appendTokenToBuffer($name, $token);
+
+                    $this->stream->advance();
+                }
+            }
+
+            if (str_contains($name, '#{') && ! str_contains($name, '}')) {
+                if ($this->stream->is(TokenType::RBRACE)) {
+                    $name .= '}';
+
+                    $this->stream->advance();
+                }
+            }
         }
 
         if (str_starts_with($name, '--')) {
-            $selector = '@function ' . $name;
+            // Resolve interpolation in the name: --#{a} → --a
+            while (($start = strpos($name, '#{')) !== false) {
+                $end = strpos($name, '}', $start + 2);
 
-            if ($this->stream->consume(TokenType::RPAREN)) {
+                if ($end === false) {
+                    break;
+                }
+
+                $name = substr($name, 0, $start) . substr($name, $start + 2, $end - $start - 2) . substr($name, $end + 1);
+            }
+
+            $selector = '@' . $keyword . ' ' . $name;
+
+            // The CSS_VARIABLE token may already contain '(' and part of the signature
+            if ($parenPosition !== false) {
+                $partialSignature = substr($rawName, $parenPosition);
+
+                // Check if this contains Sass-style $ parameters — strip them (not valid CSS)
+                if (str_contains($partialSignature, '$')) {
+                    $depth = substr_count($partialSignature, '(') - substr_count($partialSignature, ')');
+
+                    while (! $this->stream->isEof() && $depth > 0) {
+                        $token = $this->stream->current();
+
+                        if ($token->type === TokenType::LPAREN) {
+                            $depth++;
+                        } elseif ($token->type === TokenType::RPAREN) {
+                            $depth--;
+                        }
+
+                        $this->stream->advance();
+                    }
+
+                    $selector .= '()';
+                } else {
+                    $signature = $partialSignature;
+                    $depth     = substr_count($partialSignature, '(') - substr_count($partialSignature, ')');
+
+                    while (! $this->stream->isEof() && $depth > 0) {
+                        $token = $this->stream->current();
+
+                        if ($token->type === TokenType::LPAREN) {
+                            $depth++;
+                        } elseif ($token->type === TokenType::RPAREN) {
+                            $depth--;
+                        }
+
+                        $signature .= $token->type === TokenType::WHITESPACE
+                            ? ' '
+                            : TokenStreamHelper::tokenToRawString($token->type, $token->value);
+
+                        $this->stream->advance();
+                    }
+
+                    $selector .= $signature;
+                }
+            } elseif ($this->stream->consume(TokenType::RPAREN)) {
                 $selector .= '()';
             } elseif ($this->stream->consume(TokenType::LPAREN)) {
                 $signature = '(';
@@ -130,7 +223,7 @@ final readonly class CallableDirectiveParser
 
                     $signature .= $token->type === TokenType::WHITESPACE
                         ? ' '
-                        : StreamUtils::tokenToRawString($token->type, $token->value);
+                        : TokenStreamHelper::tokenToRawString($token->type, $token->value);
 
                     $this->stream->advance();
                 }
@@ -138,13 +231,41 @@ final readonly class CallableDirectiveParser
                 $selector .= $signature;
             }
 
-            $this->stream->skipWhitespace();
+            // Handle CSS function return type: returns <ident>
+            $this->stream->skipWhitespaceAndComments();
+
+            if (TokenStreamHelper::consumeKeyword($this->stream, 'returns', true)) {
+                $selector .= ' returns';
+
+                $this->stream->skipWhitespaceAndComments();
+
+                $returnType = '';
+
+                while (! $this->stream->isEof() && ! $this->stream->is(TokenType::LBRACE)) {
+                    $token = $this->stream->current();
+
+                    $returnType .= $token->type === TokenType::WHITESPACE
+                        ? ' '
+                        : TokenStreamHelper::tokenToRawString($token->type, $token->value);
+
+                    $this->stream->advance();
+                }
+
+                if ($returnType !== '') {
+                    $selector .= ' ' . trim($returnType);
+                }
+            }
+
+            $this->stream->skipWhitespaceAndComments();
 
             return $this->parsingContext->parseRuleFromSelector($selector, $line, $column);
         }
 
         $arguments = $this->parseParameterList();
-        $body      = $this->parsingContext->parseBlock();
+
+        $this->stream->skipWhitespaceAndComments();
+
+        $body = $this->parsingContext->parseBlock();
 
         return new FunctionDeclarationNode($name, $arguments, $body, $line, $column);
     }
@@ -155,7 +276,7 @@ final readonly class CallableDirectiveParser
 
         $value = $this->valueContext->parseValue();
 
-        StreamUtils::consumeSemicolonFromStream($this->stream);
+        TokenStreamHelper::consumeSemicolonFromStream($this->stream);
 
         return new ReturnNode($value);
     }
@@ -167,14 +288,14 @@ final readonly class CallableDirectiveParser
     {
         $arguments = [];
 
-        $this->stream->skipWhitespace();
+        $this->stream->skipWhitespaceAndComments();
 
         if (! $this->stream->consume(TokenType::LPAREN)) {
             return $arguments;
         }
 
         while (! $this->stream->match(TokenType::RPAREN, TokenType::EOF)) {
-            $this->stream->skipWhitespace();
+            $this->stream->skipWhitespaceAndComments();
 
             if ($this->stream->is(TokenType::RPAREN)) {
                 break;
@@ -183,21 +304,23 @@ final readonly class CallableDirectiveParser
             if ($this->stream->consume(TokenType::DOLLAR)) {
                 $varName = $this->parsingContext->consumeIdentifier();
 
-                $this->stream->skipWhitespace();
+                $this->stream->skipWhitespaceAndComments();
 
                 $defaultValue = null;
 
                 if ($this->stream->consume(TokenType::COLON)) {
-                    $this->stream->skipWhitespace();
+                    $this->stream->skipWhitespaceAndComments();
 
                     $defaultValue = $this->parseParameterDefaultValue();
                 }
 
-                $rest = StreamUtils::consumeEllipsis($this->stream);
+                $rest = TokenStreamHelper::consumeEllipsis($this->stream);
 
                 $arguments[] = new ArgumentNode($varName, $defaultValue, $rest);
 
                 if ($rest) {
+                    TokenStreamHelper::consumeCommaSeparator($this->stream);
+
                     break;
                 }
             } else {
@@ -210,7 +333,7 @@ final readonly class CallableDirectiveParser
                 }
             }
 
-            StreamUtils::consumeCommaSeparator($this->stream);
+            TokenStreamHelper::consumeCommaSeparator($this->stream);
         }
 
         $this->stream->consume(TokenType::RPAREN);
@@ -220,8 +343,7 @@ final readonly class CallableDirectiveParser
 
     private function parseParameterDefaultValue(): ?AstNode
     {
-        $savedPos = $this->stream->getPosition();
-
+        $savedPos     = $this->stream->getPosition();
         $defaultValue = $this->valueContext->parseValueUntil([TokenType::COMMA, TokenType::RPAREN]);
 
         if (! ($defaultValue instanceof ListNode) || count($defaultValue->items) !== 0) {

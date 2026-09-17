@@ -7,7 +7,7 @@ use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('joins compiled root children with line breaks', function () {
     $runtime = RuntimeFactory::createRuntime();
@@ -17,7 +17,7 @@ it('joins compiled root children with line breaks', function () {
         new CommentNode('second', true),
     ]);
 
-    expect($runtime->root()->handle($node, $ctx))->toBe("/*! first */\n/*! second */");
+    expect($runtime->root()->handle($node, $ctx))->toBe("/*!first*/\n/*!second*/");
 });
 
 it('restores the saved mapping position when a following root child compiles to an empty string', function () {
@@ -38,7 +38,7 @@ it('restores the saved mapping position when a following root child compiles to 
     $compilerContext->sourceMapState->generatedLine = 1;
     $compilerContext->sourceMapState->generatedColumn = 0;
 
-    expect($runtime->root()->handle($node, $ctx))->toBe('/*! first */')
+    expect($runtime->root()->handle($node, $ctx))->toBe('/*!first*/')
         ->and($compilerContext->sourceMapState->generatedLine)->toBe(1)
-        ->and($compilerContext->sourceMapState->generatedColumn)->toBe(12);
+        ->and($compilerContext->sourceMapState->generatedColumn)->toBe(10);
 });

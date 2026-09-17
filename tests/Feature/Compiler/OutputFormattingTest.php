@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Style;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Output Formatting', function () {
     beforeEach(function () {
@@ -32,7 +32,7 @@ describe('Output Formatting', function () {
 
         $css = $compiler->compileString('.a { color: #ff000080; border-color: #aabbccdd; }');
 
-        expect($css)->toBe('.a{color:#ff000080;border-color:#abcd}');
+        expect($css)->toBe('.a{color:rgba(255,0,0,.5019607843);border-color:rgba(170,187,204,.8666666667)}');
     });
 
     it('does not shorten hex literals in expanded style', function () {
@@ -40,7 +40,7 @@ describe('Output Formatting', function () {
 
         $expected = /** @lang text */ <<<'CSS'
         .a {
-          color: #f00;
+          color: #ff0000;
         }
         CSS;
 
@@ -55,7 +55,7 @@ describe('Output Formatting', function () {
         expect($css)->toBe('.a{content:"#ff0000"}');
     });
 
-    it('preserves functional notation for non-lossless oklch results in compressed style', function () {
+    it('converts functional notation for oklch results to hex in compressed style', function () {
         $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
 
         $scss = <<<'SCSS'
@@ -69,10 +69,10 @@ describe('Output Formatting', function () {
 
         $css = $compiler->compileString($scss);
 
-        expect($css)->toBe('.color-oklch{scale:rgb(66.7264198057%,56.710619738%,66.7126514142%);mix:rgb(37.6220882353%,29.2426329412%,52.2385329412%)}');
+        expect($css)->toBe('.color-oklch{scale:#aa91aa;mix:#604b85}');
     });
 
-    it('preserves fractional rgb functions in compressed style', function () {
+    it('converts fractional rgb functions to hex in compressed style', function () {
         $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
 
         $scss = <<<'SCSS'
@@ -86,7 +86,7 @@ describe('Output Formatting', function () {
 
         $css = $compiler->compileString($scss);
 
-        expect($css)->toBe('.a{mix:rgb(41.1764705882%,54.1176470588%,63.3333333333%);scale:rgb(50%,0%,0%);invert:rgb(40.5857918438%,24.0674867532%,23.306133858%)}');
+        expect($css)->toBe('.a{mix:#698aa2;scale:#800000;invert:#673d3b}');
     });
 
     it('passes through css relative color functions', function () {
@@ -110,15 +110,15 @@ describe('Output Formatting', function () {
         $expected = /** @lang text */ <<<'CSS'
         body {
           rgb: rgb(from currentcolor r g b);
-          rgba: rgba(from currentcolor r g b / alpha);
+          rgba: rgba(from currentcolor r g b/alpha);
           hsl: hsl(from currentcolor h s l);
-          hsla: hsla(from currentcolor h s l / alpha);
+          hsla: hsla(from currentcolor h s l/alpha);
           hwb: hwb(from currentcolor h w b);
           lab: lab(from currentcolor l a b);
           lch: lch(from currentcolor l c h);
           oklab: oklab(from currentcolor l a b);
           oklch: oklch(from currentcolor l c h);
-          color: color(from currentcolor srgb r g b / alpha);
+          color: color(from currentcolor srgb r g b/alpha);
         }
         CSS;
 

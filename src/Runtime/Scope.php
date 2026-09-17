@@ -12,6 +12,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Utils\NameNormalizer;
 
 use function array_key_exists;
+use function str_starts_with;
 
 final class Scope
 {
@@ -24,7 +25,33 @@ final class Scope
     /** @var array<string, Scope> */
     private array $modules = [];
 
+    /** @var array<int, array{module: string, prefix: ?string}> */
+    private array $forwardedBuiltins = [];
+
+    /** @var array<string, true> */
+    private array $importedMembers = [];
+
+    /** @var array<string, array{scope: Scope, name: string}> */
+    private array $importedVariables = [];
+
+    /** @var array<string, array{scope: Scope, name: string}> */
+    private array $forwardedVariables = [];
+
+    /** @var array<string, AstNode> */
+    private array $incomingConfiguration = [];
+
+    /** @var array<string, AstNode> */
+    private array $configuredVariables = [];
+
     private ?Scope $globalScope = null;
+
+    private bool $insideCssFunctionBody = false;
+
+    private bool $flowControlScope = false;
+
+    private bool $callableBody = false;
+
+    private bool $moduleRootScope = false;
 
     public function __construct(private readonly ?Scope $parent = null)
     {
@@ -34,6 +61,94 @@ final class Scope
     public function getParent(): ?Scope
     {
         return $this->parent;
+    }
+
+    public function setInsideCssFunctionBody(bool $flag): void
+    {
+        $this->insideCssFunctionBody = $flag;
+    }
+
+    public function isInsideCssFunctionBody(): bool
+    {
+        return $this->insideCssFunctionBody;
+    }
+
+    public function markAsFlowControlScope(): void
+    {
+        $this->flowControlScope = true;
+    }
+
+    public function markAsCallableBody(): void
+    {
+        $this->callableBody = true;
+    }
+
+    public function isCallableBody(): bool
+    {
+        return $this->callableBody;
+    }
+
+    public function isFlowControlScope(): bool
+    {
+        return $this->flowControlScope;
+    }
+
+    public function markAsModuleRootScope(): void
+    {
+        $this->moduleRootScope = true;
+    }
+
+    public function isModuleRootScope(): bool
+    {
+        return $this->moduleRootScope;
+    }
+
+    /** @param array<string, AstNode> $configuration */
+    public function setIncomingConfiguration(array $configuration): void
+    {
+        $this->incomingConfiguration = $configuration;
+    }
+
+    /** @return array<string, AstNode> */
+    public function getIncomingConfiguration(): array
+    {
+        return $this->incomingConfiguration;
+    }
+
+    /** @param array<string, AstNode> $configured */
+    public function setConfiguredVariables(array $configured): void
+    {
+        $normalized = [];
+
+        foreach ($configured as $name => $value) {
+            $normalized[$this->normalizeName($name)] = $value;
+        }
+
+        $this->configuredVariables = $normalized;
+    }
+
+    public function getConfiguredVariable(string $name): ?AstNode
+    {
+        $normalized = $this->normalizeName($name);
+        $scope      = $this;
+
+        do {
+            $value = $scope->configuredVariables[$normalized] ?? null;
+
+            if ($value !== null) {
+                return $value;
+            }
+
+            $scope = $scope->parent;
+        } while ($scope !== null);
+
+        return null;
+    }
+
+    /** @return array<string, AstNode> */
+    public function getConfiguredVariables(): array
+    {
+        return $this->configuredVariables;
     }
 
     public function getGlobalScope(): Scope
@@ -72,6 +187,8 @@ final class Scope
             if ($existingScope !== null && ! $this->isSassNull($existingScope->variables->get($name))) {
                 return;
             }
+
+            $value = $this->configuredValueFor($name) ?? $value;
         }
 
         $this->variables->set($name, $value, $line);
@@ -79,7 +196,23 @@ final class Scope
 
     public function setVariableLocal(string $name, mixed $value, bool $default = false, int $line = 1): void
     {
+        $isInternal = str_starts_with($name, '__');
+
         $name = $this->normalizeName($name);
+
+        if (! $default) {
+            $existingScope = $this->findScopeForVariable($name);
+
+            if ($existingScope !== null
+                && $existingScope !== $this
+                && ! $isInternal
+                && $this->isWriteThroughTarget($existingScope)
+            ) {
+                $existingScope->setVariableLocal($name, $value, false, $line);
+
+                return;
+            }
+        }
 
         if ($default) {
             $existingScope = $this->findScopeForVariable($name);
@@ -87,6 +220,12 @@ final class Scope
             if ($existingScope !== null && ! $this->isSassNull($existingScope->variables->get($name))) {
                 return;
             }
+
+            /** @var AstNode|null $configured */
+            $configured = $this->configuredValueFor($name);
+
+            /** @var mixed $value */
+            $value = $configured ?? $value;
         }
 
         $this->variables->set($name, $value, $line);
@@ -110,6 +249,27 @@ final class Scope
         $value = $scope->variables->get($normalized);
 
         return $value instanceof AstNode ? $value : null;
+    }
+
+    public function isInsideAtRootWithoutRule(): bool
+    {
+        $withoutRuleName = $this->normalizeName('__at_root_without_rule');
+        $parentName      = $this->normalizeName('__parent_selector');
+        $scope           = $this;
+
+        while ($scope !== null) {
+            if ($scope->variables->has($withoutRuleName)) {
+                return true;
+            }
+
+            if ($scope->variables->has($parentName)) {
+                return false;
+            }
+
+            $scope = $scope->parent;
+        }
+
+        return false;
     }
 
     public function getStringVariable(string $name): ?StringNode
@@ -275,6 +435,98 @@ final class Scope
         return $this->modules[$namespace] ?? $this->parent?->getModule($namespace);
     }
 
+    public function addForwardedBuiltin(string $module, ?string $prefix): void
+    {
+        $this->forwardedBuiltins[] = ['module' => $module, 'prefix' => $prefix];
+    }
+
+    /** @return array<int, array{module: string, prefix: ?string}> */
+    public function getForwardedBuiltins(): array
+    {
+        return $this->forwardedBuiltins;
+    }
+
+    public function markImportedMember(string $name): void
+    {
+        $this->importedMembers[NameNormalizer::normalize($name)] = true;
+    }
+
+    public function isImportedMember(string $name): bool
+    {
+        return array_key_exists(NameNormalizer::normalize($name), $this->importedMembers);
+    }
+
+    public function trackImportedVariable(string $name, Scope $originScope, string $originName): void
+    {
+        $this->importedVariables[NameNormalizer::normalize($name)] = ['scope' => $originScope, 'name' => $originName];
+    }
+
+    /** @return array{scope: Scope, name: string}|null */
+    public function findImportedVariableOrigin(string $name): ?array
+    {
+        $normalized = NameNormalizer::normalize($name);
+        $scope      = $this;
+
+        do {
+            $origin = $scope->importedVariables[$normalized] ?? null;
+
+            if ($origin !== null) {
+                return $origin;
+            }
+
+            $scope = $scope->parent;
+        } while ($scope !== null);
+
+        return null;
+    }
+
+    public function trackForwardedVariable(string $name, Scope $originScope, string $originName): void
+    {
+        $this->forwardedVariables[NameNormalizer::normalize($name)] = ['scope' => $originScope, 'name' => $originName];
+    }
+
+    /** @return array{scope: Scope, name: string}|null */
+    public function findForwardedVariableOrigin(string $name): ?array
+    {
+        $normalized = NameNormalizer::normalize($name);
+
+        return $this->forwardedVariables[$normalized] ?? null;
+    }
+
+    private function isWriteThroughTarget(Scope $target): bool
+    {
+        if ($target === $this->getGlobalScope()) {
+            return $this->flowControlScope && $this->isSemiGlobalPath($target);
+        }
+
+        $scope = $this;
+
+        while ($scope !== null && $scope !== $target) {
+            if ($scope->callableBody) {
+                return false;
+            }
+
+            $scope = $scope->parent;
+        }
+
+        return true;
+    }
+
+    private function isSemiGlobalPath(Scope $target): bool
+    {
+        $scope = $this->parent;
+
+        while ($scope !== null && $scope !== $target) {
+            if (! $scope->flowControlScope) {
+                return false;
+            }
+
+            $scope = $scope->parent;
+        }
+
+        return $scope === $target;
+    }
+
     private function findScopeForVariable(string $name): ?Scope
     {
         $scope = $this;
@@ -288,6 +540,17 @@ final class Scope
         } while ($scope !== null);
 
         return null;
+    }
+
+    private function configuredValueFor(string $name): ?AstNode
+    {
+        $value = $this->getConfiguredVariable($name);
+
+        if ($value === null || $this->isSassNull($value)) {
+            return null;
+        }
+
+        return $value;
     }
 
     private function getVariableNormalized(string $name): mixed
@@ -391,6 +654,14 @@ final class Scope
             if (! $this->isSassNull($this->variables->get($name))) {
                 return;
             }
+        }
+
+        if ($default) {
+            /** @var AstNode|null $configured */
+            $configured = $this->configuredValueFor($name);
+
+            /** @var mixed $value */
+            $value = $configured ?? $value;
         }
 
         $this->variables->set($name, $value, $line);

@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Services\Context;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Context', function () {
     beforeEach(function () {

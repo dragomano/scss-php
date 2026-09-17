@@ -10,6 +10,7 @@ use Bugo\Iris\LiteralParser;
 use Bugo\Iris\Manipulators\LegacyManipulator;
 use Bugo\Iris\Manipulators\PerceptualManipulator;
 use Bugo\Iris\Manipulators\SrgbManipulator;
+use Bugo\Iris\Operations\ColorMixResolver;
 use Bugo\Iris\Serializers\LiteralSerializer;
 use Bugo\Iris\SpaceRouter;
 
@@ -24,6 +25,7 @@ final class ColorModuleComponents
         public LegacyManipulator $legacyManipulator,
         public PerceptualManipulator $perceptualManipulator,
         public SrgbManipulator $srgbManipulator,
+        public ColorMixResolver $mixResolver,
     ) {}
 
     public static function defaults(): self
@@ -37,6 +39,7 @@ final class ColorModuleComponents
             new LegacyManipulator(),
             new PerceptualManipulator(),
             new SrgbManipulator(),
+            new ColorMixResolver(),
         );
     }
 }

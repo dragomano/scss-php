@@ -5,63 +5,52 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Utils;
 
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Style;
 
-use function explode;
-use function implode;
 use function mb_check_encoding;
-use function substr_count;
-use function trim;
+use function str_replace;
+use function strpos;
+use function substr;
 
 final readonly class OutputOptimizer
 {
     public function __construct(
         private CompressedCssFormatter $compressedCssFormatter = new CompressedCssFormatter(),
+        private ExpandedCssFormatter $expandedCssFormatter = new ExpandedCssFormatter(),
     ) {}
 
     public function optimize(string $css, CompilerOptions $options): string
     {
         if ($options->style === Style::COMPRESSED) {
-            $css = $this->compressedCssFormatter->format($css);
+            $css = $this->removeSourceMapComments($css);
         }
 
-        if ($options->splitRules) {
-            $css = $this->normalizeBlockSeparation($css);
-        }
+        $css = $options->style === Style::COMPRESSED
+            ? $this->compressedCssFormatter->format($css)
+            : $this->expandedCssFormatter->format($css);
 
-        return $this->addCharsetIfNeeded($css);
+        return $this->addCharsetIfNeeded($this->stripContinuationMarks($css));
     }
 
-    private function normalizeBlockSeparation(string $css): string
+    private function removeSourceMapComments(string $css): string
     {
-        $lines  = explode("\n", $css);
-        $result = [];
-        $depth  = 0;
+        while (($start = strpos($css, '/*# source')) !== false) {
+            $end = strpos($css, '*/', $start + 2);
 
-        $prevClosedAtRoot = false;
-
-        foreach ($lines as $line) {
-            $trimmed = trim($line);
-
-            if ($trimmed === '') {
-                continue;
+            if ($end === false) {
+                break;
             }
 
-            $openBraces  = substr_count($trimmed, '{');
-            $closeBraces = substr_count($trimmed, '}');
-
-            if ($prevClosedAtRoot) {
-                $result[] = '';
-            }
-
-            $result[] = $line;
-
-            $depth += $openBraces - $closeBraces;
-
-            $prevClosedAtRoot = $depth === 0 && $closeBraces > 0;
+            $css = substr($css, 0, $start) . substr($css, $end + 2);
         }
 
-        return implode("\n", $result);
+        return $css;
+    }
+
+    private function stripContinuationMarks(string $css): string
+    {
+        return str_replace(Render::CONTINUATION_MARK, '', $css);
     }
 
     private function addCharsetIfNeeded(string $css): string

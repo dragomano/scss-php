@@ -27,6 +27,8 @@ use Bugo\SCSS\Parser\RuleParser;
 use Bugo\SCSS\Parser\RuleParserContextInterface;
 use Bugo\SCSS\Parser\ValueParser;
 
+use function str_starts_with;
+use function strtolower;
 use function trim;
 
 final class Parser implements
@@ -41,6 +43,8 @@ final class Parser implements
     private TokenStream $stream;
 
     private int $blockDepth = 0;
+
+    private int $cssFunctionBodyDepth = 0;
 
     private bool $trackSourceLocations = true;
 
@@ -70,13 +74,20 @@ final class Parser implements
         $this->rules->setTrackSourceLocations($track);
     }
 
+    public function setPlainCss(bool $plainCss): void
+    {
+        $this->tokenizer->setPlainCss($plainCss);
+    }
+
     public function parse(string $source): RootNode
     {
         $tokens = $this->tokenizer->tokenize($source);
 
-        $this->stream = new TokenStream($tokens);
+        $this->stream = new TokenStream($tokens, Tokenizer::normalizeLineEndings($source));
 
         $this->blockDepth = 0;
+
+        $this->cssFunctionBodyDepth = 0;
 
         $this->initSubParsers();
 
@@ -98,11 +109,25 @@ final class Parser implements
             return new RuleNode($selector, [], $line, $column);
         }
 
+        $openBraceLine = $this->stream->current()->line;
+
         $this->stream->advance();
 
         $this->blockDepth++;
 
-        $children = $this->parseStatements(true);
+        $isCssFunctionBody = str_starts_with(strtolower(trim($selector)), '@function --');
+
+        if ($isCssFunctionBody) {
+            $this->cssFunctionBodyDepth++;
+        }
+
+        try {
+            $children = $this->parseStatements(true);
+        } finally {
+            if ($isCssFunctionBody) {
+                $this->cssFunctionBodyDepth--;
+            }
+        }
 
         if ($this->stream->is(TokenType::RBRACE)) {
             $this->blockDepth--;
@@ -110,7 +135,7 @@ final class Parser implements
             $this->stream->advance();
         }
 
-        return new RuleNode($selector, $children, $line, $column);
+        return new RuleNode($selector, $children, $line, $column, $openBraceLine);
     }
 
     public function parseInlineValue(string $expression): AstNode
@@ -147,6 +172,11 @@ final class Parser implements
     public function isInsideBraces(): bool
     {
         return $this->blockDepth > 0;
+    }
+
+    public function isInsideCssFunctionBody(): bool
+    {
+        return $this->cssFunctionBodyDepth > 0;
     }
 
     /**
@@ -195,7 +225,7 @@ final class Parser implements
                 $token = $this->stream->current();
 
                 $statements[] = new CommentNode(
-                    trim($token->value),
+                    $token->value,
                     $token->type === TokenType::COMMENT_PRESERVED,
                     $token->line,
                     $token->column,
@@ -208,6 +238,12 @@ final class Parser implements
 
             if ($this->stream->is(TokenType::RBRACE)) {
                 break;
+            }
+
+            if ($this->stream->is(TokenType::SEMICOLON)) {
+                $this->stream->advance();
+
+                continue;
             }
 
             $statement = $this->parseStatement();
@@ -259,10 +295,11 @@ final class Parser implements
                 $token = $this->stream->current();
 
                 $statements[] = new CommentNode(
-                    trim($token->value),
+                    $token->value,
                     $token->type === TokenType::COMMENT_PRESERVED,
                     $token->line,
                     $token->column,
+                    $this->isSameLineAfterClosingBrace($token),
                 );
 
                 $this->stream->advance();
@@ -325,6 +362,29 @@ final class Parser implements
         }
 
         return $this->rules->parseRuleOrDeclaration();
+    }
+
+    private function isSameLineAfterClosingBrace(Token $commentToken): bool
+    {
+        $position = $this->stream->getPosition();
+
+        for ($i = $position - 1; $i >= 0; $i--) {
+            $this->stream->setPosition($i);
+
+            $token = $this->stream->current();
+
+            if ($token->type === TokenType::WHITESPACE || $token->type === TokenType::COMMENT_SILENT) {
+                continue;
+            }
+
+            $this->stream->setPosition($position);
+
+            return $token->type === TokenType::RBRACE && $token->line === $commentToken->line;
+        }
+
+        $this->stream->setPosition($position);
+
+        return false;
     }
 
     private function initSubParsers(): void

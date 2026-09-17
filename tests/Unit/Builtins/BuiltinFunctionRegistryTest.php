@@ -5,10 +5,11 @@ declare(strict_types=1);
 use Bugo\SCSS\Builtins\FunctionRegistry;
 use Bugo\SCSS\Builtins\ModuleInterface;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
-use Bugo\SCSS\Exceptions\NonFiniteNumberException;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
+use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
@@ -152,9 +153,12 @@ describe('BuiltinFunctionRegistry', function () {
 
         $result = $registry->tryCall('selector.append', [new StringNode('.button'), new StringNode('.primary')]);
 
-        /** @var StringNode $result */
-        expect($result)->toBeInstanceOf(StringNode::class)
-            ->and($result->value)->toBe('.button.primary');
+        /** @var ListNode $result */
+        expect($result)->toBeInstanceOf(ListNode::class)
+            ->and($result->separator)->toBe('comma')
+            ->and($result->items)->toHaveCount(1)
+            ->and($result->items[0])->toBeInstanceOf(ListNode::class)
+            ->and($result->items[0]->items[0]->value)->toBe('.button.primary');
     });
 
     it('uses global display name with selector module suffix in argument errors', function () {
@@ -221,9 +225,11 @@ describe('BuiltinFunctionRegistry', function () {
 
         $result = $registry->tryCall('color.mix', [new ColorNode('#000000'), new ColorNode('#ffffff'), new NumberNode(50, '%')]);
 
-        /** @var ColorNode $result */
-        expect($result)->toBeInstanceOf(ColorNode::class)
-            ->and($result->value)->toBe('#808080');
+        /** @var FunctionNode $result */
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('rgb')
+            ->and($result->arguments[0]->value)->toBe(50.0)
+            ->and($result->arguments[0]->unit)->toBe('%');
     });
 
     it('uses namespaced display name in color module argument errors', function () {
@@ -270,11 +276,12 @@ describe('BuiltinFunctionRegistry', function () {
         ]))->toThrow(UnsupportedColorSpaceException::class, "Unsupported color space 'foo' in color() (color module).");
     });
 
-    it('uses global display name with color module suffix in non-finite number errors', function () {
+    it('handles non-finite alpha by emitting a css function', function () {
         $registry = new FunctionRegistry();
 
-        expect(fn() => $registry->tryCall('rgba', [new ColorNode('#ff0000'), new NumberNode(NAN)]))
-            ->toThrow(NonFiniteNumberException::class, 'rgba() (color module) received a non-finite number.');
+        $result = $registry->tryCall('rgba', [new ColorNode('#ff0000'), new NumberNode(NAN)]);
+
+        expect($result)->toBeInstanceOf(AstNode::class);
     });
 
     it('does not resolve deprecated namespaced sass:color legacy functions', function () {
@@ -331,5 +338,39 @@ describe('BuiltinFunctionRegistry', function () {
         $registry->reset();
 
         expect($registry->tryCall('test.echo', [new StringNode('ok')]))->toBeNull();
+    });
+
+    it('returns null when forwarding to an unknown module or function', function () {
+        $registry = new FunctionRegistry();
+
+        expect($registry->tryCallForwardedBuiltin('unknown', 'abs', []))->toBeNull()
+            ->and($registry->tryCallForwardedBuiltin('math', 'unknown', []))->toBeNull();
+    });
+
+    it('resolves forwarded builtin calls with normalized function names', function () {
+        $registry = new FunctionRegistry();
+
+        $result = $registry->tryCallForwardedBuiltin('math', 'is_unitless', [new NumberNode(3)]);
+
+        /** @var BooleanNode $result */
+        expect($result)->toBeInstanceOf(BooleanNode::class)
+            ->and($result->value)->toBeTrue();
+    });
+
+    it('returns null when a forwarded builtin defers to a css function', function () {
+        $registry = new FunctionRegistry();
+
+        expect($registry->tryCallForwardedBuiltin('math', 'abs', [new StringNode('pi', true)]))->toBeNull();
+    });
+
+    it('resolves star-registered module functions that are not global aliases', function () {
+        $registry = new FunctionRegistry();
+        $registry->registerUse('sass:math', '*');
+
+        $result = $registry->tryCall('div', [new NumberNode(10), new NumberNode(2)]);
+
+        /** @var NumberNode $result */
+        expect($result)->toBeInstanceOf(NumberNode::class)
+            ->and($result->value)->toBe(5.0);
     });
 });

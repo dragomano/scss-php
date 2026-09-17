@@ -7,6 +7,8 @@ namespace Bugo\SCSS\Services;
 use Bugo\SCSS\Builtins\Color\Conversion\HexColorConverter;
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Exceptions\DivisionByZeroException;
+use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Exceptions\SassArgumentException;
 use Bugo\SCSS\Exceptions\SassException;
@@ -28,6 +30,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Runtime\ResolvedCallArguments;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Services\Evaluation\EvaluationStrategyRegistry;
@@ -40,20 +43,21 @@ use Bugo\SCSS\Services\Evaluation\Strategy\NamedArgumentNodeStrategy;
 use Bugo\SCSS\Services\Evaluation\Strategy\PassthroughNodeStrategy;
 use Bugo\SCSS\Services\Evaluation\Strategy\StringNodeStrategy;
 use Bugo\SCSS\Services\Evaluation\Strategy\VariableReferenceStrategy;
+use Bugo\SCSS\Services\Evaluation\ValueEvaluatorInterface;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Values\SassCalculation;
 use Bugo\SCSS\Values\SassMap;
-use Closure;
 use LogicException;
+use Psr\Log\LoggerInterface;
 
-use function abs;
 use function array_slice;
 use function count;
 use function in_array;
-use function round;
+use function is_string;
 use function str_contains;
+use function str_replace;
 use function str_starts_with;
 use function strtolower;
 use function trim;
@@ -95,6 +99,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         private Condition $condition,
         private ModuleVariableAssignerInterface $moduleVariableAssigner,
         private DiagnosticDirectiveHandlerInterface $diagnosticHandler,
+        private LoggerInterface $logger,
     ) {
         $this->hexColorConverter = new HexColorConverter();
         $this->arithmetic        = new ArithmeticEvaluator();
@@ -109,9 +114,9 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         $this->cssArgument                = $this->createCssArgumentEvaluator();
         $this->callArguments              = $this->createCallArgumentResolver();
 
-        $evaluateValueClosure = $this->createEvaluationValueClosure();
-        $this->functionCalls  = $this->createFunctionCallEvaluator();
-        $this->registry       = $this->createEvaluationStrategyRegistry($evaluateValueClosure);
+        $valueEvaluator     = $this->createEvaluationValueEvaluator();
+        $this->functionCalls = $this->createFunctionCallEvaluator();
+        $this->registry      = $this->createEvaluationStrategyRegistry($valueEvaluator);
     }
 
     public function interpolateText(string $text, Environment $env): string
@@ -119,14 +124,15 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return $this->text->interpolateText($text, $env);
     }
 
-    public function evaluateValue(AstNode $node, Environment $env, bool $skipSlashArithmetic = false): AstNode
+    public function evaluateValue(AstNode $node, Environment $env, bool $skipSlashArithmetic = false, ?EvaluationOptions $options = null): AstNode
     {
         return $this->registry->evaluate(
             $node,
             $env,
-            $skipSlashArithmetic
-                ? EvaluationOptions::default()->withSkipSlashArithmetic()
-                : EvaluationOptions::default(),
+            $options
+                ?? ($skipSlashArithmetic
+                    ? EvaluationOptions::default()->withSkipSlashArithmetic()
+                    : EvaluationOptions::default()),
         );
     }
 
@@ -137,40 +143,55 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
 
     public function evaluateDeclarationValue(AstNode $value, string $property, Environment $env): AstNode
     {
-        if (
-            ! $this->shouldUseCompactSlashSpacing($property)
-            || ! ($value instanceof ListNode)
-            || ! $this->containsSlashToken($value)
-        ) {
+        if ($this->shouldUseCompactSlashSpacing($property)) {
             return $this->evaluateValue($value, $env);
         }
 
-        $items   = [];
-        $changed = false;
-
-        foreach ($value->items as $item) {
-            $evaluatedItem = $this->evaluateValue($item, $env);
-
-            if ($evaluatedItem !== $item) {
-                $changed = true;
-            }
-
-            $items[] = $evaluatedItem;
+        if ($value instanceof ListNode
+            && $value->separator === '/'
+            && count($value->items) === 3
+        ) {
+            return $this->evaluateValueWithSlashDivision($value, $env);
         }
 
-        return $changed
-            ? new ListNode($items, $value->separator, $value->bracketed)
-            : $value;
+        if ($value instanceof ListNode
+            && $value->separator === 'space'
+            && $this->isMultiSlashChain($value)
+            && ($value->parenthesized > 0 || $this->containsVariableReference($value->items))
+        ) {
+            $evaluatedChain = $this->evaluateMultiSlashChain($value, $env);
+
+            if ($evaluatedChain instanceof NumberNode) {
+                return $evaluatedChain;
+            }
+        }
+
+        if ($value instanceof ListNode
+            && $value->separator === 'space'
+            && $this->isSlashDivisionCandidate($value)
+        ) {
+            return $this->evaluateValueWithSlashDivision($value, $env);
+        }
+
+        $items = $value instanceof ListNode ? $value->items : [$value];
+
+        foreach ($items as $item) {
+            if ($item instanceof ListNode && $item->separator === 'space' && $this->containsSlashToken($item)) {
+                return $this->evaluateValueWithSlashDivision($value, $env);
+            }
+        }
+
+        return $this->evaluateValue($value, $env);
     }
 
-    public function evaluateArithmeticList(ListNode $node, bool $strict, Environment $env): ?AstNode
+    public function evaluateArithmeticList(ListNode $node, bool $strict, Environment $env, bool $insideCalc = false): ?AstNode
     {
         $callback = $strict ? null : function (array $items) use ($env): ?string {
             /** @var array<int, AstNode> $items */
             return $this->calculation->detectUnsupportedOperation($items, $env);
         };
 
-        return $this->arithmetic->evaluate($node, $strict, $callback);
+        return $this->arithmetic->evaluate($node, $strict, $callback, $insideCalc);
     }
 
     public function shouldUseCompactSlashSpacing(string $property): bool
@@ -209,12 +230,12 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return $this->evaluateValue($node, $env, true);
     }
 
-    public function evaluateValueWithSlashDivision(AstNode $node, Environment $env): AstNode
+    public function evaluateValueWithSlashDivision(AstNode $node, Environment $env, ?EvaluationOptions $options = null): AstNode
     {
-        $evaluated = $this->evaluateValue($node, $env);
+        $evaluated = $this->evaluateValue($node, $env, false, $options);
 
         if ($evaluated instanceof ListNode
-            && $evaluated->separator === 'space'
+            && ($evaluated->separator === 'space' || $evaluated->separator === '/')
             && count($evaluated->items) === 3
         ) {
             [$evalFirst, $evalMid, $evalLast] = $evaluated->items;
@@ -224,7 +245,25 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
                 && $evalMid->value === '/'
                 && $evalLast instanceof NumberNode
             ) {
-                return $this->arithmetic->applyOperator($evalFirst, '/', $evalLast);
+                try {
+                    return $this->arithmetic->applyOperator($evalFirst, '/', $evalLast);
+                } catch (DivisionByZeroException) {
+                    return $this->arithmetic->applyOperator($evalFirst, '/', $evalLast, true);
+                }
+            }
+
+            if ($evalFirst instanceof NumberNode
+                && $evalMid instanceof StringNode
+                && $evalMid->value === '%'
+                && $evalLast instanceof NumberNode
+            ) {
+                try {
+                    return $this->arithmetic->applyOperator($evalFirst, '%', $evalLast);
+                } catch (DivisionByZeroException) {
+                    return $this->arithmetic->applyOperator($evalFirst, '%', $evalLast, true);
+                } catch (IncompatibleUnitsException) {
+                    return $evaluated;
+                }
             }
         }
 
@@ -236,9 +275,9 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return $this->variableDeclarationApplier->apply($node, $env);
     }
 
-    public function evaluateFunctionCondition(string $condition, Environment $env): bool
+    public function evaluateFunctionCondition(string $condition, Environment $env, ?int $line = null): bool
     {
-        return $this->condition->evaluate($condition, $env);
+        return $this->condition->evaluate($condition, $env, $line);
     }
 
     /**
@@ -281,8 +320,15 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         string $property,
         AstNode $value,
         Environment $env,
+        ?string &$formattedValue = null,
     ): ?AstNode {
         if ($value instanceof FunctionNode && strtolower($value->name) === 'calc') {
+            return null;
+        }
+
+        if ($value instanceof FunctionNode && in_array(strtolower($value->name), [
+            'rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'color', 'lab', 'lch', 'oklab', 'oklch',
+        ], true)) {
             return null;
         }
 
@@ -293,6 +339,10 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         $formattedValue = $this->format($value, $env);
 
         if (! str_contains($formattedValue, '(') || ! str_contains($formattedValue, '/')) {
+            return null;
+        }
+
+        if (str_contains($formattedValue, 'url(')) {
             return null;
         }
 
@@ -348,7 +398,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         }
 
         if ($node instanceof StringNode) {
-            if ($node->value === '&') {
+            if ($node->value === '&' && ! $node->isSelectorValue) {
                 $selectorNode = $this->getCurrentParentSelector($env);
 
                 if ($selectorNode !== null) {
@@ -359,7 +409,15 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             return $this->ctx->valueFactory->fromAst($node)->toCss();
         }
 
-        if ($node instanceof ListNode || $node instanceof ArgumentListNode) {
+        if ($node instanceof ListNode) {
+            if ($this->calculation->isSlashChain($node)) {
+                return $this->calculation->formatSlashChain($node, $env);
+            }
+
+            return $this->calculation->formatListValue($node->items, $node->separator, $node->bracketed, $env);
+        }
+
+        if ($node instanceof ArgumentListNode) {
             return $this->calculation->formatListValue($node->items, $node->separator, $node->bracketed, $env);
         }
 
@@ -377,6 +435,8 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         }
 
         if ($node instanceof FunctionNode) {
+            $node = $this->preserveHwbZeroHueUnit($node);
+
             if ($this->options->style === Style::COMPRESSED) {
                 $compressedColor = $this->hexColorConverter->tryConvert($node);
 
@@ -389,15 +449,13 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
                 return $this->calculation->formatCalculationFunction($node, $env);
             }
 
-            $node = $this->convertFractionalRgbChannelsToPercentages($node);
-
             $formatted = $this->ctx->valueFactory->fromAst(
                 $node,
                 fn(AstNode $inner): string => $this->format($inner, $env),
             )->toCss();
 
             if (in_array($node->name, ['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'color'], true)) {
-                return $this->ctx->colorSerializer->serialize($formatted, $this->options->outputHexColors);
+                return $this->ctx->colorSerializer->serialize($formatted, $this->options->style === Style::COMPRESSED);
             }
 
             return $formatted;
@@ -426,6 +484,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         foreach ($list->items as $index => $item) {
             if (
                 $item instanceof StringNode
+                && ! $item->quoted
                 && in_array(trim($item->value), ['==', '!=', '>=', '<=', '>', '<'], true)
             ) {
                 $comparisonIndex = $index;
@@ -443,18 +502,68 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             return null;
         }
 
-        $leftItems  = array_slice($list->items, 0, $comparisonIndex);
-        $rightItems = array_slice($list->items, $comparisonIndex + 1);
+        $count = count($list->items);
 
-        $left   = $this->evaluateSpaceSeparatedItems($leftItems, $env);
-        $right  = $this->evaluateSpaceSeparatedItems($rightItems, $env);
-        $result = $this->condition->compare($left, $operator, $right, $env);
+        $leftStart = $comparisonIndex - 1;
 
-        return $this->createBooleanNode($result);
+        while ($leftStart >= 2 && $this->isArithmeticOperatorItem($list->items[$leftStart - 1])) {
+            $leftStart -= 2;
+        }
+
+        $left = $this->evaluateSpaceSeparatedItems(
+            array_slice($list->items, $leftStart, $comparisonIndex - $leftStart),
+            $env,
+        );
+
+        $rightEnd = $comparisonIndex + 2;
+
+        while ($rightEnd + 1 < $count
+            && $list->items[$rightEnd] instanceof StringNode
+            && ! $list->items[$rightEnd]->quoted
+            && in_array(trim($list->items[$rightEnd]->value), ['+', '-', '*', '/', '%'], true)
+        ) {
+            $rightEnd += 2;
+        }
+
+        $right = $this->evaluateSpaceSeparatedItems(
+            array_slice($list->items, $comparisonIndex + 1, $rightEnd - $comparisonIndex - 1),
+            $env,
+        );
+
+        $result = $this->createBooleanNode($this->condition->compare($left, $operator, $right, $env));
+
+        $leading   = [];
+        $remaining = [];
+
+        if ($leftStart > 0) {
+            $leading = array_slice($list->items, 0, $leftStart);
+        }
+
+        if ($rightEnd < $count) {
+            $remaining = array_slice($list->items, $rightEnd);
+        }
+
+        if ($leading === []) {
+            if ($remaining === []) {
+                return $result;
+            }
+
+            $chained = $this->evaluateComparisonList(new ListNode([$result, ...$remaining], 'space'), $env);
+
+            return $chained ?? new ListNode([$result, ...$remaining], 'space');
+        }
+
+        $tail = $remaining === [] ? [$result] : [$result, ...$remaining];
+
+        return new ListNode([...$leading, ...$tail], 'space');
     }
 
-    public function evaluateStringConcatenationList(ListNode $list, ?Environment $env = null): ?AstNode
+    public function evaluateStringConcatenationList(ListNode $list, ?Environment $env = null, ?EvaluationOptions $options = null): ?AstNode
     {
+        if ($options !== null && $options->skipConcatenation) {
+            return null;
+        }
+
         return $this->concatenation->evaluate($list, $env);
     }
 
@@ -486,9 +595,8 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
 
     /**
      * @param array<int, AstNode> $arguments
-     * @return array{0: array<int, AstNode>, 1: array<string, AstNode>}
      */
-    public function resolveCallArguments(array $arguments, Environment $env): array
+    public function resolveCallArguments(array $arguments, Environment $env): ResolvedCallArguments
     {
         return $this->callArguments->resolveCallArguments($arguments, $env);
     }
@@ -503,8 +611,17 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         array $resolvedPositional,
         array $resolvedNamed,
         Scope $scope,
+        Environment $env,
+        string $restSeparator = 'comma',
     ): void {
-        $this->userFunction->bindParametersToCurrentScope($parameters, $resolvedPositional, $resolvedNamed, $scope);
+        $this->userFunction->bindParametersToCurrentScope(
+            $parameters,
+            $resolvedPositional,
+            $resolvedNamed,
+            $scope,
+            $env,
+            $restSeparator,
+        );
     }
 
     /**
@@ -526,67 +643,148 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return $this->selector->normalizeBubblingNodeForSelector($node, $selector);
     }
 
+    private function isSlashDivisionCandidate(ListNode $value): bool
+    {
+        if (count($value->items) !== 3) {
+            return false;
+        }
+
+        [$first, $mid, $last] = $value->items;
+
+        if (! ($mid instanceof StringNode && $mid->value === '/')) {
+            return false;
+        }
+
+        if ($first instanceof FunctionNode && strtolower($first->name) === 'calc') {
+            return false;
+        }
+
+        if ($last instanceof FunctionNode && strtolower($last->name) === 'calc') {
+            return false;
+        }
+
+        $firstLiteral = $first instanceof NumberNode && $first->isLiteral;
+        $lastLiteral  = $last instanceof NumberNode && $last->isLiteral;
+
+        return ! ($firstLiteral && $lastLiteral);
+    }
+
+    private function isMultiSlashChain(ListNode $value): bool
+    {
+        $items = $value->items;
+        $count = count($items);
+
+        if ($count < 5 || $count % 2 !== 1) {
+            return false;
+        }
+
+        foreach ($items as $index => $item) {
+            if ($index % 2 === 0) {
+                if (! $item instanceof NumberNode && ! $item instanceof VariableReferenceNode) {
+                    return false;
+                }
+            } elseif (! $item instanceof StringNode || $item->value !== '/') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, AstNode> $items
+     */
+    private function containsVariableReference(array $items): bool
+    {
+        foreach ($items as $item) {
+            if ($item instanceof VariableReferenceNode) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function evaluateMultiSlashChain(ListNode $value, Environment $env): ?AstNode
+    {
+        $operands = [];
+
+        foreach ($value->items as $index => $item) {
+            if ($index % 2 === 0) {
+                $operand = $this->evaluateValue($item, $env);
+
+                if (! $operand instanceof NumberNode) {
+                    return null;
+                }
+
+                $operands[] = $operand;
+            }
+        }
+
+        $result = $operands[0];
+
+        for ($i = 1, $count = count($operands); $i < $count; $i++) {
+            $result = $this->arithmetic->applyDivision($result, $operands[$i]);
+        }
+
+        return $result;
+    }
+
+    private function isArithmeticOperatorItem(AstNode $node): bool
+    {
+        return $node instanceof StringNode
+            && ! $node->quoted
+            && in_array(trim($node->value), ['+', '-', '*', '/', '%'], true);
+    }
+
+    private function preserveHwbZeroHueUnit(FunctionNode $node): FunctionNode
+    {
+        if (strtolower($node->name) !== 'hwb' || count($node->arguments) !== 1) {
+            return $node;
+        }
+
+        $argument = $node->arguments[0];
+
+        if (! $argument instanceof ListNode || ! isset($argument->items[0])) {
+            return $node;
+        }
+
+        $hue = $argument->items[0];
+
+        if (! $hue instanceof NumberNode || $hue->unit !== null || $hue->value != 0) {
+            return $node;
+        }
+
+        $hasMissingChannel = false;
+
+        foreach ($argument->items as $item) {
+            if ($item instanceof StringNode && strtolower(trim($item->value)) === 'none') {
+                $hasMissingChannel = true;
+
+                break;
+            }
+        }
+
+        if (! $hasMissingChannel) {
+            return $node;
+        }
+
+        $items    = $argument->items;
+        $items[0] = new NumberNode(0, 'deg');
+
+        return new FunctionNode(
+            $node->name,
+            [new ListNode($items, $argument->separator, $argument->bracketed)],
+            $node->line,
+            $node->modernSyntax,
+            $node->capturedScope,
+            $node->lockedDefinition,
+        );
+    }
+
     private function getCurrentParentSelector(Environment $env): ?StringNode
     {
         return $env->getCurrentScope()->getStringVariable('__parent_selector');
-    }
-
-    private function convertFractionalRgbChannelsToPercentages(FunctionNode $node): FunctionNode
-    {
-        if (! in_array(strtolower($node->name), ['rgb', 'rgba'], true)) {
-            return $node;
-        }
-
-        $hasNonInteger = false;
-        $index = 0;
-
-        foreach ($node->arguments as $argument) {
-            if ($index >= 3) {
-                break;
-            }
-
-            if (! $argument instanceof NumberNode) {
-                $index++;
-
-                continue;
-            }
-
-            $value = (float) $argument->value;
-
-            if (abs($value - round($value)) > 0.0000001) {
-                $hasNonInteger = true;
-
-                break;
-            }
-
-            $index++;
-        }
-
-        if (! $hasNonInteger) {
-            return $node;
-        }
-
-        $newArguments = [];
-        $index = 0;
-
-        foreach ($node->arguments as $argument) {
-            if (
-                $index < 3
-                && $argument instanceof NumberNode
-                && ($argument->unit === null || $argument->unit === '')
-            ) {
-                $value = (float) $argument->value;
-                $percentValue = $value * 100.0 / 255.0;
-
-                $newArguments[] = new NumberNode($percentValue, '%');
-            } else {
-                $newArguments[] = $argument;
-            }
-
-            $index++;
-        }
-
-        return new FunctionNode($node->name, $newArguments);
     }
 
     /**
@@ -595,10 +793,12 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
     private function evaluateSpaceSeparatedItems(array $items, Environment $env): AstNode
     {
         if (count($items) === 1) {
-            return $this->evaluateValue($items[0], $env);
+            return $items[0] instanceof ListNode
+                ? $this->evaluateValueWithSlashDivision($items[0], $env)
+                : $this->evaluateValue($items[0], $env);
         }
 
-        return $this->evaluateValue(new ListNode($items, 'space'), $env);
+        return $this->evaluateValueWithSlashDivision(new ListNode($items, 'space'), $env);
     }
 
     private function resolveVariable(string $name, Environment $env): AstNode
@@ -633,7 +833,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             return $moduleValue;
         }
 
-        $value = $currentScope->getAstVariable($name);
+        $value = $currentScope->getAstVariable($name) ?? $env->findAstVariableInStackGlobals($name);
 
         if ($value === null) {
             throw UndefinedSymbolException::variable($name);
@@ -642,9 +842,25 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return $value;
     }
 
+    private function createSlashDivisionValueEvaluator(): AstValueEvaluatorInterface
+    {
+        return new class ($this) implements AstValueEvaluatorInterface {
+            public function __construct(private readonly Evaluator $evaluator) {}
+
+            public function evaluate(AstNode $node, Environment $env): AstNode
+            {
+                return $this->evaluator->evaluateValueWithSlashDivision($node, $env);
+            }
+        };
+    }
+
     private function createStringConcatenationEvaluator(): StringConcatenationEvaluator
     {
-        return new StringConcatenationEvaluator($this);
+        return new StringConcatenationEvaluator(
+            $this,
+            $this->arithmetic,
+            fn(AstNode $value): bool => $this->condition->isTruthy($value),
+        );
     }
 
     private function createUserFunctionExecutor(): UserFunctionExecutor
@@ -655,15 +871,9 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             $this,
             $this->variableDeclarationApplier,
             $this->eachLoopBinder,
-            new class ($this) implements AstValueEvaluatorInterface {
-                public function __construct(private readonly Evaluator $evaluator) {}
-
-                public function evaluate(AstNode $node, Environment $env): AstNode
-                {
-                    return $this->evaluator->evaluateValueWithSlashDivision($node, $env);
-                }
-            },
+            $this->createSlashDivisionValueEvaluator(),
             $this->diagnosticHandler,
+            new LoopIterator(),
         );
     }
 
@@ -680,20 +890,13 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
     {
         return new VariableDeclarationApplier(
             $this->moduleVariableAssigner,
-            new class ($this) implements AstValueEvaluatorInterface {
-                public function __construct(private readonly Evaluator $evaluator) {}
-
-                public function evaluate(AstNode $node, Environment $env): AstNode
-                {
-                    return $this->evaluator->evaluateValueWithSlashDivision($node, $env);
-                }
-            },
+            $this->createSlashDivisionValueEvaluator(),
         );
     }
 
     private function createEachLoopBinder(): EachLoopBinderInterface
     {
-        return new EachLoopBinder($this->ctx->valueFactory);
+        return new EachLoopBinder($this->ctx->valueFactory, $this->createSlashDivisionValueEvaluator());
     }
 
     private function createConditionalEvaluator(): ConditionalEvaluator
@@ -701,7 +904,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return new ConditionalEvaluator(
             $this->condition,
             $this->text,
-            $this,
+            $this->createSlashDivisionValueEvaluator(),
             $this,
             new ComparisonListEvaluator($this),
             $this->ctx->valueFactory,
@@ -711,9 +914,26 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
     private function createCssArgumentEvaluator(): CssArgumentEvaluator
     {
         return new CssArgumentEvaluator(
-            $this,
+            $this->createSlashDivisionValueEvaluator(),
             new CalculationArgumentNormalizer($this),
+            $this->createSkipConcatenationValueEvaluator(),
         );
+    }
+
+    private function createSkipConcatenationValueEvaluator(): AstValueEvaluatorInterface
+    {
+        return new class ($this) implements AstValueEvaluatorInterface {
+            public function __construct(private readonly Evaluator $evaluator) {}
+
+            public function evaluate(AstNode $node, Environment $env): AstNode
+            {
+                return $this->evaluator->evaluateValueWithSlashDivision(
+                    $node,
+                    $env,
+                    EvaluationOptions::default()->withSkipConcatenation(),
+                );
+            }
+        };
     }
 
     private function createCallArgumentResolver(): CallArgumentResolver
@@ -721,20 +941,20 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         return new CallArgumentResolver(
             $this->parser,
             $this->cssArgument,
-            $this,
+            $this->createSlashDivisionValueEvaluator(),
         );
     }
 
-    /**
-     * @return Closure(AstNode, Environment, EvaluationOptions): AstNode
-     */
-    private function createEvaluationValueClosure(): Closure
+    private function createEvaluationValueEvaluator(): ValueEvaluatorInterface
     {
-        return fn(
-            AstNode $node,
-            Environment $env,
-            EvaluationOptions $opts = new EvaluationOptions(),
-        ): AstNode => $this->evaluateValue($node, $env, $opts->skipSlashArithmetic);
+        return new class ($this) implements ValueEvaluatorInterface {
+            public function __construct(private readonly Evaluator $evaluator) {}
+
+            public function evaluate(AstNode $node, Environment $env, EvaluationOptions $options): AstNode
+            {
+                return $this->evaluator->evaluateValue($node, $env, $options->skipSlashArithmetic, $options);
+            }
+        };
     }
 
     private function createFunctionCallEvaluator(): FunctionCallEvaluator
@@ -750,39 +970,38 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             $this->diagnosticHandler,
             $this,
             $this,
+            $this->createSlashDivisionValueEvaluator(),
+            $this->logger,
         );
     }
 
-    /**
-     * @param Closure(AstNode, Environment, EvaluationOptions): AstNode $evaluateValueClosure
-     */
-    private function createEvaluationStrategyRegistry(Closure $evaluateValueClosure): EvaluationStrategyRegistry
+    private function createEvaluationStrategyRegistry(ValueEvaluatorInterface $valueEvaluator): EvaluationStrategyRegistry
     {
         return new EvaluationStrategyRegistry([
             new PassthroughNodeStrategy(),
-            new DeprecatedExpressionStrategy(
-                $evaluateValueClosure,
-                $this->diagnosticHandler,
-            ),
+            new FunctionNodeStrategy($this->functionCalls),
             new VariableReferenceStrategy(
-                $evaluateValueClosure,
+                $valueEvaluator,
                 fn(string $name, Environment $env): AstNode => $this->resolveVariable($name, $env),
             ),
             new StringNodeStrategy(
                 fn(Environment $env): ?StringNode => $this->getCurrentParentSelector($env),
                 fn(): AstNode => $this->ctx->valueFactory->createNullNode(),
-                fn(string $value, Environment $env): string => $this->text->replaceInterpolations($value, $env),
+                fn(string $value, Environment $env, bool $decoded = false): string => $this->text->replaceInterpolations($value, $env, $decoded),
             ),
             new ListNodeStrategy(
-                $evaluateValueClosure,
+                $valueEvaluator,
                 fn(ListNode $list, Environment $env): ?AstNode => $this->conditional->evaluateLogicalList($list, $env),
                 fn(ListNode $list, bool $strict, Environment $env): ?AstNode => $this->evaluateArithmeticList($list, $strict, $env),
-                fn(ListNode $list, ?Environment $env): ?AstNode => $this->evaluateStringConcatenationList($list, $env),
+                fn(ListNode $list, ?Environment $env, EvaluationOptions $opts): ?AstNode => $this->evaluateStringConcatenationList($list, $env, $opts),
             ),
-            new ArgumentListNodeStrategy($evaluateValueClosure),
-            new MapNodeStrategy($evaluateValueClosure),
-            new NamedArgumentNodeStrategy($evaluateValueClosure),
-            new FunctionNodeStrategy($this->functionCalls),
+            new ArgumentListNodeStrategy($valueEvaluator),
+            new MapNodeStrategy($valueEvaluator),
+            new NamedArgumentNodeStrategy($valueEvaluator),
+            new DeprecatedExpressionStrategy(
+                $valueEvaluator,
+                $this->diagnosticHandler,
+            ),
         ]);
     }
 }

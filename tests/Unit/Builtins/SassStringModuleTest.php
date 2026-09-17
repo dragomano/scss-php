@@ -9,6 +9,7 @@ use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
@@ -42,6 +43,18 @@ describe('SassStringModule', function () {
         $result = $this->module->call('index', [new StringNode('hello'), new StringNode('ll')], []);
 
         expect($result->value)->toBe(3);
+    });
+
+    it('returns position one for an empty substring and counts unicode characters in index', function () {
+        $empty     = $this->module->call('index', [new StringNode('abc'), new StringNode('')], []);
+        $bothEmpty = $this->module->call('index', [new StringNode(''), new StringNode('')], []);
+        $unicode   = $this->module->call('index', [new StringNode('aéb'), new StringNode('é')], []);
+        $missing   = $this->module->call('index', [new StringNode('abc'), new StringNode('z')], []);
+
+        expect($empty->value)->toBe(1)
+            ->and($bothEmpty->value)->toBe(1)
+            ->and($unicode->value)->toBe(2)
+            ->and($missing)->toBeInstanceOf(NullNode::class);
     });
 
     it('evaluates insert', function () {
@@ -96,7 +109,7 @@ describe('SassStringModule', function () {
             ->and(count($result->items))->toBe(3);
     });
 
-    it('validates split limits and keeps empty input as a single bracketed item', function () {
+    it('validates split limits and keeps empty input as an empty bracketed list', function () {
         $empty = $this->module->call('split', [new StringNode('', true), new StringNode('-')], []);
 
         expect(fn() => $this->module->call('split', [
@@ -112,10 +125,7 @@ describe('SassStringModule', function () {
             ->toThrow(BuiltinArgumentException::class)
             ->and($empty)->toBeInstanceOf(ListNode::class)
             ->and($empty->bracketed)->toBeTrue()
-            ->and(count($empty->items))->toBe(1)
-            ->and($empty->items[0])->toBeInstanceOf(StringNode::class)
-            ->and($empty->items[0]->value)->toBe('')
-            ->and($empty->items[0]->quoted)->toBeTrue();
+            ->and($empty->items)->toBe([]);
     });
 
     it('evaluates to-lower-case', function () {
@@ -140,9 +150,10 @@ describe('SassStringModule', function () {
     });
 
     it('evaluates unquote', function () {
-        $result = $this->module->call('unquote', [new StringNode('"x"')], []);
+        $result = $this->module->call('unquote', [new StringNode('"x"', true)], []);
 
-        expect($result->value)->toBe('x');
+        expect($result->value)->toBe('"x"')
+            ->and($result->quoted)->toBeFalse();
     });
 
     it('accepts numbers where string coercion is supported and rejects other value types', function () {

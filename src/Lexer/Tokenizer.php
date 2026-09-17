@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Lexer;
 
+use Bugo\SCSS\Utils\StringEscapeDecoder;
+
+use function array_map;
 use function chr;
+use function count;
 use function ctype_alnum;
 use function ctype_alpha;
 use function ctype_digit;
@@ -12,9 +16,11 @@ use function ctype_space;
 use function ctype_xdigit;
 use function dechex;
 use function hexdec;
+use function in_array;
 use function min;
 use function ord;
 use function str_replace;
+use function str_split;
 use function strcspn;
 use function strlen;
 use function strpos;
@@ -38,9 +44,21 @@ final class Tokenizer
 
     private bool $trackPositions = true;
 
+    private bool $plainCss = false;
+
+    public static function normalizeLineEndings(string $source): string
+    {
+        return str_replace(["\r\n", "\r"], "\n", $source);
+    }
+
     public function setTrackPositions(bool $trackPositions): void
     {
         $this->trackPositions = $trackPositions;
+    }
+
+    public function setPlainCss(bool $plainCss): void
+    {
+        $this->plainCss = $plainCss;
     }
 
     /**
@@ -48,7 +66,7 @@ final class Tokenizer
      */
     public function tokenize(string $source): array
     {
-        $this->source   = str_replace(["\r\n", "\r"], "\n", $source);
+        $this->source   = self::normalizeLineEndings($source);
         $this->length   = strlen($this->source);
         $this->position = 0;
         $this->line     = 1;
@@ -66,7 +84,7 @@ final class Tokenizer
             }
         }
 
-        $tokens[] = new Token(TokenType::EOF, '', $this->line, $this->column);
+        $tokens[] = new Token(TokenType::EOF, '', $this->line, $this->column, $this->position);
 
         $this->source = '';
         $this->length = 0;
@@ -87,11 +105,11 @@ final class Tokenizer
         if ($char === '/') {
             $next = $this->peekChar();
 
-            if ($next === '/' && $this->isSingleLineCommentStart()) {
+            if (! $this->plainCss && $next === '/' && $this->isSingleLineCommentStart()) {
                 return $this->tokenizeSingleLineComment();
             }
 
-            if ($next === '*') {
+            if (! $this->plainCss && $next === '*' && $this->isMultiLineCommentStart()) {
                 return $this->tokenizeMultiLineComment();
             }
 
@@ -146,7 +164,11 @@ final class Tokenizer
         }
 
         if ($char === '+') {
-            return $this->tokenizeNumberOrSingleChar(TokenType::PLUS);
+            if ($this->isDigit($this->peekChar()) && $this->isUnarySignPosition()) {
+                return $this->tokenizeNumber();
+            }
+
+            return $this->makeToken(TokenType::PLUS, '+', 1);
         }
 
         if ($char === '-') {
@@ -156,7 +178,7 @@ final class Tokenizer
                 return $this->tokenizeCssVariable();
             }
 
-            $shouldTokenizeAsNumber = ($next !== '' && (ctype_digit($next) || $next === '.'))
+            $shouldTokenizeAsNumber = ($next !== '' && ($this->isDigit($next) || $next === '.'))
                 && (
                     $lastToken === null
                     || $lastToken->type === TokenType::WHITESPACE
@@ -168,8 +190,8 @@ final class Tokenizer
                 return $this->tokenizeNumber();
             }
 
-            if ($next !== '' && (ctype_alpha($next) || $next === '_' || $next === '\\')) {
-                return $this->tokenizeIdentifier();
+            if ($next !== '' && ($this->isAlpha($next) || $next === '_' || $next === '\\')) {
+                return $this->tokenizeIdentifier($lastToken);
             }
 
             return $this->makeToken(TokenType::MINUS, '-', 1);
@@ -179,16 +201,20 @@ final class Tokenizer
             return $this->tokenizeString();
         }
 
-        if (ctype_digit($char)) {
+        if ($this->isDigit($char)) {
             return $this->tokenizeNumber();
         }
 
-        if (ctype_alpha($char) || $char === '_') {
-            return $this->tokenizeIdentifier();
+        if (ctype_alpha($char) || $char === '_' || $char >= "\x80") {
+            return $this->tokenizeIdentifier($lastToken);
         }
 
         if ($char === '\\') {
-            return $this->tokenizeIdentifier();
+            return $this->tokenizeIdentifier($lastToken);
+        }
+
+        if ($char === '?') {
+            return $this->makeToken(TokenType::IDENTIFIER, '?', 1);
         }
 
         $this->advance();
@@ -200,18 +226,21 @@ final class Tokenizer
     {
         $line   = $this->line;
         $column = $this->column;
+        $start  = $this->position;
 
         // strspn finds the byte length of the whitespace span in one C-level call
         $len = strspn($this->source, " \t\n\r\f\v", $this->position);
+
         $this->advance($len);
 
-        return new Token(TokenType::WHITESPACE, ' ', $line, $column);
+        return new Token(TokenType::WHITESPACE, substr($this->source, $start, $len), $line, $column, $start);
     }
 
     private function tokenizeSingleLineComment(): Token
     {
         $line   = $this->line;
         $column = $this->column;
+        $start  = $this->position;
 
         $this->advance(2); // skip //
 
@@ -227,13 +256,14 @@ final class Tokenizer
         $this->column  += $len;
         $this->position = $end;
 
-        return new Token(TokenType::COMMENT_SILENT, $value, $line, $column);
+        return new Token(TokenType::COMMENT_SILENT, $value, $line, $column, $start);
     }
 
     private function tokenizeMultiLineComment(): Token
     {
         $line   = $this->line;
         $column = $this->column;
+        $start  = $this->position;
 
         $this->advance(2); // skip /*
 
@@ -241,49 +271,95 @@ final class Tokenizer
 
         if ($this->position < $this->length && $this->source[$this->position] === '!') {
             $isPreserved = true;
+
             $this->advance();
         }
 
         $end = strpos($this->source, '*/', $this->position);
         if ($end === false) {
             $value = substr($this->source, $this->position);
+
             $this->advance($this->length - $this->position);
         } else {
             $value = substr($this->source, $this->position, $end - $this->position);
+
             $this->advance($end - $this->position + 2);
         }
 
         $type = $isPreserved ? TokenType::COMMENT_PRESERVED : TokenType::COMMENT_LOUD;
 
-        return new Token($type, $value, $line, $column);
+        return new Token($type, str_replace(["\r\n", "\r", "\f"], "\n", $value), $line, $column, $start);
     }
 
     private function tokenizeHashOrColor(): Token
     {
-        $line   = $this->line;
-        $column = $this->column;
+        $line       = $this->line;
+        $column     = $this->column;
+        $tokenStart = $this->position;
 
         $this->advance(); // skip #
 
         $start = $this->position;
 
         // Try hex chars first
-        while ($this->position < $this->length && ctype_xdigit($this->source[$this->position])) {
+        while ($this->position < $this->length && $this->isHexDigit($this->source[$this->position])) {
             $this->position++;
         }
 
         if ($this->position > $start) {
+            // If hex digits are followed by more name characters, the whole run is one CSS ID
+            // token; the value parser decides color vs plain text.
+            while ($this->position < $this->length) {
+                $c = $this->source[$this->position];
+
+                if ($c === '\\') {
+                    $value = substr($this->source, $start, $this->position - $start);
+
+                    $this->column += strlen($value);
+
+                    while ($this->position < $this->length) {
+                        $char = $this->source[$this->position];
+
+                        if ($char === '\\') {
+                            $value .= $this->tokenizeIdentifierEscape(false);
+
+                            continue;
+                        }
+
+                        if (! $this->isAlnum($char) && $char !== '_' && $char !== '-') {
+                            break;
+                        }
+
+                        $value .= $char;
+
+                        $this->position++;
+                        $this->column++;
+                    }
+
+                    return new Token(TokenType::HASH, $value, $line, $column, $tokenStart);
+                }
+
+                if (! $this->isAlnum($c) && $c !== '_' && $c !== '-') {
+                    break;
+                }
+
+                $this->position++;
+            }
+        }
+
+        if ($this->position > $start) {
             $count = $this->position - $start;
+
             $this->column += $count;
 
-            return new Token(TokenType::HASH, substr($this->source, $start, $count), $line, $column);
+            return new Token(TokenType::HASH, substr($this->source, $start, $count), $line, $column, $tokenStart);
         }
 
         // Fall back to alnum/underscore/hyphen (e.g. #foo, #my-id)
         while ($this->position < $this->length) {
             $c = $this->source[$this->position];
 
-            if (! ctype_alnum($c) && $c !== '_' && $c !== '-') {
+            if (! $this->isAlnum($c) && $c !== '_' && $c !== '-') {
                 break;
             }
 
@@ -291,15 +367,17 @@ final class Tokenizer
         }
 
         $count = $this->position - $start;
+
         $this->column += $count;
 
-        return new Token(TokenType::HASH, substr($this->source, $start, $count), $line, $column);
+        return new Token(TokenType::HASH, substr($this->source, $start, $count), $line, $column, $tokenStart);
     }
 
     private function tokenizeUnicodeRange(): Token
     {
         $line   = $this->line;
         $column = $this->column;
+        $start  = $this->position;
         $value  = $this->source[$this->position];
 
         $this->advance();
@@ -308,27 +386,59 @@ final class Tokenizer
 
         $this->advance();
 
-        while ($this->position < $this->length && $this->isUnicodeRangePartChar($this->source[$this->position])) {
-            $value .= $this->source[$this->position];
+        $sawWildcard = false;
+
+        while ($this->position < $this->length) {
+            $char = $this->source[$this->position];
+
+            if ($char === '?') {
+                $sawWildcard = true;
+            } elseif ($sawWildcard || ! $this->isUnicodeRangePartChar($char)) {
+                break;
+            }
+
+            $value .= $char;
+
             $this->advance();
         }
 
-        return new Token(TokenType::IDENTIFIER, $value, $line, $column);
+        if ($sawWildcard && ($this->source[$this->position] ?? '') === '-' && $this->isDigit($this->peekChar())) {
+            $value .= '-';
+
+            $this->advance();
+
+            while ($this->position < $this->length && $this->isDigit($this->source[$this->position])) {
+                $value .= $this->source[$this->position];
+
+                $this->advance();
+            }
+        }
+
+        if ($sawWildcard && (
+            $this->isAlpha($this->source[$this->position] ?? '')
+            || (($this->source[$this->position] ?? '') === '-' && $this->isAlpha($this->peekChar()))
+        )) {
+            $value .= ' ';
+        }
+
+        return new Token(TokenType::IDENTIFIER, $value, $line, $column, $start);
     }
 
     private function tokenizeString(): Token
     {
         $line   = $this->line;
         $column = $this->column;
+        $start  = $this->position;
         $quote  = $this->source[$this->position];
-        $mask   = '\\' . $quote; // chars that end a plain chunk: backslash or closing quote
+        $mask   = '\\' . $quote . '#';
 
-        $this->advance(); // skip opening quote
+        $this->advance();
 
-        $value = '';
+        $rawStart = $this->position;
+        $rawEnd   = null;
+        $value    = '';
 
         while ($this->position < $this->length) {
-            // Find length of plain (non-special) chunk in one C-level call
             $safe = strcspn($this->source, $mask, $this->position);
 
             if ($safe > 0) {
@@ -337,7 +447,23 @@ final class Tokenizer
                 $this->advance($safe);
             }
 
+            if ($this->position >= $this->length) {
+                break;
+            }
+
             $char = $this->source[$this->position];
+
+            if ($char === '#') {
+                if ($this->peekChar() === '{') {
+                    $value .= $this->readRawInterpolation();
+                } else {
+                    $value .= '#';
+
+                    $this->advance();
+                }
+
+                continue;
+            }
 
             if ($char === '\\') {
                 $escapeResult = $this->parseEscapeSequence();
@@ -348,44 +474,131 @@ final class Tokenizer
                     continue;
                 }
 
-                if (ctype_xdigit($escapeResult[0] ?? '')) {
-                    $decoded = $this->decodeAstralUnicodeEscape($escapeResult);
-                    if ($decoded !== null) {
-                        $value .= $decoded;
-                    } else {
-                        $value .= '\\' . $escapeResult;
+                if ($escapeResult[0] === '\\') {
+                    $escapedChar = $escapeResult[1];
+
+                    // Line continuation: a backslash before a newline produces nothing
+                    if ($escapedChar === "\n") {
+                        continue;
                     }
+
+                    // `\#{` protects the hash from starting an interpolation
+                    $value .= $escapedChar === '#' && $this->peekChar(0) === '{'
+                        ? StringEscapeDecoder::PROTECTED_HASH
+                        : $escapedChar;
 
                     continue;
                 }
 
-                $value .= $escapeResult;
+                $value .= StringEscapeDecoder::hexToUtf8($escapeResult);
 
                 continue;
             }
 
             if ($char === $quote) {
+                $rawEnd = $this->position;
+
                 $this->advance();
 
                 break;
             }
         }
 
-        return new Token(TokenType::STRING, $value, $line, $column);
+        $rawValue = substr($this->source, $rawStart, ($rawEnd ?? $this->length) - $rawStart);
+
+        return new Token(TokenType::STRING, $value, $line, $column, $start, $rawValue);
     }
 
-    private function decodeAstralUnicodeEscape(string $hex): ?string
+    private function readRawInterpolation(): string
     {
-        $codePoint = (int) hexdec($hex);
+        $start = $this->position;
 
-        if ($codePoint < 0x10000 || $codePoint > 0x10FFFF) {
-            return null;
+        $this->advance(2); // skip "#{"
+
+        $depth = 1;
+
+        while ($this->position < $this->length && $depth > 0) {
+            $char = $this->source[$this->position];
+
+            if ($char === '/' && $this->peekChar() === '*') {
+                $commentEnd = strpos($this->source, '*/', $this->position + 2);
+
+                $this->advance($commentEnd === false ? $this->length - $this->position : $commentEnd - $this->position + 2);
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $this->skipQuotedChunk($char);
+
+                continue;
+            }
+
+            if ($char === '\\' && $this->position + 1 < $this->length) {
+                $this->advance(2);
+
+                continue;
+            }
+
+            if ($char === '#') {
+                if ($this->peekChar() === '{') {
+                    $depth++;
+
+                    $this->advance(2);
+
+                    continue;
+                }
+
+                $this->advance();
+
+                continue;
+            }
+
+            if ($char === '{') {
+                $depth++;
+            } elseif ($char === '}') {
+                $depth--;
+            }
+
+            $this->advance();
         }
 
-        return $this->byte(0xF0 | ($codePoint >> 18))
-            . $this->byte(0x80 | (($codePoint >> 12) & 0x3F))
-            . $this->byte(0x80 | (($codePoint >> 6) & 0x3F))
-            . $this->byte(0x80 | ($codePoint & 0x3F));
+        return substr($this->source, $start, $this->position - $start);
+    }
+
+    private function skipQuotedChunk(string $quote): void
+    {
+        $this->advance();
+
+        while ($this->position < $this->length) {
+            $char = $this->source[$this->position];
+
+            if ($char === '\\' && $this->position + 1 < $this->length) {
+                $this->advance(2);
+
+                continue;
+            }
+
+            if ($char === '#') {
+                if ($this->peekChar() === '{') {
+                    $this->readRawInterpolation();
+
+                    continue;
+                }
+
+                $this->advance();
+
+                continue;
+            }
+
+            $isClosing = $char === $quote;
+
+            $this->advance();
+
+            if ($isClosing) {
+                return;
+            }
+        }
     }
 
     private function tokenizeNumber(): Token
@@ -404,15 +617,19 @@ final class Tokenizer
         }
 
         // Integer part
-        while ($this->position < $this->length && ctype_digit($this->source[$this->position])) {
+        while ($this->position < $this->length && $this->isDigit($this->source[$this->position])) {
             $this->position++;
         }
 
-        // Decimal part
-        if ($this->position < $this->length && $this->source[$this->position] === '.') {
+        if (
+            $this->position < $this->length
+            && $this->source[$this->position] === '.'
+            && $this->position + 1 < $this->length
+            && $this->isDigit($this->source[$this->position + 1])
+        ) {
             $this->position++;
 
-            while ($this->position < $this->length && ctype_digit($this->source[$this->position])) {
+            while ($this->position < $this->length && $this->isDigit($this->source[$this->position])) {
                 $this->position++;
             }
         }
@@ -429,25 +646,65 @@ final class Tokenizer
                 }
             }
 
-            while ($this->position < $this->length && ctype_digit($this->source[$this->position])) {
+            while ($this->position < $this->length && $this->isDigit($this->source[$this->position])) {
                 $this->position++;
             }
         }
 
-        // Unit: % or alpha chars (px, em, rem, …)
         if ($this->position < $this->length && $this->source[$this->position] === '%') {
             $this->position++;
         } else {
-            while ($this->position < $this->length && ctype_alpha($this->source[$this->position])) {
+            $hasUnitChars = false;
+
+            while ($this->position < $this->length) {
+                $char = $this->source[$this->position];
+
+                if ($char === '\\') {
+                    $this->position = $this->scanEscapeEnd();
+
+                    $hasUnitChars = true;
+
+                    continue;
+                }
+
+                if ($this->isAlnum($char) || $char === '_') {
+                    $this->position++;
+
+                    $hasUnitChars = true;
+
+                    continue;
+                }
+
+                if ($char !== '-') {
+                    break;
+                }
+
+                $next = $this->position + 1 < $this->length ? $this->source[$this->position + 1] : null;
+
+                if ($next === null || $this->isDigit($next)) {
+                    break;
+                }
+
+                if ($next === '.' && $this->position + 2 < $this->length
+                    && $this->isDigit($this->source[$this->position + 2])) {
+                    break;
+                }
+
+                if (! $hasUnitChars && ($next === '-' || ! $this->isNameStartCodePoint($next))) {
+                    break;
+                }
+
                 $this->position++;
+
+                $hasUnitChars = true;
             }
         }
 
         $count = $this->position - $start;
-        // Numbers never contain newlines — safe to increment column directly
+
         $this->column += $count;
 
-        return new Token(TokenType::NUMBER, substr($this->source, $start, $count), $line, $column);
+        return new Token(TokenType::NUMBER, substr($this->source, $start, $count), $line, $column, $start);
     }
 
     private function isExponentStart(): bool
@@ -456,7 +713,7 @@ final class Tokenizer
             return false;
         }
 
-        $char = $this->source[$this->position]; // direct access instead of peek()
+        $char = $this->source[$this->position];
 
         if ($char !== 'e' && $char !== 'E') {
             return false;
@@ -466,16 +723,16 @@ final class Tokenizer
             return false;
         }
 
-        $next = $this->source[$this->position + 1]; // direct access instead of peek(1)
+        $next = $this->source[$this->position + 1];
 
-        if (ctype_digit($next)) {
+        if ($this->isDigit($next)) {
             return true;
         }
 
         if (
             ($next === '+' || $next === '-')
             && $this->position + 2 < $this->length
-            && ctype_digit($this->source[$this->position + 2])
+            && $this->isDigit($this->source[$this->position + 2])
         ) {
             return true;
         }
@@ -483,18 +740,101 @@ final class Tokenizer
         return false;
     }
 
-    private function tokenizeIdentifier(): Token
+    private function scanEscapeEnd(): int
+    {
+        if ($this->position + 1 >= $this->length) {
+            return $this->position + 1;
+        }
+
+        $after = $this->source[$this->position + 1];
+
+        if ($this->isHexDigit($after)) {
+            $end = $this->position + 1;
+
+            $hexLength = 0;
+
+            while ($end < $this->length && $hexLength < 6 && $this->isHexDigit($this->source[$end])) {
+                $end++;
+
+                $hexLength++;
+            }
+
+            if ($end < $this->length && $this->isSpace($this->source[$end])) {
+                $end++;
+            }
+
+            return $end;
+        }
+
+        return $this->position + 1 + $this->utf8SequenceWidthAt($this->position + 1);
+    }
+
+    private function isNameStartCodePoint(string $char): bool
+    {
+        if ($char >= "\x80") {
+            return true;
+        }
+
+        return ctype_alpha($char) || $char === '_' || $char === '-';
+    }
+
+    private function isDigit(string $char): bool
+    {
+        return $char !== '' && $char < "\x80" && ctype_digit($char);
+    }
+
+    private function isAlpha(string $char): bool
+    {
+        return $char !== '' && $char < "\x80" && ctype_alpha($char);
+    }
+
+    private function isAlnum(string $char): bool
+    {
+        return $char !== '' && $char < "\x80" && ctype_alnum($char);
+    }
+
+    private function isSpace(string $char): bool
+    {
+        return $char !== '' && $char < "\x80" && ctype_space($char);
+    }
+
+    private function isHexDigit(string $char): bool
+    {
+        return $char !== '' && $char < "\x80" && ctype_xdigit($char);
+    }
+
+    private function utf8SequenceWidthAt(int $position): int
+    {
+        $byte = ord($this->source[$position]);
+
+        $width = match (true) {
+            $byte >= 0xF0 => 4,
+            $byte >= 0xE0 => 3,
+            $byte >= 0xC2 => 2,
+            default       => 1,
+        };
+
+        return min($width, $this->length - $position);
+    }
+
+    private function tokenizeIdentifier(?Token $lastToken = null): Token
     {
         $line   = $this->line;
         $column = $this->column;
+        $start  = $this->position;
         $value  = '';
 
         while ($this->position < $this->length) {
-            // Scan the plain ASCII identifier chars in a tight inner loop
             $scanStart = $this->position;
 
             while ($this->position < $this->length) {
                 $char = $this->source[$this->position];
+
+                if ($char >= "\x80") {
+                    $this->position += $this->utf8SequenceWidth();
+
+                    continue;
+                }
 
                 if (! ctype_alnum($char) && $char !== '_' && $char !== '-') {
                     break;
@@ -506,26 +846,27 @@ final class Tokenizer
             if ($this->position > $scanStart) {
                 $count = $this->position - $scanStart;
 
-                // Identifier chars never contain newlines — direct column update
                 $this->column += $count;
 
                 $value .= substr($this->source, $scanStart, $count);
             }
 
-            // Stop if no backslash escape follows
             if ($this->position >= $this->length || $this->source[$this->position] !== '\\') {
                 break;
             }
 
-            $normalizedEscape = $this->tokenizeIdentifierEscape();
+            $isNameStartEscape = $value === ''
+                && ($lastToken === null || $lastToken->type !== TokenType::RBRACE);
+
+            $normalizedEscape = $this->tokenizeIdentifierEscape($isNameStartEscape);
 
             $value .= $normalizedEscape;
         }
 
-        return new Token(TokenType::IDENTIFIER, $value, $line, $column);
+        return new Token(TokenType::IDENTIFIER, $value, $line, $column, $start);
     }
 
-    private function tokenizeIdentifierEscape(): string
+    private function tokenizeIdentifierEscape(bool $isFirst): string
     {
         $escapeResult = $this->parseEscapeSequence();
 
@@ -534,10 +875,40 @@ final class Tokenizer
         }
 
         if (ctype_xdigit($escapeResult[0] ?? '')) {
-            return $this->normalizeIdentifierEscapedCodePoint((int) hexdec($escapeResult));
+            $codePoint = (int) hexdec($escapeResult);
+
+            if ($isFirst && $codePoint >= 0x30 && $codePoint <= 0x39) {
+                return '\\' . strtolower(dechex($codePoint)) . ' ';
+            }
+
+            if ($isFirst && $codePoint === 0x2D) {
+                return '\\-';
+            }
+
+            return $this->normalizeIdentifierEscapedCodePoint($codePoint);
         }
 
-        return $this->normalizeIdentifierEscapedCodePoint(ord(substr($escapeResult, 1)));
+        $codePoint = $this->decodeUtf8CodePoint(substr($escapeResult, 1));
+
+        if ($isFirst && $codePoint === 0x2D) {
+            return '\\-';
+        }
+
+        return $this->normalizeIdentifierEscapedCodePoint($codePoint);
+    }
+
+    private function utf8SequenceWidth(): int
+    {
+        $byte = ord($this->source[$this->position]);
+
+        $width = match (true) {
+            $byte >= 0xF0 => 4,
+            $byte >= 0xE0 => 3,
+            $byte >= 0xC2 => 2,
+            default       => 1,
+        };
+
+        return min($width, $this->length - $this->position);
     }
 
     private function parseEscapeSequence(): string
@@ -548,16 +919,16 @@ final class Tokenizer
             return '\\';
         }
 
-        if (ctype_xdigit($this->source[$this->position])) {
+        if ($this->isHexDigit($this->source[$this->position])) {
             $hex = '';
 
-            while ($this->position < $this->length && strlen($hex) < 6 && ctype_xdigit($this->source[$this->position])) {
+            while ($this->position < $this->length && strlen($hex) < 6 && $this->isHexDigit($this->source[$this->position])) {
                 $hex .= $this->source[$this->position];
 
                 $this->advance();
             }
 
-            if ($this->position < $this->length && ctype_space($this->source[$this->position])) {
+            if ($this->position < $this->length && $this->isSpace($this->source[$this->position])) {
                 $this->advance();
             }
 
@@ -565,10 +936,25 @@ final class Tokenizer
         }
 
         $escapedChar = $this->source[$this->position];
+        $width       = $this->utf8SequenceWidth();
+        $escapedChar = substr($this->source, $this->position, $width);
 
-        $this->advance();
+        $this->advance($width);
 
         return '\\' . $escapedChar;
+    }
+
+    private function decodeUtf8CodePoint(string $value): int
+    {
+        $bytes = array_map(ord(...), str_split($value));
+
+        return match (count($bytes)) {
+            1       => $bytes[0],
+            2       => (($bytes[0] & 0x1F) << 6) | ($bytes[1] & 0x3F),
+            3       => (($bytes[0] & 0x0F) << 12) | (($bytes[1] & 0x3F) << 6) | ($bytes[2] & 0x3F),
+            4       => (($bytes[0] & 0x07) << 18) | (($bytes[1] & 0x3F) << 12) | (($bytes[2] & 0x3F) << 6) | ($bytes[3] & 0x3F),
+            default => 0,
+        };
     }
 
     private function normalizeIdentifierEscapedCodePoint(int $codePoint): string
@@ -641,7 +1027,7 @@ final class Tokenizer
         while ($this->position < $this->length) {
             $char = $this->source[$this->position];
 
-            if ($char === ')' || $char === ',' || $char === ';' || $char === '}' || ctype_space($char)) {
+            if ($char === ')' || $char === '(' || $char === '[' || $char === ']' || $char === ',' || $char === ';' || $char === '}' || $char === '{' || $char === '#' || $this->isSpace($char)) {
                 break;
             }
 
@@ -650,15 +1036,14 @@ final class Tokenizer
 
         $count = $this->position - $start;
 
-        // CSS variable names/values never contain newlines in this context
         $this->column += $count;
 
-        return new Token(TokenType::CSS_VARIABLE, substr($this->source, $start, $count), $line, $column);
+        return new Token(TokenType::CSS_VARIABLE, substr($this->source, $start, $count), $line, $column, $start);
     }
 
     private function makeToken(TokenType $type, string $value, int $length): Token
     {
-        $token = new Token($type, $value, $this->line, $this->column);
+        $token = new Token($type, $value, $this->line, $this->column, $this->position);
 
         $this->advance($length);
 
@@ -681,7 +1066,7 @@ final class Tokenizer
 
     private function tokenizeNumberOrSingleChar(TokenType $singleType): Token
     {
-        if (ctype_digit($this->peekChar())) {
+        if ($this->isDigit($this->peekChar())) {
             return $this->tokenizeNumber();
         }
 
@@ -707,6 +1092,8 @@ final class Tokenizer
             '*'     => $this->makeToken(TokenType::STAR, '*', 1),
             '%'     => $this->makeToken(TokenType::PERCENT, '%', 1),
             '~'     => $this->makeToken(TokenType::TILDE, '~', 1),
+            '|'     => $this->makeToken(TokenType::PIPE, '|', 1),
+            '^'     => $this->makeToken(TokenType::CARET, '^', 1),
             default => null,
         };
     }
@@ -731,7 +1118,6 @@ final class Tokenizer
         }
 
         if ($count === 1) {
-            // Fast path for single-char advance (most common case via makeToken)
             if ($this->position < $this->length) {
                 if ($this->source[$this->position] === "\n") {
                     $this->line++;
@@ -746,7 +1132,6 @@ final class Tokenizer
             return;
         }
 
-        // Bulk path: count newlines in the span with a single C-level call
         $end = min($this->position + $count, $this->length);
         $len = $end - $this->position;
 
@@ -766,21 +1151,77 @@ final class Tokenizer
         $this->position = $end;
     }
 
+    private function isUnarySignPosition(): bool
+    {
+        $i = $this->position - 1;
+
+        while ($i >= 0) {
+            $ch = $this->source[$i];
+
+            if ($ch === ' ' || $ch === "\t" || $ch === "\n" || $ch === "\r" || $ch === "\f" || $ch === "\v") {
+                --$i;
+
+                continue;
+            }
+
+            if ($this->isAlnum($ch) || $ch === '_' || $ch === ')' || $ch === ']' || $ch === '%' || $ch === '}') {
+                return false;
+            }
+
+            return true;
+        }
+
+        return true;
+    }
+
     private function isSingleLineCommentStart(): bool
     {
         if ($this->position === 0) {
             return true;
         }
 
-        if ($this->source[$this->position - 1] !== ':') {
+        $prev = $this->source[$this->position - 1];
+
+        if ($prev === '(') {
+            return false;
+        }
+
+        if ($prev === '}' || $prev === '/' || $prev === '_' || $this->isAlnum($prev)) {
+            return false;
+        }
+
+        if ($prev !== ':') {
             return true;
         }
 
-        return ! ctype_alnum($this->source[$this->position - 2]);
+        if ($this->position >= 2) {
+            $beforeColon = $this->source[$this->position - 2];
+
+            if ($this->isAlnum($beforeColon) || in_array($beforeColon, ['}', '"', "'"], true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function isMultiLineCommentStart(): bool
+    {
+        if ($this->position === 0) {
+            return true;
+        }
+
+        $prev = $this->source[$this->position - 1];
+
+        if ($prev === '(') {
+            return false;
+        }
+
+        return true;
     }
 
     private function isUnicodeRangePartChar(string $char): bool
     {
-        return $char === '?' || $char === '-' || ctype_xdigit($char);
+        return $char === '?' || $char === '-' || $this->isHexDigit($char);
     }
 }

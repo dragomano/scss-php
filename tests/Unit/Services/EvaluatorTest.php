@@ -37,7 +37,7 @@ use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Style;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('evaluates variable references and resolves spread arguments', function () {
     $runtime = RuntimeFactory::createRuntime();
@@ -47,10 +47,13 @@ it('evaluates variable references and resolves spread arguments', function () {
 
     $resolved = $runtime->evaluation()->evaluateValue(new VariableReferenceNode('value'), $env);
 
-    [$positional, $named] = $runtime->evaluation()->resolveCallArguments([
+    $callArguments = $runtime->evaluation()->resolveCallArguments([
         new SpreadArgumentNode(new ListNode([new StringNode('a'), new StringNode('b')], 'comma')),
         new NamedArgumentNode('width', new NumberNode(10, 'px')),
     ], $env);
+
+    $positional = $callArguments->positional;
+    $named      = $callArguments->named;
 
     expect($resolved)->toBeInstanceOf(NumberNode::class);
 
@@ -515,7 +518,7 @@ it('compresses fallback hsl() functions to hex colors in compressed mode', funct
         throw new RuntimeException('Expected result to be ColorNode.');
     }
 
-    expect($result->value)->toBe('#f00');
+    expect($result->value)->toBe('#ff0000');
 });
 
 it('returns unchanged nodes for unsupported evaluateValue inputs', function () {
@@ -551,6 +554,8 @@ it('returns null when reparsing formatted declaration expressions fails or does 
     $badParser = new class implements ParserInterface {
         public function setTrackSourceLocations(bool $track): void {}
 
+        public function setPlainCss(bool $plainCss): void {}
+
         public function parse(string $source): RootNode
         {
             throw new SassErrorException('bad parse');
@@ -572,6 +577,8 @@ it('returns null when reparsing formatted declaration expressions fails or does 
 
     $nonDeclarationParser = new class implements ParserInterface {
         public function setTrackSourceLocations(bool $track): void {}
+
+        public function setPlainCss(bool $plainCss): void {}
 
         public function parse(string $source): RootNode
         {
@@ -601,6 +608,8 @@ it('returns null when reparsing formatted declaration expressions fails or does 
 it('returns null when reparsed formatted declarations do not start with a rule node', function () {
     $parser = new class implements ParserInterface {
         public function setTrackSourceLocations(bool $track): void {}
+
+        public function setPlainCss(bool $plainCss): void {}
 
         public function parse(string $source): RootNode
         {
@@ -760,6 +769,8 @@ it('returns null when reparsed formatted declarations do not yield a declaration
     $parser = new class implements ParserInterface {
         public function setTrackSourceLocations(bool $track): void {}
 
+        public function setPlainCss(bool $plainCss): void {}
+
         public function parse(string $source): RootNode
         {
             return new RootNode([
@@ -780,4 +791,67 @@ it('returns null when reparsed formatted declarations do not yield a declaration
         new StringNode('(10px / 2)'),
         new Environment(),
     ))->toBeNull();
+});
+
+it('evaluates slash triples as division for non-compact declaration properties', function () {
+    $runtime    = RuntimeFactory::createRuntime();
+    $env        = new Environment();
+    $slashValue = new ListNode(
+        [new NumberNode(6, 'px'), new StringNode('/'), new NumberNode(2, 'px')],
+        '/',
+    );
+
+    $result = $runtime->evaluation()->evaluateDeclarationValue($slashValue, 'padding', $env);
+
+    expect($result)->toBeInstanceOf(NumberNode::class)
+        ->and($result->value)->toBe(3.0);
+});
+
+it('keeps the evaluated list when incompatible units are used in a slash mod expression', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+    $value   = new ListNode(
+        [new NumberNode(10, 's'), new StringNode('%', true), new NumberNode(2, 'px')],
+        'space',
+    );
+
+    $result = $runtime->evaluation()->evaluateValueWithSlashDivision($value, $env);
+
+    expect($result)->toBeInstanceOf(ListNode::class);
+});
+
+it('leaves multi slash chains with non numeric operands un-divided', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+
+    $env->getCurrentScope()->setVariable('x', new StringNode('red'));
+
+    $chain = new ListNode(
+        [
+            new VariableReferenceNode('x'),
+            new StringNode('/'),
+            new NumberNode(1),
+            new StringNode('/'),
+            new NumberNode(3),
+            new StringNode('/'),
+            new NumberNode(5),
+        ],
+        'space',
+    );
+
+    $result = $runtime->evaluation()->evaluateDeclarationValue($chain, 'flex', $env);
+
+    expect($result)->toBeInstanceOf(ListNode::class)
+        ->and($result->items[0])->toBeInstanceOf(StringNode::class)
+        ->and($result->items[0]->value)->toContain('red');
+});
+
+it('preserves hwb calls with non list arguments in formatting', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $env     = new Environment();
+
+    expect($runtime->evaluation()->format(
+        new FunctionNode('hwb', [new StringNode('red')]),
+        $env,
+    ))->toBe('hwb(red)');
 });

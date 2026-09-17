@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Utils;
 
+use function count;
 use function ctype_space;
 use function ctype_xdigit;
 use function implode;
 use function in_array;
 use function ltrim;
 use function max;
+use function preg_match;
 use function str_contains;
 use function str_replace;
 use function str_starts_with;
@@ -21,12 +23,41 @@ use function trim;
 
 final readonly class CompressedCssFormatter
 {
-    public function __construct() {}
+    private const BOX_SHORTHAND_PROPERTIES = [
+        'margin',
+        'padding',
+        'border-width',
+        'border-style',
+        'border-color',
+        'border-radius',
+        'inset',
+        'scroll-margin',
+        'scroll-padding',
+    ];
+
+    private const BOX_TWO_SIDED_PROPERTIES = [
+        'margin-block',
+        'margin-inline',
+        'padding-block',
+        'padding-inline',
+        'inset-block',
+        'inset-inline',
+        'scroll-margin-block',
+        'scroll-margin-inline',
+        'scroll-padding-block',
+        'scroll-padding-inline',
+    ];
+
+    private const ZERO_UNITS = [
+        'cm', 'em', 'in', 'mm', 'pc', 'pt', 'px', 'rem', 'vmax', 'vmin',
+    ];
 
     public function format(string $css): string
     {
         $css = $this->removeRegularComments($css);
         $css = $this->compactCss($css);
+        $css = $this->collapseBoxShorthandDeclarations($css);
+        $css = $this->stripZeroUnits($css);
         $css = $this->optimizeCompressedLiterals($css);
 
         return trim($css);
@@ -231,6 +262,262 @@ final readonly class CompressedCssFormatter
             || in_array($char, ['_', '-'], true);
     }
 
+    private function collapseBoxShorthandDeclarations(string $css): string
+    {
+        $parts            = [];
+        $length           = strlen($css);
+        $index            = 0;
+        $inString         = false;
+        $quote            = '';
+        $escaped          = false;
+        $atDeclarationPos = false;
+
+        while ($index < $length) {
+            $char = $css[$index];
+
+            if ($inString) {
+                $parts[] = $char;
+
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === $quote) {
+                    $inString = false;
+                    $quote    = '';
+                }
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $inString = true;
+                $quote    = $char;
+                $parts[]  = $char;
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '{' || $char === ';') {
+                $atDeclarationPos = true;
+
+                $parts[] = $char;
+
+                $index++;
+
+                continue;
+            }
+
+            if (
+                $atDeclarationPos
+                && $this->isIdentifierChar($char)
+                && ($collapsed = $this->collapseBoxShorthandAt($css, $index)) !== null
+            ) {
+                [$replacement, $index] = $collapsed;
+
+                $parts[] = $replacement;
+
+                continue;
+            }
+
+            if (! ctype_space($char)) {
+                $atDeclarationPos = false;
+            }
+
+            $parts[] = $char;
+
+            $index++;
+        }
+
+        return implode('', $parts);
+    }
+
+    /**
+     * @return array{string, int}|null
+     */
+    private function collapseBoxShorthandAt(string $css, int $start): ?array
+    {
+        $length = strlen($css);
+        $index  = $start;
+
+        while ($index < $length && $this->isIdentifierChar($css[$index])) {
+            $index++;
+        }
+
+        $name = substr($css, $start, $index - $start);
+
+        if ($index >= $length || $css[$index] !== ':') {
+            return null;
+        }
+
+        $lowerName = strtolower($name);
+
+        $isTwoSided = in_array($lowerName, self::BOX_TWO_SIDED_PROPERTIES, true);
+
+        if (! $isTwoSided && ! in_array($lowerName, self::BOX_SHORTHAND_PROPERTIES, true)) {
+            return null;
+        }
+
+        $index++;
+
+        $components = [];
+        $current    = '';
+        $parenDepth = 0;
+        $inString   = false;
+        $quote      = '';
+        $escaped    = false;
+
+        while ($index < $length) {
+            $char = $css[$index];
+
+            if ($inString) {
+                $current .= $char;
+
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === $quote) {
+                    $inString = false;
+                }
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $inString = true;
+                $quote    = $char;
+                $current .= $char;
+
+                $index++;
+
+                continue;
+            }
+
+            if ($char === '(') {
+                $parenDepth++;
+            } elseif ($char === ')') {
+                $parenDepth = max(0, $parenDepth - 1);
+            } elseif ($parenDepth === 0) {
+                if (ctype_space($char)) {
+                    if ($current !== '') {
+                        $components[] = $current;
+                        $current      = '';
+                    }
+
+                    $index++;
+
+                    continue;
+                }
+
+                if ($char === ';' || $char === '}' || $char === '!') {
+                    break;
+                }
+            }
+
+            $current .= $char;
+
+            $index++;
+        }
+
+        if ($current !== '') {
+            $components[] = $current;
+        }
+
+        $collapsed = $this->collapseBoxComponents($components, $isTwoSided);
+
+        if ($collapsed === null) {
+            return null;
+        }
+
+        return [$name . ':' . implode(' ', $collapsed), $index];
+    }
+
+    /**
+     * @param list<string> $components
+     *
+     * @return list<string>|null
+     */
+    private function collapseBoxComponents(array $components, bool $twoSided): ?array
+    {
+        if (in_array('/', $components, true)) {
+            return null;
+        }
+
+        if ($twoSided) {
+            if (count($components) === 2 && $components[0] === $components[1]) {
+                return [$components[0]];
+            }
+
+            return null;
+        }
+
+        return match (count($components)) {
+            4       => $this->collapseFourComponents($components),
+            3       => $this->collapseThreeComponents($components),
+            2       => $components[0] === $components[1] ? [$components[0]] : null,
+            default => null,
+        };
+    }
+
+    /**
+     * @param list<string> $components
+     *
+     * @return list<string>|null
+     */
+    private function collapseFourComponents(array $components): ?array
+    {
+        if (
+            $components[0] === $components[1]
+            && $components[1] === $components[2]
+            && $components[2] === $components[3]
+        ) {
+            return [$components[0]];
+        }
+
+        if ($components[0] === $components[2] && $components[1] === $components[3]) {
+            return [$components[0], $components[1]];
+        }
+
+        if ($components[1] === $components[3]) {
+            return [$components[0], $components[1], $components[2]];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param list<string> $components
+     *
+     * @return list<string>|null
+     */
+    private function collapseThreeComponents(array $components): ?array
+    {
+        if ($components[2] !== $components[0]) {
+            return null;
+        }
+
+        if ($components[1] === $components[0]) {
+            return [$components[0]];
+        }
+
+        return [$components[0], $components[1]];
+    }
+
+    private function isIdentifierChar(string $char): bool
+    {
+        return ($char >= 'a' && $char <= 'z')
+            || ($char >= 'A' && $char <= 'Z')
+            || ($char >= '0' && $char <= '9')
+            || in_array($char, ['-', '_'], true);
+    }
+
     private function shortenHex(string $candidate): string
     {
         $hex = '#' . strtolower($candidate);
@@ -245,6 +532,79 @@ final readonly class CompressedCssFormatter
         }
 
         return $hex;
+    }
+
+    private function stripZeroUnits(string $css): string
+    {
+        $parts    = [];
+        $length   = strlen($css);
+        $inString = false;
+        $quote    = '';
+        $i        = 0;
+
+        while ($i < $length) {
+            $char = $css[$i];
+
+            if (! $inString && ($char === '"' || $char === "'")) {
+                $inString = true;
+                $quote    = $char;
+                $parts[]  = $char;
+
+                $i++;
+
+                continue;
+            }
+
+            if ($inString) {
+                if ($char === $quote && ($i === 0 || $css[$i - 1] !== '\\')) {
+                    $inString = false;
+                }
+
+                $parts[] = $char;
+
+                $i++;
+
+                continue;
+            }
+
+            if ($char === '0' && $i + 1 < $length) {
+                $matched = false;
+
+                if ($i > 0 && preg_match('/[a-zA-Z0-9_-]/', $css[$i - 1])) {
+                    $parts[] = $char;
+
+                    $i++;
+
+                    continue;
+                }
+
+                foreach (self::ZERO_UNITS as $unit) {
+                    $unitLen = strlen($unit);
+
+                    if (substr($css, $i + 1, $unitLen) === $unit) {
+                        $after = $i + 1 + $unitLen;
+
+                        if ($after >= $length || ! preg_match('/[a-zA-Z0-9_-]/', $css[$after])) {
+                            $parts[] = '0';
+                            $i       = $after;
+                            $matched = true;
+
+                            break;
+                        }
+                    }
+                }
+
+                if ($matched) {
+                    continue;
+                }
+            }
+
+            $parts[] = $char;
+
+            $i++;
+        }
+
+        return $parts !== [] ? implode('', $parts) : $css;
     }
 
     private function optimizeCompressedLiterals(string $css): string

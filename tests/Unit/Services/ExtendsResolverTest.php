@@ -29,8 +29,10 @@ use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\EachLoopBinderInterface;
 use Bugo\SCSS\Services\ExtendsResolver;
 use Bugo\SCSS\Services\FunctionConditionEvaluatorInterface;
+use Bugo\SCSS\Services\LoopIterator;
 use Bugo\SCSS\Services\Text;
 use Bugo\SCSS\Services\VariableDeclarationApplierInterface;
+use Bugo\SCSS\Utils\SelectorComponent;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 
 describe('ExtendsResolver', function () {
@@ -42,6 +44,8 @@ describe('ExtendsResolver', function () {
 
         $parser = new class implements ParserInterface {
             public function setTrackSourceLocations(bool $track): void {}
+
+            public function setPlainCss(bool $plainCss): void {}
 
             public function parse(string $source): RootNode
             {
@@ -104,7 +108,7 @@ describe('ExtendsResolver', function () {
                 new class ($this) implements FunctionConditionEvaluatorInterface {
                     public function __construct(private readonly object $testCase) {}
 
-                    public function evaluate(string $condition, Environment $env): bool
+                    public function evaluate(string $condition, Environment $env, ?int $line = null): bool
                     {
                         return $this->testCase->conditionResults[$condition] ?? false;
                     }
@@ -143,6 +147,7 @@ describe('ExtendsResolver', function () {
                         return ($this->format)($node, $env);
                     }
                 },
+                new LoopIterator(),
             );
         };
 
@@ -186,9 +191,11 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->pendingExtends)->toBe([
             [
-                'target'  => '%picked-target',
-                'source'  => '.picked',
-                'context' => '',
+                'target'   => '%picked-target',
+                'source'   => '.picked',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
             ],
         ]);
     });
@@ -211,9 +218,11 @@ describe('ExtendsResolver', function () {
             ->and($definition->line())->toBe(12)
             ->and($this->ctx->outputState->extends->pendingExtends)->toBe([
                 [
-                    'target'  => '%picked-target',
-                    'source'  => '.picked',
-                    'context' => '',
+                    'target'   => '%picked-target',
+                    'source'   => '.picked',
+                    'context'  => '',
+                    'optional' => false,
+                    'priority' => 1,
                 ],
             ]);
     });
@@ -230,9 +239,11 @@ describe('ExtendsResolver', function () {
         expect($this->ctx->outputState->extends->selectorContexts)->toHaveKey('.parent:hover')
             ->and($this->ctx->outputState->extends->pendingExtends)->toBe([
                 [
-                    'target'  => '%hover-target',
-                    'source'  => '.parent:hover',
-                    'context' => '',
+                    'target'   => '%hover-target',
+                    'source'   => '.parent:hover',
+                    'context'  => '',
+                    'optional' => false,
+                    'priority' => 1,
                 ],
             ]);
     });
@@ -263,14 +274,18 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->pendingExtends)->toBe([
             [
-                'target'  => '%grid-target',
-                'source'  => '.grid',
-                'context' => '@supports (display: grid)',
+                'target'   => '%grid-target',
+                'source'   => '.grid',
+                'context'  => '@supports (display: grid)',
+                'optional' => false,
+                'priority' => 1,
             ],
             [
-                'target'  => '%screen-target',
-                'source'  => '.screen',
-                'context' => '@media screen',
+                'target'   => '%screen-target',
+                'source'   => '.screen',
+                'context'  => '@media screen',
+                'optional' => false,
+                'priority' => 2,
             ],
         ]);
     });
@@ -284,6 +299,8 @@ describe('ExtendsResolver', function () {
             new Text(
                 new class implements ParserInterface {
                     public function setTrackSourceLocations(bool $track): void {}
+
+                    public function setPlainCss(bool $plainCss): void {}
 
                     public function parse(string $source): RootNode
                     {
@@ -316,7 +333,7 @@ describe('ExtendsResolver', function () {
                 }
             },
             new class implements FunctionConditionEvaluatorInterface {
-                public function evaluate(string $condition, Environment $env): bool
+                public function evaluate(string $condition, Environment $env, ?int $line = null): bool
                 {
                     return false;
                 }
@@ -349,6 +366,7 @@ describe('ExtendsResolver', function () {
                     return $node instanceof StringNode ? $node->value : '';
                 }
             },
+            new LoopIterator(),
         );
 
         $resolver->collectExtends(
@@ -361,14 +379,18 @@ describe('ExtendsResolver', function () {
         expect($state->assigned)->toBe(['first', 'second'])
             ->and($this->ctx->outputState->extends->pendingExtends)->toBe([
                 [
-                    'target'  => '%item-target',
-                    'source'  => '.item',
-                    'context' => '',
+                    'target'   => '%item-target',
+                    'source'   => '.item',
+                    'context'  => '',
+                    'optional' => false,
+                    'priority' => 1,
                 ],
                 [
-                    'target'  => '%item-target',
-                    'source'  => '.item',
-                    'context' => '',
+                    'target'   => '%item-target',
+                    'source'   => '.item',
+                    'context'  => '',
+                    'optional' => false,
+                    'priority' => 2,
                 ],
             ]);
     });
@@ -386,9 +408,11 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->pendingExtends)->toBe([
             [
-                'target'  => '%root-target',
-                'source'  => '.rooted',
-                'context' => '',
+                'target'   => '%root-target',
+                'source'   => '.rooted',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
             ],
         ]);
     });
@@ -430,9 +454,11 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->pendingExtends)->toBe([
             [
-                'target'  => '%target',
-                'source'  => '.source',
-                'context' => '',
+                'target'   => '%target',
+                'source'   => '.source',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
             ],
         ]);
     });
@@ -476,7 +502,7 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->selectorContexts)->toHaveKey('.foo')
             ->and($this->ctx->outputState->extends->pendingExtends)->toHaveCount(1)
-            ->and($this->ctx->outputState->extends->pendingExtends[0]['source'])->toBe('.foo,');
+            ->and($this->ctx->outputState->extends->pendingExtends[0]['source'])->toBe('.foo');
     });
 
     it('skips empty parts in applyExtendsToSelector', function () {
@@ -527,6 +553,113 @@ describe('ExtendsResolver', function () {
             ->and(substr_count($result, '.d'))->toBe(1);
     });
 
+    it('collects extends from each and while loops nested inside rules', function () {
+        $env = new Environment();
+        $env->getCurrentScope()->setVariableLocal('__extend_directive_context', new StringNode(''));
+
+        $resolver = new ExtendsResolver(
+            $this->ctx,
+            new Text(
+                new class implements ParserInterface {
+                    public function setTrackSourceLocations(bool $track): void {}
+
+                    public function setPlainCss(bool $plainCss): void {}
+
+                    public function parse(string $source): RootNode
+                    {
+                        return new RootNode();
+                    }
+
+                    public function parseInlineExpression(string $expr): AstNode
+                    {
+                        return new StringNode($expr);
+                    }
+                },
+                new class implements AstValueEvaluatorInterface {
+                    public function evaluate(AstNode $node, Environment $env): AstNode
+                    {
+                        return new NumberNode(2);
+                    }
+                },
+                new class implements AstValueFormatterInterface {
+                    public function format(AstNode $node, Environment $env): string
+                    {
+                        return $node instanceof StringNode ? $node->value : '';
+                    }
+                },
+            ),
+            new SelectorTokenizer(),
+            new class implements AstValueEvaluatorInterface {
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    return $node;
+                }
+            },
+            new class implements FunctionConditionEvaluatorInterface {
+                public function evaluate(string $condition, Environment $env, ?int $line = null): bool
+                {
+                    if ($condition === 'loop') {
+                        $ran = isset($GLOBALS['__loopRan']);
+
+                        $GLOBALS['__loopRan'] = true;
+
+                        return ! $ran;
+                    }
+
+                    return false;
+                }
+            },
+            new class implements VariableDeclarationApplierInterface {
+                public function apply(AstNode $node, Environment $env): bool
+                {
+                    return false;
+                }
+            },
+            new class implements EachLoopBinderInterface {
+                public function items(AstNode $iterableValue): array
+                {
+                    return [new NumberNode(1), new NumberNode(2)];
+                }
+
+                public function assign(array $variables, AstNode $item, Environment $env): void {}
+            },
+            new class implements AstValueFormatterInterface {
+                public function format(AstNode $node, Environment $env): string
+                {
+                    return $node instanceof StringNode ? $node->value : '';
+                }
+            },
+            new LoopIterator(),
+        );
+
+        $resolver->collectExtends(
+            new RuleNode('.looping', [
+                new ExtendNode('%target'),
+                new EachNode(['item'], new StringNode('items'), [
+                    new ExtendNode('%each-target'),
+                ]),
+                new ForNode('i', new NumberNode(1), new NumberNode(2), true, [
+                    new ExtendNode('%for-target'),
+                ]),
+                new WhileNode('loop', [
+                    new ExtendNode('%while-target'),
+                ]),
+            ]),
+            $env,
+        );
+
+        $targets = array_column($this->ctx->outputState->extends->pendingExtends, 'target');
+
+        expect($targets)->toBe([
+            '%target',
+            '%each-target',
+            '%each-target',
+            '%for-target',
+            '%for-target',
+            '%while-target',
+        ]);
+    });
+
     it('collects extends from the matching if body or else body', function () {
         $env = new Environment();
 
@@ -555,15 +688,480 @@ describe('ExtendsResolver', function () {
 
         expect($this->ctx->outputState->extends->pendingExtends)->toBe([
             [
-                'target'  => '%if-target',
-                'source'  => '.if-body',
-                'context' => '',
+                'target'   => '%if-target',
+                'source'   => '.if-body',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
             ],
             [
-                'target'  => '%else-target',
-                'source'  => '.else-body',
-                'context' => '',
+                'target'   => '%else-target',
+                'source'   => '.else-body',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 2,
             ],
         ]);
+    });
+
+    it('applies pending extends on finalize and skips optional missing private placeholders', function () {
+        $state = $this->ctx->outputState->extends;
+
+        $state->pendingExtends = [
+            [
+                'target'   => '%_absent-secret',
+                'source'   => '.src',
+                'context'  => '',
+                'optional' => true,
+                'priority' => 1,
+            ],
+            [
+                'target'   => '.target',
+                'source'   => '.src',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 2,
+            ],
+        ];
+
+        $state->selectorContexts['.target'] = ['' => true];
+
+        $this->resolver->finalizeCollectedExtends();
+
+        expect($state->extendMap)->toBe([
+            '.target' => [
+                ['source' => '.src', 'priority' => 2],
+            ],
+        ]);
+    });
+
+    it('rejects pending extends that cross media query contexts', function () {
+        $state = $this->ctx->outputState->extends;
+
+        $state->pendingExtends[] = [
+            'target'   => '.target',
+            'source'   => '.src',
+            'context'  => '',
+            'optional' => false,
+            'priority' => 1,
+        ];
+
+        $state->selectorContexts['.target'] = ['@media screen' => true];
+
+        expect(fn() => $this->resolver->finalizeCollectedExtends())
+            ->toThrow(SassErrorException::class, 'You may not @extend selectors across media queries.');
+    });
+
+    it('drops foreign extensions whose target is a private placeholder', function () {
+        $foreign = ($this->createResolver)(new SelectorTokenizer());
+
+        $foreign->collectExtends(
+            new RootNode([
+                new RuleNode('%_secret', [new StringNode('x')]),
+                new RuleNode('.ext', [new ExtendNode('%_secret')]),
+            ]),
+            new Environment(),
+        );
+
+        $foreignStore = $foreign->buildExtensionStore()['store'];
+
+        expect($foreignStore['extensions'])->not->toBeEmpty();
+
+        $store = ['extensions' => [], 'byExtender' => [], 'sourceSpecificity' => []];
+
+        $this->resolver->addForeignExtensionsToStore($store, [$foreignStore]);
+
+        expect($store['extensions'])->toBe([]);
+    });
+
+    it('merges repeated extension of the same extender into one non-optional record', function () {
+        $state = $this->ctx->outputState->extends;
+
+        $this->resolver->collectExtends(new RootNode([
+            new RuleNode('.base', []),
+            new RuleNode('.lead', [new ExtendNode('.base', true)]),
+            new RuleNode('.lead', [new ExtendNode('.base')], 2),
+        ]), new Environment());
+
+        expect($state->events)->toHaveCount(5);
+
+        $built = $this->resolver->buildExtensionStore();
+
+        $extension = $built['store']['extensions']['.base']['.lead'];
+
+        expect($extension['optional'])->toBeFalse()
+            ->and($extension['extender'][0]->sel)->toBe('.lead');
+    });
+
+    it('returns a selector unchanged when it is already one of the rendered box selectors', function () {
+        $this->ctx->outputState->extends->boxes = [
+            ['rawParts' => ['.a'], 'selectors' => ['.a', '.b'], 'originals' => ['.a'], 'context' => ''],
+        ];
+
+        expect($this->resolver->applyExtendsToSelector('.b'))->toBe('.b');
+    });
+
+    it('uses the direct substring fallback when the extend target has no selector tokens', function () {
+        $this->resolver->registerExtend('>', '.baz');
+        $this->ctx->outputState->extends->selectorContexts['>'] = ['' => true];
+
+        expect($this->resolver->applyExtendsToSelector('foo > bar'))->toBe('foo > bar, foo .baz bar');
+    });
+
+    it('weaves a multi-compound extender across a preceding combinator during fallback replacement', function () {
+        $this->resolver->registerExtend('+', '.x .y');
+        $this->ctx->outputState->extends->selectorContexts['+'] = ['' => true];
+
+        expect($this->resolver->applyExtendsToSelector('a > b + c'))->toBe('a > b + c, .x a > b .y c');
+    });
+
+    it('falls back to direct replacement when the weaved extender has a single compound', function () {
+        $this->resolver->registerExtend('+', '.x');
+        $this->ctx->outputState->extends->selectorContexts['+'] = ['' => true];
+
+        expect($this->resolver->applyExtendsToSelector('a > b + c'))->toBe('a > b + c, a > b .x c');
+    });
+
+    it('skips blank selector parts when collecting the line break map', function () {
+        $this->resolver->registerExtend('%p', '.x');
+
+        expect($this->resolver->applyExtendsToSelector('.a, ,.b'))->toBe('.a, .b');
+    });
+
+    it('drops a rule whose placeholder survives inside a non-selector functional pseudo', function () {
+        $this->resolver->registerExtend('%p', '.x');
+
+        expect($this->resolver->applyExtendsToSelector(':lang(%foo)'))->toBe('');
+    });
+
+    it('keeps the child selector when an empty parent selector cannot be combined', function () {
+        $env = new Environment();
+        $env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode(''));
+
+        $this->resolver->collectExtends(new RuleNode('.foo', [new ExtendNode('%t')]), $env);
+
+        expect($this->ctx->outputState->extends->selectorContexts)->toHaveKey('.foo');
+    });
+
+    it('computes structural specificity for nth-of pseudos while building the store', function () {
+        $this->resolver->collectExtends(new RootNode([
+            new RuleNode(':nth-child(2 of .x)', [new ExtendNode('.y')]),
+        ]), new Environment());
+
+        $this->resolver->finalizeCollectedExtends();
+
+        expect($this->ctx->outputState->extends->boxes)->not->toBeEmpty();
+    });
+
+    it('drops an extended variant that is equivalent to another variant', function () {
+        $this->resolver->registerExtend('.x', '.a.b');
+        $this->resolver->registerExtend('.y', '.b.a');
+
+        expect($this->resolver->applyExtendsToSelector('.x, .y'))->toBe('.x, .y, .b.a');
+    });
+
+    it('drops an extended variant that is a strict subset of a protected selector', function () {
+        $this->resolver->registerExtend('.a', '.a.b');
+
+        expect($this->resolver->applyExtendsToSelector('.a'))->toBe('.a');
+    });
+
+    it('keeps variants when the candidate superselector has more compounds', function () {
+        $this->resolver->registerExtend('.x', '.a');
+        $this->resolver->registerExtend('.y', '.b .c');
+
+        expect($this->resolver->applyExtendsToSelector('.x, .y'))->toBe('.x, .a, .y, .b .c');
+    });
+
+    it('keeps variants whose pseudo elements differ from the candidate superselector', function () {
+        $this->resolver->registerExtend('.x', '.a::before');
+        $this->resolver->registerExtend('.y', '.a::after');
+
+        expect($this->resolver->applyExtendsToSelector('.x, .y'))->toBe('.x, .a::before, .y, .a::after');
+    });
+
+    it('drops a compound-universal variant covered by a plain superselector', function () {
+        $this->resolver->registerExtend('.x', '.a');
+        $this->resolver->registerExtend('.y', '*.a');
+
+        expect($this->resolver->applyExtendsToSelector('.x, .y'))->toBe('.x, .y, *.a');
+    });
+
+    it('rejects a namespaced universal superselector with a conflicting namespace', function () {
+        $this->resolver->registerExtend('.p', 'html|*');
+        $this->resolver->registerExtend('.q', 'svg|*');
+
+        expect($this->resolver->applyExtendsToSelector('.p, .q'))->toBe('.p, html|*, .q, svg|*');
+    });
+
+    it('drops a variant covered by a same-namespace universal superselector', function () {
+        $this->resolver->registerExtend('.a1', 'x svg|*');
+        $this->resolver->registerExtend('.a2', 'x svg|* y');
+
+        expect($this->resolver->applyExtendsToSelector('.a1, .a2'))->toBe('.a1, x svg|*, .a2');
+    });
+
+    it('drops a variant covered by a superselector whose universal namespace matches the candidate', function () {
+        $this->resolver->registerExtend('.b1', 'x svg|*');
+        $this->resolver->registerExtend('.b2', 'x html|* y');
+
+        expect($this->resolver->applyExtendsToSelector('.b1, .b2'))->toBe('.b1, x svg|*, .b2, x html|* y');
+    });
+
+    it('skips foreign extensions whose own target is missing from the local store', function () {
+        $state = $this->ctx->outputState->extends;
+        $state->resetCollection();
+
+        $ghost = [
+            'extender' => [new SelectorComponent('.q', '')],
+            'target'   => '.ghost',
+            'context'  => '',
+            'optional' => false,
+            'priority' => 1,
+        ];
+
+        $useless = [
+            'extender' => [new SelectorComponent('.x', '', '> >')],
+            'target'   => '.t',
+            'context'  => '',
+            'optional' => false,
+            'priority' => 1,
+        ];
+
+        $store = [
+            'selectors'         => ['.t' => [5 => true]],
+            'extensions'        => [],
+            'byExtender'        => ['.t' => [$ghost, $useless]],
+            'contexts'          => [5 => ''],
+            'sourceSpecificity' => [],
+            'originals'         => [],
+            'boxes'             => [5 => [[new SelectorComponent('.t', '')]]],
+        ];
+
+        $foreign = [
+            'selectors'         => [],
+            'extensions'        => ['.t' => [
+                '.f' => [
+                    'extender' => [new SelectorComponent('.f', '')],
+                    'target'   => '.t',
+                    'context'  => '',
+                    'optional' => false,
+                    'priority' => 1,
+                ],
+            ]],
+            'byExtender'        => [],
+            'contexts'          => [],
+            'sourceSpecificity' => [],
+            'originals'         => [],
+            'boxes'             => [],
+        ];
+
+        $this->resolver->addForeignExtensionsToStore($store, [$foreign]);
+
+        expect($store['extensions'])->toHaveKey('.t')
+            ->and($store['extensions'])->not->toHaveKey('.ghost');
+    });
+
+    it('propagates a transitive extension from a chained extender', function () {
+        $state = $this->ctx->outputState->extends;
+        $state->resetCollection();
+
+        $state->events = [
+            ['type' => 'rule', 'boxId' => 0, 'rawParts' => ['.a'], 'resolvedParts' => ['.a'], 'context' => ''],
+            ['type' => 'rule', 'boxId' => 1, 'rawParts' => ['.b'], 'resolvedParts' => ['.b'], 'context' => ''],
+            ['type' => 'extend', 'boxId' => 1, 'target' => '.a', 'context' => '', 'optional' => false, 'priority' => 1],
+            ['type' => 'rule', 'boxId' => 2, 'rawParts' => ['.c'], 'resolvedParts' => ['.c'], 'context' => ''],
+            ['type' => 'extend', 'boxId' => 2, 'target' => '.b', 'context' => '', 'optional' => false, 'priority' => 2],
+        ];
+
+        $built = $this->resolver->buildExtensionStore();
+        $result = $this->resolver->materializeExtensionStore($built['store'], $built['meta']);
+
+        expect(array_keys($built['store']['extensions']['.a']))->toContain('.c')
+            ->and($result['extendMap'])->toHaveKey('.a');
+    });
+
+    it('unifies extenders that carry different leading combinators', function () {
+        $state = $this->ctx->outputState->extends;
+        $state->resetCollection();
+
+        $state->events = [
+            ['type' => 'rule', 'boxId' => 0, 'rawParts' => ['.a.b'], 'resolvedParts' => ['.a.b'], 'context' => ''],
+            ['type' => 'rule', 'boxId' => 1, 'rawParts' => ['> .x'], 'resolvedParts' => ['> .x'], 'context' => ''],
+            ['type' => 'extend', 'boxId' => 1, 'target' => '.a', 'context' => '', 'optional' => false, 'priority' => 1],
+            ['type' => 'rule', 'boxId' => 2, 'rawParts' => ['+ .z'], 'resolvedParts' => ['+ .z'], 'context' => ''],
+            ['type' => 'extend', 'boxId' => 2, 'target' => '.b', 'context' => '', 'optional' => false, 'priority' => 2],
+        ];
+
+        $built = $this->resolver->buildExtensionStore();
+        $result = $this->resolver->materializeExtensionStore($built['store'], $built['meta']);
+
+        expect($result['extendMap'])->toHaveKey('.a');
+    });
+
+    it('unifies extenders that carry different trailing combinators', function () {
+        $state = $this->ctx->outputState->extends;
+        $state->resetCollection();
+
+        $state->events = [
+            ['type' => 'rule', 'boxId' => 0, 'rawParts' => ['.a.b'], 'resolvedParts' => ['.a.b'], 'context' => ''],
+            ['type' => 'rule', 'boxId' => 1, 'rawParts' => ['.x >'], 'resolvedParts' => ['.x >'], 'context' => ''],
+            ['type' => 'extend', 'boxId' => 1, 'target' => '.a', 'context' => '', 'optional' => false, 'priority' => 1],
+            ['type' => 'rule', 'boxId' => 2, 'rawParts' => ['.z +'], 'resolvedParts' => ['.z +'], 'context' => ''],
+            ['type' => 'extend', 'boxId' => 2, 'target' => '.b', 'context' => '', 'optional' => false, 'priority' => 2],
+        ];
+
+        $built = $this->resolver->buildExtensionStore();
+        $result = $this->resolver->materializeExtensionStore($built['store'], $built['meta']);
+
+        expect($result['extendMap'])->toHaveKey('.a');
+    });
+
+    it('expands a nested nth-of pseudo when its inner selector is extended', function () {
+        $state = $this->ctx->outputState->extends;
+        $state->resetCollection();
+
+        $state->events = [
+            ['type' => 'rule', 'boxId' => 0, 'rawParts' => ['.a'], 'resolvedParts' => ['.a'], 'context' => ''],
+            ['type' => 'rule', 'boxId' => 1, 'rawParts' => [':nth-child(2 of :nth-child(2 of .a))'], 'resolvedParts' => [':nth-child(2 of :nth-child(2 of .a))'], 'context' => ''],
+            ['type' => 'rule', 'boxId' => 2, 'rawParts' => ['.x'], 'resolvedParts' => ['.x'], 'context' => ''],
+            ['type' => 'extend', 'boxId' => 2, 'target' => '.a', 'context' => '', 'optional' => false, 'priority' => 1],
+        ];
+
+        $built = $this->resolver->buildExtensionStore();
+        $result = $this->resolver->materializeExtensionStore($built['store'], $built['meta']);
+
+        expect($result['boxes'])->toBeArray();
+    });
+
+    it('skips a single-option extension candidate that is a useless complex', function () {
+        $store = [
+            'selectors'         => ['.a' => [0 => true]],
+            'extensions'        => [],
+            'byExtender'        => [],
+            'contexts'          => [0 => ''],
+            'sourceSpecificity' => [],
+            'originals'         => [],
+            'boxes'             => [0 => [[new SelectorComponent('.a', '')]]],
+        ];
+
+        $foreign = [
+            'selectors'         => [],
+            'extensions'        => ['.a' => [
+                'useless' => [
+                    'extender' => [new SelectorComponent('.x', '', '> >')],
+                    'target'   => '.a',
+                    'context'  => '',
+                    'optional' => false,
+                    'priority' => 1,
+                ],
+            ]],
+            'byExtender'        => [],
+            'contexts'          => [],
+            'sourceSpecificity' => [],
+            'originals'         => [],
+            'boxes'             => [],
+        ];
+
+        $this->resolver->addForeignExtensionsToStore($store, [$foreign]);
+
+        expect($store['extensions']['.a'])->toHaveKey('useless');
+    });
+
+    it('drops a unified path whose non-original extender is a useless complex', function () {
+        $store = [
+            'selectors'         => ['.a' => [0 => true], '.b' => [0 => true]],
+            'extensions'        => [],
+            'byExtender'        => [],
+            'contexts'          => [0 => ''],
+            'sourceSpecificity' => [],
+            'originals'         => [],
+            'boxes'             => [0 => [[new SelectorComponent('.a.b', '')]]],
+        ];
+
+        $foreign = [
+            'selectors'         => [],
+            'extensions'        => [
+                '.a' => ['u' => ['extender' => [new SelectorComponent('.x', '', '> >')], 'target' => '.a', 'context' => '', 'optional' => false, 'priority' => 1]],
+                '.b' => ['n' => ['extender' => [new SelectorComponent('.z', '')], 'target' => '.b', 'context' => '', 'optional' => false, 'priority' => 1]],
+            ],
+            'byExtender'        => [],
+            'contexts'          => [],
+            'sourceSpecificity' => [],
+            'originals'         => [],
+            'boxes'             => [],
+        ];
+
+        $this->resolver->addForeignExtensionsToStore($store, [$foreign]);
+
+        expect($store['extensions']['.a'])->toHaveKey('u')
+            ->and($store['extensions']['.b'])->toHaveKey('n');
+    });
+
+    it('rejects unification of extenders carrying different leading combinators', function () {
+        $store = [
+            'selectors'         => ['.a' => [0 => true], '.b' => [0 => true]],
+            'extensions'        => [],
+            'byExtender'        => [],
+            'contexts'          => [0 => ''],
+            'sourceSpecificity' => [],
+            'originals'         => [],
+            'boxes'             => [0 => [[new SelectorComponent('.a.b', '')]]],
+        ];
+
+        $foreign = [
+            'selectors'         => [],
+            'extensions'        => [
+                '.a' => ['gt' => ['extender' => [new SelectorComponent('.x', '', '>')], 'target' => '.a', 'context' => '', 'optional' => false, 'priority' => 1]],
+                '.b' => ['pl' => ['extender' => [new SelectorComponent('.z', '', '+')], 'target' => '.b', 'context' => '', 'optional' => false, 'priority' => 1]],
+            ],
+            'byExtender'        => [],
+            'contexts'          => [],
+            'sourceSpecificity' => [],
+            'originals'         => [],
+            'boxes'             => [],
+        ];
+
+        $this->resolver->addForeignExtensionsToStore($store, [$foreign]);
+
+        expect($store['extensions']['.a'])->toHaveKey('gt')
+            ->and($store['extensions']['.b'])->toHaveKey('pl');
+    });
+
+    it('rejects unification of extenders carrying different trailing combinators', function () {
+        $store = [
+            'selectors'         => ['.a' => [0 => true], '.b' => [0 => true]],
+            'extensions'        => [],
+            'byExtender'        => [],
+            'contexts'          => [0 => ''],
+            'sourceSpecificity' => [],
+            'originals'         => [],
+            'boxes'             => [0 => [[new SelectorComponent('.a.b', '')]]],
+        ];
+
+        $foreign = [
+            'selectors'         => [],
+            'extensions'        => [
+                '.a' => ['gt' => ['extender' => [new SelectorComponent('.x', '>')], 'target' => '.a', 'context' => '', 'optional' => false, 'priority' => 1]],
+                '.b' => ['pl' => ['extender' => [new SelectorComponent('.z', '+')], 'target' => '.b', 'context' => '', 'optional' => false, 'priority' => 1]],
+            ],
+            'byExtender'        => [],
+            'contexts'          => [],
+            'sourceSpecificity' => [],
+            'originals'         => [],
+            'boxes'             => [],
+        ];
+
+        $this->resolver->addForeignExtensionsToStore($store, [$foreign]);
+
+        expect($store['extensions']['.a'])->toHaveKey('gt')
+            ->and($store['extensions']['.b'])->toHaveKey('pl');
+    });
+
+    it('keeps a candidate with an unmatched token against a plain universal superselector', function () {
+        $this->resolver->registerExtend('.g1', 'x .b');
+        $this->resolver->registerExtend('.g2', 'x *.a y');
+
+        expect($this->resolver->applyExtendsToSelector('.g1, .g2'))->toBe('.g1, x .b, .g2, x *.a y');
     });
 });

@@ -9,20 +9,34 @@ use Bugo\SCSS\Lexer\TokenType;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeprecatedExpressionNode;
+use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 
+use function abs;
+use function chr;
 use function count;
 use function ctype_digit;
+use function ctype_space;
+use function ctype_xdigit;
+use function dechex;
+use function hexdec;
 use function in_array;
+use function max;
+use function min;
+use function ord;
 use function str_contains;
+use function str_starts_with;
 use function strlen;
+use function strpbrk;
+use function strrpos;
 use function strtolower;
 use function substr;
 use function trim;
@@ -33,6 +47,8 @@ final readonly class ValueParser implements
     ModuleDirectiveContextInterface,
     RuleParserValueContextInterface
 {
+    private const MAX_SAFE_INTEGER = 9007199254740991;
+
     private FunctionCallParser $functions;
 
     public function __construct(
@@ -70,6 +86,11 @@ final readonly class ValueParser implements
             $hasLeadingWhitespace = $this->stream->is(TokenType::WHITESPACE);
 
             $this->stream->skipWhitespace();
+
+            while ($this->stream->is(TokenType::COMMENT_LOUD) || $this->stream->is(TokenType::COMMENT_PRESERVED)) {
+                $this->stream->advance();
+                $this->stream->skipWhitespace();
+            }
 
             foreach ($stopTokens as $tokenType) {
                 if ($this->stream->is($tokenType)) {
@@ -123,7 +144,7 @@ final readonly class ValueParser implements
                         ];
                     }
 
-                    $currentGroup[] = new StringNode($word);
+                    $currentGroup[] = new StringNode($word, isSlashOperator: $word === '/');
                 } else {
                     break;
                 }
@@ -181,9 +202,27 @@ final readonly class ValueParser implements
             return null;
         }
 
+        if (
+            $this->stream->is(TokenType::PLUS)
+            && $this->stream->peek()->type === TokenType::IDENTIFIER
+            && $this->stream->peek(2)->type === TokenType::LPAREN
+        ) {
+            $this->stream->advance();
+
+            $identifier = $this->functions->parseIdentifierOrFunction();
+
+            if ($identifier instanceof FunctionNode) {
+                return new FunctionNode('+' . $identifier->name, $identifier->arguments, $identifier->line);
+            }
+        }
+
         $interpolatedIdentifier = $this->tryParseInterpolatedIdentifierString();
 
         if ($interpolatedIdentifier !== null) {
+            if ($this->stream->is(TokenType::LPAREN)) {
+                return $this->functions->parseFunctionFromInterpolatedName($interpolatedIdentifier);
+            }
+
             return $interpolatedIdentifier;
         }
 
@@ -211,8 +250,7 @@ final readonly class ValueParser implements
             $token = $this->stream->current();
 
             $this->stream->advance();
-
-            if (in_array(strlen($token->value), [3, 4, 6, 8], true)) {
+            if (($token->value !== '' && ctype_xdigit($token->value)) && in_array(strlen($token->value), [3, 4, 6, 8], true)) {
                 return new ColorNode('#' . $token->value);
             }
 
@@ -227,6 +265,10 @@ final readonly class ValueParser implements
             $token = $this->stream->current();
 
             $this->stream->advance();
+
+            if ($this->stream->is(TokenType::LPAREN)) {
+                return $this->functions->parseFunctionFromName($token->value);
+            }
 
             return new StringNode($token->value);
         }
@@ -299,7 +341,7 @@ final readonly class ValueParser implements
         $unitPart     = substr($value, $numberLength);
 
         if ($unitPart !== '') {
-            $unit = $unitPart;
+            $unit = $this->decodeEscapedUnit($unitPart);
         }
 
         if (in_array($numberPart, ['', '-', '+'], true)) {
@@ -307,7 +349,15 @@ final readonly class ValueParser implements
         } elseif (str_contains($numberPart, '.') || str_contains($numberPart, 'e') || str_contains($numberPart, 'E')) {
             $number = (float) $numberPart;
         } else {
-            $number = (int) $numberPart;
+            $intValue = (int) $numberPart;
+
+            if ($intValue != $numberPart || abs((float) $intValue) > self::MAX_SAFE_INTEGER) {
+                $number = (float) $numberPart;
+            } elseif ($intValue === 0 && str_starts_with($numberPart, '-')) {
+                $number = -0.0;
+            } else {
+                $number = $intValue;
+            }
         }
 
         return new NumberNode($number, $unit);
@@ -316,17 +366,31 @@ final readonly class ValueParser implements
     public function parseParenthesizedValue(): AstNode
     {
         $this->stream->expect(TokenType::LPAREN);
+        $this->stream->skipWhitespace();
+
+        if ($this->stream->consume(TokenType::RPAREN)) {
+            return new MapNode([], true);
+        }
 
         $items = [];
         $pairs = [];
 
         $hasMapPairs = false;
+        $sawComma    = false;
 
         while (! $this->stream->isEof()) {
             $this->stream->skipWhitespace();
 
             if ($this->stream->consume(TokenType::RPAREN)) {
                 break;
+            }
+
+            if ($this->stream->is(TokenType::COMMA)) {
+                $sawComma = true;
+
+                $this->stream->advance();
+
+                continue;
             }
 
             $entry = $this->parseParenthesizedEntry();
@@ -352,6 +416,8 @@ final readonly class ValueParser implements
             $this->stream->skipWhitespace();
 
             if ($this->stream->is(TokenType::COMMA)) {
+                $sawComma = true;
+
                 $this->stream->advance();
 
                 continue;
@@ -366,6 +432,10 @@ final readonly class ValueParser implements
 
         if ($hasMapPairs) {
             return new MapNode($pairs);
+        }
+
+        if (count($items) === 1 && $sawComma) {
+            return new ListNode([$items[0]], 'comma', false, 1);
         }
 
         if (count($items) === 1) {
@@ -388,17 +458,34 @@ final readonly class ValueParser implements
                 }
             }
 
+            if (! $singleItem instanceof ListNode) {
+                if ($singleItem instanceof NullNode) {
+                    return $singleItem;
+                }
+
+                if ($singleItem instanceof NumberNode || $singleItem instanceof FunctionNode) {
+                    $singleItem->parenthesized++;
+                } else {
+                    return new ListNode([$singleItem], 'space', false, 1);
+                }
+
+                return $singleItem;
+            }
+
+            $singleItem->parenthesized++;
+
             return $singleItem;
         }
 
-        return new ListNode($items, 'comma');
+        return new ListNode($items, 'comma', false, 1);
     }
 
     public function parseBracketedListValue(): AstNode
     {
         $this->stream->expect(TokenType::LBRACKET);
 
-        $items = [];
+        $items    = [];
+        $hasComma = false;
 
         while (! $this->stream->isEof()) {
             $this->stream->skipWhitespace();
@@ -416,16 +503,28 @@ final readonly class ValueParser implements
             $this->stream->skipWhitespace();
 
             if ($this->stream->is(TokenType::COMMA)) {
+                $hasComma = true;
+
                 $this->stream->advance();
+
+                continue;
+            }
+
+            if ($this->stream->consume(TokenType::RBRACKET)) {
+                break;
+            }
+
+            if ($value === null) {
+                break;
             }
         }
 
-        return new ListNode($items, 'comma', true);
+        return new ListNode($items, $hasComma ? 'comma' : 'space', true);
     }
 
     public function parseString(): string
     {
-        return StreamUtils::parseStringToken($this->stream);
+        return TokenStreamHelper::parseStringToken($this->stream);
     }
 
     /**
@@ -455,7 +554,7 @@ final readonly class ValueParser implements
             if ($this->stream->consume(TokenType::DOLLAR)) {
                 $name = $this->consumeIdentifier();
 
-                $this->stream->skipWhitespace();
+                $this->stream->skipWhitespaceAndComments();
 
                 if ($this->stream->consume(TokenType::COLON)) {
                     $this->stream->skipWhitespace();
@@ -474,7 +573,7 @@ final readonly class ValueParser implements
 
             $argument = $this->parseCommaSeparatedValueOrEmptyList();
 
-            if (StreamUtils::consumeEllipsis($this->stream)) {
+            if (TokenStreamHelper::consumeEllipsis($this->stream)) {
                 $argument = new SpreadArgumentNode($argument);
             }
 
@@ -546,36 +645,77 @@ final readonly class ValueParser implements
 
     public function parseCustomPropertyValue(): string
     {
-        $buffer             = '';
+        $source = $this->stream->getSource();
+        $start  = $this->stream->current()->start;
+
         $parenDepth         = 0;
         $bracketDepth       = 0;
+        $braceDepth         = 0;
         $interpolationDepth = 0;
+        $stop               = null;
 
         while (! $this->stream->isEof()) {
             $token = $this->stream->current();
 
-            if (StreamUtils::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
+            if ($token->type === TokenType::HASH && $this->stream->peek()->type === TokenType::LBRACE) {
+                $interpolationDepth++;
+
+                $this->stream->advance(2);
+
+                continue;
+            }
+
+            if ($interpolationDepth > 0 && $token->type === TokenType::RBRACE) {
+                $interpolationDepth--;
+
+                $this->stream->advance();
+
                 continue;
             }
 
             if ($interpolationDepth === 0) {
-                StreamUtils::updateNestingDepth($token, $parenDepth, $bracketDepth);
+                if ($token->type === TokenType::LPAREN) {
+                    $parenDepth++;
+                } elseif ($token->type === TokenType::RPAREN) {
+                    $parenDepth = max(0, $parenDepth - 1);
+                } elseif ($token->type === TokenType::LBRACKET) {
+                    $bracketDepth++;
+                } elseif ($token->type === TokenType::RBRACKET) {
+                    $bracketDepth = max(0, $bracketDepth - 1);
+                } elseif ($token->type === TokenType::LBRACE) {
+                    $braceDepth++;
+                } elseif ($token->type === TokenType::RBRACE) {
+                    if ($braceDepth === 0) {
+                        $stop = $token;
 
-                if (
-                    $parenDepth === 0
+                        break;
+                    }
+
+                    $braceDepth--;
+                } elseif ($token->type === TokenType::SEMICOLON
+                    && $parenDepth === 0
                     && $bracketDepth === 0
-                    && in_array($token->type, [TokenType::SEMICOLON, TokenType::RBRACE], true)
+                    && $braceDepth === 0
                 ) {
+                    $stop = $token;
+
                     break;
                 }
             }
 
-            StreamUtils::appendTokenToBuffer($buffer, $token, true);
-
             $this->stream->advance();
         }
 
-        return trim($buffer);
+        if ($stop === null) {
+            $raw = substr($source, $start);
+        } else {
+            $raw = substr($source, $start, $stop->start - $start);
+        }
+
+        $atEnd = $stop === null
+            || ($stop->type === TokenType::SEMICOLON && substr($source, $stop->start, 1) !== ';');
+
+        return $this->normalizeCustomPropertyRaw($raw, $atEnd);
     }
 
     public function consumeIdentifier(): string
@@ -596,12 +736,191 @@ final readonly class ValueParser implements
         return $this->parseValueUntil([TokenType::COMMA, TokenType::RPAREN]);
     }
 
+    private function decodeEscapedUnit(string $unit): string
+    {
+        if (! str_contains($unit, '\\')) {
+            return $unit;
+        }
+
+        $length = strlen($unit);
+        $result = '';
+
+        for ($i = 0; $i < $length;) {
+            $char = $unit[$i];
+
+            if ($char !== '\\') {
+                $result .= $char;
+
+                $i++;
+
+                continue;
+            }
+
+            if ($i + 1 >= $length) {
+                $result .= '\\';
+
+                break;
+            }
+
+            $next = $unit[$i + 1];
+
+            if (ctype_xdigit($next)) {
+                $hex      = '';
+                $position = $i + 1;
+
+                while ($position < $length && strlen($hex) < 6 && ctype_xdigit($unit[$position])) {
+                    $hex .= $unit[$position];
+
+                    $position++;
+                }
+
+                if ($position < $length && ctype_space($unit[$position])) {
+                    $position++;
+                }
+
+                $codePoint = (int) hexdec($hex);
+
+                if ($codePoint < 0x20 || $codePoint === 0x7F) {
+                    $result .= '\\' . strtolower(dechex($codePoint)) . ' ';
+                } else {
+                    $result .= $this->encodeCodePointToUtf8($codePoint);
+                }
+
+                $i = $position;
+
+                continue;
+            }
+
+            $width   = $this->utf8WidthAt($unit, $i + 1);
+            $result .= substr($unit, $i + 1, $width);
+
+            $i += 1 + $width;
+        }
+
+        return $result;
+    }
+
+    private function encodeCodePointToUtf8(int $codePoint): string
+    {
+        if ($codePoint <= 0x7F) {
+            return chr($codePoint & 0x7F);
+        }
+
+        if ($codePoint <= 0x7FF) {
+            return chr(0xC0 | ($codePoint >> 6)) . chr(0x80 | ($codePoint & 0x3F));
+        }
+
+        if ($codePoint <= 0xFFFF) {
+            return chr(0xE0 | ($codePoint >> 12)) . chr(0x80 | (($codePoint >> 6) & 0x3F)) . chr(0x80 | ($codePoint & 0x3F));
+        }
+
+        return chr(0xF0 | (($codePoint >> 18) & 0x07)) . chr(0x80 | (($codePoint >> 12) & 0x3F))
+            . chr(0x80 | (($codePoint >> 6) & 0x3F)) . chr(0x80 | ($codePoint & 0x3F));
+    }
+
+    private function utf8WidthAt(string $value, int $position): int
+    {
+        $byte = ord($value[$position]);
+
+        $width = match (true) {
+            $byte >= 0xF0 => 4,
+            $byte >= 0xE0 => 3,
+            $byte >= 0xC2 => 2,
+            default       => 1,
+        };
+
+        return min($width, strlen($value) - $position);
+    }
+
     /**
      * @param array<int, TokenType> $stopTokens
      */
     private function parseValueOrEmptyList(array $stopTokens): AstNode
     {
         return $this->parseValueUntil($stopTokens) ?? new ListNode([], 'comma');
+    }
+
+    private function normalizeCustomPropertyRaw(string $value, bool $atEnd): string
+    {
+        $result = '';
+        $length = strlen($value);
+        $index  = 0;
+
+        while ($index < $length) {
+            $char = $value[$index];
+
+            if (in_array($char, [' ', "\t", "\r", "\n"], true)) {
+                $runEnd = $index + 1;
+
+                while ($runEnd < $length && in_array($value[$runEnd], [' ', "\t", "\r", "\n"], true)) {
+                    $runEnd++;
+                }
+
+                $run = substr($value, $index, $runEnd - $index);
+
+                if ($runEnd === $length) {
+                    $result .= $run;
+
+                    break;
+                }
+
+                if (strpbrk($run, "\r\n") === false) {
+                    $result .= ' ';
+                } else {
+                    $lastNewline = max((int) strrpos($run, "\n"), (int) strrpos($run, "\r"));
+
+                    $result .= "\n" . substr($run, $lastNewline + 1);
+                }
+
+                $index = $runEnd;
+
+                continue;
+            }
+
+            $result .= $char;
+
+            $index++;
+        }
+
+        return $this->collapseCustomPropertyTrailingWhitespace($result, $atEnd);
+    }
+
+    private function collapseCustomPropertyTrailingWhitespace(string $value, bool $atEnd): string
+    {
+        $length = strlen($value);
+        $end    = $length;
+
+        while ($end > 0 && in_array($value[$end - 1], [' ', "\t", "\r", "\n"], true)) {
+            $end--;
+        }
+
+        if ($end === $length) {
+            return $value;
+        }
+
+        $content  = substr($value, 0, $end);
+        $lastLine = strrpos($content, "\n");
+        $lastLine = $lastLine === false ? $content : substr($content, $lastLine + 1);
+
+        if (str_contains($lastLine, '//')) {
+            return $content;
+        }
+
+        if ($atEnd) {
+            return $content;
+        }
+
+        $trailing = substr($value, $end);
+
+        if (strpbrk($trailing, "\r\n") !== false) {
+            return $content . ' ';
+        }
+
+        if (strlen($trailing) === 1) {
+            return $content . $trailing;
+        }
+
+        return $content . ' ';
     }
 
     private function parseParenthesizedEntry(): ?AstNode
@@ -720,6 +1039,7 @@ final readonly class ValueParser implements
             TokenType::IDENTIFIER,
             TokenType::MINUS,
             TokenType::HASH,
+            TokenType::CSS_VARIABLE,
         ], true)) {
             return null;
         }
@@ -744,11 +1064,31 @@ final readonly class ValueParser implements
                 continue;
             }
 
+            if ($token->type === TokenType::CSS_VARIABLE) {
+                $result .= $token->value;
+
+                $consumedAny = true;
+
+                $this->stream->advance();
+
+                continue;
+            }
+
             if ($token->type === TokenType::HASH && $this->stream->peek()->type === TokenType::LBRACE) {
                 $result .= $this->parseHashInterpolationString()->value;
 
                 $sawInterpolation = true;
                 $consumedAny      = true;
+
+                continue;
+            }
+
+            if ($token->type === TokenType::NUMBER && $sawInterpolation && ! str_starts_with($token->value, '+')) {
+                $result .= $token->value;
+
+                $consumedAny = true;
+
+                $this->stream->advance();
 
                 continue;
             }
@@ -802,7 +1142,7 @@ final readonly class ValueParser implements
                 continue;
             }
 
-            StreamUtils::appendTokenToBuffer($inner, $token, true);
+            TokenStreamHelper::appendTokenToBuffer($inner, $token, true);
 
             $this->stream->advance();
         }

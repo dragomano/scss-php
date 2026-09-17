@@ -6,8 +6,16 @@ namespace Bugo\SCSS\Handlers;
 
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\BooleanNode;
+use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
+use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
+use Bugo\SCSS\Nodes\NamedArgumentNode;
+use Bugo\SCSS\Nodes\NullNode;
+use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
@@ -17,11 +25,22 @@ use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Text;
 
 use function array_key_last;
+use function array_map;
+use function array_slice;
+use function explode;
+use function implode;
 use function in_array;
 use function is_array;
+use function ltrim;
+use function max;
+use function min;
 use function str_contains;
+use function str_ends_with;
+use function str_starts_with;
 use function strlen;
 use function strtolower;
+use function substr;
+use function trim;
 
 final readonly class DeclarationNodeHandler
 {
@@ -42,12 +61,48 @@ final readonly class DeclarationNodeHandler
             ? $this->text->interpolateText($node->property, $ctx->env)
             : $node->property;
 
+        $nestedPropertyName = $this->render->outputState()->nestedPropertyName;
+
+        if ($nestedPropertyName !== null) {
+            $property = $nestedPropertyName . '-' . $property;
+        }
+
+        if (
+            $ctx->env->getCurrentScope()->isInsideCssFunctionBody()
+            && strtolower($property) === 'result'
+        ) {
+            if (str_contains($node->property, '#{')) {
+                $evaluatedValue = $this->evaluation->evaluateDeclarationValue(
+                    $node->value,
+                    $property,
+                    $ctx->env,
+                );
+
+                $value = $this->evaluation->format($evaluatedValue, $ctx->env);
+
+                return $prefix . $property . ': ' . $value . ';';
+            }
+
+            $value = $this->formatRawCssValue($node->value);
+
+            if (str_contains($value, '#{')) {
+                $value = $this->text->interpolateText($value, $ctx->env);
+            }
+
+            return $prefix . $property . ': ' . $value . ';';
+        }
+
+        if ($ctx->plainCss && $this->containsSassKeyword($node->value)) {
+            return $prefix . $property . ': ' . $this->formatRawCssValue($node->value)
+                . ($node->important ? ' !important' : '') . ';';
+        }
+
         $evaluatedValue = $this->evaluation->evaluateDeclarationValue($node->value, $property, $ctx->env);
 
         $valueOrigin = null;
         if ($this->render->collectSourceMappings()
             && $node->value instanceof VariableReferenceNode
-            && $evaluatedValue instanceof StringNode
+            && ($evaluatedValue instanceof StringNode || $evaluatedValue instanceof ColorNode)
             && $evaluatedValue->line > 0
         ) {
             $valueOrigin = $evaluatedValue;
@@ -75,17 +130,28 @@ final readonly class DeclarationNodeHandler
             $evaluatedValue = $this->evaluation->compressNamedColorsForOutput($evaluatedValue);
         }
 
-        $reparsedValue = $this->evaluation->tryEvaluateFormattedDeclarationExpression(
-            $property,
-            $evaluatedValue,
-            $ctx->env,
-        );
+        $formattedValue = null;
+
+        $reparsedValue = ! $evaluatedValue instanceof StringNode
+            ? $this->evaluation->tryEvaluateFormattedDeclarationExpression(
+                $property,
+                $evaluatedValue,
+                $ctx->env,
+                $formattedValue,
+            )
+            : null;
 
         if ($reparsedValue instanceof AstNode) {
             $evaluatedValue = $reparsedValue;
         }
 
-        $val = $this->evaluation->format($evaluatedValue, $ctx->env);
+        if ($reparsedValue instanceof AstNode) {
+            $evaluatedValue = $reparsedValue;
+        }
+
+        $val = $reparsedValue === null && $formattedValue !== null
+            ? $formattedValue
+            : $this->evaluation->format($evaluatedValue, $ctx->env);
         $val = $this->evaluation->normalizeDeclarationSlashSpacing($property, $val);
 
         if (str_contains($val, '#{')) {
@@ -93,6 +159,18 @@ final readonly class DeclarationNodeHandler
         }
 
         $important = $node->important ? ' !important' : '';
+
+        if (str_starts_with($property, '--') && $node->value instanceof StringNode) {
+            $value = $this->reindentCustomPropertyValue($node->value->value, $node->column - 1, $prefix);
+
+            if (str_contains($value, '#{')) {
+                $value = $this->text->interpolateText($value, $ctx->env);
+            }
+
+            $semicolon = str_ends_with($value, ';') ? '' : ';';
+
+            return $prefix . $property . ':' . $value . $important . $semicolon;
+        }
 
         if ($valueOrigin !== null) {
             $this->render->addPendingValueMapping(
@@ -103,7 +181,42 @@ final readonly class DeclarationNodeHandler
             );
         }
 
+        if (
+            $important === ''
+            && (
+                $val === ''
+                || ($val === '()' && $evaluatedValue instanceof ListNode)
+            )
+        ) {
+            return '';
+        }
+
         return $prefix . $property . ': ' . $val . $important . ';';
+    }
+
+    private function reindentCustomPropertyValue(string $value, int $propertyColumn, string $prefix): string
+    {
+        $lines   = explode("\n", $value);
+        $minimum = max(0, $propertyColumn);
+
+        foreach (array_slice($lines, 1) as $line) {
+            if (trim($line) === '') {
+                continue;
+            }
+
+            $indent  = strlen($line) - strlen(ltrim($line, " \t"));
+            $minimum = min($minimum, $indent);
+        }
+
+        foreach ($lines as $index => $line) {
+            if ($index === 0 || trim($line) === '') {
+                continue;
+            }
+
+            $lines[$index] = $prefix . substr($line, $minimum);
+        }
+
+        return implode("\n", $lines);
     }
 
     private function shouldRejectBareDeclarationInCurrentContext(TraversalContext $ctx): bool
@@ -139,5 +252,93 @@ final readonly class DeclarationNodeHandler
         }
 
         return ! in_array(strtolower($entry->name ?? ''), ['font-face', 'page', 'property', 'counter-style'], true);
+    }
+
+    private function containsSassKeyword(AstNode $node): bool
+    {
+        if ($node instanceof BooleanNode || $node instanceof NullNode) {
+            return true;
+        }
+
+        if ($node instanceof ListNode) {
+            foreach ($node->items as $item) {
+                if ($this->containsSassKeyword($item)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($node instanceof FunctionNode) {
+            foreach ($node->arguments as $argument) {
+                if ($this->containsSassKeyword($argument)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($node instanceof MapNode) {
+            foreach ($node->pairs as $pair) {
+                if ($this->containsSassKeyword($pair->key) || $this->containsSassKeyword($pair->value)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function formatRawCssValue(AstNode $node): string
+    {
+        return match (true) {
+            $node instanceof StringNode,
+            $node instanceof NumberNode,
+            $node instanceof BooleanNode           => (string) $node,
+            $node instanceof NullNode              => 'null',
+            $node instanceof ColorNode             => $node->value,
+            $node instanceof ListNode              => $this->formatRawListNode($node),
+            $node instanceof FunctionNode          => $this->formatRawFunctionNode($node),
+            $node instanceof MapNode               => $this->formatRawMapNode($node),
+            $node instanceof VariableReferenceNode => '$' . $node->name,
+            $node instanceof NamedArgumentNode     => '$' . $node->name . ': ' . $this->formatRawCssValue($node->value),
+            default                                => '',
+        };
+    }
+
+    private function formatRawListNode(ListNode $node): string
+    {
+        $items = array_map(
+            $this->formatRawCssValue(...),
+            $node->items,
+        );
+
+        $separator = $node->separator === 'comma' ? ', ' : ' ';
+        $open      = $node->bracketed ? '[' : '';
+        $close     = $node->bracketed ? ']' : '';
+
+        return $open . implode($separator, $items) . $close;
+    }
+
+    private function formatRawFunctionNode(FunctionNode $node): string
+    {
+        $args = array_map(
+            $this->formatRawCssValue(...),
+            $node->arguments,
+        );
+
+        return $node->name . '(' . implode(', ', $args) . ')';
+    }
+
+    private function formatRawMapNode(MapNode $node): string
+    {
+        $pairs = array_map(
+            fn(MapPair $pair): string => $this->formatRawCssValue($pair->key) . ': ' . $this->formatRawCssValue($pair->value),
+            $node->pairs,
+        );
+
+        return '(' . implode(', ', $pairs) . ')';
     }
 }

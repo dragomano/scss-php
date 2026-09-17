@@ -40,6 +40,10 @@ describe('SelectorHelper', function () {
             expect($result)->toBe(['a', 'b'])
                 ->and(array_keys($result))->toBe([0, 1]);
         });
+
+        it('does not split inside parentheses', function () {
+            expect(SelectorHelper::splitList(':is(a, b), c'))->toBe([':is(a, b)', 'c']);
+        });
     });
 
     describe('resolveNested()', function () {
@@ -47,9 +51,9 @@ describe('SelectorHelper', function () {
             expect(SelectorHelper::resolveNested('.child, .icon', ', ,'))->toBe('.child, .icon');
         });
 
-        it('keeps selector parts without ampersand when resolving selector lists', function () {
+        it('prefixes family-parent selectors and replaces ampersand when resolving selector lists', function () {
             expect(SelectorHelper::resolveNested('&:hover, .icon', '.button, .link'))
-                ->toBe('.button:hover, .icon, .link:hover');
+                ->toBe('.button:hover, .button .icon, .link:hover, .link .icon');
         });
 
         it('returns selector unchanged when no ampersand and no commas', function () {
@@ -68,11 +72,54 @@ describe('SelectorHelper', function () {
             expect(SelectorHelper::resolveNested('.child', ''))->toBe('.child');
         });
 
-        it('reindexes resolved parts after deduplication', function () {
+        it('preserves duplicate parent parts like dart sass', function () {
             $result = SelectorHelper::resolveNested('&, &', '.btn');
 
-            expect($result)->toBe('.btn')
-                ->and(array_values(explode(', ', $result)))->toBe(['.btn']);
+            expect($result)->toBe('.btn, .btn')
+                ->and(array_values(explode(', ', $result)))->toBe(['.btn', '.btn']);
+        });
+
+        it('replaces a single ampersand inside parens expanding each parent part', function () {
+            expect(SelectorHelper::resolveNested(':is(&)', 'a, b'))->toBe(':is(a, b)');
+        });
+
+        it('replaces multiple ampersands inside parens with the full parent list', function () {
+            expect(SelectorHelper::resolveNested(':is(&, &) :is(&)', 'a, b'))
+                ->toBe(':is(a,  b, a,  b) :is(a,  b)');
+        });
+
+        it('expands ampersand variants with quotes, brackets, parens and escapes', function () {
+            expect(SelectorHelper::resolveNested('&[a=\'\\q\']> &', 'p, q'))
+                ->toBe('p[a=\'\\q\'] > p, p[a=\'\\q\'] > q, q[a=\'\\q\'] > p, q[a=\'\\q\'] > q');
+        });
+
+        it('tracks parenthesized regions when counting and splitting ampersands', function () {
+            expect(SelectorHelper::resolveNested('& (z) &', 'p, q'))
+                ->toBe('p (z) p, p (z) q, q (z) p, q (z) q');
+        });
+
+        it('normalizes combinator spacing escaped outside quotes', function () {
+            expect(SelectorHelper::resolveNested('\\&  >  .cls', 'p'))->toBe('\\p > .cls');
+        });
+
+        it('normalizes trailing backslash without following char', function () {
+            expect(SelectorHelper::resolveNested('&\\', 'p'))->toBe('p\\');
+        });
+    });
+
+    describe('splitComponents()', function () {
+        it('keeps quoted attribute values, parentheses groups and depth as single components', function () {
+            expect(SelectorHelper::splitComponents('x[a=\'c"d\'] (g h)i'))->toBe([
+                'x[a=\'c"d\']',
+                '(g h)i',
+            ]);
+        });
+
+        it('treats escaped characters inside quotes as part of the value', function () {
+            expect(SelectorHelper::splitComponents('x[a=\'c\\=d\'] y'))->toBe([
+                'x[a=\'c\\=d\']',
+                'y',
+            ]);
         });
     });
 });

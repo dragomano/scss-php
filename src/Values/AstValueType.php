@@ -9,11 +9,15 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
+
+use function in_array;
+use function strtolower;
 
 enum AstValueType: string
 {
@@ -28,6 +32,11 @@ enum AstValueType: string
     case Null        = 'null';
     case Number      = 'number';
     case String      = 'string';
+
+    private const COLOR_FUNCTION_NAMES = [
+        'rgb', 'rgba', 'hsl', 'hsla', 'hwb',
+        'color', 'lab', 'lch', 'oklab', 'oklch',
+    ];
 
     public static function fromNode(AstNode $node): self
     {
@@ -51,9 +60,21 @@ enum AstValueType: string
             return self::Map;
         }
 
+        if ($node instanceof FunctionRefNode) {
+            return self::Function;
+        }
+
         if ($node instanceof FunctionNode) {
             if (SassCalculation::isCalculationFunctionName($node->name)) {
                 return self::Calculation;
+            }
+
+            if ($node->name === 'url') {
+                return self::String;
+            }
+
+            if (in_array(strtolower($node->name), self::COLOR_FUNCTION_NAMES, true)) {
+                return self::Color;
             }
 
             return self::Function;

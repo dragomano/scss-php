@@ -8,5 +8,6 @@
 /phpunit.xml            export-ignore
 /psalm.xml              export-ignore
 /rector.php             export-ignore
-/spaces.php             export-ignore
+/scripts                export-ignore
+/spec                   export-ignore
 /tests                  export-ignore

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Cache;
 
+use Bugo\SCSS\LoadedFile;
 use Bugo\SCSS\LoaderInterface;
 
 use function filemtime;
@@ -21,16 +22,13 @@ final class TrackingLoader implements LoaderInterface
         $this->inner->addPath($path);
     }
 
-    /**
-     * @return array{path: string, content: string}
-     */
-    public function load(string $url, bool $fromImport = false): array
+    public function load(string $url, bool $fromImport = false): LoadedFile
     {
         $result = $this->inner->load($url, $fromImport);
-        $mtime  = filemtime($result['path']);
+        $mtime  = filemtime($result->path);
 
         if (is_int($mtime)) {
-            $this->loadedFiles[$result['path']] = $mtime;
+            $this->loadedFiles[$result->path] = $mtime;
         }
 
         return $result;

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bugo\SCSS;
 
 use Bugo\SCSS\Handlers\AtRuleNodeHandler;
+use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\Handlers\BlockNodeHandler;
 use Bugo\SCSS\Handlers\CommentNodeHandler;
 use Bugo\SCSS\Handlers\DeclarationNodeHandler;
@@ -24,11 +25,14 @@ use Bugo\SCSS\Services\DiagnosticDirectiveHandler;
 use Bugo\SCSS\Services\DiagnosticDirectiveHandlerInterface;
 use Bugo\SCSS\Services\EachLoopBinder;
 use Bugo\SCSS\Services\Evaluator;
+use Bugo\SCSS\Services\ExtendsGraphResolver;
 use Bugo\SCSS\Services\ExtendsResolver;
 use Bugo\SCSS\Services\FunctionConditionEvaluator;
+use Bugo\SCSS\Services\LoopIterator;
 use Bugo\SCSS\Services\Module;
 use Bugo\SCSS\Services\ModuleVariableAssigner;
 use Bugo\SCSS\Services\ModuleVariableAssignerInterface;
+use Bugo\SCSS\Services\PlainCssRenderer;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\RuntimeAstValueEvaluator;
 use Bugo\SCSS\Services\RuntimeAstValueFormatter;
@@ -53,6 +57,8 @@ final class CompilerRuntime
 
     private ?ExtendsResolver $extends = null;
 
+    private ?ExtendsGraphResolver $extendsGraph = null;
+
     private ?Module $module = null;
 
     private ?Render $render = null;
@@ -69,6 +75,8 @@ final class CompilerRuntime
 
     private ?BlockNodeHandler $blockHandler = null;
 
+    private ?DeferredChunkManager $deferredChunks = null;
+
     private ?DeclarationNodeHandler $declarationHandler = null;
 
     private ?DefinitionNodeHandler $definitionHandler = null;
@@ -78,6 +86,8 @@ final class CompilerRuntime
     private ?FlowControlNodeHandler $flowControlHandler = null;
 
     private ?ModuleNodeHandler $moduleLoadHandler = null;
+
+    private ?PlainCssRenderer $plainCssRenderer = null;
 
     private ?RootNodeHandler $rootHandler = null;
 
@@ -122,6 +132,11 @@ final class CompilerRuntime
         return $this->extends ??= $this->createExtendsResolver();
     }
 
+    public function extendsGraph(): ExtendsGraphResolver
+    {
+        return $this->extendsGraph ??= $this->createExtendsGraphResolver();
+    }
+
     public function selector(): Selector
     {
         return $this->selector ??= $this->createSelector();
@@ -142,6 +157,11 @@ final class CompilerRuntime
         return $this->render ??= $this->createRender();
     }
 
+    public function plainCssRenderer(): PlainCssRenderer
+    {
+        return $this->plainCssRenderer ??= $this->createPlainCssRenderer();
+    }
+
     public function context(): Context
     {
         return $this->context ??= new Context($this->ctx, $this->options, $this->logger);
@@ -160,6 +180,11 @@ final class CompilerRuntime
     public function block(): BlockNodeHandler
     {
         return $this->blockHandler ??= $this->createBlockHandler();
+    }
+
+    public function deferredChunks(): DeferredChunkManager
+    {
+        return $this->deferredChunks ??= $this->createDeferredChunkManager();
     }
 
     public function declaration(): DeclarationNodeHandler
@@ -201,7 +226,13 @@ final class CompilerRuntime
             $this->evaluation(),
             $this->selector(),
             $this->dispatcher,
+            $this->plainCssRenderer(),
         );
+    }
+
+    private function createPlainCssRenderer(): PlainCssRenderer
+    {
+        return new PlainCssRenderer($this->dispatcher, $this->render(), $this->text(), $this->selector());
     }
 
     private function createEvaluator(): Evaluator
@@ -215,6 +246,7 @@ final class CompilerRuntime
             $this->condition(),
             $this->createModuleVariableAssigner(),
             $this->createDiagnosticDirectiveHandler(),
+            $this->logger,
         );
     }
 
@@ -248,8 +280,30 @@ final class CompilerRuntime
                     }
                 },
             ),
-            new EachLoopBinder($this->ctx->valueFactory),
+            new EachLoopBinder(
+                $this->ctx->valueFactory,
+                new class ($this) implements AstValueEvaluatorInterface {
+                    public function __construct(private readonly CompilerRuntime $runtime) {}
+
+                    public function evaluate(AstNode $node, Environment $env): AstNode
+                    {
+                        return $this->runtime->evaluation()->evaluateValueWithSlashDivision($node, $env);
+                    }
+                },
+            ),
             $this->createAstValueFormatter(),
+            new LoopIterator(),
+        );
+    }
+
+    private function createExtendsGraphResolver(): ExtendsGraphResolver
+    {
+        return new ExtendsGraphResolver(
+            $this->ctx,
+            $this->loader,
+            $this->parser,
+            $this->extends(),
+            $this->module(),
         );
     }
 
@@ -267,6 +321,7 @@ final class CompilerRuntime
             $this->cssArgumentEvaluator(),
             $this->createAstValueEvaluator(),
             $this->createAstValueFormatter(),
+            $this->parser,
         );
     }
 
@@ -312,6 +367,7 @@ final class CompilerRuntime
             $this->evaluation(),
             $this->render(),
             $this->selector(),
+            $this->deferredChunks(),
         );
     }
 
@@ -323,6 +379,18 @@ final class CompilerRuntime
             $this->evaluation(),
             $this->ctx->functionRegistry,
             $this->module(),
+            $this->render(),
+            $this->selector(),
+            $this->deferredChunks(),
+        );
+    }
+
+    private function createDeferredChunkManager(): DeferredChunkManager
+    {
+        return new DeferredChunkManager(
+            $this->dispatcher,
+            $this->context(),
+            $this->evaluation(),
             $this->render(),
             $this->selector(),
         );
@@ -361,6 +429,9 @@ final class CompilerRuntime
             $this->dispatcher,
             $this->evaluation(),
             $this->render(),
+            new LoopIterator(),
+            $this->deferredChunks(),
+            $this->selector(),
         );
     }
 
@@ -371,6 +442,7 @@ final class CompilerRuntime
             $this->module(),
             $this->render(),
             $this->selector(),
+            $this->deferredChunks(),
         );
     }
 

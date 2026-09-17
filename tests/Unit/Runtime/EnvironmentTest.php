@@ -82,4 +82,14 @@ describe('Environment', function () {
 
         expect($env->getCurrentScope())->toBe($root);
     });
+
+    it('findAstVariableInStackGlobals() returns variables kept in the global scope of stacked scopes', function () {
+        $this->env->getCurrentScope()->setVariable('x', new StringNode('global-value'));
+
+        $this->env->enterScope();
+        $this->env->enterScope();
+
+        expect($this->env->findAstVariableInStackGlobals('x'))->toBeInstanceOf(StringNode::class)
+            ->and($this->env->findAstVariableInStackGlobals('missing'))->toBeNull();
+    });
 });

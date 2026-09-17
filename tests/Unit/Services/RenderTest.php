@@ -12,7 +12,7 @@ use Bugo\SCSS\Utils\DeferredChunk;
 use Bugo\SCSS\Utils\SourceMapMapping;
 use Bugo\SCSS\Utils\SourceMapPosition;
 use Bugo\SCSS\Visitor;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('renders indentation and trims trailing newlines', function () {
     $runtime = RuntimeFactory::createRuntime();
@@ -42,9 +42,14 @@ it('collects source mappings and builds a source map', function () {
 
     $map = $render->buildSourceMap($output, '.a {}');
 
-    expect($output)->toBe('.a')
+    $render->appendChunk($output, "\n");
+
+    $mapWithTrailingNewline = $render->buildSourceMap($output, '.a {}');
+
+    expect($output)->toBe(".a\n")
         ->and($map)->toContain('"version":3')
-        ->and($map)->toContain('"sourcesContent"');
+        ->and($map)->toContain('"sourcesContent"')
+        ->and($mapWithTrailingNewline)->toContain('"version":3');
 });
 
 it('handles render edge cases for chunks source maps and remapping helpers', function () {
@@ -179,4 +184,67 @@ it('remaps multiline deferred chunk mappings using the original column on later 
         ->and($compilerContext->sourceMapState->mappings[0]->generated->column)->toBe(5)
         ->and($compilerContext->sourceMapState->mappings[1]->generated->line)->toBe(11)
         ->and($compilerContext->sourceMapState->mappings[1]->generated->column)->toBe(5);
+});
+
+it('covers edge branches of the source map remapping helper', function () {
+    $helper = new RenderSourceMapHelper();
+
+    expect($helper->shouldRemapMappingsAfterOptimization(null, 0, 'a', 'b'))->toBeFalse()
+        ->and($helper->shouldRemapMappingsAfterOptimization('output.css.map', 10, 'a', 'b'))->toBeTrue();
+
+    $originWithoutPositions = new class implements Visitable {
+        public function accept(Visitor $visitor, TraversalContext $ctx): string
+        {
+            return '';
+        }
+    };
+
+    $mappings = [];
+    $helper->appendMapping($mappings, 1, 0, $originWithoutPositions);
+
+    $invalidOrigin = new class implements Visitable {
+        public int $line = 0;
+
+        public int $column = 2;
+
+        public function accept(Visitor $visitor, TraversalContext $ctx): string
+        {
+            return '';
+        }
+    };
+
+    $invalidMappings = [];
+    $helper->appendMapping($invalidMappings, 1, 0, $invalidOrigin);
+
+    // Deletes a character from the middle of the text.
+    $deletionMap = $helper->buildOldToNewOffsetMap('abc', 'ac');
+
+    // Falls back to advancing both cursors on a full mismatch.
+    $fallbackMap = $helper->buildOldToNewOffsetMap('ax', 'bx');
+
+    $result = $helper->remapMappingsAfterOptimization(
+        [
+            new SourceMapMapping(new SourceMapPosition(1, 0), new SourceMapPosition(1, 0)),
+            new SourceMapMapping(new SourceMapPosition(2, 1), new SourceMapPosition(1, 0)),
+        ],
+        "abc\nx\ny",
+        "abc\nx!\ny",
+    );
+
+    expect($mappings)->toBe([])
+        ->and($invalidMappings)->toBe([])
+        ->and($deletionMap[1])->toBe(1)
+        ->and($deletionMap[2])->toBe(1)
+        ->and($fallbackMap[0])->toBe(0)
+        ->and($result[0]->generated->line)->toBe(1)
+        ->and($result[0]->generated->column)->toBe(0)
+        ->and($result[1]->generated->line)->toBe(2)
+        ->and($result[1]->generated->column)->toBe(2);
+
+    $runtime = RuntimeFactory::createRuntime();
+    $render  = $runtime->render();
+
+    expect($render->indentLines('', '  '))->toBe('')
+        ->and($render->indentLines('a', ''))->toBe('a')
+        ->and($render->outputSeparator())->toBe("\n");
 });

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Sass Math Module Feature', function () {
     beforeEach(function () {
@@ -533,7 +533,7 @@ describe('Sass Math Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .math-unit {
-              value: px;
+              value: "px";
             }
             CSS;
 
@@ -1085,7 +1085,7 @@ describe('Sass Math Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .math-global-unit {
-                  value: px;
+                  value: "px";
                 }
                 CSS;
 

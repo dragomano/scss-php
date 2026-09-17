@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Lexer\Token;
+use Bugo\SCSS\Lexer\TokenStream;
+use Bugo\SCSS\Lexer\TokenType;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\DebugNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
@@ -16,10 +20,142 @@ use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\MixinNode;
 use Bugo\SCSS\Nodes\ReturnNode;
 use Bugo\SCSS\Nodes\RuleNode;
+use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Parser;
+use Bugo\SCSS\Parser\CallableDirectiveParsingContextInterface;
+use Bugo\SCSS\Parser\CallableDirectiveValueContextInterface;
+use Bugo\SCSS\Parser\DirectiveParser;
+use Bugo\SCSS\Parser\InlineValueParserInterface;
+use Bugo\SCSS\Parser\ModuleDirectiveContextInterface;
+use Bugo\SCSS\Parser\TokenStreamHelper;
+
+function directiveTestToken(
+    TokenType $type,
+    string $value = '',
+    int $line = 1,
+    int $column = 1,
+): Token {
+    return new Token($type, $value, $line, $column);
+}
+
+/**
+ * @param array<int, Token> $tokens
+ * @param array<string, mixed> $overrides
+ */
+function createDirectiveParserForTest(array $tokens, array $overrides = []): DirectiveParser
+{
+    $stream = new TokenStream($tokens);
+
+    $consumeIdentifier = $overrides['consumeIdentifier'] ?? static function () use ($stream): string {
+        return TokenStreamHelper::consumeIdentifier($stream);
+    };
+
+    $parseBlock = $overrides['parseBlock'] ?? static fn(): array => [];
+    $parseStatementsInsideBlock = $overrides['parseStatementsInsideBlock'] ?? static fn(): array => [];
+    $parseValueUntil = $overrides['parseValueUntil'] ?? static fn(array $stopTypes): ?AstNode => null;
+
+    $parseRuleFromSelector = $overrides['parseRuleFromSelector']
+        ?? static fn(string $selector, int $line, int $column): RuleNode => new RuleNode($selector, [], $line, $column);
+
+    $parsingContext = new class (
+        $parseBlock,
+        $parseStatementsInsideBlock,
+        $consumeIdentifier,
+        $parseRuleFromSelector,
+    ) implements CallableDirectiveParsingContextInterface {
+        public function __construct(
+            private readonly Closure $parseBlock,
+            private readonly Closure $parseStatementsInsideBlock,
+            private readonly Closure $consumeIdentifier,
+            private readonly Closure $parseRuleFromSelector,
+        ) {}
+
+        public function parseBlock(): array
+        {
+            return ($this->parseBlock)();
+        }
+
+        public function parseStatementsInsideBlock(): array
+        {
+            return ($this->parseStatementsInsideBlock)();
+        }
+
+        public function consumeIdentifier(): string
+        {
+            return ($this->consumeIdentifier)();
+        }
+
+        public function parseRuleFromSelector(string $selector, int $line = 1, int $column = 1): RuleNode
+        {
+            return ($this->parseRuleFromSelector)($selector, $line, $column);
+        }
+
+        public function incrementBlockDepth(): void {}
+
+        public function decrementBlockDepth(): void {}
+    };
+
+    $inlineValueParser = new class implements InlineValueParserInterface {
+        public function parseInlineValue(string $expression): AstNode
+        {
+            return new StringNode($expression);
+        }
+    };
+
+    $callableValueContext = new class ($parseValueUntil) implements CallableDirectiveValueContextInterface {
+        public function __construct(private readonly Closure $parseValueUntil) {}
+
+        public function parseValue(): AstNode
+        {
+            return new StringNode('value');
+        }
+
+        public function parseValueUntil(array $stopTokens): ?AstNode
+        {
+            return ($this->parseValueUntil)($stopTokens);
+        }
+
+        public function parseArgumentList(): array
+        {
+            return [];
+        }
+    };
+
+    $moduleValueContext = new class ($consumeIdentifier, $parseValueUntil) implements ModuleDirectiveContextInterface {
+        public function __construct(
+            private readonly Closure $consumeIdentifier,
+            private readonly Closure $parseValueUntil,
+        ) {}
+
+        public function parseString(): string
+        {
+            return '';
+        }
+
+        public function consumeIdentifier(): string
+        {
+            return ($this->consumeIdentifier)();
+        }
+
+        public function parseValueUntil(array $stopTokens): ?AstNode
+        {
+            return ($this->parseValueUntil)($stopTokens);
+        }
+
+        /**
+         * @return array{default: bool, global: bool, important: bool}
+         */
+        public function parseValueModifiers(): array
+        {
+            return ['default' => false, 'global' => false, 'important' => false];
+        }
+    };
+
+    return new DirectiveParser($stream, $parsingContext, $inlineValueParser, $callableValueContext, $moduleValueContext);
+}
 
 describe('DirectiveParser', function () {
     beforeEach(function () {
@@ -28,7 +164,7 @@ describe('DirectiveParser', function () {
 
     describe('@forward', function () {
         it('parses @forward with show clause', function () {
-            $ast = $this->parser->parse('@forward "utils" show $color, mix;');
+            $ast  = $this->parser->parse('@forward "utils" show $color, mix;');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(ForwardNode::class)
@@ -39,7 +175,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @forward with hide clause', function () {
-            $ast = $this->parser->parse('@forward "utils" hide $internal;');
+            $ast  = $this->parser->parse('@forward "utils" hide $internal;');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(ForwardNode::class)
@@ -48,7 +184,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @forward with as prefix', function () {
-            $ast = $this->parser->parse('@forward "utils" as u-*;');
+            $ast  = $this->parser->parse('@forward "utils" as u-*;');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(ForwardNode::class)
@@ -56,7 +192,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @forward without options', function () {
-            $ast = $this->parser->parse('@forward "utils";');
+            $ast  = $this->parser->parse('@forward "utils";');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(ForwardNode::class)
@@ -68,7 +204,7 @@ describe('DirectiveParser', function () {
 
     describe('@mixin', function () {
         it('parses mixin without parameters', function () {
-            $ast = $this->parser->parse('@mixin clearfix { content: ""; }');
+            $ast  = $this->parser->parse('@mixin clearfix { content: ""; }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(MixinNode::class)
@@ -77,7 +213,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses mixin with parameters', function () {
-            $ast = $this->parser->parse('@mixin flex($dir: row, $wrap: nowrap) { }');
+            $ast  = $this->parser->parse('@mixin flex($dir: row, $wrap: nowrap) { }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(MixinNode::class)
@@ -86,7 +222,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses mixin with content block', function () {
-            $ast = $this->parser->parse('@mixin hover { &:hover { @content; } }');
+            $ast  = $this->parser->parse('@mixin hover { &:hover { @content; } }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(MixinNode::class)
@@ -96,7 +232,7 @@ describe('DirectiveParser', function () {
 
     describe('@include', function () {
         it('parses include without arguments', function () {
-            $ast = $this->parser->parse('.a { @include clearfix; }');
+            $ast  = $this->parser->parse('.a { @include clearfix; }');
             $node = $ast->children[0]->children[0];
 
             expect($node)->toBeInstanceOf(IncludeNode::class)
@@ -105,7 +241,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses include with positional arguments', function () {
-            $ast = $this->parser->parse('.a { @include flex(column, wrap); }');
+            $ast  = $this->parser->parse('.a { @include flex(column, wrap); }');
             $node = $ast->children[0]->children[0];
 
             expect($node)->toBeInstanceOf(IncludeNode::class)
@@ -113,7 +249,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses namespaced include', function () {
-            $ast = $this->parser->parse('@use "lib"; .a { @include lib.mixin; }');
+            $ast  = $this->parser->parse('@use "lib"; .a { @include lib.mixin; }');
             $node = $ast->children[1]->children[0];
 
             expect($node)->toBeInstanceOf(IncludeNode::class)
@@ -124,7 +260,7 @@ describe('DirectiveParser', function () {
 
     describe('@function', function () {
         it('parses function declaration without parameters', function () {
-            $ast = $this->parser->parse('@function pi() { @return 3.14159; }');
+            $ast  = $this->parser->parse('@function pi() { @return 3.14159; }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(FunctionDeclarationNode::class)
@@ -133,7 +269,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses function with parameters', function () {
-            $ast = $this->parser->parse('@function double($n) { @return $n * 2; }');
+            $ast  = $this->parser->parse('@function double($n) { @return $n * 2; }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(FunctionDeclarationNode::class)
@@ -142,7 +278,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses function with default parameter', function () {
-            $ast = $this->parser->parse('@function pad($n, $min: 0) { @return $n; }');
+            $ast  = $this->parser->parse('@function pad($n, $min: 0) { @return $n; }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(FunctionDeclarationNode::class)
@@ -152,16 +288,16 @@ describe('DirectiveParser', function () {
 
     describe('@return', function () {
         it('parses @return inside function body', function () {
-            $ast = $this->parser->parse('@function f() { @return 42; }');
-            $returnNode = $ast->children[0]->body[0];
+            $ast  = $this->parser->parse('@function f() { @return 42; }');
+            $node = $ast->children[0]->body[0];
 
-            expect($returnNode)->toBeInstanceOf(ReturnNode::class);
+            expect($node)->toBeInstanceOf(ReturnNode::class);
         });
     });
 
     describe('@extend', function () {
         it('parses extend directive with selector', function () {
-            $ast = $this->parser->parse('.error { @extend .alert; }');
+            $ast  = $this->parser->parse('.error { @extend .alert; }');
             $node = $ast->children[0]->children[0];
 
             expect($node)->toBeInstanceOf(ExtendNode::class)
@@ -169,17 +305,52 @@ describe('DirectiveParser', function () {
         });
 
         it('parses extend with class selector', function () {
-            $ast = $this->parser->parse('.button--primary { @extend .button; }');
+            $ast  = $this->parser->parse('.button--primary { @extend .button; }');
             $node = $ast->children[0]->children[0];
 
             expect($node)->toBeInstanceOf(ExtendNode::class)
                 ->and($node->selector)->toBe('.button');
         });
+
+        it('parses extend without trailing semicolon', function () {
+            $ast  = $this->parser->parse('.error { @extend .alert }');
+            $node = $ast->children[0]->children[0];
+
+            expect($node)->toBeInstanceOf(ExtendNode::class)
+                ->and($node->selector)->toBe('.alert')
+                ->and($node->optional)->toBeFalse();
+        });
+
+        it('parses extend before a sibling rule without trailing semicolon', function () {
+            $ast  = $this->parser->parse('.error { @extend .alert } .alert { color: red; }');
+            $node = $ast->children[0]->children[0];
+
+            expect($node)->toBeInstanceOf(ExtendNode::class)
+                ->and($node->selector)->toBe('.alert');
+        });
+
+        it('parses optional extend', function () {
+            $ast  = $this->parser->parse('.error { @extend .alert !optional; }');
+            $node = $ast->children[0]->children[0];
+
+            expect($node)->toBeInstanceOf(ExtendNode::class)
+                ->and($node->selector)->toBe('.alert')
+                ->and($node->optional)->toBeTrue();
+        });
+
+        it('parses optional extend without trailing semicolon', function () {
+            $ast  = $this->parser->parse('.error { @extend .alert !optional }');
+            $node = $ast->children[0]->children[0];
+
+            expect($node)->toBeInstanceOf(ExtendNode::class)
+                ->and($node->selector)->toBe('.alert')
+                ->and($node->optional)->toBeTrue();
+        });
     });
 
     describe('@at-root', function () {
         it('parses @at-root without query', function () {
-            $ast = $this->parser->parse('.parent { @at-root .child { color: red; } }');
+            $ast  = $this->parser->parse('.parent { @at-root .child { color: red; } }');
             $node = $ast->children[0]->children[0];
 
             expect($node)->toBeInstanceOf(AtRootNode::class)
@@ -187,7 +358,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @at-root with without query', function () {
-            $ast = $this->parser->parse('.a { @at-root (without: media) { color: red; } }');
+            $ast  = $this->parser->parse('.a { @at-root (without: media) { color: red; } }');
             $node = $ast->children[0]->children[0];
 
             expect($node)->toBeInstanceOf(AtRootNode::class)
@@ -196,7 +367,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @at-root with with query', function () {
-            $ast = $this->parser->parse('.a { @at-root (with: rule) { color: red; } }');
+            $ast  = $this->parser->parse('.a { @at-root (with: rule) { color: red; } }');
             $node = $ast->children[0]->children[0];
 
             expect($node)->toBeInstanceOf(AtRootNode::class)
@@ -204,7 +375,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @at-root query with multiple rules separated by commas and whitespace', function () {
-            $ast = $this->parser->parse('.a { @at-root (with: rule, media tabs_and_spaces) { color: red; } }');
+            $ast  = $this->parser->parse('.a { @at-root (with: rule, media tabs_and_spaces) { color: red; } }');
             $node = $ast->children[0]->children[0];
 
             expect($node)->toBeInstanceOf(AtRootNode::class)
@@ -213,7 +384,7 @@ describe('DirectiveParser', function () {
         });
 
         it('falls back to selector form for invalid queries', function (string $source, string $selector) {
-            $ast = $this->parser->parse($source);
+            $ast  = $this->parser->parse($source);
             $node = $ast->children[0]->children[0];
 
             expect($node)->toBeInstanceOf(AtRootNode::class)
@@ -234,7 +405,7 @@ describe('DirectiveParser', function () {
 
     describe('@if / @else', function () {
         it('parses simple @if', function () {
-            $ast = $this->parser->parse('@if true { color: red; }');
+            $ast  = $this->parser->parse('@if true { color: red; }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(IfNode::class)
@@ -242,7 +413,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @if with @else branch', function () {
-            $ast = $this->parser->parse('@if $x { color: red; } @else { color: blue; }');
+            $ast  = $this->parser->parse('@if $x { color: red; } @else { color: blue; }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(IfNode::class)
@@ -250,7 +421,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @if with @else if chain', function () {
-            $ast = $this->parser->parse('@if $a { } @else if $b { } @else { }');
+            $ast  = $this->parser->parse('@if $a { } @else if $b { } @else { }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(IfNode::class)
@@ -258,7 +429,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @if with complex condition', function () {
-            $ast = $this->parser->parse('@if $x > 0 and $y < 10 { }');
+            $ast  = $this->parser->parse('@if $x > 0 and $y < 10 { }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(IfNode::class)
@@ -268,7 +439,7 @@ describe('DirectiveParser', function () {
 
     describe('@for', function () {
         it('parses @for from...to (exclusive)', function () {
-            $ast = $this->parser->parse('@for $i from 1 to 5 { }');
+            $ast  = $this->parser->parse('@for $i from 1 to 5 { }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(ForNode::class)
@@ -277,7 +448,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @for from...through (inclusive)', function () {
-            $ast = $this->parser->parse('@for $i from 1 through 5 { }');
+            $ast  = $this->parser->parse('@for $i from 1 through 5 { }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(ForNode::class)
@@ -290,7 +461,7 @@ describe('DirectiveParser', function () {
             string $prelude,
             bool $hasBlock,
         ) {
-            $ast = $this->parser->parse($source);
+            $ast  = $this->parser->parse($source);
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(DirectiveNode::class)
@@ -306,7 +477,7 @@ describe('DirectiveParser', function () {
 
     describe('@each', function () {
         it('parses @each over simple list', function () {
-            $ast = $this->parser->parse('@each $color in red, green, blue { }');
+            $ast  = $this->parser->parse('@each $color in red, green, blue { }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(EachNode::class)
@@ -314,7 +485,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @each with multiple variables (map destructuring)', function () {
-            $ast = $this->parser->parse('@each $key, $value in $map { }');
+            $ast  = $this->parser->parse('@each $key, $value in $map { }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(EachNode::class)
@@ -322,7 +493,7 @@ describe('DirectiveParser', function () {
         });
 
         it('falls back to a generic directive for invalid @each syntax', function (string $source, string $prelude) {
-            $ast = $this->parser->parse($source);
+            $ast  = $this->parser->parse($source);
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(DirectiveNode::class)
@@ -338,7 +509,7 @@ describe('DirectiveParser', function () {
 
     describe('@while', function () {
         it('parses @while with condition', function () {
-            $ast = $this->parser->parse('@while $i > 0 { }');
+            $ast  = $this->parser->parse('@while $i > 0 { }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(WhileNode::class)
@@ -374,7 +545,7 @@ describe('DirectiveParser', function () {
 
     describe('@supports', function () {
         it('parses @supports with simple condition', function () {
-            $ast = $this->parser->parse('@supports (display: grid) { .a { display: grid; } }');
+            $ast  = $this->parser->parse('@supports (display: grid) { .a { display: grid; } }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(SupportsNode::class)
@@ -382,7 +553,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @supports with not condition', function () {
-            $ast = $this->parser->parse('@supports not (display: grid) { }');
+            $ast  = $this->parser->parse('@supports not (display: grid) { }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(SupportsNode::class)
@@ -390,7 +561,7 @@ describe('DirectiveParser', function () {
         });
 
         it('stops reading supports conditions after the loop guard threshold', function () {
-            $ast = $this->parser->parse('@supports ' . str_repeat('(', 1002) . 'display:grid');
+            $ast  = $this->parser->parse('@supports ' . str_repeat('(', 1002) . 'display:grid');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(SupportsNode::class)
@@ -401,7 +572,7 @@ describe('DirectiveParser', function () {
 
     describe('generic / unknown directives', function () {
         it('parses unknown block directive as DirectiveNode', function () {
-            $ast = $this->parser->parse('@unknown-rule custom-param { color: red; }');
+            $ast  = $this->parser->parse('@unknown-rule custom-param { color: red; }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(DirectiveNode::class)
@@ -409,7 +580,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @keyframes as DirectiveNode', function () {
-            $ast = $this->parser->parse('@keyframes slide { from { opacity: 0; } to { opacity: 1; } }');
+            $ast  = $this->parser->parse('@keyframes slide { from { opacity: 0; } to { opacity: 1; } }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(DirectiveNode::class)
@@ -418,7 +589,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @media as DirectiveNode', function () {
-            $ast = $this->parser->parse('@media (max-width: 768px) { .a { display: none; } }');
+            $ast  = $this->parser->parse('@media (max-width: 768px) { .a { display: none; } }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(DirectiveNode::class)
@@ -426,7 +597,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses @layer as DirectiveNode', function () {
-            $ast = $this->parser->parse('@layer utilities { .a { color: red; } }');
+            $ast  = $this->parser->parse('@layer utilities { .a { color: red; } }');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(DirectiveNode::class)
@@ -434,7 +605,7 @@ describe('DirectiveParser', function () {
         });
 
         it('parses generic directives without semicolon or block at eof', function () {
-            $ast = $this->parser->parse('@media screen');
+            $ast  = $this->parser->parse('@media screen');
             $node = $ast->children[0];
 
             expect($node)->toBeInstanceOf(DirectiveNode::class)
@@ -443,5 +614,125 @@ describe('DirectiveParser', function () {
                 ->and($node->body)->toBe([])
                 ->and($node->hasBlock)->toBeFalse();
         });
+    });
+});
+
+describe('DirectiveParser without raw source', function () {
+    it('tokenizes a plain prelude of a generic directive', function () {
+        $parser = createDirectiveParserForTest([
+            directiveTestToken(TokenType::AT, '@'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'u'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'a'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::NUMBER, '1'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::SEMICOLON, ';'),
+            directiveTestToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseDirective();
+
+        /** @var DirectiveNode $node */
+        expect($node)->toBeInstanceOf(DirectiveNode::class)
+            ->and($node->name)->toBe('u')
+            ->and($node->prelude)->toBe('a 1')
+            ->and($node->hasBlock)->toBeFalse();
+    });
+
+    it('keeps interpolation fragments inside a tokenized prelude', function () {
+        $parser = createDirectiveParserForTest([
+            directiveTestToken(TokenType::AT, '@'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'v'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::HASH, '#'),
+            directiveTestToken(TokenType::LBRACE, '{'),
+            directiveTestToken(TokenType::IDENTIFIER, 'x'),
+            directiveTestToken(TokenType::RBRACE, '}'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::SEMICOLON, ';'),
+            directiveTestToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseDirective();
+
+        /** @var DirectiveNode $node */
+        expect($node)->toBeInstanceOf(DirectiveNode::class)
+            ->and($node->name)->toBe('v')
+            ->and($node->prelude)->toBe('#{x}');
+    });
+
+    it('drops silent comments and keeps loud comments in a tokenized prelude', function () {
+        $parser = createDirectiveParserForTest([
+            directiveTestToken(TokenType::AT, '@'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'k'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'a'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::COMMENT_SILENT, 'x'),
+            directiveTestToken(TokenType::WHITESPACE, "\n"),
+            directiveTestToken(TokenType::COMMENT_LOUD, 'y'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'b'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::SEMICOLON, ';'),
+            directiveTestToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseDirective();
+
+        /** @var DirectiveNode $node */
+        expect($node)->toBeInstanceOf(DirectiveNode::class)
+            ->and($node->name)->toBe('k')
+            ->and($node->prelude)->toBe('a /*y*/ b');
+    });
+
+    it('opens a block for a generic directive with a tokenized prelude', function () {
+        $parser = createDirectiveParserForTest([
+            directiveTestToken(TokenType::AT, '@'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'q'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'p'),
+            directiveTestToken(TokenType::LBRACE, '{'),
+            directiveTestToken(TokenType::RBRACE, '}'),
+            directiveTestToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseDirective();
+
+        /** @var DirectiveNode $node */
+        expect($node)->toBeInstanceOf(DirectiveNode::class)
+            ->and($node->name)->toBe('q')
+            ->and($node->prelude)->toBe('p')
+            ->and($node->hasBlock)->toBeTrue();
+    });
+
+    it('falls back to a selector for an at-root query with an unclosed quote', function () {
+        $parser = createDirectiveParserForTest([
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::LPAREN, '('),
+            directiveTestToken(TokenType::IDENTIFIER, 'without'),
+            directiveTestToken(TokenType::COLON, ':'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::IDENTIFIER, 'media"x'),
+            directiveTestToken(TokenType::RPAREN, ')'),
+            directiveTestToken(TokenType::WHITESPACE, ' '),
+            directiveTestToken(TokenType::LBRACE, '{'),
+            directiveTestToken(TokenType::RBRACE, '}'),
+            directiveTestToken(TokenType::EOF),
+        ]);
+
+        $node = $parser->parseAtRootDirective();
+
+        /** @var AtRootNode $node */
+        expect($node)->toBeInstanceOf(AtRootNode::class)
+            ->and($node->queryMode)->toBeNull()
+            ->and($node->body)->toHaveCount(1)
+            ->and($node->body[0])->toBeInstanceOf(RuleNode::class)
+            ->and($node->body[0]->selector)->toBe('(without: media"x)');
     });
 });

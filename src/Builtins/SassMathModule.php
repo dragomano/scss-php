@@ -13,6 +13,7 @@ use Bugo\SCSS\Exceptions\SassThrowable;
 use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -29,20 +30,27 @@ use function atan2;
 use function ceil;
 use function cos;
 use function count;
+use function deg2rad;
 use function fdiv;
 use function floor;
+use function fmod;
 use function get_debug_type;
 use function implode;
-use function is_int;
+use function in_array;
+use function is_finite;
+use function is_nan;
 use function log;
 use function max;
 use function mt_getrandmax;
 use function mt_rand;
+use function rad2deg;
 use function round;
 use function sin;
 use function sqrt;
 use function str_contains;
+use function strtolower;
 use function tan;
+use function trim;
 
 use const M_E;
 use const M_PI;
@@ -84,11 +92,12 @@ final class SassMathModule extends AbstractModule
         'abs',
         'acos',
         'asin',
+        'atan',
+        'atan2',
         'ceil',
         'clamp',
         'cos',
         'floor',
-        'hypot',
         'log',
         'max',
         'min',
@@ -105,6 +114,36 @@ final class SassMathModule extends AbstractModule
     private const GLOBAL_ALIASES = [
         'comparable' => 'compatible',
         'unitless'   => 'is-unitless',
+    ];
+
+    /**
+     * @var array<string, array<int, string>>
+     */
+    private const PARAMETER_NAMES = [
+        'abs'         => ['number'],
+        'acos'        => ['number'],
+        'asin'        => ['number'],
+        'atan'        => ['number'],
+        'atan2'       => ['y', 'x'],
+        'ceil'        => ['number'],
+        'clamp'       => ['min', 'number', 'max'],
+        'compatible'  => ['number1', 'number2'],
+        'cos'         => ['number'],
+        'div'         => ['number1', 'number2'],
+        'floor'       => ['number'],
+        'hypot'       => ['numbers'],
+        'is-unitless' => ['number'],
+        'log'         => ['number', 'base'],
+        'max'         => ['numbers'],
+        'min'         => ['numbers'],
+        'percentage'  => ['number'],
+        'pow'         => ['base', 'exponent'],
+        'random'      => ['limit'],
+        'round'       => ['number'],
+        'sin'         => ['number'],
+        'sqrt'        => ['number'],
+        'tan'         => ['number'],
+        'unit'        => ['number'],
     ];
 
     public function getName(): string
@@ -145,6 +184,10 @@ final class SassMathModule extends AbstractModule
         $previousDisplayName = $this->beginBuiltinCall($name, $context);
 
         try {
+            if ($named !== []) {
+                $positional = $this->mergeNamedArguments($positional, $named, self::PARAMETER_NAMES[$name] ?? []);
+            }
+
             return match ($name) {
                 'abs'         => $this->abs($positional, $context),
                 'acos'        => $this->acos($positional),
@@ -155,7 +198,7 @@ final class SassMathModule extends AbstractModule
                 'clamp'       => $this->clamp($positional),
                 'compatible'  => $this->compatible($positional, $context),
                 'cos'         => $this->cos($positional),
-                'div'         => $this->div($positional),
+                'div'         => $this->div($positional, $context),
                 'floor'       => $this->floor($positional, $context),
                 'hypot'       => $this->hypot($positional),
                 'is-unitless' => $this->isUnitless($positional, $context),
@@ -203,7 +246,15 @@ final class SassMathModule extends AbstractModule
      */
     private function acos(array $positional): AstNode
     {
-        $value = $this->requireUnitlessNumber($positional, 0, 'math.acos');
+        try {
+            $value = $this->requireUnitlessNumber($positional, 0, 'math.acos');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
 
         return new NumberNode(rad2deg(acos($value)), 'deg');
     }
@@ -213,7 +264,15 @@ final class SassMathModule extends AbstractModule
      */
     private function asin(array $positional): AstNode
     {
-        $value = $this->requireUnitlessNumber($positional, 0, 'math.asin');
+        try {
+            $value = $this->requireUnitlessNumber($positional, 0, 'math.asin');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
 
         return new NumberNode(rad2deg(asin($value)), 'deg');
     }
@@ -223,7 +282,15 @@ final class SassMathModule extends AbstractModule
      */
     private function atan(array $positional): AstNode
     {
-        $value = $this->requireUnitlessNumber($positional, 0, 'math.atan');
+        try {
+            $value = $this->requireUnitlessNumber($positional, 0, 'math.atan');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
 
         return new NumberNode(rad2deg(atan($value)), 'deg');
     }
@@ -233,14 +300,58 @@ final class SassMathModule extends AbstractModule
      */
     private function atan2(array $positional): AstNode
     {
-        $a = $this->requireNumber($positional, 0, 'math.atan2');
-        $b = $this->requireNumber($positional, 1, 'math.atan2');
+        try {
+            $a = $this->requireNumber($positional, 0, 'math.atan2');
+            $b = $this->requireNumber($positional, 1, 'math.atan2');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
 
-        if (! $this->unitsCompatible($a->unit, $b->unit)) {
+            throw $sassThrowable;
+        }
+
+        return new NumberNode(
+            rad2deg(atan2((float) $a->value, $this->resolveAtan2Divisor($a, $b))),
+            'deg',
+        );
+    }
+
+    private function resolveAtan2Divisor(NumberNode $a, NumberNode $b): float
+    {
+        $aUnit = $a->unit === '' ? null : $a->unit;
+        $bUnit = $b->unit === '' ? null : $b->unit;
+
+        if (($aUnit === null) !== ($bUnit === null)) {
             throw IncompatibleUnitsException::functionArguments($this->builtinCallReference('math.atan2'));
         }
 
-        return new NumberNode(rad2deg(atan2((float) $a->value, (float) $b->value)), 'deg');
+        if ($aUnit === null) {
+            return (float) $b->value;
+        }
+
+        if ($aUnit !== '%' && $bUnit !== '%') {
+            $aKnown = UnitConverter::isKnownUnit($aUnit);
+            $bKnown = UnitConverter::isKnownUnit($bUnit);
+
+            if ($aKnown && $bKnown) {
+                if (! $this->unitsCompatible($aUnit, $bUnit)) {
+                    throw IncompatibleUnitsException::functionArguments(
+                        $this->builtinCallReference('math.atan2'),
+                    );
+                }
+
+                return $this->convertNumberValue($b, $aUnit);
+            }
+
+            if (! $aKnown && ! $bKnown && $aUnit === $bUnit) {
+                return (float) $b->value;
+            }
+        }
+
+        throw new DeferToCssFunctionException(
+            $this->builtinCallReference('math.atan2') . ' should be emitted as a CSS function.',
+        );
     }
 
     /**
@@ -252,7 +363,9 @@ final class SassMathModule extends AbstractModule
 
         $this->warnAboutDeprecatedMathFunction($context, 'ceil', $positional);
 
-        return new NumberNode((int) ceil((float) $number->value), $number->unit);
+        $value = (float) $number->value;
+
+        return new NumberNode(is_nan($value) ? $value : (int) ceil($value), $number->unit);
     }
 
     /**
@@ -273,6 +386,10 @@ final class SassMathModule extends AbstractModule
             $minComparable   = $this->convertNumberValue($minValue, $comparisonUnit);
             $valueComparable = $this->convertNumberValue($number, $comparisonUnit);
             $maxComparable   = $this->convertNumberValue($maxValue, $comparisonUnit);
+
+            if ($this->compareNumbers($minComparable, $maxComparable) > 0) {
+                return new NumberNode($minValue->value, $minValue->unit);
+            }
 
             if ($this->compareNumbers($valueComparable, $minComparable) <= 0) {
                 return new NumberNode($minValue->value, $minValue->unit);
@@ -310,7 +427,16 @@ final class SassMathModule extends AbstractModule
      */
     private function cos(array $positional): AstNode
     {
-        $number  = $this->requireNumber($positional, 0, 'math.cos');
+        try {
+            $number  = $this->requireNumber($positional, 0, 'math.cos');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
+
         $radians = $this->toRadians($number);
 
         return new NumberNode(cos($radians));
@@ -319,10 +445,25 @@ final class SassMathModule extends AbstractModule
     /**
      * @param array<int, AstNode> $positional
      */
-    private function div(array $positional): AstNode
+    private function div(array $positional, ?BuiltinCallContext $context): AstNode
     {
-        $a = $this->requireNumber($positional, 0, 'math.div');
-        $b = $this->requireNumber($positional, 1, 'math.div');
+        try {
+            $a = $this->requireNumber($positional, 0, 'math.div');
+            $b = $this->requireNumber($positional, 1, 'math.div');
+        } catch (InvalidArgumentTypeException $invalidArgumentTypeException) {
+            $first  = $positional[0] ?? null;
+            $second = $positional[1] ?? null;
+
+            if ($first instanceof NumberNode || $first instanceof StringNode) {
+                if ($second instanceof NumberNode || $second instanceof StringNode) {
+                    $context?->warn('math.div() will only support number arguments in a future release. Use list.slash() instead for a slash separator.');
+
+                    return new StringNode((string) $first . '/' . (string) $second);
+                }
+            }
+
+            throw $invalidArgumentTypeException;
+        }
 
         $aFloat = (float) $a->value;
         $bFloat = (float) $b->value;
@@ -333,7 +474,7 @@ final class SassMathModule extends AbstractModule
                 return new NumberNode(fdiv(0.0, 0.0), $unit);
             }
 
-            return new NumberNode(fdiv($aFloat > 0.0 ? 1.0 : -1.0, 0.0), $unit);
+            return new NumberNode(fdiv($aFloat > 0.0 ? 1.0 : -1.0, $bFloat), $unit);
         }
 
         return new NumberNode($aFloat / $bFloat, $unit);
@@ -348,7 +489,9 @@ final class SassMathModule extends AbstractModule
 
         $this->warnAboutDeprecatedMathFunction($context, 'floor', $positional);
 
-        return new NumberNode((int) floor((float) $number->value), $number->unit);
+        $value = (float) $number->value;
+
+        return new NumberNode(is_nan($value) ? $value : (int) floor($value), $number->unit);
     }
 
     /**
@@ -377,9 +520,8 @@ final class SassMathModule extends AbstractModule
 
         $sum = 0.0;
         foreach ($numbers as $number) {
-            $value = (float) $number->value;
-
-            $sum += $value * $value;
+            $value = $this->convertNumberValue($number, $unit);
+            $sum  += $value * $value;
         }
 
         return new NumberNode(sqrt($sum), $unit);
@@ -402,20 +544,24 @@ final class SassMathModule extends AbstractModule
      */
     private function log(array $positional): AstNode
     {
-        $number = $this->requireUnitlessNumber($positional, 0, 'math.log');
+        try {
+            $number = $this->requireUnitlessNumber($positional, 0, 'math.log');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
 
-        if (isset($positional[1])) {
+            throw $sassThrowable;
+        }
+
+        if (isset($positional[1]) && ! ($positional[1] instanceof NullNode)) {
             $base = $this->ensureUnitlessNumber($positional[1], 'math.log');
 
-            if ($base === 0.0) {
+            if ($base < 0.0) {
                 return new NumberNode(fdiv(0.0, 0.0));
             }
 
-            if ($base === 1.0) {
-                return new NumberNode(fdiv(0.0, 0.0));
-            }
-
-            return new NumberNode($base < 0.0 ? fdiv(0.0, 0.0) : log($number) / log($base));
+            return new NumberNode(fdiv(log($number), log($base)));
         }
 
         return new NumberNode(log($number));
@@ -463,10 +609,36 @@ final class SassMathModule extends AbstractModule
      */
     private function pow(array $positional): AstNode
     {
-        $base     = $this->requireUnitlessNumber($positional, 0, 'math.pow');
-        $exponent = $this->requireUnitlessNumber($positional, 1, 'math.pow');
+        try {
+            $base     = $this->requireUnitlessNumber($positional, 0, 'math.pow');
+            $exponent = $this->requireUnitlessNumber($positional, 1, 'math.pow');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
+
+        if ($base === 0.0 && $exponent < 0.0) {
+            return new NumberNode($this->negativeZeroPower($base, $exponent));
+        }
 
         return new NumberNode($base ** $exponent);
+    }
+
+    private function negativeZeroPower(float $base, float $exponent): float
+    {
+        $isNegativeZero = fdiv(1.0, $base) < 0.0;
+        $isOddInteger   = is_finite($exponent)
+            && floor($exponent) === $exponent
+            && fmod($exponent, 2.0) !== 0.0;
+
+        if ($isNegativeZero && $isOddInteger) {
+            return fdiv(-1.0, 0.0);
+        }
+
+        return fdiv(1.0, 0.0);
     }
 
     /**
@@ -474,7 +646,7 @@ final class SassMathModule extends AbstractModule
      */
     private function random(array $positional, ?BuiltinCallContext $context): AstNode
     {
-        if (! isset($positional[0])) {
+        if (! isset($positional[0]) || $positional[0] instanceof NullNode) {
             $this->warnAboutDeprecatedMathFunction($context, 'random', $positional);
 
             return new NumberNode(mt_rand() / mt_getrandmax());
@@ -482,7 +654,9 @@ final class SassMathModule extends AbstractModule
 
         $limit = $this->requireNumber($positional, 0, 'math.random');
 
-        if (! is_int($limit->value) || $limit->value < 1) {
+        $rounded = round($limit->value);
+
+        if (abs((float) $limit->value - $rounded) > 1e-10 || $rounded < 1) {
             throw BuiltinArgumentException::mustBePositiveInteger(
                 $this->builtinCallReference('math.random'),
                 'limit',
@@ -491,7 +665,7 @@ final class SassMathModule extends AbstractModule
 
         $this->warnAboutDeprecatedMathFunction($context, 'random', $positional);
 
-        return new NumberNode(mt_rand(1, $limit->value), $limit->unit);
+        return new NumberNode(mt_rand(1, (int) $rounded));
     }
 
     /**
@@ -512,7 +686,9 @@ final class SassMathModule extends AbstractModule
 
         $this->warnAboutDeprecatedMathFunction($context, 'round', $positional);
 
-        return new NumberNode((int) round((float) $number->value), $number->unit);
+        $value = (float) $number->value;
+
+        return new NumberNode(is_nan($value) ? $value : (int) round($value), $number->unit);
     }
 
     /**
@@ -520,7 +696,16 @@ final class SassMathModule extends AbstractModule
      */
     private function sin(array $positional): AstNode
     {
-        $number  = $this->requireNumber($positional, 0, 'math.sin');
+        try {
+            $number  = $this->requireNumber($positional, 0, 'math.sin');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
+
         $radians = $this->toRadians($number);
 
         return new NumberNode(sin($radians));
@@ -531,7 +716,15 @@ final class SassMathModule extends AbstractModule
      */
     private function sqrt(array $positional): AstNode
     {
-        $number = $this->requireUnitlessNumber($positional, 0, 'math.sqrt');
+        try {
+            $number = $this->requireUnitlessNumber($positional, 0, 'math.sqrt');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
 
         return new NumberNode(sqrt($number));
     }
@@ -541,7 +734,16 @@ final class SassMathModule extends AbstractModule
      */
     private function tan(array $positional): AstNode
     {
-        $number  = $this->requireNumber($positional, 0, 'math.tan');
+        try {
+            $number  = $this->requireNumber($positional, 0, 'math.tan');
+        } catch (SassThrowable $sassThrowable) {
+            if ($this->shouldDeferToCss($sassThrowable)) {
+                throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
+            }
+
+            throw $sassThrowable;
+        }
+
         $radians = $this->toRadians($number);
 
         return new NumberNode(tan($radians));
@@ -556,7 +758,36 @@ final class SassMathModule extends AbstractModule
 
         $this->warnAboutDeprecatedMathFunction($context, 'unit', $positional);
 
-        return new StringNode($number->unit ?? '');
+        return new StringNode($this->formatUnitString($number->unit), true);
+    }
+
+    private function formatUnitString(?string $unit): string
+    {
+        if ($unit === null || $unit === '') {
+            return '';
+        }
+
+        [$numerator, $denominator] = UnitConverter::parseParts($unit);
+
+        $numeratorString = implode('*', $numerator);
+
+        if ($denominator === []) {
+            return $numeratorString;
+        }
+
+        if ($numerator === []) {
+            $denominatorString = implode('*', $denominator);
+
+            return count($denominator) === 1
+                ? $denominatorString . '^-1'
+                : '(' . $denominatorString . ')^-1';
+        }
+
+        $denominatorString = count($denominator) === 1
+            ? $denominator[0]
+            : '(' . implode('*', $denominator) . ')';
+
+        return $numeratorString . '/' . $denominatorString;
     }
 
     /**
@@ -576,30 +807,41 @@ final class SassMathModule extends AbstractModule
             $numbers = array_map(fn(AstNode $value): NumberNode
                 => $this->ensureNumber($value, $wantMax ? 'math.max' : 'math.min'), $positional);
 
-            $unit = $numbers[0]->unit;
+            $unit           = $numbers[0]->unit;
+            $comparisonUnit = $unit;
 
             foreach ($numbers as $number) {
-                if (! $this->unitsCompatible($unit, $number->unit)) {
+                if ($unit !== null && $number->unit !== $unit && ! $this->unitsCompatible($unit, $number->unit)) {
                     throw IncompatibleUnitsException::functionArguments(
                         $this->builtinCallReference($wantMax ? 'math.max' : 'math.min'),
                     );
                 }
+
+                if ($number->unit !== null && $comparisonUnit === null) {
+                    $comparisonUnit = $number->unit;
+                }
             }
 
-            $result = $numbers[0];
+            $result         = $numbers[0];
+            $bestComparable = $this->convertNumberValue($numbers[0], $comparisonUnit);
+
             foreach ($numbers as $number) {
-                if ($wantMax && (float) $number->value > (float) $result->value) {
-                    $result = $number;
+                $comparable = $this->convertNumberValue($number, $comparisonUnit);
+
+                if ($wantMax && $comparable > $bestComparable) {
+                    $result         = $number;
+                    $bestComparable = $comparable;
                 }
 
-                if (! $wantMax && (float) $number->value < (float) $result->value) {
-                    $result = $number;
+                if (! $wantMax && $comparable < $bestComparable) {
+                    $result         = $number;
+                    $bestComparable = $comparable;
                 }
             }
 
             $this->warnAboutDeprecatedMathFunction($context, $wantMax ? 'max' : 'min', $positional);
 
-            return new NumberNode($result->value, $unit);
+            return new NumberNode($result->value, $result->unit);
         } catch (SassThrowable $sassThrowable) {
             if ($this->shouldDeferToCss($sassThrowable)) {
                 throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);
@@ -627,6 +869,12 @@ final class SassMathModule extends AbstractModule
     private function ensureNumber(AstNode $value, string $context): NumberNode
     {
         if (! ($value instanceof NumberNode)) {
+            $constant = $this->constantNumber($value);
+
+            if ($constant !== null) {
+                return $constant;
+            }
+
             throw new InvalidArgumentTypeException(
                 $this->builtinErrorContext($context),
                 'number',
@@ -635,6 +883,22 @@ final class SassMathModule extends AbstractModule
         }
 
         return $value;
+    }
+
+    private function constantNumber(AstNode $value): ?NumberNode
+    {
+        if (! ($value instanceof StringNode) || $value->quoted) {
+            return null;
+        }
+
+        return match (strtolower(trim($value->value))) {
+            'pi'        => new NumberNode(M_PI),
+            'e'         => new NumberNode(M_E),
+            'infinity'  => new NumberNode(fdiv(1.0, 0.0)),
+            '-infinity' => new NumberNode(fdiv(-1.0, 0.0)),
+            'nan'       => new NumberNode(fdiv(0.0, 0.0)),
+            default     => null,
+        };
     }
 
     /**
@@ -706,6 +970,10 @@ final class SassMathModule extends AbstractModule
         string $name,
         array $positional,
     ): void {
+        if ($context === null || $context->logWarning === null) {
+            return;
+        }
+
         if (! $this->isGlobalBuiltinCall() || in_array($name, ['abs', 'clamp'], true)) {
             return;
         }

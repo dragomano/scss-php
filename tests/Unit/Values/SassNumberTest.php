@@ -5,22 +5,34 @@ declare(strict_types=1);
 use Bugo\SCSS\Values\SassNumber;
 
 describe(SassNumber::class, function () {
-    it('removes leading zero for decimals', function () {
+    it('keeps leading zero for decimals', function () {
         $number = new SassNumber(0.75);
+
+        expect($number->toCss())->toBe('0.75');
+    });
+
+    it('keeps leading zero for negative decimals', function () {
+        $number = new SassNumber(-0.5);
+
+        expect($number->toCss())->toBe('-0.5');
+    });
+
+    it('removes leading zero for decimals when compressed', function () {
+        $number = new SassNumber(0.75, compressed: true);
 
         expect($number->toCss())->toBe('.75');
     });
 
-    it('removes leading zero for negative decimals', function () {
-        $number = new SassNumber(-0.5);
+    it('removes leading zero for negative decimals when compressed', function () {
+        $number = new SassNumber(-0.5, compressed: true);
 
         expect($number->toCss())->toBe('-.5');
     });
 
-    it('drops safe units for zero values', function () {
+    it('preserves unit for zero values', function () {
         $number = new SassNumber(0.0, 'px');
 
-        expect($number->toCss())->toBe('0');
+        expect($number->toCss())->toBe('0px');
     });
 
     it('keeps percent unit for zero values', function () {
@@ -38,6 +50,12 @@ describe(SassNumber::class, function () {
     it('keeps only first ten digits after decimal point', function () {
         $number = new SassNumber(0.012345678912345);
 
+        expect($number->toCss())->toBe('0.0123456789');
+    });
+
+    it('keeps only first ten digits after decimal point when compressed', function () {
+        $number = new SassNumber(0.012345678912345, compressed: true);
+
         expect($number->toCss())->toBe('.0123456789');
     });
 
@@ -46,13 +64,13 @@ describe(SassNumber::class, function () {
         $nearLowerInteger = new SassNumber(0.99999999991);
 
         expect($nearUpperInteger->toCss())->toBe('1.0000000001')
-            ->and($nearLowerInteger->toCss())->toBe('.9999999999');
+            ->and($nearLowerInteger->toCss())->toBe('0.9999999999');
     });
 
-    it('drops compound units for zero values unless preservation is requested', function () {
+    it('preserves compound units for zero values', function () {
         $number = new SassNumber(0.0, 'px/s');
 
-        expect($number->toCss())->toBe('0');
+        expect($number->toCss())->toBe('calc(0px / 1s)');
     });
 
     it('returns zero when a float rounds down to all zero fractional digits', function () {
@@ -65,6 +83,18 @@ describe(SassNumber::class, function () {
         $number = new SassNumber(-0.00000000001);
 
         expect($number->toCss())->toBe('0');
+    });
+
+    it('preserves the sign of negative zero', function () {
+        expect((new SassNumber(-0.0))->toCss())->toBe('-0')
+            ->and((new SassNumber(-0.0, 'px'))->toCss())->toBe('-0px')
+            ->and((new SassNumber(-0.0, '%'))->toCss())->toBe('-0%')
+            ->and((new SassNumber(-0.0, 'px/s'))->toCss())->toBe('calc(-0px / 1s)');
+    });
+
+    it('does not add a sign to positive zero', function () {
+        expect((new SassNumber(0.0))->toCss())->toBe('0')
+            ->and((new SassNumber(0))->toCss())->toBe('0');
     });
 
     it('formats negative infinity with compound units as calc expression', function () {

@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Handlers;
 
+use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\UseNode;
+use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Module;
@@ -26,6 +28,7 @@ final readonly class ModuleNodeHandler
         private Module $module,
         private Render $render,
         private Selector $selector,
+        private DeferredChunkManager $chunks,
     ) {}
 
     public function handleForward(ForwardNode $node, TraversalContext $ctx): string
@@ -39,7 +42,21 @@ final readonly class ModuleNodeHandler
 
         $moduleState->emittedForwardCss[$forwardKey] = true;
 
-        return $moduleState->forwardedModules[$forwardKey]['css'];
+        $css = $moduleState->forwardedModules[$forwardKey]['css'];
+
+        if ($css !== '') {
+            $namespace = $this->module->deriveNamespaceFromUsePath($node->path);
+            $loaded    = $moduleState->getByNamespace($namespace);
+
+            if ($loaded !== null) {
+                $moduleState->emittedModuleCss[$loaded->id] = true;
+            }
+        }
+
+        return $this->qualifyCssWithinParentSelector(
+            $css,
+            $this->selector->getCurrentParentSelector($ctx->env),
+        ) ?? '';
     }
 
     public function handleImport(ImportNode $node, TraversalContext $ctx): string
@@ -54,13 +71,19 @@ final readonly class ModuleNodeHandler
 
             if ($resolvedImport['type'] === 'css') {
                 /** @var array{type: 'css', raw: string} $resolvedImport */
-                $rawImport = $resolvedImport['raw'];
+                $rawImport = $this->selector->normalizeCssImportQuery($resolvedImport['raw'], $ctx->env);
 
                 if (str_contains($rawImport, '#{')) {
                     $rawImport = $this->evaluation->interpolateText($rawImport, $ctx->env);
                 }
 
                 $line = '@import ' . $rawImport . ';';
+
+                if ($outputState->hoistCssImports && $ctx->indent === 0) {
+                    $outputState->cssImports[] = $line;
+
+                    continue;
+                }
 
                 if ($output !== '' && ! $endsWithNewline) {
                     $output .= "\n";
@@ -79,15 +102,53 @@ final readonly class ModuleNodeHandler
                 continue;
             }
 
+            $parentSelector = $this->selector->getCurrentParentSelector($ctx->env);
+            $inlined        = null;
+
+            if (($parentSelector !== null && $parentSelector !== '') || $this->isInsideMediaContext($ctx->env)) {
+                $inlined = $this->module->inlineImportedFile(
+                    $path,
+                    fn(array $children): string => $this->chunks->compileBodyChunks(
+                        $children,
+                        $ctx,
+                        $ctx->env->getCurrentScope(),
+                    ),
+                );
+            }
+
+            if ($inlined !== null) {
+                if ($inlined === '') {
+                    continue;
+                }
+
+                if ($output !== '' && ! $endsWithNewline) {
+                    $output .= "\n";
+                }
+
+                $output .= $inlined;
+
+                $inlinedLength   = strlen($inlined);
+                $endsWithNewline = $inlined[$inlinedLength - 1] === "\n";
+
+                continue;
+            }
+
             $data = $this->module->loadAndEvaluateModule(
                 $path,
-                [],
+                $ctx->env->getCurrentScope()->getConfiguredVariables(),
                 true,
                 true,
                 $this->module->extractAstVariables($ctx->env->getCurrentScope()->getVariables()),
             );
 
-            $this->module->mergeScopeExports($data['scope'], $ctx->env->getCurrentScope());
+            if (! ($data['cached'] ?? false)) {
+                $this->module->mergeScopeExports(
+                    $data['scope'],
+                    $ctx->env->getCurrentScope(),
+                    trackImportedVariables: true,
+                    rebaseClosures: true,
+                );
+            }
 
             $css = $data['css'];
 
@@ -95,24 +156,13 @@ final readonly class ModuleNodeHandler
                 continue;
             }
 
-            $parentSelector = $this->selector->getCurrentParentSelector($ctx->env);
+            $qualified = $this->qualifyCssWithinParentSelector($css, $parentSelector);
 
-            if ($parentSelector !== null && $parentSelector !== '') {
-                $qualifiedCss = $this->module->qualifyImportedCssWithParentSelector($css, $parentSelector);
-                $stackIndex   = count($outputState->deferral->atRootStack) - 1;
-
-                if ($stackIndex >= 0) {
-                    $outputState->deferral->atRootStack[$stackIndex][] = new RawChunk(
-                        $this->render->trimTrailingNewlines(
-                            $qualifiedCss,
-                        ),
-                    );
-
-                    continue;
-                }
-
-                $css = $qualifiedCss;
+            if ($qualified === null) {
+                continue;
             }
+
+            $css = $qualified;
 
             if ($output !== '' && ! $endsWithNewline) {
                 $output .= "\n";
@@ -130,7 +180,7 @@ final readonly class ModuleNodeHandler
 
     public function handleUse(UseNode $node, TraversalContext $ctx): string
     {
-        $this->module->handleUse($node, $ctx->env);
+        $css = $this->module->handleUse($node, $ctx->env);
 
         if (str_starts_with($node->path, 'sass:')) {
             return '';
@@ -139,7 +189,7 @@ final readonly class ModuleNodeHandler
         $namespace = $node->namespace ?? $this->module->deriveNamespaceFromUsePath($node->path);
 
         if ($namespace === '*') {
-            return '';
+            return $css;
         }
 
         $moduleState = $this->module->state();
@@ -150,12 +200,59 @@ final readonly class ModuleNodeHandler
             return '';
         }
 
-        if (isset($moduleState->emittedUseCss[$loaded->id])) {
+        $importRoot = $moduleState->currentImportRoot;
+
+        if ($importRoot !== '' && isset($this->render->outputState()->extends->moduleScopesImport[$importRoot][$loaded->id])) {
+            if (isset($moduleState->branchEmittedCss[$importRoot][$loaded->id])) {
+                return '';
+            }
+
+            $moduleState->branchEmittedCss[$importRoot][$loaded->id] = true;
+
+            return $this->module->moduleCssInBranch($loaded->id, $importRoot);
+        }
+
+        if (isset($moduleState->emittedUseCss[$loaded->id]) || isset($moduleState->emittedModuleCss[$loaded->id])) {
             return '';
         }
 
         $moduleState->emittedUseCss[$loaded->id] = true;
+        $moduleState->emittedModuleCss[$loaded->id] = true;
 
-        return $loaded->css;
+        return $this->qualifyCssWithinParentSelector(
+            $loaded->css,
+            $this->selector->getCurrentParentSelector($ctx->env),
+        ) ?? '';
+    }
+
+    private function qualifyCssWithinParentSelector(string $css, ?string $parentSelector): ?string
+    {
+        if ($css === '' || $parentSelector === null || $parentSelector === '') {
+            return $css;
+        }
+
+        $qualifiedCss = $this->module->qualifyImportedCssWithParentSelector($css, $parentSelector);
+        $stackIndex   = count($this->render->outputState()->deferral->atRootStack) - 1;
+
+        if ($stackIndex < 0) {
+            return $qualifiedCss;
+        }
+
+        $this->render->outputState()->deferral->atRootStack[$stackIndex][] = new RawChunk(
+            $this->render->trimTrailingNewlines($qualifiedCss),
+        );
+
+        return null;
+    }
+
+    private function isInsideMediaContext(Environment $env): bool
+    {
+        foreach ($this->selector->getCurrentAtRuleStack($env) as $entry) {
+            if ($entry->type === 'directive' && $entry->name === 'media') {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

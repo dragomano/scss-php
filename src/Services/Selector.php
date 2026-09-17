@@ -6,28 +6,37 @@ namespace Bugo\SCSS\Services;
 
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
+use Bugo\SCSS\Exceptions\SassThrowable;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
+use Bugo\SCSS\Nodes\ForNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NullNode;
+use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StatementNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\Visitable;
+use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Style;
+use Bugo\SCSS\Utils\MediaQuery;
 use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\SelectorTokenizer;
+use Bugo\SCSS\Utils\StringHelper;
 
-use function array_map;
+use function array_fill_keys;
+use function array_pop;
 use function array_unique;
 use function array_values;
 use function count;
@@ -35,11 +44,17 @@ use function ctype_alpha;
 use function ctype_digit;
 use function implode;
 use function in_array;
+use function is_array;
+use function is_numeric;
+use function is_string;
+use function ltrim;
 use function str_contains;
+use function str_ends_with;
 use function str_starts_with;
 use function strlen;
 use function strpos;
 use function strtolower;
+use function substr;
 use function trim;
 
 final readonly class Selector
@@ -58,6 +73,7 @@ final readonly class Selector
         private CssArgumentEvaluator $cssArgumentEvaluator,
         private AstValueEvaluatorInterface $valueEvaluator,
         private AstValueFormatterInterface $valueFormatter,
+        private ParserInterface $parser,
     ) {
         $this->optimizer = new SelectorRuleOptimizer();
     }
@@ -65,6 +81,77 @@ final readonly class Selector
     public function resolveDirectivePrelude(string $prelude, Environment $env): string
     {
         return $this->text->resolveDirectivePrelude($prelude, $env);
+    }
+
+    public function normalizeMediaQueryPrelude(string $prelude): string
+    {
+        return $this->text->normalizeMediaQueryPrelude($prelude);
+    }
+
+    public function evaluateMediaFeatureOperands(string $prelude, Environment $env): string
+    {
+        return $this->text->evaluateMediaFeatureOperands($prelude, $env);
+    }
+
+    public function stripAllComments(string $text): string
+    {
+        return $this->text->stripAllComments($text);
+    }
+
+    public function stripLeadingComments(string $text): string
+    {
+        return $this->text->stripLeadingComments($text);
+    }
+
+    public function stripCommentsExceptTrailing(string $text): string
+    {
+        return $this->text->stripCommentsExceptTrailing($text);
+    }
+
+    public function collapseWhitespaceInPrelude(string $prelude): string
+    {
+        return $this->text->collapseWhitespaceInPrelude($prelude);
+    }
+
+    public function normalizeCssImportQuery(string $import, Environment $env): string
+    {
+        return $this->text->normalizeCssImportQuery($import, $env);
+    }
+
+    public function canonicalizeSelectorEscapes(string $selector): string
+    {
+        return $this->tokenizer->canonicalizeSelectorEscapes($selector);
+    }
+
+    public function normalizeSelectorAttributes(string $selector): string
+    {
+        return $this->tokenizer->normalizeSelectorAttributes($selector);
+    }
+
+    public function normalizePseudoArguments(string $selector): string
+    {
+        return $this->tokenizer->normalizePseudoArguments($selector);
+    }
+
+    /**
+     * @param list<int> $protectedIndices
+     */
+    public function normalizeNthArguments(string $selector, array $protectedIndices = []): string
+    {
+        return $this->tokenizer->normalizeNthArguments($selector, $protectedIndices);
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function findFullyInterpolatedNthIndices(string $selector): array
+    {
+        return $this->tokenizer->findFullyInterpolatedNthIndices($selector);
+    }
+
+    public function normalizeAdjacentSelectorCompounds(string $selector): string
+    {
+        return $this->tokenizer->normalizeAdjacentSelectorCompounds($selector);
     }
 
     /**
@@ -114,16 +201,39 @@ final readonly class Selector
         $combined = [];
 
         foreach ($outerParts as $outerPart) {
-            $outerPart = trim($outerPart);
-
             foreach ($innerParts as $innerPart) {
-                $innerPart = trim($innerPart);
-
-                $combined[] = $outerPart . ' and ' . $innerPart;
+                $combined[] = $this->mergeMediaPreludeParts(trim($outerPart), trim($innerPart));
             }
         }
 
         return $this->implodeUniqueSelectorList($combined);
+    }
+
+    /**
+     * @return string|null merged prelude; empty string when the intersection is empty
+     * (the rule is removed); null when the intersection can't be represented
+     * (the rule stays nested)
+     */
+    public function mergeMediaQueryPreludes(string $outer, string $inner): ?string
+    {
+        $outerQueries = MediaQuery::parseList($outer);
+        $innerQueries = MediaQuery::parseList($inner);
+
+        if ($outerQueries === null || $innerQueries === null) {
+            return $this->combineMediaQueryPreludes($outer, $inner);
+        }
+
+        $merged = MediaQuery::mergeLists($outerQueries, $innerQueries);
+
+        if ($merged === null) {
+            return null;
+        }
+
+        if ($merged === []) {
+            return '';
+        }
+
+        return MediaQuery::serializeList($merged);
     }
 
     public function isBubblingAtRuleNode(AstNode $node): bool
@@ -132,7 +242,15 @@ final readonly class Selector
             return true;
         }
 
-        return $node instanceof DirectiveNode && $this->isBubblingDirective($node);
+        if ($node instanceof DirectiveNode && $this->isBubblingDirective($node)) {
+            return true;
+        }
+
+        if ($node instanceof RuleNode && $this->isBubblingRuleNode($node)) {
+            return true;
+        }
+
+        return false;
     }
 
     public function normalizeBubblingNodeForSelector(StatementNode $node, string $selector): StatementNode
@@ -146,25 +264,28 @@ final readonly class Selector
         if ($node instanceof SupportsNode) {
             return new SupportsNode(
                 $node->condition,
-                array_map(
-                    fn(AstNode $child): AstNode => $this->normalizeBubblingChild($child, $selector, $attachParentSelector),
-                    $node->body,
-                ),
+                $this->normalizeBubblingChildren($node->body, $selector),
             );
         }
 
         if ($node instanceof DirectiveNode && $node->hasBlock) {
+            if ($this->isBubblingDirective($node) && ! $attachParentSelector) {
+                return $node;
+            }
+
             return new DirectiveNode(
                 $node->name,
                 $node->prelude,
-                array_map(
-                    fn(AstNode $child): AstNode => $this->normalizeBubblingChild(
-                        $child,
-                        $selector,
-                        $attachParentSelector,
-                    ),
-                    $node->body,
-                ),
+                $this->normalizeBubblingChildren($node->body, $selector),
+                true,
+            );
+        }
+
+        if ($node instanceof RuleNode && $this->isBubblingRuleNode($node)) {
+            return new DirectiveNode(
+                'font-face',
+                '',
+                $node->children,
                 true,
             );
         }
@@ -229,19 +350,35 @@ final readonly class Selector
         $escapeLevels    = count($currentStack);
         $keepRuleContext = $this->shouldKeepAtRootRuleContext($node->queryMode, $normalizedRules);
 
-        foreach ($node->body as $child) {
-            $compiled = $this->compileAtRootChild(
-                $child,
-                $parentSelector,
-                $keepRuleContext,
-                $stack,
-                $rootCtx,
-                $env,
-            );
+        $env->enterScope();
+        $env->getCurrentScope()->setVariableLocal(
+            '__at_root_context',
+            $this->ctx->valueFactory->createBooleanNode(true),
+        );
 
-            if ($compiled !== '') {
-                $chunks[] = $compiled;
+        if (! $keepRuleContext) {
+            $env->getCurrentScope()->setVariableLocal(
+                '__at_root_without_rule',
+                $this->ctx->valueFactory->createBooleanNode(true),
+            );
+        }
+
+        try {
+            foreach ($node->body as $child) {
+                $compiled = $this->compileAtRootChild(
+                    $child,
+                    $parentSelector,
+                    $keepRuleContext,
+                    $stack,
+                    $rootCtx,
+                );
+
+                if ($compiled !== '') {
+                    $chunks[] = $compiled;
+                }
             }
+        } finally {
+            $env->exitScope();
         }
 
         return [
@@ -278,9 +415,9 @@ final readonly class Selector
     /**
      * @return array<int, string>
      */
-    public function splitTopLevelSelectorList(string $selector): array
+    public function splitTopLevelSelectorList(string $selector, bool $trim = true): array
     {
-        return $this->tokenizer->splitAtTopLevel($selector, [','], handleQuotes: true);
+        return $this->tokenizer->splitAtTopLevel($selector, [','], handleQuotes: true, trim: $trim);
     }
 
     /**
@@ -328,12 +465,226 @@ final readonly class Selector
         string $baseProperty,
         ?string $baseValue = null,
     ): string {
-        $output    = '';
-        $prefix    = $this->render->indentPrefix($indent);
-        $hasOutput = false;
+        $outputState    = $this->ctx->outputState;
+        $activeProperty = $outputState->nestedPropertyName;
+
+        if ($activeProperty === null) {
+            return $this->renderNestedPropertyBlock($children, $env, $indent, $baseProperty, $baseValue);
+        }
+
+        $outputState->nestedPropertyName = null;
+
+        try {
+            return $this->renderNestedPropertyBlock(
+                $children,
+                $env,
+                $indent,
+                $activeProperty . '-' . $baseProperty,
+                $baseValue,
+            );
+        } finally {
+            $outputState->nestedPropertyName = $activeProperty;
+        }
+    }
+
+    public function resolveNestedSelector(string $selector, string $parentSelector): string
+    {
+        return SelectorHelper::resolveNested($selector, $parentSelector);
+    }
+
+    public function combineNestedSelectorWithParent(string $selector, string $parentSelector): string
+    {
+        $selectorParts = $this->splitTopLevelSelectorList($selector, trim: false);
+        $parentParts   = $this->splitTopLevelSelectorList($parentSelector, trim: false);
+
+        if ($selectorParts === [] || $parentParts === []) {
+            return $selector;
+        }
+
+        $combined = [];
+        $breaks   = [];
+
+        foreach ($parentParts as $pi => $parentPart) {
+            $parentHasBreak = str_starts_with($parentPart, "\n");
+            $trimmedParent  = ltrim($parentPart);
+
+            foreach ($selectorParts as $cj => $selectorPart) {
+                $childHasBreak   = str_starts_with($selectorPart, "\n");
+                $trimmedSelector = ltrim($selectorPart);
+
+                $needsBreak = ($parentHasBreak && $pi > 0) || ($childHasBreak && $cj > 0);
+
+                $combined[] = $trimmedParent . ' ' . $trimmedSelector;
+                $breaks[]   = $needsBreak;
+            }
+        }
+
+        $result = '';
+
+        foreach ($combined as $i => $part) {
+            if ($i > 0) {
+                $result .= $breaks[$i] ? ",\n" : ', ';
+            }
+
+            $result .= $part;
+        }
+
+        return $result;
+    }
+
+    public function applyExtendsToSelector(string $selector): string
+    {
+        if (! $this->extends->hasCollectedExtends() && ! str_contains($selector, '%')) {
+            return $selector;
+        }
+
+        return $this->extends->applyExtendsToSelector($selector);
+    }
+
+    public function normalizeSelectorList(string $selector): string
+    {
+        $parts = $this->splitTopLevelSelectorList($selector, trim: false);
+
+        if ($parts === []) {
+            return $selector;
+        }
+
+        $keepIndices = [];
+
+        foreach ($parts as $i => $part) {
+            if (trim($part) !== '') {
+                $keepIndices[] = $i;
+            }
+        }
+
+        if ($keepIndices === []) {
+            return $selector;
+        }
+
+        $result = StringHelper::trimPreservingEscapeTerminator($parts[$keepIndices[0]]);
+        $count  = count($keepIndices);
+
+        for ($idx = 1; $idx < $count; $idx++) {
+            $prev       = $keepIndices[$idx - 1];
+            $curr       = $keepIndices[$idx];
+            $hasNewline = false;
+
+            for ($j = $prev + 1; $j < $curr; $j++) {
+                if (str_contains($parts[$j], "\n")) {
+                    $hasNewline = true;
+
+                    break;
+                }
+            }
+
+            if (! $hasNewline && str_ends_with($parts[$prev], "\n")) {
+                $hasNewline = true;
+            }
+
+            if (! $hasNewline) {
+                $currPart    = $parts[$curr];
+                $currTrimmed = ltrim($currPart);
+                $leadingLen  = strlen($currPart) - strlen($currTrimmed);
+                $leading     = substr($currPart, 0, $leadingLen);
+
+                if (str_contains($leading, "\n")) {
+                    $hasNewline = true;
+                }
+            }
+
+            $result .= $hasNewline ? ",\n" : ', ';
+            $result .= StringHelper::trimPreservingEscapeTerminator($parts[$curr]);
+        }
+
+        return $result;
+    }
+
+    public function optimizeRuleBlock(string $ruleBlock): string
+    {
+        return $this->optimizer->optimizeRuleBlock($ruleBlock, $this->options->style === Style::COMPRESSED);
+    }
+
+    public function optimizeAdjacentSiblingRuleBlocks(string $block): string
+    {
+        return $this->optimizer->optimizeAdjacentSiblingRuleBlocks($block);
+    }
+
+    public function hasBogusTopLevelCombinatorSequence(string $selector): bool
+    {
+        return $this->tokenizer->hasBogusTopLevelCombinatorSequence($selector);
+    }
+
+    public function hasAdjacentCompoundSelectors(string $selector): bool
+    {
+        return $this->tokenizer->hasAdjacentCompoundSelectors($selector);
+    }
+
+    public function hasBogusSelectorPseudoCombinator(string $selector): bool
+    {
+        return $this->tokenizer->hasBogusSelectorPseudoCombinator($selector);
+    }
+
+    private function isValidNestedPropertyName(string $name): bool
+    {
+        if ($name === '') {
+            return false;
+        }
+
+        $length = strlen($name);
+        $index  = 0;
+
+        while ($index < $length && $name[$index] === '-') {
+            $index++;
+        }
+
+        if ($index === $length) {
+            return false;
+        }
+
+        $first = $name[$index];
+
+        if (! ctype_alpha($first) && $first !== '_') {
+            return false;
+        }
+
+        for ($i = $index + 1; $i < $length; $i++) {
+            $char = $name[$i];
+
+            if (! ctype_alpha($char) && ! ctype_digit($char) && $char !== '_' && $char !== '-') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, AstNode> $children
+     */
+    private function renderNestedPropertyBlock(
+        array $children,
+        Environment $env,
+        int $indent,
+        string $baseProperty,
+        ?string $baseValue,
+    ): string {
+        $output           = '';
+        $prefix           = $this->render->indentPrefix($indent);
+        $hasOutput        = false;
+        $lastRenderedLine = null;
+
+        $s = $env->getCurrentScope();
+        if (! $s->hasVariable('__parent_selector')) {
+            $s->setVariableLocal('__parent_selector', new StringNode(''));
+        }
+
+        $s->setVariableLocal('__flow_control_declaration_guard', true);
 
         if ($baseValue !== null) {
-            $this->render->appendChunk($output, $prefix . $baseProperty . ': ' . $baseValue . ';');
+            $evaluatedBaseValue = $this->evaluateNestedPropertyBaseValue($baseValue, $env);
+
+            $this->render->appendChunk($output, $prefix . $baseProperty . ': ' . $evaluatedBaseValue . ';');
+
             $hasOutput = true;
         }
 
@@ -379,33 +730,106 @@ final readonly class Selector
 
                 $this->render->appendChunk($output, $line, $child);
 
-                $hasOutput = true;
+                $hasOutput         = true;
+                $lastRenderedLine = $child->line;
 
                 continue;
             }
 
-            if (! $child instanceof RuleNode) {
+            if ($child instanceof ForNode) {
+                $fromNode = $this->valueEvaluator->evaluate($child->from, $env);
+
+                if (! $fromNode instanceof NumberNode) {
+                    $formatted = $this->valueFormatter->format($fromNode, $env);
+
+                    if (! is_numeric($formatted)) {
+                        throw new InvalidLoopBoundaryException($formatted);
+                    }
+
+                    $fromNode = new NumberNode((float) $formatted);
+                }
+
+                $toNode = $this->valueEvaluator->evaluate($child->to, $env);
+
+                if (! $toNode instanceof NumberNode) {
+                    $formatted = $this->valueFormatter->format($toNode, $env);
+
+                    if (! is_numeric($formatted)) {
+                        throw new InvalidLoopBoundaryException($formatted);
+                    }
+
+                    $toNode = new NumberNode((float) $formatted);
+                }
+
+                $unit = $fromNode->unit;
+                $from = (int) $fromNode->value;
+                $to   = (int) $toNode->value;
+                $step = $from <= $to ? 1 : -1;
+
+                if (! $child->inclusive) {
+                    $to -= $step;
+                }
+
+                $env->enterScope();
+
+                try {
+                    for ($i = $from; $step > 0 ? $i <= $to : $i >= $to; $i += $step) {
+                        $env->getCurrentScope()->setVariable($child->variable, new NumberNode($i, $unit));
+
+                        $chunk = $this->compileNestedPropertyBlockChildren(
+                            $child->body,
+                            $env,
+                            $indent,
+                            $baseProperty,
+                        );
+
+                        if ($chunk !== '') {
+                            if ($hasOutput) {
+                                $this->render->appendChunk($output, "\n");
+                            }
+
+                            $this->render->appendChunk($output, $chunk, $child);
+
+                            $hasOutput = true;
+                        }
+                    }
+                } finally {
+                    $env->exitScope();
+                }
+
                 continue;
             }
 
-            $childSelector  = $this->text->interpolateText($child->selector, $env);
-            $nestedProperty = $this->parseNestedPropertyBlockSelector($childSelector);
+            if ($child instanceof RuleNode) {
+                $childSelector  = $this->text->interpolateText($child->selector, $env);
+                $nestedProperty = $this->parseNestedPropertyBlockSelector($childSelector);
 
-            if ($nestedProperty === null) {
+                if ($nestedProperty === null) {
+                    continue;
+                }
+
+                $chunk = $this->compileNestedPropertyBlockChildren(
+                    $child->children,
+                    $env,
+                    $indent,
+                    $baseProperty . '-' . $nestedProperty['property'],
+                    $nestedProperty['value'],
+                );
+            } elseif ($child instanceof Visitable) {
+                $chunk = $this->compileNestedPropertyBlockChild($child, $env, $indent, $baseProperty);
+            } else {
                 continue;
             }
-
-            $nestedBase = $baseProperty . '-' . $nestedProperty['property'];
-
-            $chunk = $this->compileNestedPropertyBlockChildren(
-                $child->children,
-                $env,
-                $indent,
-                $nestedBase,
-                $nestedProperty['value'],
-            );
 
             if ($chunk === '') {
+                continue;
+            }
+
+            if ($child instanceof CommentNode && $lastRenderedLine !== null && $child->line === $lastRenderedLine) {
+                $this->render->appendChunk($output, ' ' . ltrim($chunk), $child);
+
+                $lastRenderedLine = $child->line;
+
                 continue;
             }
 
@@ -421,95 +845,24 @@ final readonly class Selector
         return $output;
     }
 
-    public function resolveNestedSelector(string $selector, string $parentSelector): string
-    {
-        return SelectorHelper::resolveNested($selector, $parentSelector);
-    }
+    private function compileNestedPropertyBlockChild(
+        Visitable $child,
+        Environment $env,
+        int $indent,
+        string $baseProperty,
+    ): string {
+        $outputState      = $this->ctx->outputState;
+        $previousProperty = $outputState->nestedPropertyName;
 
-    public function combineNestedSelectorWithParent(string $selector, string $parentSelector): string
-    {
-        $selectorParts = $this->splitTopLevelSelectorList($selector);
-        $parentParts   = $this->splitTopLevelSelectorList($parentSelector);
+        $outputState->nestedPropertyName = $baseProperty;
 
-        if ($selectorParts === [] || $parentParts === []) {
-            return $selector;
+        try {
+            return $this->render->trimAndAdjustState(
+                $this->dispatcher->compileWithContext($child, new TraversalContext($env, $indent)),
+            );
+        } finally {
+            $outputState->nestedPropertyName = $previousProperty;
         }
-
-        $combined = [];
-
-        foreach ($parentParts as $parentPart) {
-            $trimmedParent = trim($parentPart);
-
-            foreach ($selectorParts as $selectorPart) {
-                $trimmedSelector = trim($selectorPart);
-                $combined[] = $trimmedParent . ' ' . $trimmedSelector;
-            }
-        }
-
-        return $this->implodeUniqueSelectorList($combined);
-    }
-
-    public function applyExtendsToSelector(string $selector): string
-    {
-        if (! $this->extends->hasCollectedExtends() && ! str_contains($selector, '%')) {
-            return $selector;
-        }
-
-        return $this->extends->applyExtendsToSelector($selector);
-    }
-
-    public function optimizeRuleBlock(string $ruleBlock): string
-    {
-        return $this->optimizer->optimizeRuleBlock($ruleBlock);
-    }
-
-    public function optimizeAdjacentSiblingRuleBlocks(string $block): string
-    {
-        return $this->optimizer->optimizeAdjacentSiblingRuleBlocks($block);
-    }
-
-    public function hasBogusTopLevelCombinatorSequence(string $selector): bool
-    {
-        return $this->tokenizer->hasBogusTopLevelCombinatorSequence($selector);
-    }
-
-    public function hasAdjacentCompoundSelectors(string $selector): bool
-    {
-        return $this->tokenizer->hasAdjacentCompoundSelectors($selector);
-    }
-
-    private function isValidNestedPropertyName(string $name): bool
-    {
-        if ($name === '') {
-            return false;
-        }
-
-        $length = strlen($name);
-        $index  = 0;
-
-        if ($name[0] === '-') {
-            if ($length === 1) {
-                return false;
-            }
-
-            $index = 1;
-        }
-
-        $first = $name[$index];
-
-        if (! ctype_alpha($first) && $first !== '_') {
-            return false;
-        }
-
-        for ($i = $index + 1; $i < $length; $i++) {
-            $char = $name[$i];
-
-            if (! ctype_alpha($char) && ! ctype_digit($char) && $char !== '_' && $char !== '-') {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private function normalizeAtRuleText(string $value): string
@@ -647,7 +1000,20 @@ final readonly class Selector
             return $child;
         }
 
-        if ($child instanceof RuleNode || $child instanceof AtRootNode) {
+        if ($child instanceof RuleNode) {
+            $resolvedSelector = str_contains($child->selector, '&')
+                ? SelectorHelper::resolveNested($child->selector, $parentSelector)
+                : $this->combineNestedSelectorWithParent($child->selector, $parentSelector);
+
+            return new RuleNode(
+                $resolvedSelector,
+                $child->children,
+                $child->line,
+                $child->column,
+            );
+        }
+
+        if ($child instanceof AtRootNode) {
             return $child;
         }
 
@@ -663,24 +1029,13 @@ final readonly class Selector
         bool $keepRuleContext,
         array $stack,
         TraversalContext $rootCtx,
-        Environment $env,
     ): string {
         $rootChild        = $this->normalizeAtRootChild($child, $parentSelector, $keepRuleContext);
         $wrappedRootChild = $this->wrapNodeWithAtRuleStack($rootChild, $stack);
 
-        $env->enterScope();
-        $env->getCurrentScope()->setVariableLocal(
-            '__at_root_context',
-            $this->ctx->valueFactory->createBooleanNode(true),
-        );
-
-        $compiled = $this->render->trimTrailingNewlines(
+        return $this->render->trimTrailingNewlines(
             $this->dispatcher->compileWithContext($wrappedRootChild, $rootCtx),
         );
-
-        $env->exitScope();
-
-        return $compiled;
     }
 
     /**
@@ -714,24 +1069,55 @@ final readonly class Selector
 
     private function isBubblingDirective(DirectiveNode $node): bool
     {
-        return match (strtolower($node->name)) {
-            'container',
-            'media',
-            'keyframes',
-            '-webkit-keyframes',
-            '-moz-keyframes',
-            '-o-keyframes' => true,
-            default        => false,
-        };
+        return $node->hasBlock;
     }
 
-    private function normalizeBubblingChild(AstNode $child, string $selector, bool $attachParentSelector): AstNode
+    private function isBubblingRuleNode(RuleNode $node): bool
     {
-        if ($child instanceof RuleNode) {
-            if (! $attachParentSelector) {
-                return $child;
+        return $node->selector === '@font-face';
+    }
+
+    /**
+     * @param array<int, AstNode> $children
+     *
+     * @return list<AstNode>
+     */
+    private function normalizeBubblingChildren(array $children, string $selector): array
+    {
+        $result = [];
+        $group  = [];
+
+        foreach ($children as $child) {
+            if (
+                $child instanceof RuleNode
+                || $child instanceof DirectiveNode
+                || $child instanceof SupportsNode
+                || $child instanceof AtRootNode
+            ) {
+                if ($group !== []) {
+                    $result[] = new RuleNode($selector, $group);
+
+                    $group = [];
+                }
+
+                $result[] = $this->normalizeBubblingChild($child, $selector);
+
+                continue;
             }
 
+            $group[] = $child;
+        }
+
+        if ($group !== []) {
+            $result[] = new RuleNode($selector, $group);
+        }
+
+        return $result;
+    }
+
+    private function normalizeBubblingChild(AstNode $child, string $selector): AstNode
+    {
+        if ($child instanceof RuleNode) {
             $resolvedSelector = str_contains($child->selector, '&')
                 ? SelectorHelper::resolveNested($child->selector, $selector)
                 : $this->combineNestedSelectorWithParent($child->selector, $selector);
@@ -744,15 +1130,11 @@ final readonly class Selector
             );
         }
 
-        if (
-            $child instanceof AtRootNode
-            || $child instanceof DirectiveNode
-            || $child instanceof SupportsNode
-        ) {
-            return $child;
+        if ($child instanceof DirectiveNode || $child instanceof SupportsNode) {
+            return $this->normalizeBubblingNodeForSelector($child, $selector);
         }
 
-        return new RuleNode($selector, [$child]);
+        return $child;
     }
 
     private function shouldAttachParentSelectorToBubbledBody(AstNode $node): bool
@@ -767,7 +1149,22 @@ final readonly class Selector
 
         $name = strtolower($node->name);
 
-        return $name === 'container' || $name === 'media';
+        return $name !== 'font-face'
+            && $name !== 'keyframes'
+            && ! str_ends_with($name, '-keyframes');
+    }
+
+    private function mergeMediaPreludeParts(string $outerPart, string $innerPart): string
+    {
+        if ($outerPart === '' || strtolower($outerPart) === 'all') {
+            return $innerPart;
+        }
+
+        if ($innerPart === '' || strtolower($innerPart) === 'all') {
+            return $outerPart;
+        }
+
+        return $outerPart . ' and ' . $innerPart;
     }
 
     private function normalizeAtRuleStackEntry(mixed $entry): ?AtRuleContextEntry
@@ -808,5 +1205,26 @@ final readonly class Selector
         }
 
         return AtRuleContextEntry::supports($this->normalizeAtRuleText($entry['condition']));
+    }
+
+    private function evaluateNestedPropertyBaseValue(string $value, Environment $env): string
+    {
+        try {
+            $evaluated = $this->valueEvaluator->evaluate($this->parser->parseInlineExpression($value), $env);
+        } catch (SassThrowable) {
+            return $value;
+        }
+
+        if ($evaluated instanceof NullNode) {
+            return '';
+        }
+
+        $formatted = $this->valueFormatter->format($evaluated, $env);
+
+        if (str_contains($formatted, '#{')) {
+            $formatted = $this->text->interpolateText($formatted, $env);
+        }
+
+        return $formatted;
     }
 }

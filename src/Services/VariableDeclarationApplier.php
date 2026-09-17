@@ -26,7 +26,15 @@ final readonly class VariableDeclarationApplier implements VariableDeclarationAp
                 $moduleScopeTarget = $currentScope->getScopeVariable('__module_global_target');
 
                 if ($moduleScopeTarget !== null && $moduleScopeTarget->hasVariable($node->name)) {
-                    $moduleScopeTarget->setVariableLocal($node->name, $evaluatedValue, $node->default);
+                    $moduleScopeTarget->setVariableLocal($node->name, $evaluatedValue, $node->default, $node->line);
+
+                    return true;
+                }
+
+                $origin = $currentScope->findImportedVariableOrigin($node->name);
+
+                if ($origin !== null) {
+                    $origin['scope']->setVariableLocal($origin['name'], $evaluatedValue, $node->default, $node->line);
 
                     return true;
                 }
@@ -36,7 +44,16 @@ final readonly class VariableDeclarationApplier implements VariableDeclarationAp
                     $evaluatedValue,
                     true,
                     $node->default,
+                    $node->line,
                 );
+
+                return true;
+            }
+
+            $forwardedOrigin = $currentScope->findForwardedVariableOrigin($node->name);
+
+            if ($forwardedOrigin !== null) {
+                $forwardedOrigin['scope']->setVariableLocal($forwardedOrigin['name'], $evaluatedValue, $node->default, $node->line);
 
                 return true;
             }
@@ -45,6 +62,7 @@ final readonly class VariableDeclarationApplier implements VariableDeclarationAp
                 $node->name,
                 $evaluatedValue,
                 $node->default,
+                $node->line,
             );
 
             return true;

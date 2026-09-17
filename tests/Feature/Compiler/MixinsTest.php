@@ -61,15 +61,19 @@ describe('Compiler', function () {
         .default {
           border-radius: 6px;
         }
+
         .single {
           border-radius: 8px;
         }
+
         .pair {
           border-radius: 10px 20px;
         }
+
         .triple {
           border-radius: 1px 2px 3px;
         }
+
         .quad {
           border-radius: 8px 4px 2px 1px;
         }
@@ -107,7 +111,6 @@ describe('Compiler', function () {
           from {
             background-color: yellow;
           }
-
           to {
             background-color: red;
           }
@@ -303,7 +306,7 @@ describe('Compiler', function () {
         expect($this->compiler->compileString($source))->toEqualCss($expected);
     });
 
-    it('keeps only the last duplicate declaration after @include without extra blank lines', function () {
+    it('keeps a caller-overriding declaration alongside the mixin-created one', function () {
         $source = <<<'SCSS'
         @mixin button-style($color) {
           background-color: $color;
@@ -322,10 +325,39 @@ describe('Compiler', function () {
         $expected = /** @lang text */ <<<'CSS'
         .test {
           background-color: red;
-          border-radius: 3px;
+          border-radius: 7px;
         }
         .test:hover {
           background-color: blue;
+        }
+        .test {
+          border-radius: 3px;
+        }
+        CSS;
+
+        $css = $this->compiler->compileString($source);
+
+        expect($css)->toEqualCss($expected);
+    });
+
+    it('keeps each repeated @include of the same mixin within a rule', function () {
+        $source = <<<'SCSS'
+        @mixin m($x) {
+          a: $x;
+        }
+
+        div {
+          @include m(1);
+          color: red;
+          @include m(2);
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        div {
+          a: 1;
+          color: red;
+          a: 2;
         }
         CSS;
 
@@ -378,6 +410,7 @@ describe('Compiler', function () {
           display: -webkit-flex;
           display: flex;
         }
+
         .item {
           -webkit-box-flex: 1 200px;
           -moz-box-flex: 1 200px;
@@ -415,10 +448,10 @@ describe('Compiler', function () {
 
         $expected = /** @lang text */ <<<'CSS'
         .class-0 .light {
-          color: #9cf;
+          color: #99ccff;
         }
         .class-0 .dark {
-          color: #06c;
+          color: #0066cc;
         }
         .class-0.nested-1 {
           color: red;
@@ -465,5 +498,77 @@ describe('Compiler', function () {
 
         expect(fn() => $this->compiler->compileString($source))
             ->toThrow(UndefinedSymbolException::class, 'Undefined mixin: my-mixin');
+    });
+
+    it('makes @content block variable reassignments visible in the mixin and calling scope', function () {
+        $source = <<<'SCSS'
+        @mixin a($param: param) {
+          $in-mixin: in-mixin;
+          @content;
+          param: $param;
+          in-mixin: $in-mixin;
+        }
+
+        $global: global;
+
+        a {
+          $in-style-rule: in-style-rule;
+          @include a {
+            $param: in-include;
+            $in-mixin: in-include;
+            $global: in-include;
+            $in-style-rule: in-include;
+          }
+          global: $global;
+          in-style-rule: $in-style-rule;
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        a {
+          param: param;
+          in-mixin: in-mixin;
+          global: global;
+          in-style-rule: in-include;
+        }
+        CSS;
+
+        $css = $this->compiler->compileString($source);
+
+        expect($css)->toEqualCss($expected);
+    });
+
+    it('keeps declarations after @include with nested rule inside the parent rule block', function () {
+        $source = <<<'SCSS'
+        @mixin button-style($color) {
+          background-color: $color;
+          &:hover {
+            opacity: 0.9;
+          }
+        }
+
+        .btn {
+          width: 100px;
+          @include button-style(#007bff);
+          border-radius: 4px;
+          font-size: 14px;
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .btn {
+          width: 100px;
+          background-color: #007bff;
+        }
+        .btn:hover {
+          opacity: 0.9;
+        }
+        .btn {
+          border-radius: 4px;
+          font-size: 14px;
+        }
+        CSS;
+
+        expect($this->compiler->compileString($source))->toEqualCss($expected);
     });
 });

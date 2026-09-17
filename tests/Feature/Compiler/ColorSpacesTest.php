@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
+use Bugo\SCSS\Exceptions\SassArgumentException;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -50,7 +51,7 @@ describe('Compiler', function () {
           --srgb: color(srgb 0.1 0.2 0.3);
           --srgb-linear: color(srgb-linear 0.1 0.2 0.3);
           --display-p3: color(display-p3 0.1 0.2 0.3);
-          --display-p3-linear: color(display-p3-linear 0.1 0.2 0.3);
+          --display-p3-linear:color(display-p3-linear 0.1 0.2 0.3);
           --a98-rgb: color(a98-rgb 0.1 0.2 0.3);
           --prophoto-rgb: color(prophoto-rgb 0.1 0.2 0.3);
           --rec2020: color(rec2020 0.1 0.2 0.3);
@@ -74,5 +75,42 @@ describe('Compiler', function () {
         CSS;
 
         expect($this->compiler->compileString($source))->toEqualCss($expected);
+    });
+
+    it('rejects empty rgb component list', function () {
+        $scss = /** @lang text */ 'a { x: rgb(()); }';
+
+        expect(fn() => $this->compiler->compileString($scss))
+            ->toThrow(SassArgumentException::class, 'Color component list may not be empty.');
+    });
+
+    it('rejects comma-separated rgb component list', function () {
+        $scss = /** @lang text */ 'a { x: rgb((255, 0, 0)); }';
+
+        expect(fn() => $this->compiler->compileString($scss))
+            ->toThrow(SassArgumentException::class, 'Expected a space- or slash-separated list, was (255, 0, 0)');
+    });
+
+    it('rejects non-number rgb channel value', function () {
+        $scss = /** @lang text */ 'a { x: rgb(red 0 0); }';
+
+        expect(fn() => $this->compiler->compileString($scss))
+            ->toThrow(SassArgumentException::class, 'Expected red channel to be a number, was red.');
+    });
+
+    it('accepts slash inside the last hsl component', function () {
+        $scss = <<<'SCSS'
+        a { x: hsl(30deg 50% 50%/0.5); }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        a {
+          x: hsla(30, 50%, 50%, 0.5);
+        }
+        CSS;
+
+        $css = $this->compiler->compileString($scss);
+
+        expect($css)->toEqualCss($expected);
     });
 });

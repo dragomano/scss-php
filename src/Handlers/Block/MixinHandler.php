@@ -6,38 +6,31 @@ namespace Bugo\SCSS\Handlers\Block;
 
 use Bugo\SCSS\Builtins\FunctionRegistry;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
-use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
-use Bugo\SCSS\Nodes\AtRootNode;
-use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
-use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Bugo\SCSS\Nodes\Visitable;
 use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Module;
-use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\RawChunk;
 
 use function array_slice;
 use function str_contains;
+use function str_starts_with;
 
 final readonly class MixinHandler
 {
     public function __construct(
-        private NodeDispatcherInterface $dispatcher,
         private Evaluator $evaluation,
         private FunctionRegistry $registry,
         private Module $module,
-        private Render $render,
         private Selector $selector,
         private DeferredChunkManager $chunks,
     ) {}
@@ -62,7 +55,10 @@ final readonly class MixinHandler
             throw UndefinedSymbolException::mixin($node->name);
         }
 
-        [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
+        $resolved           = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
+        $restSeparator      = $resolved->separator;
+        $resolvedPositional = $resolved->positional;
+        $resolvedNamed      = $resolved->named;
 
         return $this->compileMixin(
             $mixin,
@@ -71,7 +67,9 @@ final readonly class MixinHandler
             $resolvedNamed,
             $node->contentBlock,
             $node->contentArguments,
+            $node->hasContent,
             $ctx,
+            $restSeparator,
         );
     }
 
@@ -91,9 +89,9 @@ final readonly class MixinHandler
 
     private function handleMetaApply(IncludeNode $node, TraversalContext $ctx): string
     {
-        [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
+        $resolved = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
 
-        $first = $resolvedPositional[0] ?? null;
+        $first = $resolved->positional[0] ?? $resolved->named['mixin'] ?? null;
 
         if ((! ($first instanceof StringNode) && ! ($first instanceof MixinRefNode))) {
             return '';
@@ -101,37 +99,84 @@ final readonly class MixinHandler
 
         $mixinName = $first instanceof MixinRefNode ? $first->name : $first->value;
 
-        [$namespace, $name] = $this->parseMixinReference($mixinName);
+        if ($first instanceof MixinRefNode && $first->lockedDefinition !== null) {
+            $mixin = $first->lockedDefinition;
+            $moduleScopeForInclude = null;
+        } else {
+            [$namespace, $name] = $this->parseMixinReference($mixinName);
 
-        [$mixin, $moduleScopeForInclude] = $this->resolveMixin($namespace, $name, $ctx->env->getCurrentScope());
+            [$mixin, $moduleScopeForInclude] = $this->resolveMixin($namespace, $name, $ctx->env->getCurrentScope());
+        }
 
         if ($mixin === null) {
             return '';
         }
 
+        $restPositional = $first instanceof MixinRefNode
+            ? array_slice($resolved->positional, 1)
+            : $resolved->positional;
+
+        $restNamed = $resolved->named;
+        unset($restNamed['mixin']);
+
         return $this->compileMixin(
             $mixin,
             $moduleScopeForInclude,
-            array_slice($resolvedPositional, 1),
-            $resolvedNamed,
+            $restPositional,
+            $restNamed,
             $node->contentBlock,
             $node->contentArguments,
+            $node->hasContent,
             $ctx,
         );
     }
 
     private function handleMetaLoadCss(IncludeNode $node, TraversalContext $ctx): string
     {
-        [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
+        $resolved = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
 
-        if ($resolvedPositional === [] || ! ($resolvedPositional[0] instanceof StringNode)) {
+        $urlNode = $resolved->positional[0] ?? $resolved->named['url'] ?? null;
+
+        if (! ($urlNode instanceof StringNode)) {
             return '';
         }
 
-        $css = $this->module->loadAndEvaluateModule(
-            $resolvedPositional[0]->value,
-            $this->metaLoadCssConfiguration($resolvedNamed['with'] ?? null),
-        )['css'];
+        $configuration = $this->metaLoadCssConfiguration($resolved->named['with'] ?? null);
+
+        $path = $urlNode->value;
+
+        if (! str_starts_with($path, 'sass:')) {
+            $resolvedPath = $this->module->resolveModulePath($path);
+
+            if ($resolvedPath !== null) {
+                $path = $resolvedPath;
+            }
+        }
+
+        $moduleState = $this->module->state();
+
+        $previousImportRoot             = $moduleState->currentImportRoot;
+        $moduleState->currentImportRoot = $path;
+
+        try {
+            $result = $this->module->loadAndEvaluateModule(
+                $path,
+                $configuration,
+            );
+        } finally {
+            $moduleState->currentImportRoot = $previousImportRoot;
+        }
+
+        $css = $result['css'];
+
+        if ($configuration !== []) {
+            $state     = $this->module->state();
+            $namespace = $this->module->deriveNamespaceFromUsePath($urlNode->value);
+
+            if (! $state->hasNamespace($namespace)) {
+                $state->registerModule($namespace, $path, $result['scope'], $css);
+            }
+        }
 
         if ($css === '') {
             return '';
@@ -165,7 +210,9 @@ final readonly class MixinHandler
         array $resolvedNamed,
         array $contentBlock,
         array $contentArguments,
+        bool $hasContent,
         TraversalContext $ctx,
+        string $restSeparator = 'comma',
     ): string {
         $this->module->incrementCallDepth();
 
@@ -174,6 +221,8 @@ final readonly class MixinHandler
         $includeCallScope = $ctx->env->getCurrentScope();
 
         $ctx->env->enterScope($mixin->closureScope);
+
+        $ctx->env->getCurrentScope()->markAsCallableBody();
 
         $childCtx = new TraversalContext($ctx->env, $ctx->indent);
 
@@ -190,15 +239,30 @@ final readonly class MixinHandler
                 $executionScope->setVariableLocal('__parent_selector', $parentSelector);
             }
 
+            if (
+                $includeCallScope->isInsideAtRootWithoutRule()
+                && $parentSelector !== null
+                && $parentSelector->value !== ''
+            ) {
+                $executionScope->setVariableLocal(
+                    '__at_root_strip_parent',
+                    $this->evaluation->createBooleanNode(true),
+                );
+            }
+
             $atRootContext = $includeCallScope->getAstVariable('__at_root_context');
 
             if ($atRootContext !== null) {
                 $executionScope->setVariableLocal('__at_root_context', $atRootContext);
             }
 
+            if ($includeCallScope->hasVariable('__at_rule_stack')) {
+                $executionScope->setVariableLocal('__at_rule_stack', $includeCallScope->getVariable('__at_rule_stack'));
+            }
+
             $executionScope->setVariableLocal(
                 '__meta_content_exists',
-                $this->evaluation->createBooleanNode($contentBlock !== []),
+                $this->evaluation->createBooleanNode($hasContent),
             );
 
             $executionScope->setVariableLocal('__meta_content_block', $contentBlock);
@@ -210,76 +274,11 @@ final readonly class MixinHandler
                 $resolvedPositional,
                 $resolvedNamed,
                 $executionScope,
+                $ctx->env,
+                $restSeparator,
             );
 
-            $first = true;
-
-            foreach ($mixin->body as $child) {
-                if ($this->evaluation->applyVariableDeclaration($child, $ctx->env)) {
-                    continue;
-                }
-
-                if ($child instanceof AtRootNode) {
-                    $this->chunks->appendIncludeAtRootChunk($output, $first, $child, $ctx);
-
-                    continue;
-                }
-
-                if ($this->evaluation->isBubblingAtRuleNode($child)) {
-                    $this->chunks->appendIncludeBubblingChunk($output, $first, $child, $ctx);
-
-                    continue;
-                }
-
-                if ($child instanceof RuleNode) {
-                    $this->chunks->appendIncludedRuleChunk($output, $first, $child, $ctx);
-
-                    continue;
-                }
-
-                $savedPosition = null;
-
-                if ($this->render->collectSourceMappings() && ! $child instanceof DeclarationNode) {
-                    $savedPosition = $this->render->savePosition();
-                }
-
-                /** @var Visitable $child */
-                $compiled = $this->dispatcher->compileWithContext($child, $childCtx);
-
-                if ($compiled === '') {
-                    continue;
-                }
-
-                if ($child instanceof DeclarationNode) {
-                    if (! $first) {
-                        $this->render->appendChunk($output, "\n");
-                    }
-
-                    $this->render->appendChunk($output, $compiled, $child);
-                } else {
-                    $compiled = $this->render->trimAndAdjustState($compiled);
-
-                    if ($savedPosition !== null) {
-                        $deferredChunk = $this->render->createDeferredChunk($compiled, $savedPosition);
-
-                        $this->render->restorePosition($savedPosition);
-
-                        if (! $first) {
-                            $this->render->appendChunk($output, "\n");
-                        }
-
-                        $this->render->appendDeferredChunk($output, $deferredChunk);
-                    } else {
-                        if (! $first) {
-                            $this->render->appendChunk($output, "\n");
-                        }
-
-                        $output .= $compiled;
-                    }
-                }
-
-                $first = false;
-            }
+            $output = $this->chunks->compileBodyChunks($mixin->body, $childCtx, $includeCallScope);
         } finally {
             $ctx->env->exitScope();
 

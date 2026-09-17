@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Exceptions\DivisionByZeroException;
 use Bugo\SCSS\Exceptions\IncompatibleUnitsException;
+use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -178,5 +179,49 @@ describe('ArithmeticEvaluator', function () {
         );
 
         expect($this->evaluator->evaluate($list, false))->toBeNull();
+    });
+
+    it('evaluate() collapses the remaining unary sign after folding segments', function () {
+        // [-] [+] 2 + 2 → unary collapsing kicks in again after segment folding
+        $list = new ListNode(
+            [
+                new StringNode('-'),
+                new StringNode('+'),
+                new NumberNode(2.0, null, false),
+                new StringNode('+'),
+                new NumberNode(2.0, null, false),
+            ],
+            'space',
+        );
+
+        $result = $this->evaluator->evaluate($list, false);
+
+        expect($result)->toBeInstanceOf(NumberNode::class);
+
+        if (! $result instanceof NumberNode) {
+            throw new RuntimeException('Expected NumberNode result.');
+        }
+
+        expect((float) $result->value)->toBe(-4.0);
+    });
+
+    it('evaluate() returns non-number strict results as is', function () {
+        // -5 % INF + 2 → modulo by infinity yields calc(NaN * 1), and the strict
+        // evaluation stops at the operator that follows a non-number result
+        $inf = INF;
+        $list = new ListNode(
+            [
+                new NumberNode(-5.0, null, false),
+                new StringNode('%'),
+                new NumberNode($inf, null, false),
+                new StringNode('+'),
+                new NumberNode(2.0, null, false),
+            ],
+            'space',
+        );
+
+        $result = $this->evaluator->evaluate($list, false);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class);
     });
 });

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Services;
 
 use Bugo\SCSS\Exceptions\FunctionReturnValueException;
-use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
@@ -32,6 +31,7 @@ final readonly class UserFunctionExecutor
         private EachLoopBinderInterface $eachLoopBinder,
         private AstValueEvaluatorInterface $slashDivisionValueEvaluator,
         private DiagnosticDirectiveHandlerInterface $diagnosticHandler,
+        private LoopIterator $loopIterator,
     ) {}
 
     /**
@@ -44,10 +44,21 @@ final readonly class UserFunctionExecutor
         array $positional,
         array $named,
         Environment $env,
+        string $restSeparator = 'comma',
     ): AstNode {
+        $callScope = $env->getCurrentScope();
+
         $env->enterScope($function->closureScope);
 
+        $env->getCurrentScope()->markAsCallableBody();
+
         $currentScope = $env->getCurrentScope();
+
+        $parentSelector = $callScope->getStringVariable('__parent_selector');
+
+        if ($parentSelector !== null) {
+            $currentScope->setVariableLocal('__parent_selector', $parentSelector);
+        }
 
         try {
             $this->parameterBinder->bind(
@@ -64,6 +75,7 @@ final readonly class UserFunctionExecutor
 
                     throw MissingFunctionArgumentsException::required($name, $argName);
                 },
+                $restSeparator,
             );
 
             $result = $this->runStatements($function->body, $env);
@@ -88,17 +100,20 @@ final readonly class UserFunctionExecutor
         array $resolvedPositional,
         array $resolvedNamed,
         Scope $scope,
+        Environment $env,
+        string $restSeparator = 'comma',
     ): void {
         $this->parameterBinder->bind(
             $parameters,
             $resolvedPositional,
             $resolvedNamed,
             $scope,
-            static function (string $name, ?AstNode $defaultValue) use ($scope): void {
+            function (string $name, ?AstNode $defaultValue) use ($scope, $env): void {
                 if ($defaultValue !== null) {
-                    $scope->setVariableLocal($name, $defaultValue);
+                    $scope->setVariableLocal($name, $this->slashDivisionValueEvaluator->evaluate($defaultValue, $env));
                 }
             },
+            $restSeparator,
         );
     }
 
@@ -116,45 +131,59 @@ final readonly class UserFunctionExecutor
                 $iterableValue = $this->valueEvaluator->evaluate($statement->list, $env);
                 $items         = $this->eachLoopBinder->items($iterableValue);
 
-                foreach ($items as $item) {
-                    $this->eachLoopBinder->assign($statement->variables, $item, $env);
+                $env->enterScope();
 
-                    $result = $this->runStatements($statement->body, $env);
+                try {
+                    $env->getCurrentScope()->markAsFlowControlScope();
 
-                    if ($result !== null) {
-                        return $result;
+                    foreach ($items as $item) {
+                        $this->eachLoopBinder->assign($statement->variables, $item, $env);
+
+                        $result = $this->runStatements($statement->body, $env);
+
+                        if ($result !== null) {
+                            return $result;
+                        }
                     }
+                } finally {
+                    $env->exitScope();
                 }
 
                 continue;
             }
 
             if ($statement instanceof ForNode) {
-                $from = $this->loopBoundary($statement->from, $env);
-                $to   = $this->loopBoundary($statement->to, $env);
+                $fromNode = $this->loopBoundary($statement->from, $env);
+                $toNode   = $this->loopBoundary($statement->to, $env);
+                $unit     = $fromNode->unit;
+                $from     = (int) $fromNode->value;
+                $to       = (int) $toNode->value;
 
-                if (! $statement->inclusive) {
-                    $to += $from <= $to ? -1 : 1;
+                $result = null;
+
+                $env->enterScope();
+
+                try {
+                    $env->getCurrentScope()->markAsFlowControlScope();
+
+                    $this->loopIterator->forLoop(
+                        $from,
+                        $to,
+                        $statement->inclusive,
+                        function (int $i) use ($statement, $unit, $env, &$result) {
+                            $env->getCurrentScope()->setVariable($statement->variable, new NumberNode($i, $unit));
+
+                            $result = $this->runStatements($statement->body, $env);
+
+                            return $result === null;
+                        },
+                    );
+                } finally {
+                    $env->exitScope();
                 }
 
-                $step          = $from <= $to ? 1 : -1;
-                $iterations    = 0;
-                $maxIterations = 10000;
-
-                for ($i = $from; $step > 0 ? $i <= $to : $i >= $to; $i += $step) {
-                    $iterations++;
-
-                    if ($iterations > $maxIterations) {
-                        throw new MaxIterationsExceededException('@for');
-                    }
-
-                    $env->getCurrentScope()->setVariable($statement->variable, new NumberNode($i));
-
-                    $result = $this->runStatements($statement->body, $env);
-
-                    if ($result !== null) {
-                        return $result;
-                    }
+                if ($result !== null) {
+                    return $result;
                 }
 
                 continue;
@@ -162,27 +191,6 @@ final readonly class UserFunctionExecutor
 
             if ($statement instanceof ReturnNode) {
                 return $this->slashDivisionValueEvaluator->evaluate($statement->value, $env);
-            }
-
-            if ($statement instanceof WhileNode) {
-                $iterations    = 0;
-                $maxIterations = 10000;
-
-                while ($this->condition->evaluate($statement->condition, $env)) {
-                    $iterations++;
-
-                    if ($iterations > $maxIterations) {
-                        throw new MaxIterationsExceededException('@while');
-                    }
-
-                    $result = $this->runStatements($statement->body, $env);
-
-                    if ($result !== null) {
-                        return $result;
-                    }
-                }
-
-                continue;
             }
 
             if ($statement instanceof DebugNode) {
@@ -201,9 +209,36 @@ final readonly class UserFunctionExecutor
                 $this->diagnosticHandler->handle('error', $statement->message, $env, $statement);
             }
 
+            if ($statement instanceof WhileNode) {
+                $result = null;
+
+                $env->enterScope();
+
+                try {
+                    $env->getCurrentScope()->markAsFlowControlScope();
+
+                    $this->loopIterator->whileLoop(
+                        fn(): bool => $this->condition->evaluate($statement->condition, $env),
+                        function () use ($statement, $env, &$result): bool {
+                            $result = $this->runStatements($statement->body, $env);
+
+                            return $result === null;
+                        },
+                    );
+                } finally {
+                    $env->exitScope();
+                }
+
+                if ($result !== null) {
+                    return $result;
+                }
+
+                continue;
+            }
+
             if ($statement instanceof IfNode) {
                 if ($this->condition->evaluate($statement->condition, $env)) {
-                    $result = $this->runStatements($statement->body, $env);
+                    $result = $this->runIfBody($statement->body, $env);
 
                     if ($result !== null) {
                         return $result;
@@ -221,7 +256,7 @@ final readonly class UserFunctionExecutor
                     if ($this->condition->evaluate($condition, $env)) {
                         $executedElseIf = true;
 
-                        $result = $this->runStatements($body, $env);
+                        $result = $this->runIfBody($body, $env);
 
                         if ($result !== null) {
                             return $result;
@@ -235,7 +270,7 @@ final readonly class UserFunctionExecutor
                     continue;
                 }
 
-                $result = $this->runStatements($statement->elseBody, $env);
+                $result = $this->runIfBody($statement->elseBody, $env);
 
                 if ($result !== null) {
                     return $result;
@@ -246,14 +281,30 @@ final readonly class UserFunctionExecutor
         return null;
     }
 
-    private function loopBoundary(AstNode $node, Environment $env): int
+    /**
+     * @param array<int, AstNode> $body
+     */
+    private function runIfBody(array $body, Environment $env): ?AstNode
+    {
+        $env->enterScope();
+
+        try {
+            $env->getCurrentScope()->markAsFlowControlScope();
+
+            return $this->runStatements($body, $env);
+        } finally {
+            $env->exitScope();
+        }
+    }
+
+    private function loopBoundary(AstNode $node, Environment $env): NumberNode
     {
         $resolved = $this->valueEvaluator->evaluate($node, $env);
 
         if ($resolved instanceof NumberNode) {
-            return (int) $resolved->value;
+            return $resolved;
         }
 
-        return 0;
+        return new NumberNode(0);
     }
 }

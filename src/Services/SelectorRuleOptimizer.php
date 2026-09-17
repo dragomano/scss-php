@@ -22,7 +22,7 @@ use function trim;
 
 final class SelectorRuleOptimizer
 {
-    public function optimizeRuleBlock(string $ruleBlock): string
+    public function optimizeRuleBlock(string $ruleBlock, bool $collapseRedundantProperties = false): string
     {
         if (substr_count($ruleBlock, ';') < 2 && ! str_contains($ruleBlock, "\n\n")) {
             return $ruleBlock;
@@ -38,13 +38,8 @@ final class SelectorRuleOptimizer
             return $ruleBlock;
         }
 
-        $declarationKeys               = [];
-        $declarationProperties         = [];
-        $lastDeclarationLineByKey      = [];
-        $declarationKeyCounts          = [];
-        $propertyHasVendorValue        = [];
-        $declarationPropertyCounts     = [];
-        $lastDeclarationLineByProperty = [];
+        $declarationKeys          = [];
+        $lastDeclarationLineByKey = [];
 
         $depth = 0;
 
@@ -52,22 +47,11 @@ final class SelectorRuleOptimizer
             $trimmedLine = trim($line);
 
             if ($depth === 1) {
-                $declarationKey = $this->extractDeclarationKey($trimmedLine);
+                $declarationKey = $this->extractDeclarationKey($trimmedLine, $collapseRedundantProperties);
 
                 if ($declarationKey !== null) {
-                    $property = $this->extractDeclarationProperty($trimmedLine);
-
                     $declarationKeys[$index]                   = $declarationKey;
                     $lastDeclarationLineByKey[$declarationKey] = $index;
-                    $declarationKeyCounts[$declarationKey]     = ($declarationKeyCounts[$declarationKey] ?? 0) + 1;
-
-                    if ($property !== null) {
-                        $declarationProperties[$index]            = $property;
-                        $lastDeclarationLineByProperty[$property] = $index;
-                        $declarationPropertyCounts[$property]     = ($declarationPropertyCounts[$property] ?? 0) + 1;
-                        $propertyHasVendorValue[$property]        = ($propertyHasVendorValue[$property] ?? false)
-                            || $this->declarationHasVendorValue($trimmedLine);
-                    }
                 }
             }
 
@@ -85,21 +69,15 @@ final class SelectorRuleOptimizer
         foreach ($lines as $index => $line) {
             $trimmedLine = trim($line);
 
-            if (isset($declarationKeys[$index])) {
+            if (
+                $collapseRedundantProperties
+                && isset($declarationKeys[$index])
+            ) {
                 $declarationKey = $declarationKeys[$index];
 
-                if ($lastDeclarationLineByKey[$declarationKey] !== $index) {
-                    $depth += substr_count($line, '{') - substr_count($line, '}');
-
-                    continue;
-                }
-
-                $property = $declarationProperties[$index] ?? null;
-
                 if (
-                    $property !== null
-                    && ! ($propertyHasVendorValue[$property] ?? false)
-                    && $lastDeclarationLineByProperty[$property] !== $index
+                    $lastDeclarationLineByKey[$declarationKey] !== $index
+                    && ! $this->shouldKeepRedundantDeclaration($collapseRedundantProperties, $line)
                 ) {
                     $depth += substr_count($line, '{') - substr_count($line, '}');
 
@@ -238,12 +216,16 @@ final class SelectorRuleOptimizer
         return false;
     }
 
-    private function extractDeclarationKey(string $line): ?string
+    private function extractDeclarationKey(string $line, bool $collapseRedundantProperties): ?string
     {
         $property = $this->extractDeclarationProperty($line);
 
         if ($property === null) {
             return null;
+        }
+
+        if ($collapseRedundantProperties) {
+            return $property;
         }
 
         $trimmed        = ltrim($line);
@@ -297,20 +279,27 @@ final class SelectorRuleOptimizer
         return strtolower($property);
     }
 
+    private function shouldKeepRedundantDeclaration(bool $collapseRedundantProperties, string $line): bool
+    {
+        return $this->declarationHasVendorValue($line) || $this->declarationHasImportant($line);
+    }
+
     private function declarationHasVendorValue(string $line): bool
     {
-        $trimmedLine    = ltrim($line);
-        $separatorIndex = (int) strpos($trimmedLine, ':');
+        $trimmed    = ltrim($line);
+        $colonIndex = (int) strpos($trimmed, ':');
 
-        $trimmed = trim(substr($trimmedLine, $separatorIndex + 1, -1));
+        $value = strtolower(trim(substr($trimmed, $colonIndex + 1, -1)));
 
-        foreach (['-webkit-', '-moz-', '-ms-', '-o-'] as $prefix) {
-            if (str_starts_with(strtolower($trimmed), $prefix)) {
-                return true;
-            }
-        }
+        return str_starts_with($value, '-webkit-')
+            || str_starts_with($value, '-moz-')
+            || str_starts_with($value, '-ms-')
+            || str_starts_with($value, '-o-');
+    }
 
-        return false;
+    private function declarationHasImportant(string $line): bool
+    {
+        return str_contains($line, '!important');
     }
 
     /**

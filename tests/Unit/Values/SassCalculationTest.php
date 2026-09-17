@@ -57,6 +57,18 @@ describe('SassCalculation', function () {
 
             expect($calc->toCss())->toBe('min(10px, 20px)');
         });
+
+        it('renders modern color function with alpha as slash-separated', function () {
+            $calc = new SassCalculation('hwb', ['1', '2', '3', '0.5']);
+
+            expect($calc->toCss())->toBe('hwb(1 2 3 / 0.5)');
+        });
+
+        it('renders color() with more than four channels', function () {
+            $calc = new SassCalculation('color', ['red', 'green', 'blue', 'alpha', '1']);
+
+            expect($calc->toCss())->toBe('color(red green blue alpha / 1)');
+        });
     });
 
     describe('isTruthy()', function () {

@@ -15,7 +15,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Nodes\WhileNode;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('handles if branches', function () {
     $runtime = RuntimeFactory::createRuntime();
@@ -106,4 +106,36 @@ it('accepts numeric string loop boundaries', function () {
     );
 
     expect($result)->toBe("  step: 1;\n  step: 2;");
+});
+
+it('preserves units in for-loop variable', function () {
+    $runtime = RuntimeFactory::createRuntime();
+
+    $ctx = RuntimeFactory::context(indent: 1);
+    $ctx->env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.rule'));
+
+    $result = $runtime->flow()->handleFor(
+        new ForNode('i', new NumberNode(1, 'px'), new NumberNode(3, 'px'), true, [
+            new DeclarationNode('val', new VariableReferenceNode('i')),
+        ]),
+        $ctx,
+    );
+
+    expect($result)->toBe("  val: 1px;\n  val: 2px;\n  val: 3px;");
+});
+
+it('produces empty output for exclusive range where from equals to', function () {
+    $runtime = RuntimeFactory::createRuntime();
+
+    $ctx = RuntimeFactory::context(indent: 1);
+    $ctx->env->getCurrentScope()->setVariableLocal('__parent_selector', new StringNode('.rule'));
+
+    $result = $runtime->flow()->handleFor(
+        new ForNode('i', new NumberNode(1), new NumberNode(1), false, [
+            new DeclarationNode('b', new VariableReferenceNode('i')),
+        ]),
+        $ctx,
+    );
+
+    expect($result)->toBe('');
 });

@@ -16,8 +16,8 @@ use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Services\Context;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
-use Tests\ArrayLogger;
-use Tests\RuntimeFactory;
+use Tests\Support\ArrayLogger;
+use Tests\Support\RuntimeFactory;
 
 it('logs debug and warn diagnostics', function () {
     $logger  = new ArrayLogger();

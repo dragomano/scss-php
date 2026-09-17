@@ -6,12 +6,13 @@ namespace Bugo\SCSS\Builtins\Color;
 
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
+use Bugo\SCSS\Builtins\Color\Conversion\DartColorMath;
 use Bugo\SCSS\Builtins\Color\Operations\ColorChannelInspector;
 use Bugo\SCSS\Builtins\Color\Operations\ColorConstructorEvaluator;
 use Bugo\SCSS\Builtins\Color\Operations\ColorFunctionEvaluator;
-use Bugo\SCSS\Builtins\Color\Support\ColorManipulators;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
+use Bugo\SCSS\Builtins\Color\Support\LegacyColorMath;
 
 final class ColorModuleFactory
 {
@@ -30,25 +31,25 @@ final class ColorModuleFactory
             literalSerializer: $components->literalSerializer,
         );
 
-        $manipulators = new ColorManipulators(
+        $converter        = new ColorNodeConverter($runtime);
+        $dartMath         = new DartColorMath();
+        $spaceConverter   = new ColorSpaceConverter($runtime, $converter, dartMath: $dartMath);
+        $channelInspector = new ColorChannelInspector($runtime, $converter, $spaceConverter);
+
+        $functions = new ColorFunctionEvaluator(
+            $runtime,
             $components->legacyManipulator,
-            $components->perceptualManipulator,
-            $components->srgbManipulator,
+            $converter,
+            new LegacyColorMath($components->spaceConverter),
+            $dartMath,
         );
 
-        $converter        = new ColorNodeConverter($runtime);
-        $spaceConverter   = new ColorSpaceConverter($runtime, $converter);
-        $channelInspector = new ColorChannelInspector($runtime, $converter);
+        $spaceConverter->functionEvaluator = $functions;
 
         return new ColorModuleServices(
             spaceConverter: $spaceConverter,
             channelInspector: $channelInspector,
-            functions: new ColorFunctionEvaluator(
-                $runtime,
-                $manipulators,
-                $converter,
-                $spaceConverter,
-            ),
+            functions: $functions,
             constructors: new ColorConstructorEvaluator(
                 $runtime->argumentParser,
                 $converter,

@@ -49,7 +49,7 @@ describe('HexColorConverter', function () {
             new NumberNode(0, ''),
         ]));
 
-        expect($result?->value)->toBe('#f00');
+        expect($result?->value)->toBe('#ff0000');
     });
 
     it('rejects byte rgb channels that would lose precision', function () {
@@ -69,7 +69,7 @@ describe('HexColorConverter', function () {
             new NumberNode(60, '%'),
         ]));
 
-        expect($result?->value)->toBe('#369');
+        expect($result?->value)->toBe('#336699');
     });
 
     it('rejects percentage rgb channels that would lose precision', function () {

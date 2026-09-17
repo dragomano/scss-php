@@ -4,11 +4,18 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Nodes;
 
+/**
+ * @phpstan-import-type NodeList from AstNode
+ * @phpstan-import-type NodeMap from AstNode
+ *
+ * @psalm-import-type NodeList from AstNode
+ * @psalm-import-type NodeMap from AstNode
+ */
 final class ArgumentListNode extends AstNode
 {
     /**
-     * @param array<int, AstNode> $items
-     * @param array<string, AstNode> $keywords
+     * @param NodeList $items
+     * @param NodeMap $keywords
      */
     public function __construct(
         public array $items = [],

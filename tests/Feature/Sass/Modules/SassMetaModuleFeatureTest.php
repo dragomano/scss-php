@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Loader;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Sass Meta Module Feature', function () {
     beforeEach(function () {
@@ -76,19 +76,22 @@ describe('Sass Meta Module Feature', function () {
             .card-info::before {
               content: "This mixin supports custom content";
             }
+
             .simple-info::before {
               content: "This mixin uses the default styling";
             }
+
             .actual-card {
               border-radius: 8px;
               overflow: hidden;
               background: white;
-              box-shadow: 0 2px 10px rgba(0, 0, 0, .1);
+              box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
               padding: 20px;
-              h3 {
-                color: #333;
-              }
             }
+            .actual-card h3 {
+              color: #333;
+            }
+
             .actual-simple {
               border-radius: 8px;
               background: #f5f5f5;
@@ -131,7 +134,7 @@ describe('Sass Meta Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .meta-calc-name {
-              value: calc;
+              value: "calc";
             }
             CSS;
 
@@ -154,6 +157,30 @@ describe('Sass Meta Module Feature', function () {
             $expected = /** @lang text */ <<<'CSS'
             .meta-call {
               value: 2;
+            }
+            CSS;
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('does not forward the named function argument to the target', function () {
+            $scss = <<<'SCSS'
+            @use "sass:meta";
+
+            @function keyword-check($args...) {
+              @return meta.keywords($args);
+            }
+
+            .meta-call {
+              value: inspect(meta.call($function: meta.get-function("keyword-check"), $x: 1));
+            }
+            SCSS;
+
+            $css = $this->compiler->compileString($scss);
+
+            $expected = /** @lang text */ <<<'CSS'
+            .meta-call {
+              value: (x: 1);
             }
             CSS;
 
@@ -240,10 +267,11 @@ describe('Sass Meta Module Feature', function () {
               border-radius: 8px;
               padding: 16px;
               background: white;
-              box-shadow: 0 2px 8px rgba(0, 0, 0, .1);
+              box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
               color: #333;
               font-size: 16px;
             }
+
             .placeholder {
               border-radius: 8px;
               padding: 16px;
@@ -360,6 +388,7 @@ describe('Sass Meta Module Feature', function () {
               background-color: #6b717f;
               color: #d2e1dd;
             }
+
             .meta-module-call {
               value: 81;
             }
@@ -390,6 +419,7 @@ describe('Sass Meta Module Feature', function () {
               background-color: #6b717f;
               color: #d2e1dd;
             }
+
             .meta-module-mixin-type {
               value: mixin;
             }
@@ -422,9 +452,11 @@ describe('Sass Meta Module Feature', function () {
             .meta-global-var-before {
               value: false;
             }
+
             .meta-global-var-after {
               value: true;
             }
+
             .meta-global-var-local {
               value: false;
             }
@@ -520,6 +552,7 @@ describe('Sass Meta Module Feature', function () {
             .meta-mixin-before {
               value: false;
             }
+
             .meta-mixin-after {
               value: true;
             }
@@ -555,7 +588,7 @@ describe('Sass Meta Module Feature', function () {
             $compiler->compileString($scss);
 
             expect($this->logger->records[0]['message'])
-                ->toBe('input.scss:3 >>> (pow: get-function("pow"))');
+                ->toBe('input.scss:3 >>> ("pow": get-function("pow"))');
         });
 
         it('returns map containing known functions', function () {
@@ -601,7 +634,7 @@ describe('Sass Meta Module Feature', function () {
             $compiler->compileString($scss);
 
             expect($this->logger->records[0]['message'])
-                ->toBe('input.scss:3 >>> (stretch: get-mixin("stretch"))');
+                ->toBe('input.scss:3 >>> ("stretch": get-mixin("stretch"))');
         });
     });
 
@@ -661,9 +694,11 @@ describe('Sass Meta Module Feature', function () {
             .meta-var-before {
               value: false;
             }
+
             .meta-var-after {
               value: true;
             }
+
             .meta-var-local {
               value: true;
             }
@@ -779,7 +814,7 @@ describe('Sass Meta Module Feature', function () {
         });
 
         describe('calc-args()', function () {
-            it('returns arguments of calc expression', function () {
+            it('returns as-is when called as global function (function does not exist globally)', function () {
                 $scss = <<<'SCSS'
                 .meta-global-calc-args { value: calc-args(calc(100% - 10px)); }
                 SCSS;
@@ -788,7 +823,7 @@ describe('Sass Meta Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .meta-global-calc-args {
-                  value: 100% - 10px;
+                  value: calc-args(calc(100% - 10px));
                 }
                 CSS;
 
@@ -797,7 +832,7 @@ describe('Sass Meta Module Feature', function () {
         });
 
         describe('calc-name()', function () {
-            it('returns function name of calc expression', function () {
+            it('returns as-is when called as global function (function does not exist globally)', function () {
                 $scss = <<<'SCSS'
                 .meta-global-calc-name { value: calc-name(calc(100% - 10px)); }
                 SCSS;
@@ -806,7 +841,7 @@ describe('Sass Meta Module Feature', function () {
 
                 $expected = /** @lang text */ <<<'CSS'
                 .meta-global-calc-name {
-                  value: calc;
+                  value: calc-name(calc(100% - 10px));
                 }
                 CSS;
 
@@ -941,6 +976,7 @@ describe('Sass Meta Module Feature', function () {
                 .before {
                   value: false;
                 }
+
                 .after {
                   value: true;
                 }
@@ -1000,6 +1036,7 @@ describe('Sass Meta Module Feature', function () {
                 .before {
                   value: false;
                 }
+
                 .after {
                   value: true;
                 }

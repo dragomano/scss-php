@@ -8,7 +8,7 @@ use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Runtime\Scope;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 it('registers functions mixins and variables in scope', function () {
     $runtime = RuntimeFactory::createRuntime();

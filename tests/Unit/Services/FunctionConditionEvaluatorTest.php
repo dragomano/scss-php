@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\FunctionConditionEvaluator;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('FunctionConditionEvaluator', function () {
     it('delegates condition evaluation to the condition service', function () {

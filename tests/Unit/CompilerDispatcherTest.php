@@ -9,6 +9,7 @@ use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
+use Tests\Support\RuntimeFactory;
 
 describe('CompilerDispatcher', function () {
     it('throws LogicException when visitor is not set', function () {
@@ -23,7 +24,7 @@ describe('CompilerDispatcher', function () {
 
     it('setVisitor() allows compile() to succeed', function () {
         // Build a real runtime so we get a proper visitor wired up
-        $runtime = Tests\RuntimeFactory::createRuntime();
+        $runtime = RuntimeFactory::createRuntime();
 
         $root = new RootNode([]);
         $env  = new Environment();
@@ -35,7 +36,7 @@ describe('CompilerDispatcher', function () {
     });
 
     it('compile() returns empty string for empty root node', function () {
-        $runtime = Tests\RuntimeFactory::createRuntime();
+        $runtime = RuntimeFactory::createRuntime();
 
         $root = new RootNode([]);
         $env  = new Environment();
@@ -46,10 +47,10 @@ describe('CompilerDispatcher', function () {
     });
 
     it('compileWithContext() accepts TraversalContext', function () {
-        $runtime = Tests\RuntimeFactory::createRuntime();
+        $runtime = RuntimeFactory::createRuntime();
 
         $root = new RootNode([]);
-        $ctx  = Tests\RuntimeFactory::context();
+        $ctx  = RuntimeFactory::context();
 
         $result = $runtime->dispatcher()->compileWithContext($root, $ctx);
 
@@ -57,7 +58,7 @@ describe('CompilerDispatcher', function () {
     });
 
     it('compile() dispatches @at-root nodes through the visitor', function () {
-        $runtime = Tests\RuntimeFactory::createRuntime();
+        $runtime = RuntimeFactory::createRuntime();
         $env = new Environment();
         $node = new AtRootNode([
             new RuleNode('.outside', [

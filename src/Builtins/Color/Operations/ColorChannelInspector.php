@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Builtins\Color\Operations;
 
+use Bugo\Iris\Converters\SpaceConverter;
 use Bugo\SCSS\Builtins\Color\Conversion\ColorNodeConverter;
+use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
 use Bugo\SCSS\Builtins\Color\Support\ColorRuntime;
+use Bugo\SCSS\Builtins\Color\Support\LegacyColorMath;
+use Bugo\SCSS\Builtins\Color\Support\RgbChannelScale;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
 use Bugo\SCSS\Exceptions\UnknownColorChannelException;
 use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
@@ -18,11 +22,25 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 
 use function abs;
+use function count;
+use function ctype_alnum;
+use function ctype_alpha;
+use function implode;
+use function in_array;
+use function rtrim;
+use function strlen;
+use function strpos;
 use function strtolower;
+use function substr;
 
 final readonly class ColorChannelInspector
 {
-    public function __construct(private ColorRuntime $runtime, private ColorNodeConverter $converter) {}
+    public function __construct(
+        private ColorRuntime $runtime,
+        private ColorNodeConverter $converter,
+        private ColorSpaceConverter $spaceInterop,
+        private LegacyColorMath $legacyMath = new LegacyColorMath(new SpaceConverter()),
+    ) {}
 
     /**
      * @param array<int, AstNode> $positional
@@ -53,7 +71,7 @@ final readonly class ColorChannelInspector
             'xyz',
             'xyz-d50',
             'xyz-d65' => $this->resolveChannelValue($color, $space, $channelName),
-            default   => throw new UnsupportedColorSpaceException($space, $this->runtime->context->errorCtx('channel')),
+            default   => $this->resolveArbitraryColorChannel($color, $space, $channelName),
         };
     }
 
@@ -85,10 +103,12 @@ final readonly class ColorChannelInspector
     ): NumberNode {
         $color = $this->runtime->argumentParser->requireColor($positional, 0, $context);
 
-        $this->runtime->context->warn(
-            $callContext,
-            'color.channel(' . $this->runtime->formatter->describeValue($color) . ', "' . $channelName . '", $space: ' . $space . ')',
-        );
+        if ($callContext !== null && $callContext->logWarning !== null) {
+            $this->runtime->context->warn(
+                $callContext,
+                'color.channel(' . $this->runtime->formatter->describeValue($color) . ', "' . $channelName . '", $space: ' . $space . ')',
+            );
+        }
 
         return $this->resolveChannelValue($color, $space, $channelName);
     }
@@ -99,6 +119,16 @@ final readonly class ColorChannelInspector
     public function channelAlpha(array $positional, string $name, ?BuiltinCallContext $context): AstNode
     {
         $isGlobal = $this->runtime->context->isGlobalBuiltinCall();
+
+        if (! $isGlobal) {
+            $cssFallback = $this->cssFilterFallback($positional, $name);
+
+            if ($cssFallback !== null) {
+                $this->runtime->context->warn($context, $cssFallback);
+
+                throw new DeferToCssFunctionException($cssFallback);
+            }
+        }
 
         try {
             $color = $isGlobal
@@ -118,10 +148,12 @@ final readonly class ColorChannelInspector
         }
 
         if ($isGlobal) {
-            $this->runtime->context->warn(
-                $context,
-                'color.channel(' . $this->runtime->formatter->describeValue($color) . ', "alpha")',
-            );
+            if ($context !== null && $context->logWarning !== null) {
+                $this->runtime->context->warn(
+                    $context,
+                    'color.channel(' . $this->runtime->formatter->describeValue($color) . ', "alpha")',
+                );
+            }
         }
 
         return new NumberNode($alpha);
@@ -173,10 +205,43 @@ final readonly class ColorChannelInspector
 
         $space = strtolower(
             $this->runtime->argumentParser->asString(
-                $named['space'] ?? ($positional[2] ?? new StringNode('hsl')),
+                $named['space'] ?? ($positional[2] ?? new StringNode(
+                    in_array($this->converter->detectNativeColorSpace($color), ['rgb', 'hsl'], true)
+                        ? 'hsl'
+                        : $this->converter->detectNativeColorSpace($color),
+                )),
                 'is-powerless',
             ),
         );
+
+        if ($color instanceof FunctionNode) {
+            $nativeSpace = strtolower($color->name);
+            $channels    = $this->runtime->argumentParser->expandSingleSpaceListArgument($color->arguments);
+
+            if ($space === 'hsl' && in_array($nativeSpace, ['hsl', 'hsla'], true) && $channelName === 'hue') {
+                return new BooleanNode(isset($channels[1]) && $channels[1] instanceof NumberNode && abs((float) $channels[1]->value) < 0.000001);
+            }
+
+            if ($space === 'oklab' && $nativeSpace === 'oklab' && ($channelName === 'a' || $channelName === 'b')) {
+                $index = $channelName === 'a' ? 1 : 2;
+
+                if (isset($channels[0]) && $channels[0] instanceof NumberNode && in_array((float) $channels[0]->value, [0.0, 100.0], true)) {
+                    return new BooleanNode(false);
+                }
+
+                return new BooleanNode(isset($channels[$index]) && $channels[$index] instanceof NumberNode && abs((float) $channels[$index]->value) < 0.000001);
+            }
+
+            if ($space === 'oklch' && in_array($nativeSpace, ['oklch', 'lch'], true) && ($channelName === 'hue' || $channelName === 'chroma')) {
+                if ($channelName === 'chroma') {
+                    return new BooleanNode(false);
+                }
+
+                $index = 1;
+
+                return new BooleanNode(isset($channels[$index]) && $channels[$index] instanceof NumberNode && abs((float) $channels[$index]->value) < 0.000001);
+            }
+        }
 
         $powerless = false;
 
@@ -185,8 +250,6 @@ final readonly class ColorChannelInspector
 
             if ($channelName === 'hue') {
                 $powerless = abs($hsl->sValue()) < 0.000001;
-            } elseif ($channelName === 'saturation') {
-                $powerless = $hsl->lValue() <= 0.0 || $hsl->lValue() >= 100.0;
             }
         }
 
@@ -200,14 +263,18 @@ final readonly class ColorChannelInspector
 
         if ($space === 'lch') {
             if ($channelName === 'hue') {
-                $lch       = $this->runtime->spaceConverter->rgbToLch($this->converter->toRgb($color));
+                $lch       = $this->runtime->spaceConverter->rgbToLch(
+                    RgbChannelScale::toNormalized($this->converter->toRgb($color)),
+                );
                 $powerless = abs($lch->cValue()) < 0.000001;
             }
         }
 
         if ($space === 'oklch') {
             if ($channelName === 'hue') {
-                $oklch     = $this->runtime->spaceConverter->rgbToOklch($this->converter->toRgb($color));
+                $oklch     = $this->runtime->spaceConverter->rgbToOklch(
+                    RgbChannelScale::toNormalized($this->converter->toRgb($color)),
+                );
                 $powerless = abs($oklch->cValue()) < 0.000001;
             }
         }
@@ -222,17 +289,26 @@ final readonly class ColorChannelInspector
     {
         $color = $this->runtime->argumentParser->requireColor($positional, 0, 'space');
 
+        if ($color instanceof FunctionNode && $color->originColorSpace !== null) {
+            return new StringNode($color->originColorSpace);
+        }
+
         return new StringNode($this->converter->detectNativeColorSpace($color));
     }
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    public function isInGamut(array $positional): BooleanNode
+    public function isInGamut(array $positional, array $named = []): BooleanNode
     {
-        $color = $this->runtime->argumentParser->requireColor($positional, 0, 'is-in-gamut');
+        $color     = $this->runtime->argumentParser->requireColor($positional, 0, 'is-in-gamut');
+        $spaceNode = $named['space'] ?? ($positional[1] ?? null);
+        $space     = $spaceNode === null
+            ? null
+            : strtolower($this->runtime->argumentParser->asString($spaceNode, 'is-in-gamut'));
 
-        return new BooleanNode($this->converter->isInGamut($color));
+        return new BooleanNode($this->spaceInterop->isColorInGamut($color, $space));
     }
 
     /**
@@ -243,6 +319,72 @@ final readonly class ColorChannelInspector
         $color = $this->runtime->argumentParser->requireColor($positional, 0, 'is-legacy');
 
         return new BooleanNode($this->converter->isLegacyColor($color));
+    }
+
+    /**
+     * @param array<int, AstNode> $positional
+     */
+    private function cssFilterFallback(array $positional, string $name): ?string
+    {
+        if ($positional === []) {
+            return null;
+        }
+
+        if ($name === 'opacity') {
+            $single = count($positional) === 1 ? $positional[0] : null;
+
+            return $single instanceof NumberNode && $single->unit === null
+                ? 'opacity(' . $this->runtime->formatter->formatNumberNode($single) . ')'
+                : null;
+        }
+
+        $arguments = [];
+
+        foreach ($positional as $argument) {
+            if (! $this->isMicrosoftFilterArgument($argument)) {
+                return null;
+            }
+
+            /** @var StringNode $argument */
+            $arguments[] = $argument->value;
+        }
+
+        return 'alpha(' . implode(', ', $arguments) . ')';
+    }
+
+    private function isMicrosoftFilterArgument(AstNode $node): bool
+    {
+        if (! ($node instanceof StringNode) || $node->quoted) {
+            return false;
+        }
+
+        $equals = strpos($node->value, '=');
+
+        if ($equals === false) {
+            return false;
+        }
+
+        $identifier = rtrim(substr($node->value, 0, $equals));
+
+        if ($identifier === '') {
+            return false;
+        }
+
+        $first = $identifier[0];
+
+        if ($first !== '-' && $first !== '_' && ! ctype_alpha($first)) {
+            return false;
+        }
+
+        for ($i = 1, $length = strlen($identifier); $i < $length; $i++) {
+            $character = $identifier[$i];
+
+            if ($character !== '-' && $character !== '_' && ! ctype_alnum($character)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function resolveRgbChannel(AstNode $color, string $channelName, bool $normalized): NumberNode
@@ -262,13 +404,13 @@ final readonly class ColorChannelInspector
 
     private function resolveHslChannel(AstNode $color, string $channelName): NumberNode
     {
-        $hsl = $this->converter->toHsl($color);
+        $hsl = $this->legacyMath->rgbToHsl($this->converter->toRgb($color));
 
         return match ($channelName) {
-            'hue'        => new NumberNode($hsl->hValue(), 'deg'),
-            'saturation' => new NumberNode($hsl->sValue(), '%'),
-            'lightness'  => new NumberNode($hsl->lValue(), '%'),
-            'alpha'      => new NumberNode($hsl->a),
+            'hue'        => new NumberNode($hsl['h'], 'deg'),
+            'saturation' => new NumberNode($hsl['s'], '%'),
+            'lightness'  => new NumberNode($hsl['l'], '%'),
+            'alpha'      => new NumberNode($hsl['a']),
             default      => throw new UnknownColorChannelException('HSL', $channelName),
         };
     }
@@ -289,7 +431,7 @@ final readonly class ColorChannelInspector
     private function resolveLchChannel(AstNode $color, string $channelName): NumberNode
     {
         $rgb = $this->converter->toRgb($color);
-        $lch = $this->runtime->spaceConverter->rgbToLch($rgb);
+        $lch = $this->runtime->spaceConverter->rgbToLch(RgbChannelScale::toNormalized($rgb));
 
         return match ($channelName) {
             'lightness' => new NumberNode($lch->lValue(), '%'),
@@ -303,7 +445,7 @@ final readonly class ColorChannelInspector
     private function resolveLabChannel(AstNode $color, string $channelName): NumberNode
     {
         $alpha = $this->converter->toAlpha($color);
-        $lab   = $this->runtime->spaceConverter->xyzD50ToLabColor($this->converter->toXyzD50($color), $alpha);
+        $lab   = $this->runtime->spaceConverter->xyzD50ToLab($this->converter->toXyzD50($color), $alpha);
 
         return match ($channelName) {
             'lightness' => new NumberNode($lab->lValue(), '%'),
@@ -316,7 +458,9 @@ final readonly class ColorChannelInspector
 
     private function resolveOklchChannel(AstNode $color, string $channelName): NumberNode
     {
-        $oklch = $this->runtime->spaceConverter->rgbToOklch($this->converter->toRgb($color));
+        $oklch = $this->runtime->spaceConverter->rgbToOklch(
+            RgbChannelScale::toNormalized($this->converter->toRgb($color)),
+        );
 
         return match ($channelName) {
             'lightness' => new NumberNode($oklch->lValue(), '%'),
@@ -330,7 +474,7 @@ final readonly class ColorChannelInspector
     private function resolveOklabChannel(AstNode $color, string $channelName): NumberNode
     {
         $alpha = $this->converter->toAlpha($color);
-        $oklab = $this->runtime->spaceConverter->xyzD65ToOklabColor($this->converter->toXyzD65($color), $alpha);
+        $oklab = $this->runtime->spaceConverter->xyzD65ToOklab($this->converter->toXyzD65($color), $alpha);
 
         return match ($channelName) {
             'lightness' => new NumberNode($oklab->lValue(), '%'),
@@ -344,12 +488,12 @@ final readonly class ColorChannelInspector
     private function resolveXyzD65Channel(AstNode $color, string $channelName): NumberNode
     {
         $rgb = $this->converter->toRgb($color);
-        $xyz = $this->runtime->spaceConverter->rgbToXyzD65($rgb);
+        $xyz = $this->runtime->spaceConverter->rgbToXyzD65(RgbChannelScale::toNormalized($rgb));
 
         return match ($channelName) {
-            'x'     => new NumberNode($xyz->x),
-            'y'     => new NumberNode($xyz->y),
-            'z'     => new NumberNode($xyz->z),
+            'x'     => new NumberNode((float) $xyz->x, null, false),
+            'y'     => new NumberNode((float) $xyz->y, null, false),
+            'z'     => new NumberNode((float) $xyz->z, null, false),
             'alpha' => new NumberNode($rgb->a),
             default => throw new UnknownColorChannelException('XYZ', $channelName),
         };
@@ -357,15 +501,76 @@ final readonly class ColorChannelInspector
 
     private function resolveXyzD50Channel(AstNode $color, string $channelName): NumberNode
     {
+        if ($color instanceof FunctionNode && strtolower($color->name) === 'color') {
+            $channels = $this->runtime->arguments->expandArguments($color);
+
+            if (
+                isset($channels[0], $channels[1], $channels[2], $channels[3])
+                && $channels[0] instanceof StringNode
+                && $channels[1] instanceof NumberNode
+                && $channels[2] instanceof NumberNode
+                && $channels[3] instanceof NumberNode
+                && strtolower($channels[0]->value) === 'xyz-d50'
+            ) {
+                return match ($channelName) {
+                    'x'     => $channels[1],
+                    'y'     => $channels[2],
+                    'z'     => $channels[3],
+                    'alpha' => new NumberNode($this->converter->toAlpha($color)),
+                    default => throw new UnknownColorChannelException('XYZ-D50', $channelName),
+                };
+            }
+        }
+
         $rgb = $this->converter->toRgb($color);
-        $xyz = $this->runtime->spaceConverter->rgbToXyzD50($rgb);
+        $xyz = $this->runtime->spaceConverter->rgbToXyzD50(RgbChannelScale::toNormalized($rgb));
 
         return match ($channelName) {
-            'x'     => new NumberNode($xyz->x),
-            'y'     => new NumberNode($xyz->y),
-            'z'     => new NumberNode($xyz->z),
+            'x'     => new NumberNode((float) $xyz->x, null, false),
+            'y'     => new NumberNode((float) $xyz->y, null, false),
+            'z'     => new NumberNode((float) $xyz->z, null, false),
             'alpha' => new NumberNode($rgb->a),
             default => throw new UnknownColorChannelException('XYZ-D50', $channelName),
         };
+    }
+
+    private function resolveArbitraryColorChannel(AstNode $color, string $space, string $channelName): NumberNode
+    {
+        $channelIndex = match ($channelName) {
+            'red'   => 1,
+            'green' => 2,
+            'blue'  => 3,
+            default => null,
+        };
+
+        if ($channelIndex === null) {
+            throw new UnsupportedColorSpaceException($space, $this->runtime->context->errorCtx('channel'));
+        }
+
+        if ($color instanceof FunctionNode && strtolower($color->name) === 'color') {
+            $expandedArgs = $this->runtime->arguments->expandArguments($color);
+            $nativeSpace  = strtolower(
+                $expandedArgs[0] instanceof StringNode ? $expandedArgs[0]->value : '',
+            );
+
+            if ($nativeSpace === $space
+                && isset($expandedArgs[$channelIndex])
+                && $expandedArgs[$channelIndex] instanceof NumberNode
+            ) {
+                return $expandedArgs[$channelIndex];
+            }
+        }
+
+        $converted = $this->spaceInterop->toSpace([$color, new StringNode($space)]);
+
+        if ($converted instanceof FunctionNode && strtolower($converted->name) === 'color') {
+            $args = $this->runtime->arguments->expandArguments($converted);
+
+            if (isset($args[$channelIndex]) && $args[$channelIndex] instanceof NumberNode) {
+                return $args[$channelIndex];
+            }
+        }
+
+        throw new UnsupportedColorSpaceException($space, $this->runtime->context->errorCtx('channel'));
     }
 }

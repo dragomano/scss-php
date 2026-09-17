@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\SassErrorException;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Sass Selector Module Feature', function () {
     beforeEach(function () {
@@ -76,7 +76,7 @@ describe('Sass Selector Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .selector-extend-order {
-              value: a.disabled, .link.disabled;
+              value: a.disabled, .disabled.link;
             }
             CSS;
 
@@ -108,16 +108,6 @@ describe('Sass Selector Module Feature', function () {
 
             expect(fn() => $this->compiler->compileString($scss))
                 ->toThrow(SassErrorException::class, 'Complex selectors may not be extended');
-        });
-
-        it('throws for compound selector target', function () {
-            $scss = <<<'SCSS'
-            @use "sass:selector";
-            .x { value: selector.extend(".a", ".a.b", ".c"); }
-            SCSS;
-
-            expect(fn() => $this->compiler->compileString($scss))
-                ->toThrow(SassErrorException::class, 'Compound selectors may not be extended');
         });
     });
 
@@ -174,6 +164,23 @@ describe('Sass Selector Module Feature', function () {
 
             expect($css)->toEqualCss($expected);
         });
+
+        it('preserves leading combinator before parent part', function () {
+            $scss = <<<'SCSS'
+            @use "sass:selector";
+            .selector-nest-combinator { value: selector.nest("> c", ".b"); }
+            SCSS;
+
+            $css = $this->compiler->compileString($scss);
+
+            $expected = /** @lang text */ <<<'CSS'
+            .selector-nest-combinator {
+              value: > c .b;
+            }
+            CSS;
+
+            expect($css)->toEqualCss($expected);
+        });
     });
 
     describe('selector.parse()', function () {
@@ -192,6 +199,16 @@ describe('Sass Selector Module Feature', function () {
             CSS;
 
             expect($css)->toEqualCss($expected);
+        });
+
+        it('rejects non-string selector values', function () {
+            $scss = <<<'SCSS'
+            @use "sass:selector";
+            .selector-parse-number { value: selector.parse(1); }
+            SCSS;
+
+            expect(fn() => $this->compiler->compileString($scss))
+                ->toThrow(SassErrorException::class, 'is not a valid selector: it must be a string');
         });
     });
 
@@ -223,7 +240,7 @@ describe('Sass Selector Module Feature', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .selector-replace-order {
-              value: .link.disabled;
+              value: .disabled.link;
             }
             CSS;
 

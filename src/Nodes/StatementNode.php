@@ -4,4 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Nodes;
 
-abstract class StatementNode extends AstNode implements Visitable {}
+abstract class StatementNode extends AstNode implements Visitable
+{
+    use HasChildren;
+}

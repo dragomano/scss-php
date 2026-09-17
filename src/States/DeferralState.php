@@ -18,10 +18,13 @@ final class DeferralState
     /** @var array<int, list<DeferredAtRuleChunk>> */
     public array $atRuleStack = [];
 
+    public bool $currentRuleHasOutput = false;
+
     public function reset(): void
     {
-        $this->atRootStack   = [];
-        $this->bubblingStack = [];
-        $this->atRuleStack   = [];
+        $this->atRootStack          = [];
+        $this->bubblingStack        = [];
+        $this->atRuleStack          = [];
+        $this->currentRuleHasOutput = false;
     }
 }

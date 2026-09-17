@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -65,10 +65,12 @@ describe('Compiler', function () {
             $expected = /** @lang text */ <<<'CSS'
             .card .title {
               color: red;
-              font-weight: bold;
             }
             .card .title:hover {
               color: blue;
+            }
+            .card .title {
+              font-weight: bold;
             }
             CSS;
 
@@ -124,11 +126,12 @@ describe('Compiler', function () {
             SCSS;
 
             $expected = /** @lang text */ <<<'CSS'
-            .card .title {
-              color: red;
-            }
             .utility {
               display: block;
+            }
+
+            .card .title {
+              color: red;
             }
             CSS;
 
@@ -426,13 +429,15 @@ describe('Compiler', function () {
             SCSS;
 
             $expected = /** @lang text */ <<<'CSS'
-            ul:nth-child(3n + 1) {
+            ul:nth-child(3n+1) {
               margin-left: 10;
             }
-            ul:nth-child(3n + 2) {
+
+            ul:nth-child(3n+2) {
               margin-left: 20;
             }
-            ul:nth-child(3n + 3) {
+
+            ul:nth-child(3n+3) {
               margin-left: 30;
             }
             CSS;
@@ -461,13 +466,15 @@ describe('Compiler', function () {
             input.name {
               position: absolute;
               height: 150px;
-              margin-top: 0;
+              margin-top: 0px;
             }
+
             input.address {
               position: absolute;
               height: 150px;
               margin-top: 150px;
             }
+
             input.zip {
               position: absolute;
               height: 150px;
@@ -534,6 +541,38 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('keeps bubbled media after nested rules already emitted from the parent', function () {
+            $source = <<<'SCSS'
+            .toolbar {
+              margin: 1px;
+
+              form {
+                display: flex;
+              }
+
+              @media print {
+                display: block;
+              }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .toolbar {
+              margin: 1px;
+            }
+            .toolbar form {
+              display: flex;
+            }
+            @media print {
+              .toolbar {
+                display: block;
+              }
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
         it('bubbles nested @container at-rules out of style rules', function () {
             $source = <<<'SCSS'
             .article_alt3_view {
@@ -582,8 +621,9 @@ describe('Compiler', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .component--compact .component {
-              padding: .8rem;
+              padding: 0.8rem;
             }
+
             .component--bordered .component {
               border: 1px solid #ddd;
             }
@@ -689,7 +729,8 @@ describe('Compiler', function () {
             SCSS;
 
             $expected = /** @lang text */ <<<'CSS'
-            .main aside:hover, .sidebar p {
+            .main aside:hover,
+            .sidebar p {
               parent-selector: .main aside:hover, .sidebar p;
             }
             CSS;
@@ -718,11 +759,12 @@ describe('Compiler', function () {
             $expected = /** @lang text */ <<<'CSS'
             .app-background {
               background-color: #036;
-              color: rgba(255, 255, 255, .75);
+              color: rgba(255, 255, 255, 0.75);
             }
+
             .sidebar.app-background {
               background-color: #c6538c;
-              color: rgba(255, 255, 255, .75);
+              color: rgba(255, 255, 255, 0.75);
             }
             CSS;
 
@@ -755,6 +797,7 @@ describe('Compiler', function () {
             .wrapper input.field {
               /* ... */
             }
+
             .wrapper select.field {
               /* ... */
             }
@@ -778,7 +821,8 @@ describe('Compiler', function () {
             SCSS;
 
             $expected = <<<'CSS'
-            #lp_layout h3:hover, #lp_layout h4:hover {
+            #lp_layout h3:hover,
+            #lp_layout h4:hover {
               white-space: normal;
             }
             CSS;
@@ -879,7 +923,7 @@ describe('Compiler', function () {
 
             $expected = <<<'CSS'
             .article_simple_view > div:hover {
-              box-shadow: 0 1px 3px 0 rgba(0, 0, 0, .1), 0 1px 2px 0 rgba(0, 0, 0, .06);
+              box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
             }
             CSS;
 
@@ -899,7 +943,7 @@ describe('Compiler', function () {
             $expected = <<<'CSS'
             article a:hover {
               text-decoration: none;
-              opacity: .7;
+              opacity: 0.7;
             }
             CSS;
 
@@ -922,7 +966,7 @@ describe('Compiler', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             section #display_head {
-              margin-top: .1em;
+              margin-top: 0.1em;
               margin-bottom: 0;
             }
             section #display_head span {
@@ -952,7 +996,7 @@ describe('Compiler', function () {
             ['@supports (--foo: green) { foo {a: b} }', "@supports (--foo: green) {\n  foo {\n    a: b;\n  }\n}"],
             ['@supports not selector(:is(a, b)) { foo {a: b} }', "@supports not selector(:is(a, b)) {\n  foo {\n    a: b;\n  }\n}"],
             ['@supports selector(:nth-child(2n of .foo)) { foo {a: b} }', "@supports selector(:nth-child(2n of .foo)) {\n  foo {\n    a: b;\n  }\n}"],
-            ['@supports ((display: grid) or (display: subgrid)) { foo {a: b} }', "@supports ((display: grid) or (display: subgrid)) {\n  foo {\n    a: b;\n  }\n}"],
+            ['@supports ((display: grid) or (display: subgrid)) { foo {a: b} }', "@supports (display: grid) or (display: subgrid) {\n  foo {\n    a: b;\n  }\n}"],
         ]);
 
         it('handles interpolated @supports conditions in direct syntax forms', function () {
@@ -1012,12 +1056,15 @@ describe('Compiler', function () {
             .sibling {
               color: red;
             }
+
             .other {
               color: blue;
             }
+
             .another {
               color: green;
             }
+
             .inner {
               color: red;
             }

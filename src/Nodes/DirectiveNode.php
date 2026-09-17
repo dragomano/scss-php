@@ -7,16 +7,23 @@ namespace Bugo\SCSS\Nodes;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Visitor;
 
+/**
+ * @phpstan-import-type NodeList from AstNode
+ *
+ * @psalm-import-type NodeList from AstNode
+ */
 final class DirectiveNode extends StatementNode
 {
     /**
-     * @param AstNode[] $body
+     * @param NodeList $body
      */
     public function __construct(
         public string $name,
         public string $prelude = '',
         public array $body = [],
         public bool $hasBlock = false,
+        public int $line = 0,
+        public int $column = 0,
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

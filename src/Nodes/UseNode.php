@@ -7,10 +7,15 @@ namespace Bugo\SCSS\Nodes;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Visitor;
 
+/**
+ * @phpstan-import-type NodeMap from AstNode
+ *
+ * @psalm-import-type NodeMap from AstNode
+ */
 final class UseNode extends StatementNode
 {
     /**
-     * @param array<string, AstNode> $configuration
+     * @param NodeMap $configuration
      */
     public function __construct(
         public string $path,

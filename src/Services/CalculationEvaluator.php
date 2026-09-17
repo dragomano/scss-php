@@ -8,6 +8,7 @@ use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
@@ -16,14 +17,27 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Utils\UnitConverter;
 use Bugo\SCSS\Values\SassCalculation;
 use Bugo\SCSS\Values\SassList;
+use Bugo\SCSS\Values\SassNumber;
 use Bugo\SCSS\Values\SassValue;
 
+use function array_values;
 use function ceil;
 use function count;
+use function exp;
 use function fdiv;
 use function floor;
+use function fmod;
+use function implode;
 use function in_array;
+use function is_finite;
+use function is_infinite;
+use function is_int;
+use function is_nan;
+use function max;
 use function round;
+use function sqrt;
+use function str_repeat;
+use function strlen;
 use function strtolower;
 use function trim;
 
@@ -64,6 +78,10 @@ final readonly class CalculationEvaluator
                 continue;
             }
 
+            if ($operator->value === '/') {
+                continue;
+            }
+
             return $this->valueFormatter->format($left, $env)
                 . ' '
                 . $operator->value
@@ -77,7 +95,7 @@ final readonly class CalculationEvaluator
     /**
      * @param array<int, AstNode> $items
      */
-    public function formatListValue(array $items, string $separator, bool $bracketed, Environment $env): string
+    public function formatListValue(array $items, string $separator, bool $bracketed, Environment $env, bool $compactSlash = true): string
     {
         $formattedItems = [];
 
@@ -93,25 +111,165 @@ final readonly class CalculationEvaluator
             }
         }
 
-        return (string) new SassList($formattedItems, $separator, $bracketed);
+        if ($separator === 'space' && $compactSlash) {
+            $formattedItems = $this->compactSlashOperators($items, $formattedItems);
+        }
+
+        return (string) new SassList(array_values($formattedItems), $separator, $bracketed);
+    }
+
+    /**
+     * Compacts preserved-division slash operators with their neighbours.
+     *
+     * @param array<int, AstNode> $nodes
+     * @param list<string> $items
+     * @return array<int, string>
+     */
+    private function compactSlashOperators(array $nodes, array $items): array
+    {
+        $count = count($items);
+
+        if ($count < 3) {
+            return $items;
+        }
+
+        $isOperator = [];
+
+        foreach ($nodes as $index => $node) {
+            $isOperator[$index] = $node instanceof StringNode
+                && ! $node->quoted
+                && $node->isSlashOperator
+                && $node->value === '/';
+        }
+
+        $hasOperator = false;
+
+        foreach ($isOperator as $isSlashOperator) {
+            if ($isSlashOperator) {
+                $hasOperator = true;
+
+                break;
+            }
+        }
+
+        if (! $hasOperator) {
+            return $items;
+        }
+
+        $result   = [];
+        $previous = null;
+
+        foreach ($items as $index => $item) {
+            if ($previous !== null) {
+                if ($isOperator[$index] || $isOperator[$previous]) {
+                    $result[count($result) - 1] .= $item;
+                } else {
+                    $result[] = $item;
+                }
+            } else {
+                $result[] = $item;
+            }
+
+            $previous = $index;
+        }
+
+        return $result;
+    }
+
+    public function isSlashChain(ListNode $node): bool
+    {
+        $items = $node->items;
+        $count = count($items);
+
+        if ($node->separator !== 'space' || $count < 3 || $count % 2 !== 1) {
+            return false;
+        }
+
+        foreach ($items as $index => $item) {
+            if ($index % 2 === 0) {
+                if (! $item instanceof NumberNode) {
+                    return false;
+                }
+            } elseif (! $item instanceof StringNode || $item->value !== '/') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public function formatSlashChain(ListNode $node, Environment $env): string
+    {
+        $chunks = [];
+
+        foreach ($node->items as $index => $item) {
+            if ($index % 2 === 0) {
+                $chunks[] = $this->valueFormatter->format($item, $env);
+            }
+        }
+
+        return implode('/', $chunks);
     }
 
     public function formatCalculationFunction(FunctionNode $node, Environment $env): string
     {
         $name = strtolower($node->name);
 
-        if (
-            $name !== 'calc'
-            || count($node->arguments) !== 1
-            || ! ($node->arguments[0] instanceof ListNode)
-            || ! $this->containsGroupingMarker($node->arguments[0])
-        ) {
+        if ($name !== 'calc' || count($node->arguments) !== 1) {
             return $this->sassValueConverter->convert($node, $env)->toCss();
         }
 
-        return (string) new SassCalculation($node->name, [
-            $this->formatList($node->arguments[0], $env),
-        ]);
+        $argument = $node->arguments[0];
+
+        if ($argument instanceof ListNode && ($this->containsGroupingMarker($argument) || $this->hasExplicitParens($argument))) {
+            return (string) new SassCalculation($node->name, [
+                $this->formatList($argument, $env),
+            ]);
+        }
+
+        if (
+            ! $argument instanceof ListNode
+            && ($argument instanceof FunctionNode || $argument instanceof NumberNode)
+            && $argument->parenthesized > 0
+        ) {
+            $inner = $this->valueFormatter->format($argument, $env);
+
+            return (string) new SassCalculation($node->name, [
+                str_repeat('(', $argument->parenthesized) . $inner . str_repeat(')', $argument->parenthesized),
+            ]);
+        }
+
+        if ($argument instanceof ListNode && $argument->parenthesized > 0 && count($argument->items) === 1) {
+            $inner = $this->formatList($argument, $env);
+
+            return (string) new SassCalculation($node->name, [
+                str_repeat('(', $argument->parenthesized) . $inner . str_repeat(')', $argument->parenthesized),
+            ]);
+        }
+
+        if (
+            ! $argument instanceof ListNode
+            && ! $argument instanceof FunctionNode
+            && ! $argument instanceof NumberNode
+        ) {
+            $inner = $this->valueFormatter->format($argument, $env);
+
+            if ($this->needsCalcGroupingParens($inner)) {
+                return (string) new SassCalculation($node->name, [
+                    '(' . $inner . ')',
+                ]);
+            }
+
+            return (string) new SassCalculation($node->name, [$inner]);
+        }
+
+        if ($argument instanceof ListNode && $this->containsNonFiniteOperand($argument)) {
+            return (string) new SassCalculation($node->name, [
+                $this->formatList($argument, $env),
+            ]);
+        }
+
+        return $this->sassValueConverter->convert($node, $env)->toCss();
     }
 
     public function toSassValue(AstNode $node, Environment $env): SassValue
@@ -137,6 +295,10 @@ final readonly class CalculationEvaluator
                 return $argument;
             }
 
+            if ($argument instanceof FunctionNode && SassCalculation::isCalculationFunctionName($argument->name)) {
+                return $argument;
+            }
+
             $constant = $this->resolveConstant($argument);
 
             if ($constant instanceof NumberNode) {
@@ -145,17 +307,25 @@ final readonly class CalculationEvaluator
 
             if ($argument instanceof ListNode) {
                 $resolved = $this->resolveConstantsInList($argument);
-
+                $resolved = $this->evaluateCalcSubLists($resolved, $env);
                 $division = $this->simplifyCalcDivision($resolved);
 
                 if ($division instanceof NumberNode) {
                     return $division;
                 }
 
-                $collapsed = $this->arithmeticListEvaluator->evaluate($resolved, true, $env);
+                $collapsed = $this->arithmeticListEvaluator->evaluate($resolved, true, $env, true);
 
                 if ($collapsed instanceof NumberNode) {
                     return $collapsed;
+                }
+
+                if ($collapsed instanceof ListNode && $this->listChanged($resolved, $collapsed)) {
+                    return new FunctionNode('calc', [$collapsed]);
+                }
+
+                if ($this->listChanged($argument, $resolved) && $this->onlyFiniteConstantsResolved($argument, $resolved)) {
+                    return new FunctionNode('calc', [$resolved]);
                 }
             }
 
@@ -164,6 +334,24 @@ final readonly class CalculationEvaluator
 
         if ($lowerName === 'round') {
             return $this->simplifyRound($arguments);
+        }
+
+        if ($lowerName === 'sign' || $lowerName === 'exp') {
+            return count($arguments) === 1
+                ? ($lowerName === 'sign'
+                    ? $this->simplifySign($arguments[0])
+                    : $this->simplifyExp($arguments[0]))
+                : null;
+        }
+
+        if ($lowerName === 'mod' || $lowerName === 'rem') {
+            return count($arguments) === 2
+                ? $this->simplifyModuloRemainder($lowerName, $arguments[0], $arguments[1])
+                : null;
+        }
+
+        if ($lowerName === 'hypot') {
+            return count($arguments) >= 2 ? $this->simplifyHypot($arguments) : null;
         }
 
         if (! in_array($lowerName, ['max', 'min'], true) || count($arguments) < 2) {
@@ -177,31 +365,42 @@ final readonly class CalculationEvaluator
         }
 
         /** @var NumberNode[] $arguments */
-        $first        = $arguments[0];
-        $unit         = $first->unit;
-        $extremeValue = (float) $first->value;
+        $first = $arguments[0];
+
+        $comparisonUnit = null;
+
+        foreach ($arguments as $argument) {
+            if ($argument->unit !== null) {
+                $comparisonUnit = $argument->unit;
+
+                break;
+            }
+        }
+
+        $extremeNode  = $first;
+        $extremeValue = UnitConverter::convert((float) $first->value, $first->unit, $comparisonUnit);
 
         for ($i = 1; $i < count($arguments); $i++) {
             $current = $arguments[$i];
 
-            if (! UnitConverter::compatible($unit, $current->unit)) {
+            if (! UnitConverter::potentiallyCompatible($comparisonUnit, $current->unit)) {
                 return null;
             }
 
-            $currentValue = (float) $current->value;
+            $currentValue = UnitConverter::convert((float) $current->value, $current->unit, $comparisonUnit);
 
             if ($lowerName === 'max' && $currentValue > $extremeValue) {
                 $extremeValue = $currentValue;
-                $unit         = $current->unit ?? $unit;
+                $extremeNode  = $current;
             }
 
             if ($lowerName === 'min' && $currentValue < $extremeValue) {
                 $extremeValue = $currentValue;
-                $unit         = $current->unit ?? $unit;
+                $extremeNode  = $current;
             }
         }
 
-        return new NumberNode($extremeValue, $unit);
+        return new NumberNode((float) $extremeNode->value, $extremeNode->unit);
     }
 
     /**
@@ -212,7 +411,7 @@ final readonly class CalculationEvaluator
     {
         $lowerName = strtolower($name);
 
-        if (! in_array($lowerName, ['calc', 'min', 'max', 'clamp'], true)) {
+        if (! in_array($lowerName, ['calc', 'min', 'max', 'clamp', 'hypot'], true)) {
             return $arguments;
         }
 
@@ -237,13 +436,32 @@ final readonly class CalculationEvaluator
                 $arguments[] = $this->unwrapNestedNode($argument, $calculationContext);
             }
 
-            $normalized = new FunctionNode($node->name, $arguments);
+            $normalized = new FunctionNode(
+                name: $node->name,
+                arguments: $arguments,
+                parenthesized: $node->parenthesized,
+            );
 
             if (strtolower($normalized->name) === 'calc' && count($normalized->arguments) === 1) {
                 $inner = $normalized->arguments[0];
 
                 if ($insideList && $calculationContext === 'calc' && $inner instanceof ListNode) {
-                    return $normalized;
+                    return new ListNode(
+                        items: $inner->items,
+                        separator: $inner->separator,
+                        bracketed: $inner->bracketed,
+                        parenthesized: max($inner->parenthesized, 1),
+                    );
+                }
+
+                if (
+                    $insideList && $calculationContext === 'calc'
+                    && ($inner instanceof FunctionNode || $inner instanceof NumberNode)
+                    && $inner->parenthesized <= 0
+                ) {
+                    $inner->parenthesized = 1;
+
+                    return $inner;
                 }
 
                 return $inner;
@@ -259,7 +477,7 @@ final readonly class CalculationEvaluator
                 $items[] = $this->unwrapNestedNode($item, $calculationContext, true);
             }
 
-            return new ListNode($items, $node->separator, $node->bracketed);
+            return new ListNode($items, $node->separator, $node->bracketed, $node->parenthesized);
         }
 
         if ($node instanceof NamedArgumentNode) {
@@ -316,11 +534,69 @@ final readonly class CalculationEvaluator
         return false;
     }
 
+    private function hasExplicitParens(ListNode $list): bool
+    {
+        foreach ($list->items as $item) {
+            if ($item instanceof ListNode && $item->parenthesized) {
+                return true;
+            }
+
+            if (($item instanceof FunctionNode || $item instanceof NumberNode) && $item->parenthesized > 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function needsCalcGroupingParens(string $value): bool
+    {
+        $len = strlen($value);
+
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $value[$i];
+
+            if (
+                $ch === ' '
+                || $ch === "\t"
+                || $ch === "\n"
+                || $ch === "\r"
+                || $ch === '+'
+                || $ch === '-'
+                || $ch === '*'
+                || $ch === '/'
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function onlyFiniteConstantsResolved(ListNode $original, ListNode $resolved): bool
+    {
+        foreach ($resolved->items as $index => $item) {
+            if (! $item instanceof NumberNode) {
+                continue;
+            }
+
+            if (isset($original->items[$index]) && $original->items[$index] instanceof StringNode) {
+                if (! is_finite($item->value)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     private function formatList(ListNode $list, Environment $env): string
     {
         $items = [];
 
-        foreach ($list->items as $item) {
+        $operatorContext = $this->extractLeadingOperatorContext($list);
+
+        foreach ($list->items as $index => $item) {
             if (
                 $item instanceof FunctionNode
                 && strtolower($item->name) === 'calc'
@@ -332,16 +608,157 @@ final readonly class CalculationEvaluator
                 continue;
             }
 
+            if ($item instanceof ListNode && $item->parenthesized) {
+                if ($this->shouldStripParensInOperatorContext($list, $index, $item)) {
+                    $items[] = $this->formatListValue($item->items, $item->separator, false, $env, false);
+                } else {
+                    $items[] = str_repeat('(', $item->parenthesized)
+                        . $this->formatListValue($item->items, $item->separator, false, $env, false)
+                        . str_repeat(')', $item->parenthesized);
+                }
+
+                continue;
+            }
+
+            if (($item instanceof FunctionNode || $item instanceof NumberNode) && $item->parenthesized > 0) {
+                $inner   = $this->formatCalcOperand($item, $env);
+                $items[] = str_repeat('(', $item->parenthesized) . $inner . str_repeat(')', $item->parenthesized);
+
+                continue;
+            }
+
+            $nonFinite = $this->formatNonFiniteOperand($item);
+
+            if ($nonFinite !== null) {
+                $items[] = $nonFinite;
+
+                continue;
+            }
+
             $items[] = $this->formatListItem($item, $list->separator, $env);
         }
 
         return (string) new SassList($items, $list->separator, $list->bracketed);
     }
 
+    private function formatCalcOperand(AstNode $item, Environment $env): string
+    {
+        return $this->formatNonFiniteOperand($item) ?? $this->valueFormatter->format($item, $env);
+    }
+
+    private function formatNonFiniteOperand(AstNode $item): ?string
+    {
+        if (! $item instanceof NumberNode || is_int($item->value) || is_finite($item->value)) {
+            return null;
+        }
+
+        return (new SassNumber($item->value, $item->unit))->toCalcOperandCss();
+    }
+
+    private function containsNonFiniteOperand(ListNode $list): bool
+    {
+        foreach ($list->items as $item) {
+            if ($this->formatNonFiniteOperand($item) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function extractLeadingOperatorContext(ListNode $list): ?string
+    {
+        if (count($list->items) < 2) {
+            return null;
+        }
+
+        $first = $list->items[1];
+
+        return ($first instanceof StringNode) ? $first->value : null;
+    }
+
+    private function shouldStripParensInOperatorContext(ListNode $list, int $index, ListNode $inner): bool
+    {
+        $innerOperator = $this->extractLeadingOperatorContext($inner);
+        $outerOperator = $this->extractOperatorAdjacentToIndex($list, $index);
+
+        if ($innerOperator === null) {
+            return false;
+        }
+
+        if ($outerOperator === '/') {
+            return false;
+        }
+
+        $innerPrecedence = $this->operatorPrecedence($innerOperator);
+        $outerPrecedence = $outerOperator !== null ? $this->operatorPrecedence($outerOperator) : 0;
+
+        if ($innerPrecedence > $outerPrecedence) {
+            return true;
+        }
+
+        if ($innerPrecedence === $outerPrecedence && $outerOperator !== null && in_array($outerOperator, ['+', '*'], true)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function extractOperatorAdjacentToIndex(ListNode $list, int $index): ?string
+    {
+        $items = $list->items;
+        $count = count($items);
+
+        if ($index + 1 < $count) {
+            $candidate = $items[$index + 1];
+
+            if ($candidate instanceof StringNode && in_array($candidate->value, ['+', '-', '*', '/'], true)) {
+                return $candidate->value;
+            }
+        }
+
+        if ($index - 1 >= 0) {
+            $candidate = $items[$index - 1];
+
+            if ($candidate instanceof StringNode && in_array($candidate->value, ['+', '-', '*', '/'], true)) {
+                return $candidate->value;
+            }
+        }
+
+        return null;
+    }
+
+    private function operatorPrecedence(string $operator): int
+    {
+        return match ($operator) {
+            '+', '-' => 1,
+            '*', '/' => 2,
+            default  => 0,
+        };
+    }
+
     private function formatListItem(AstNode $item, string $parentSeparator, Environment $env): string
     {
-        if ($parentSeparator === 'space' && $item instanceof ListNode && ! $item->bracketed) {
-            return '(' . $this->formatListValue($item->items, $item->separator, false, $env) . ')';
+        if ($item instanceof ListNode && $item->bracketed) {
+            if ($item->items === []) {
+                return '[]';
+            }
+
+            return '[' . $this->formatListValue($item->items, $item->separator, false, $env) . ']';
+        }
+
+        if (($item instanceof ListNode && $item->items === [])
+            || ($item instanceof MapNode && $item->isEmptyList)
+        ) {
+            return '';
+        }
+
+        if ($item instanceof ListNode && $this->isSlashChain($item)) {
+            return $this->formatSlashChain($item, $env);
+        }
+
+        if ($parentSeparator === 'space' && $item instanceof ListNode) {
+            return $this->formatListValue($item->items, $item->separator, false, $env);
         }
 
         return $this->valueFormatter->format($item, $env);
@@ -371,14 +788,78 @@ final readonly class CalculationEvaluator
             $stepIndex = count($arguments) === 2 ? 1 : null;
         }
 
-        if (! isset($arguments[$numberIndex]) || ! ($arguments[$numberIndex] instanceof NumberNode)) {
-            return null;
+        if (! ($arguments[$numberIndex] instanceof NumberNode)) {
+            $resolvedNumber = $this->resolveConstant($arguments[$numberIndex]);
+
+            if ($resolvedNumber === null) {
+                return null;
+            }
+
+            $number = $resolvedNumber;
+        } else {
+            $number = $arguments[$numberIndex];
         }
 
-        $number = $arguments[$numberIndex];
         $step   = $stepIndex !== null && isset($arguments[$stepIndex]) ? $arguments[$stepIndex] : null;
 
         if ($step !== null && ! ($step instanceof NumberNode)) {
+            $resolvedStep = $this->resolveConstant($step);
+
+            if ($resolvedStep !== null) {
+                $step = $resolvedStep;
+            } else {
+                return new FunctionNode(
+                    'round',
+                    $numberIndex === 1
+                        ? [new StringNode($strategy), $number, $step]
+                        : [$number, $step],
+                );
+            }
+        }
+
+        if (! $step instanceof NumberNode) {
+            $value = (float) $number->value;
+            $unit  = $number->unit;
+
+            if (is_nan($value)) {
+                return new NumberNode(fdiv(0.0, 0.0), $unit);
+            }
+
+            return new NumberNode((int) round($value), $unit);
+        }
+
+        $numberValue = (float) $number->value;
+        $stepValue   = (float) $step->value;
+
+        if ($stepValue === 0.0) {
+            return new NumberNode(fdiv(0.0, 0.0), $number->unit ?? $step->unit);
+        }
+
+        if (is_infinite($numberValue) && is_infinite($stepValue)) {
+            return new NumberNode(fdiv(0.0, 0.0));
+        }
+
+        if (is_infinite($stepValue)) {
+            if ($numberValue === 0.0) {
+                return new NumberNode($numberValue, $number->unit ?? $step->unit);
+            }
+
+            return match ($strategy) {
+                'up'    => $numberValue > 0
+                    ? new NumberNode(fdiv(1.0, 0.0), $number->unit)
+                    : new NumberNode($numberValue < 0 ? -0.0 : 0.0, $number->unit),
+                'down'  => $numberValue < 0
+                    ? new NumberNode(fdiv(-1.0, 0.0), $number->unit)
+                    : new NumberNode(0.0, $number->unit),
+                default => new NumberNode($numberValue < 0 ? -0.0 : 0.0, $number->unit ?? $step->unit),
+            };
+        }
+
+        if (is_infinite($numberValue)) {
+            return new NumberNode($numberValue, $number->unit);
+        }
+
+        if (! UnitConverter::compatible($number->unit, $step->unit)) {
             return new FunctionNode(
                 'round',
                 $numberIndex === 1
@@ -387,29 +868,144 @@ final readonly class CalculationEvaluator
             );
         }
 
-        if (! $step instanceof NumberNode) {
-            return new NumberNode((int) round((float) $number->value), $number->unit);
-        }
-
-        if ((float) $step->value === 0.0) {
-            return null;
-        }
-
-        if (! UnitConverter::compatible($number->unit, $step->unit)) {
-            return null;
-        }
-
-        $stepValue = UnitConverter::convert((float) $step->value, $step->unit, $number->unit);
-        $scaled    = (float) $number->value / $stepValue;
+        $convertedStep  = UnitConverter::convert($stepValue, $step->unit, $number->unit);
+        $scaled         = $numberValue / $convertedStep;
+        $isNegativeStep = $convertedStep < 0;
 
         $rounded = match ($strategy) {
-            'up'      => ceil($scaled),
-            'down'    => floor($scaled),
-            'to-zero' => $scaled < 0 ? ceil($scaled) : floor($scaled),
+            'up'      => $isNegativeStep ? floor($scaled) : ceil($scaled),
+            'down'    => $isNegativeStep ? ceil($scaled) : floor($scaled),
+            'to-zero' => $isNegativeStep
+                ? ($scaled < 0 ? floor($scaled) : ceil($scaled))
+                : ($scaled < 0 ? ceil($scaled) : floor($scaled)),
             default   => round($scaled),
         };
 
-        return new NumberNode($rounded * $stepValue, $number->unit ?? $step->unit);
+        return new NumberNode($rounded * $convertedStep, $number->unit ?? $step->unit);
+    }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     */
+    private function simplifyHypot(array $arguments): ?AstNode
+    {
+        $resolved = [];
+
+        foreach ($arguments as $argument) {
+            if ($argument instanceof NumberNode) {
+                $resolved[] = $argument;
+
+                continue;
+            }
+
+            $constant = $this->resolveConstant($argument);
+
+            if ($constant !== null) {
+                $resolved[] = $constant;
+
+                continue;
+            }
+
+            return null;
+        }
+
+        /** @var NumberNode[] $resolved */
+        $first = $resolved[0];
+        $unit  = $first->unit;
+
+        if ($unit === '%') {
+            return null;
+        }
+
+        foreach ($resolved as $number) {
+            if (! UnitConverter::compatible($unit, $number->unit)) {
+                return null;
+            }
+        }
+
+        $sum = 0.0;
+
+        foreach ($resolved as $number) {
+            $value = UnitConverter::convert((float) $number->value, $number->unit, $unit);
+            $sum  += $value * $value;
+        }
+
+        $result = sqrt($sum);
+
+        return new NumberNode($result, $unit);
+    }
+
+    private function resolveNumberArgument(AstNode $argument): ?NumberNode
+    {
+        if ($argument instanceof NumberNode) {
+            return $argument;
+        }
+
+        return $this->resolveConstant($argument);
+    }
+
+    private function simplifySign(AstNode $argument): ?AstNode
+    {
+        $number = $this->resolveNumberArgument($argument);
+
+        if (! $number instanceof NumberNode) {
+            return null;
+        }
+
+        $value = (float) $number->value;
+
+        return new NumberNode(match (true) {
+            is_nan($value)          => fdiv(0.0, 0.0),
+            $value > 0.0            => 1.0,
+            $value < 0.0            => -1.0,
+            fdiv(1.0, $value) < 0.0 => -0.0,
+            default                 => 0.0,
+        }, $number->unit);
+    }
+
+    private function simplifyExp(AstNode $argument): ?AstNode
+    {
+        $number = $this->resolveNumberArgument($argument);
+
+        if (! $number instanceof NumberNode) {
+            return null;
+        }
+
+        return new NumberNode(exp((float) $number->value));
+    }
+
+    private function simplifyModuloRemainder(string $name, AstNode $left, AstNode $right): ?AstNode
+    {
+        $x = $this->resolveNumberArgument($left);
+        $y = $this->resolveNumberArgument($right);
+
+        if (! $x instanceof NumberNode || ! $y instanceof NumberNode) {
+            return null;
+        }
+
+        $xUnit = $x->unit;
+        $yUnit = $y->unit;
+
+        if (($xUnit === null) !== ($yUnit === null)) {
+            return null;
+        }
+
+        if (! UnitConverter::compatible($xUnit, $yUnit)) {
+            return null;
+        }
+
+        $xValue = (float) $x->value;
+        $yValue = UnitConverter::convert((float) $y->value, $yUnit, $xUnit);
+
+        if ($yValue === 0.0) {
+            return new NumberNode(fdiv(0.0, 0.0), $xUnit);
+        }
+
+        $result = $name === 'mod'
+            ? $xValue - $yValue * floor($xValue / $yValue)
+            : fmod($xValue, $yValue);
+
+        return new NumberNode($result, $xUnit);
     }
 
     private function resolveConstant(AstNode $argument): ?NumberNode
@@ -472,6 +1068,21 @@ final readonly class CalculationEvaluator
         return $simplified instanceof NumberNode ? $simplified : null;
     }
 
+    private function listChanged(ListNode $original, ListNode $updated): bool
+    {
+        if (count($original->items) !== count($updated->items)) {
+            return true;
+        }
+
+        foreach ($original->items as $index => $item) {
+            if ($item !== ($updated->items[$index] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function resolveConstantsInList(ListNode $list): ListNode
     {
         $items   = [];
@@ -486,6 +1097,29 @@ final readonly class CalculationEvaluator
             } else {
                 $items[] = $item;
             }
+        }
+
+        return $changed ? new ListNode($items, $list->separator, $list->bracketed) : $list;
+    }
+
+    private function evaluateCalcSubLists(ListNode $list, Environment $env): ListNode
+    {
+        $items   = [];
+        $changed = false;
+
+        foreach ($list->items as $item) {
+            if ($item instanceof ListNode && $item->separator === 'space') {
+                $evaluated = $this->arithmeticListEvaluator->evaluate($item, true, $env, true);
+
+                if ($evaluated instanceof NumberNode) {
+                    $items[] = $evaluated;
+                    $changed = true;
+
+                    continue;
+                }
+            }
+
+            $items[] = $item;
         }
 
         return $changed ? new ListNode($items, $list->separator, $list->bracketed) : $list;

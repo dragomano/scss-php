@@ -10,6 +10,8 @@ use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
@@ -17,14 +19,46 @@ use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\NameHelper;
+use Bugo\SCSS\Utils\NameNormalizer;
+use Bugo\SCSS\Values\AstValueInspector;
+use Bugo\SCSS\Values\SassCalculation;
+use Closure;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
+use Throwable;
 
 use function count;
 use function implode;
 use function in_array;
+use function min;
+use function str_contains;
+use function str_starts_with;
+use function strlen;
 use function strtolower;
+use function substr;
 
 final readonly class FunctionCallEvaluator
 {
+    private const STRING_FUNCTION_NAMES = [
+        'quote',
+        'str-index',
+        'str-insert',
+        'str-length',
+        'str-slice',
+        'string.index',
+        'string.insert',
+        'string.length',
+        'string.quote',
+        'string.slice',
+        'string.split',
+        'string.to-lower-case',
+        'string.to-upper-case',
+        'string.unquote',
+        'to-lower-case',
+        'to-upper-case',
+        'unquote',
+    ];
+
     public function __construct(
         private CompilerContext $ctx,
         private CompilerOptions $options,
@@ -36,6 +70,8 @@ final readonly class FunctionCallEvaluator
         private DiagnosticDirectiveHandlerInterface $diagnosticHandler,
         private AstValueEvaluatorInterface $valueEvaluator,
         private AstValueFormatterInterface $valueFormatter,
+        private AstValueEvaluatorInterface $slashDivisionValueEvaluator,
+        private LoggerInterface $logger,
     ) {}
 
     public function evaluate(FunctionNode $node, Environment $env): AstNode
@@ -44,13 +80,100 @@ final readonly class FunctionCallEvaluator
             return $node;
         }
 
+        if ($node->dynamicName !== null) {
+            $dynamicNameNode = $this->valueEvaluator->evaluate($node->dynamicName, $env);
+
+            $node = new FunctionNode(
+                name: $this->valueFormatter->format($dynamicNameNode, $env),
+                arguments: $node->arguments,
+                line: $node->line,
+                capturedScope: $node->capturedScope,
+            );
+
+            return $this->evaluateDynamicNameCssFunction($node, $env);
+        }
+
+        if (str_starts_with($node->name, '--') || NameHelper::isSpecialCssFunctionName($node->name)) {
+            return $this->evaluateBuiltinOrCssFunction($node, $env);
+        }
+
         $resolvedUserFunction = $this->resolveUserFunction($node, $env);
 
         if ($resolvedUserFunction !== null) {
             return $this->executeUserFunction($node, $resolvedUserFunction, $env);
         }
 
+        $forwardedBuiltin = $this->resolveForwardedBuiltin($node, $env);
+
+        if ($forwardedBuiltin !== null) {
+            return $forwardedBuiltin;
+        }
+
         return $this->evaluateBuiltinOrCssFunction($node, $env);
+    }
+
+    private function resolveForwardedBuiltin(FunctionNode $node, Environment $env): ?AstNode
+    {
+        if (! NameHelper::hasNamespace($node->name)) {
+            return null;
+        }
+
+        $parts     = NameHelper::splitQualifiedName($node->name);
+        $namespace = $parts['namespace'];
+        $member    = $parts['member'] ?? '';
+
+        if ($member === '') {
+            return null;
+        }
+
+        $moduleScope = $env->getCurrentScope()->getModule($namespace);
+
+        if ($moduleScope === null) {
+            return null;
+        }
+
+        $normalizedMember = NameNormalizer::normalize($member);
+
+        foreach ($moduleScope->getForwardedBuiltins() as $forwarded) {
+            $prefix = $forwarded['prefix'] ?? null;
+            $prefix = $prefix === null ? null : NameNormalizer::normalize($prefix);
+
+            $candidate = $normalizedMember;
+
+            if ($prefix !== null && $prefix !== '') {
+                if (! str_starts_with($normalizedMember, $prefix)) {
+                    continue;
+                }
+
+                $candidate = substr($normalizedMember, strlen($prefix));
+
+                if ($candidate === '') {
+                    continue;
+                }
+            }
+
+            $context = new BuiltinCallContext(
+                $env,
+                $this->ctx->functionRegistry,
+                $this->buildWarningEmitter($env, $node),
+                null,
+                $node->arguments,
+                $node->line,
+            );
+
+            $result = $this->ctx->functionRegistry->tryCallForwardedBuiltin(
+                $forwarded['module'],
+                $candidate,
+                $node->arguments,
+                $context,
+            );
+
+            if ($result !== null) {
+                return $result;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -61,6 +184,13 @@ final readonly class FunctionCallEvaluator
         $currentScope     = $env->getCurrentScope();
         $userFunction     = null;
         $userFunctionName = $node->name;
+
+        if ($node->lockedDefinition !== null) {
+            return [
+                'name'       => $node->name,
+                'definition' => $node->lockedDefinition,
+            ];
+        }
 
         if (NameHelper::hasNamespace($node->name)) {
             $parts = NameHelper::splitQualifiedName($node->name);
@@ -76,13 +206,9 @@ final readonly class FunctionCallEvaluator
             if ($userFunction !== null) {
                 $userFunctionName = $functionName;
             }
-        } elseif ($node->capturedScope !== null) {
-            $userFunction = $node->capturedScope->findFunction($node->name)?->definition;
         }
 
-        if ($userFunction === null) {
-            $userFunction = $currentScope->findFunction($node->name)?->definition;
-        }
+        $userFunction ??= $currentScope->findFunction($node->name)?->definition;
 
         if ($userFunction === null) {
             return null;
@@ -99,7 +225,10 @@ final readonly class FunctionCallEvaluator
      */
     private function executeUserFunction(FunctionNode $node, array $resolvedUserFunction, Environment $env): AstNode
     {
-        [$positionalArguments, $namedArguments] = $this->callArguments->resolveCallArguments($node->arguments, $env);
+        $resolved             = $this->callArguments->resolveCallArguments($node->arguments, $env);
+        $positionalArguments  = $resolved->positional;
+        $namedArguments       = $resolved->named;
+        $restSeparator        = $resolved->separator;
 
         if (++$this->ctx->moduleState->callDepth > 100) {
             $this->ctx->moduleState->callDepth--;
@@ -114,16 +243,168 @@ final readonly class FunctionCallEvaluator
                 $positionalArguments,
                 $namedArguments,
                 $env,
+                $restSeparator,
             );
         } finally {
             $this->ctx->moduleState->callDepth--;
         }
     }
 
+    private function isFinalSerializedColorResult(FunctionNode $node): bool
+    {
+        $name = strtolower($node->name);
+
+        if ($name === 'hsl' || $name === 'hsla') {
+            foreach ($node->arguments as $argument) {
+                if ($argument instanceof ListNode) {
+                    foreach ($argument->items as $item) {
+                        if ($item instanceof StringNode && AstValueInspector::isNoneKeyword($item)) {
+                            return true;
+                        }
+                    }
+
+                    continue;
+                }
+
+                if ($argument instanceof NumberNode && ! $argument->isLiteral) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($name !== 'rgb' && $name !== 'rgba') {
+            return false;
+        }
+
+        $hasPercentage = false;
+        $hasMissing    = false;
+
+        foreach ($node->arguments as $argument) {
+            if ($argument instanceof ListNode) {
+                foreach ($argument->items as $item) {
+                    if ($item instanceof StringNode) {
+                        if (AstValueInspector::isNoneKeyword($item)) {
+                            $hasMissing = true;
+                        }
+
+                        continue;
+                    }
+                }
+
+                continue;
+            }
+
+            if ($argument instanceof StringNode) {
+                if (AstValueInspector::isNoneKeyword($argument)) {
+                    $hasMissing = true;
+
+                    continue;
+                }
+
+                return false;
+            }
+
+            if (! $argument instanceof NumberNode) {
+                return false;
+            }
+
+            if ($argument->unit === '%') {
+                $hasPercentage = true;
+            }
+        }
+
+        return $hasPercentage || $hasMissing;
+    }
+
+    private function evaluateDynamicNameCssFunction(FunctionNode $node, Environment $env): AstNode
+    {
+        $arguments = $this->callArguments->expandCssCallArguments(
+            $node->arguments,
+            $env,
+            SassCalculation::isCalculationFunctionName($node->name),
+        );
+
+        $cssName = $this->namespaceMember($node->name);
+
+        if (str_contains($node->name, ':')) {
+            $cssName = $node->name;
+        }
+
+        return new FunctionNode(
+            name: $cssName,
+            arguments: $this->calculation->normalizeArguments($cssName, $arguments),
+            line: $node->line,
+            parenthesized: $node->parenthesized,
+        );
+    }
+
+    private function namespaceMember(string $name): string
+    {
+        if (
+            ! NameHelper::hasNamespace($name)
+            || str_contains($name, '(')
+            || str_contains($name, ')')
+            || str_contains($name, '"')
+            || str_contains($name, "'")
+            || str_contains($name, '/')
+        ) {
+            return $name;
+        }
+
+        return NameHelper::splitNamespacedName($name)['member'];
+    }
+
     private function evaluateBuiltinOrCssFunction(FunctionNode $node, Environment $env): AstNode
     {
-        $arguments = $this->callArguments->expandCallArguments($node->arguments, $env);
-        $arguments = $this->calculation->normalizeArguments($node->name, $arguments);
+        if (strtolower($node->name) === 'not' && count($node->arguments) === 1) {
+            $logical = $this->conditional->evaluateLogicalList(
+                new ListNode([new StringNode('not'), $node->arguments[0]], 'space'),
+                $env,
+            );
+
+            if ($logical !== null) {
+                return $logical;
+            }
+        }
+
+        $isModernIf = strtolower($node->name) === 'if' && $node->modernSyntax;
+
+        if ($isModernIf) {
+            $arguments = $node->arguments;
+        } else {
+            try {
+                $arguments = $this->callArguments->expandCallArguments(
+                    $node->arguments,
+                    $env,
+                    SassCalculation::isCalculationFunctionName($node->name),
+                );
+            } catch (Throwable $expandFailure) {
+                if (strtolower($node->name) === 'if' && ! $node->modernSyntax) {
+                    $inlineFallback = $this->conditional->evaluateInlineIfFunction($node->name, $node->arguments, $env);
+
+                    if ($inlineFallback !== null) {
+                        return $inlineFallback;
+                    }
+                }
+
+                throw $expandFailure;
+            }
+
+            $arguments = $this->calculation->normalizeArguments($node->name, $arguments);
+
+            $this->restoreCalcParenthesized($arguments, $node->arguments);
+
+            if (
+                in_array(strtolower($node->name), ['channel', 'color.channel'], true)
+                && isset($node->arguments[0])
+                && $node->arguments[0] instanceof FunctionNode
+                && strtolower($node->arguments[0]->name) === 'hwb'
+            ) {
+                $arguments[0] = $node->arguments[0];
+            }
+        }
 
         if (strtolower($node->name) === 'if' && count($arguments) >= 2 && ! $node->modernSyntax) {
             $rawCond = $node->arguments[0] ?? $arguments[0];
@@ -150,7 +431,7 @@ final readonly class FunctionCallEvaluator
             );
         }
 
-        $inlineIf = $this->conditional->evaluateInlineIfFunction($node->name, $arguments, $env);
+        $inlineIf = $this->conditional->evaluateInlineIfFunction($node->name, $node->arguments, $env);
 
         if ($inlineIf !== null) {
             return $inlineIf;
@@ -167,7 +448,7 @@ final readonly class FunctionCallEvaluator
         $context = new BuiltinCallContext(
             $env,
             $this->ctx->functionRegistry,
-            fn(string $msg) => $this->diagnosticHandler->handle('warn', new StringNode($msg), $env, $node),
+            $this->buildWarningEmitter($env, $node),
             null,
             $node->arguments,
             $node->line,
@@ -179,11 +460,25 @@ final readonly class FunctionCallEvaluator
             return $simplifiedFunction;
         }
 
-        $resolved = $this->ctx->functionRegistry->tryCall($node->name, $arguments, $context);
+        $resolved = $this->ctx->functionRegistry->tryCall(
+            $node->name,
+            in_array(strtolower($node->name), self::STRING_FUNCTION_NAMES, true)
+                ? $this->stringifyCssFunctionArguments($arguments, $env)
+                : $arguments,
+            $context,
+        );
 
         if ($resolved !== null) {
+            if ($this->isSlashTriple($resolved)) {
+                return $this->slashDivisionValueEvaluator->evaluate($resolved, $env);
+            }
+
             if ($resolved instanceof FunctionNode && $resolved->name !== $node->name) {
-                return $this->valueEvaluator->evaluate($resolved, $env);
+                if (! $this->isFinalSerializedColorResult($resolved)) {
+                    return $this->valueEvaluator->evaluate($resolved, $env);
+                }
+
+                return $resolved;
             }
 
             return $resolved;
@@ -193,11 +488,23 @@ final readonly class FunctionCallEvaluator
             return $simplifiedFunction;
         }
 
-        $fallbackArguments = $this->callArguments->expandCssCallArguments($node->arguments, $env);
+        $fallbackArguments = $this->callArguments->expandCssCallArguments(
+            $node->arguments,
+            $env,
+            SassCalculation::isCalculationFunctionName($node->name),
+        );
+
+        $cssName = $this->namespaceMember($node->name);
+
+        if (str_contains($node->name, ':')) {
+            $cssName = $node->name;
+        }
 
         $fallback = new FunctionNode(
-            $node->name,
-            $this->calculation->normalizeArguments($node->name, $fallbackArguments),
+            name: $cssName,
+            arguments: $this->calculation->normalizeArguments($cssName, $fallbackArguments),
+            line: $node->line,
+            parenthesized: $node->parenthesized,
         );
 
         if ($this->options->style === Style::COMPRESSED) {
@@ -209,5 +516,80 @@ final readonly class FunctionCallEvaluator
         }
 
         return $fallback;
+    }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     *
+     * @return array<int, AstNode>
+     */
+    private function stringifyCssFunctionArguments(array $arguments, Environment $env): array
+    {
+        foreach ($arguments as $index => $argument) {
+            if ($argument instanceof FunctionNode) {
+                $arguments[$index] = new StringNode($this->valueFormatter->format($argument, $env));
+            }
+        }
+
+        return $arguments;
+    }
+
+    private function isSlashTriple(AstNode $node): bool
+    {
+        if (! $node instanceof ListNode || $node->separator !== 'space' || count($node->items) !== 3) {
+            return false;
+        }
+
+        [$first, $mid, $last] = $node->items;
+
+        return $first instanceof NumberNode
+            && $mid instanceof StringNode
+            && $mid->value === '/'
+            && $last instanceof NumberNode;
+    }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     * @param array<int, AstNode> $originalArguments
+     */
+    private function restoreCalcParenthesized(array $arguments, array $originalArguments): void
+    {
+        if ($arguments === [] || $originalArguments === []) {
+            return;
+        }
+
+        $count = min(count($arguments), count($originalArguments));
+
+        for ($i = 0; $i < $count; $i++) {
+            $original = $originalArguments[$i];
+
+            if (! ($original instanceof FunctionNode || $original instanceof ListNode || $original instanceof NumberNode)) {
+                continue;
+            }
+
+            if ($original->parenthesized <= 0) {
+                continue;
+            }
+
+            $arg = $arguments[$i];
+
+            if ($arg instanceof FunctionNode || $arg instanceof ListNode || $arg instanceof NumberNode) {
+                $arg->parenthesized = $original->parenthesized;
+            }
+        }
+    }
+
+    /**
+     * @return Closure(string): void|null
+     */
+    private function buildWarningEmitter(Environment $env, FunctionNode $node): ?Closure
+    {
+        if ($this->logger instanceof NullLogger) {
+            return null;
+        }
+
+        return function (string $message) use ($env, $node): void {
+            $this->diagnosticHandler->handle('warn', new StringNode($message), $env, $node);
+        };
     }
 }

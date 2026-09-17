@@ -10,6 +10,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
@@ -17,14 +18,18 @@ use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 
+use function array_values;
+use function count;
 use function strrpos;
+use function strtolower;
 use function substr;
+use function trim;
 
 final readonly class ValueFactory
 {
     public function __construct(
-        private bool $outputHexColors = false,
         private Serializer $colorSerializer = new Serializer(),
+        private bool $compressed = false,
     ) {}
 
     /**
@@ -33,7 +38,7 @@ final readonly class ValueFactory
     public function fromAst(
         AstNode $node,
         ?callable $formatter = null,
-        bool $preserveZeroUnits = false,
+        bool $compactSlash = true,
     ): SassValue {
         if ($node instanceof BooleanNode) {
             return SassBoolean::fromBool($node->value);
@@ -44,25 +49,35 @@ final readonly class ValueFactory
         }
 
         if ($node instanceof NumberNode) {
-            return new SassNumber($node->value, $node->unit, $preserveZeroUnits);
+            return new SassNumber($node->value, $node->unit, $this->compressed);
         }
 
         if ($node instanceof ColorNode) {
-            return new SassColor($node->value, $this->outputHexColors, $this->colorSerializer);
+            return new SassColor($node->value, $this->colorSerializer, $this->compressed);
         }
 
         if ($node instanceof StringNode) {
             return new SassString($node->value, $node->quoted);
         }
 
+        if ($node instanceof FunctionRefNode) {
+            return new SassFunctionRef($this->callableDisplayName($node->name));
+        }
+
         if ($node instanceof ListNode || $node instanceof ArgumentListNode) {
             $items = [];
 
             foreach ($node->items as $item) {
-                $items[] = $this->fromAst($item, $formatter, $preserveZeroUnits)->toCss();
+                $items[] = $this->fromAst($item, $formatter, $compactSlash)->toCss();
             }
 
-            return new SassList($items, $node->separator, $node->bracketed, false);
+            $separator = $node->separator;
+
+            if ($separator === 'space' && $compactSlash) {
+                $items = $this->compactSlashOperatorItems($node->items, $items);
+            }
+
+            return new SassList(array_values($items), $separator, $node->bracketed);
         }
 
         if ($node instanceof MapNode) {
@@ -71,7 +86,7 @@ final readonly class ValueFactory
             foreach ($node->pairs as $pair) {
                 $pairs[] = [
                     'key'   => $this->fromAst($pair->key, $formatter),
-                    'value' => $this->fromAst($pair->value, $formatter, $preserveZeroUnits),
+                    'value' => $this->fromAst($pair->value, $formatter),
                 ];
             }
 
@@ -83,14 +98,26 @@ final readonly class ValueFactory
                 return new SassFunctionRef($this->callableDisplayName($node->name));
             }
 
-            $preserveNestedZeroUnits = $preserveZeroUnits || SassCalculation::isCalculationFunctionName($node->name);
+            $isCalculation = SassCalculation::isCalculationFunctionName($node->name);
+            $arguments     = [];
 
-            $arguments = [];
-            foreach ($node->arguments as $argument) {
-                $arguments[] = $this->fromAst($argument, $formatter, $preserveNestedZeroUnits);
+            $compactSlashArguments = $compactSlash && ! $isCalculation;
+
+            if (
+                $compactSlashArguments
+                && strtolower($node->name) === 'color'
+                && ! $this->isColorFromSyntax($node)
+            ) {
+                $compactSlashArguments = false;
             }
 
-            return new SassCalculation($node->name, $arguments);
+            foreach ($node->arguments as $argument) {
+                $arguments[] = $this->fromAst($argument, $formatter, $compactSlashArguments);
+            }
+
+            $name = $isCalculation ? strtolower($node->name) : $node->name;
+
+            return new SassCalculation($name, $arguments);
         }
 
         if ($node instanceof MixinRefNode) {
@@ -126,5 +153,77 @@ final readonly class ValueFactory
         }
 
         return substr($name, $offset + 1);
+    }
+
+    private function isColorFromSyntax(FunctionNode $node): bool
+    {
+        $first = $node->arguments[0] ?? null;
+
+        if ($first instanceof ListNode) {
+            $first = $first->items[0] ?? null;
+        }
+
+        return $first instanceof StringNode
+            && ! $first->quoted
+            && strtolower(trim($first->value)) === 'from';
+    }
+
+    /**
+     * Merges preserved-division slash operators (parsed `/` tokens) with their
+     * neighbouring items so `a / b` renders as `a/b`, matching Dart Sass.
+     *
+     * @param array<int, AstNode> $nodes
+     * @param list<string> $items
+     * @return array<int, string>
+     */
+    private function compactSlashOperatorItems(array $nodes, array $items): array
+    {
+        $count = count($items);
+
+        if ($count < 3) {
+            return $items;
+        }
+
+        $isOperator = [];
+
+        foreach ($nodes as $index => $node) {
+            $isOperator[$index] = $node instanceof StringNode
+                && ! $node->quoted
+                && $node->isSlashOperator
+                && $node->value === '/';
+        }
+
+        $hasOperator = false;
+
+        foreach ($isOperator as $isSlashOperator) {
+            if ($isSlashOperator) {
+                $hasOperator = true;
+
+                break;
+            }
+        }
+
+        if (! $hasOperator) {
+            return $items;
+        }
+
+        $result   = [];
+        $previous = null;
+
+        foreach ($items as $index => $item) {
+            if ($previous !== null) {
+                if ($isOperator[$index] || $isOperator[$previous]) {
+                    $result[count($result) - 1] .= $item;
+                } else {
+                    $result[] = $item;
+                }
+            } else {
+                $result[] = $item;
+            }
+
+            $previous = $index;
+        }
+
+        return $result;
     }
 }

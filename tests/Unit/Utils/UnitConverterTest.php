@@ -100,3 +100,23 @@ it('returns null when divide cancels all parts', function () {
 it('returns false when only one unit is known in compatible check', function () {
     expect(UnitConverter::compatible('unknown', 'px'))->toBeFalse();
 })->covers(UnitConverter::class);
+
+it('applies conversion factor when cancelling compatible units', function () {
+    [$unit, $factor] = UnitConverter::multiplyWithConversion('px/in', 'cm');
+
+    expect($unit)->toBe('cm')
+        ->and($factor)->toEqualWithDelta(1.0 / 96.0, 0.000001);
+})->covers(UnitConverter::class);
+
+it('returns false for compound units with incompatible part counts', function () {
+    expect(UnitConverter::compatible('px*px', 'px'))->toBeFalse();
+})->covers(UnitConverter::class);
+
+it('returns false for compound units with incompatible part groups', function () {
+    expect(UnitConverter::compatible('px/s', 'px/deg'))->toBeFalse();
+})->covers(UnitConverter::class);
+
+it('keeps value unchanged when converting between incompatible compound parts', function () {
+    expect(UnitConverter::convert(10.0, 'px*px', 'px'))->toBe(10.0)
+        ->and(UnitConverter::convert(10.0, 'px/s', 'px/deg'))->toBe(10.0);
+})->covers(UnitConverter::class);

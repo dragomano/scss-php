@@ -9,16 +9,16 @@ use Bugo\SCSS\Nodes\VariableReferenceNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Services\Evaluation\EvaluationStrategyInterface;
+use Bugo\SCSS\Services\Evaluation\ValueEvaluatorInterface;
 use Closure;
 
 final readonly class VariableReferenceStrategy implements EvaluationStrategyInterface
 {
     /**
-     * @param Closure(AstNode, Environment, EvaluationOptions): AstNode $evaluateValue
      * @param Closure(string, Environment): AstNode $resolveVariable
      */
     public function __construct(
-        private Closure $evaluateValue,
+        private ValueEvaluatorInterface $evaluateValue,
         private Closure $resolveVariable,
     ) {}
 
@@ -30,6 +30,6 @@ final readonly class VariableReferenceStrategy implements EvaluationStrategyInte
     public function evaluate(AstNode $node, Environment $env, EvaluationOptions $options): AstNode
     {
         /** @var VariableReferenceNode $node */
-        return ($this->evaluateValue)(($this->resolveVariable)($node->name, $env), $env, $options);
+        return $this->evaluateValue->evaluate(($this->resolveVariable)($node->name, $env), $env, $options);
     }
 }

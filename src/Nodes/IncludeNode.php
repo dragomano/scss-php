@@ -7,11 +7,16 @@ namespace Bugo\SCSS\Nodes;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Visitor;
 
+/**
+ * @phpstan-import-type NodeList from AstNode
+ *
+ * @psalm-import-type NodeList from AstNode
+ */
 final class IncludeNode extends StatementNode
 {
     /**
-     * @param array<int, AstNode> $arguments
-     * @param array<int, AstNode> $contentBlock
+     * @param NodeList $arguments
+     * @param NodeList $contentBlock
      * @param array<int, ArgumentNode> $contentArguments
      */
     public function __construct(
@@ -20,6 +25,7 @@ final class IncludeNode extends StatementNode
         public array $arguments = [],
         public array $contentBlock = [],
         public array $contentArguments = [],
+        public bool $hasContent = false,
     ) {}
 
     public function accept(Visitor $visitor, TraversalContext $ctx): string

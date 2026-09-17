@@ -60,7 +60,7 @@ describe('Parser', function () {
             $declaration = $rule->children[0];
             expect($declaration)->toBeInstanceOf(DeclarationNode::class)
                 ->and($declaration->property)->toBe('color')
-                ->and($declaration->value)->toBeInstanceOf(StringNode::class)
+                ->and($declaration->value)->toBeInstanceOf(ColorNode::class)
                 ->and($declaration->value->value)->toBe('red');
         });
 
@@ -185,6 +185,16 @@ describe('Parser', function () {
 
             expect($ast->children[0])->toBeInstanceOf(ImportNode::class)
                 ->and($ast->children[0]->imports)->toBe(['url(theme) [foo, bar]']);
+        });
+
+        it('stops @import entries at the closing brace of a nested block', function () {
+            $source = 'a {@import "_imported.scss"}';
+
+            $ast = $this->parser->parse($source);
+
+            expect($ast->children[0])->toBeInstanceOf(RuleNode::class)
+                ->and($ast->children[0]->children[0])->toBeInstanceOf(ImportNode::class)
+                ->and($ast->children[0]->children[0]->imports)->toBe(['"_imported.scss"']);
         });
 
         it('parses @forward directives', function () {
@@ -548,7 +558,7 @@ describe('Parser', function () {
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(CommentNode::class)
-                ->and($ast->children[0]->value)->toBe('comment')
+                ->and($ast->children[0]->value)->toBe(' comment ')
                 ->and($ast->children[0]->isPreserved)->toBeFalse()
                 ->and($ast->children[1]->selector)->toBe('.test')
                 ->and($ast->children[1]->children[0])->toBeInstanceOf(DeclarationNode::class)
@@ -580,7 +590,7 @@ describe('Parser', function () {
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(CommentNode::class)
-                ->and($ast->children[0]->value)->toBe('comment')
+                ->and($ast->children[0]->value)->toBe(' comment ')
                 ->and($ast->children[0]->isPreserved)->toBeFalse();
         });
 
@@ -595,7 +605,7 @@ describe('Parser', function () {
             $ast = $this->parser->parse($source);
 
             expect($ast->children[0])->toBeInstanceOf(CommentNode::class)
-                ->and($ast->children[0]->value)->toBe('comment')
+                ->and($ast->children[0]->value)->toBe(' comment ')
                 ->and($ast->children[0]->isPreserved)->toBeTrue();
         });
 
@@ -683,7 +693,7 @@ describe('Parser', function () {
                             new StringNode('solid', line: 10, column: 22),
                             new VariableReferenceNode('color'),
                         ]), 10, 9),
-                    ]),
+                    ], 7),
                 ], 4),
                 new RuleNode('.color_tests', [
                     new DeclarationNode('hex-3', new ColorNode('#f00'), 15, 5),
@@ -705,7 +715,7 @@ describe('Parser', function () {
                         new NamedArgumentNode('color2', new ColorNode('#000')),
                         new NamedArgumentNode('weight', new NumberNode(20, '%')),
                     ], 22), 22, 5),
-                ], 14, 1),
+                ], 14, 1, 14),
                 new RuleNode('#lp_blocks', [
                     new RuleNode('.item', [
                         new IncludeNode('functions', 'pointer'),
@@ -728,18 +738,18 @@ describe('Parser', function () {
                                     new NumberNode(0.3),
                                 ], 34),
                             ]), 34, 13),
-                        ], 33, 9),
+                        ], 33, 9, 33),
                         new RuleNode('div', [
                             new DeclarationNode('font-size', new NumberNode(16, 'px'), 38, 13),
                             new DeclarationNode('margin', new NumberNode(10, 'px'), 39, 13),
-                        ], 37, 9),
+                        ], 37, 9, 37),
                         new RuleNode('p', [
                             new DeclarationNode('text-align', new StringNode('left', line: 43, column: 25), 43, 13),
                             new DeclarationNode('font-size', new NumberNode(14, 'px'), 44, 13),
-                        ], 42, 9),
-                    ], 26, 5),
+                        ], 42, 9, 42),
+                    ], 26, 5, 26),
                     new DeclarationNode('margin-bottom', new NumberNode(1, 'em'), 48, 5),
-                ], 25, 1),
+                ], 25, 1, 25),
                 new RuleNode('.preview_frame', [
                     new DeclarationNode('margin', new NumberNode(10, 'px'), 52, 5),
                     new DeclarationNode('padding', new NumberNode(10, 'px'), 53, 5),
@@ -753,7 +763,7 @@ describe('Parser', function () {
                     new IncludeNode(null, 'test-mixin', [
                         new ColorNode('#333'),
                     ]),
-                ], 51, 1),
+                ], 51, 1, 51),
             ]);
 
             $ast = $this->parser->parse($source);
@@ -840,7 +850,7 @@ describe('Parser', function () {
 
             // Second argument should be "transparent"
             $secondArg = $functionCall->arguments[1];
-            expect($secondArg)->toBeInstanceOf(StringNode::class)
+            expect($secondArg)->toBeInstanceOf(ColorNode::class)
                 ->and($secondArg->value)->toBe('transparent');
 
             // Third argument should be color
@@ -863,6 +873,16 @@ describe('Parser', function () {
             ->and($ast->children)->toHaveCount(1)
             ->and($ast->children[0])->toBeInstanceOf(MixinNode::class)
             ->and($ast->children[0]->body)->toBe([]);
+    });
+
+    it('returns an empty rule for a custom property function declaration without a body', function () {
+        $ast = $this->parser->parse('@function --foo()');
+
+        expect($ast)->toBeInstanceOf(RootNode::class)
+            ->and($ast->children)->toHaveCount(1)
+            ->and($ast->children[0])->toBeInstanceOf(RuleNode::class)
+            ->and($ast->children[0]->selector)->toBe('@function --foo()')
+            ->and($ast->children[0]->children)->toBe([]);
     });
 
     it('returns an empty string node for blank inline expressions through public api', function () {

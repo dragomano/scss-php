@@ -11,7 +11,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\Parser\ModuleDirectiveContextInterface;
 use Bugo\SCSS\Parser\ModuleDirectiveParser;
-use Bugo\SCSS\Parser\StreamUtils;
+use Bugo\SCSS\Parser\TokenStreamHelper;
 
 function moduleDirectiveToken(
     TokenType $type,
@@ -31,10 +31,10 @@ function createModuleDirectiveParser(array $tokens, array $overrides = []): Modu
     $stream = new TokenStream($tokens);
 
     $parseString = $overrides['parseString'] ?? function () use ($stream): string {
-        return StreamUtils::parseStringToken($stream);
+        return TokenStreamHelper::parseStringToken($stream);
     };
     $consumeIdentifier = $overrides['consumeIdentifier'] ?? function () use ($stream): string {
-        return StreamUtils::consumeIdentifier($stream);
+        return TokenStreamHelper::consumeIdentifier($stream);
     };
     $parseValueUntil = $overrides['parseValueUntil'] ?? function (array $stopTokens) use ($stream): ?AstNode {
         $buffer = '';
@@ -42,7 +42,7 @@ function createModuleDirectiveParser(array $tokens, array $overrides = []): Modu
         while (! $stream->isEof() && ! $stream->match(...$stopTokens)) {
             $buffer .= $stream->current()->type === TokenType::WHITESPACE
                 ? ' '
-                : StreamUtils::tokenToRawString($stream->current()->type, $stream->current()->value);
+                : TokenStreamHelper::tokenToRawString($stream->current()->type, $stream->current()->value);
 
             $stream->advance();
         }

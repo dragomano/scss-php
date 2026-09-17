@@ -15,10 +15,14 @@ use Bugo\SCSS\Nodes\VariableDeclarationNode;
 
 use function in_array;
 use function max;
+use function rtrim;
+use function str_contains;
+use function str_ends_with;
 use function str_starts_with;
 use function strlen;
 use function strpbrk;
 use function strpos;
+use function strtolower;
 use function substr;
 use function trim;
 
@@ -48,6 +52,11 @@ final class RuleParser
         $name = $this->consumeIdentifier();
 
         $this->stream->skipWhitespace();
+
+        while ($this->stream->is(TokenType::COMMENT_LOUD) || $this->stream->is(TokenType::COMMENT_PRESERVED)) {
+            $this->stream->advance();
+            $this->stream->skipWhitespace();
+        }
 
         if (! $this->stream->consume(TokenType::COLON)) {
             return null;
@@ -114,7 +123,11 @@ final class RuleParser
             $token = $this->stream->current();
 
             if (str_starts_with($token->value, '--')) {
-                return $this->parseCssVariableDeclaration($token->value, $token->line, $token->column);
+                $continuedByInterpolation = $this->isVariableNameContinuedByInterpolation();
+
+                if (str_contains($token->value, ':') || ! $continuedByInterpolation) {
+                    return $this->parseCssVariableDeclaration($token->value, $token->line, $token->column);
+                }
             }
         }
 
@@ -127,6 +140,11 @@ final class RuleParser
 
         $this->stream->skipWhitespace();
 
+        while ($this->stream->is(TokenType::COMMENT_LOUD) || $this->stream->is(TokenType::COMMENT_PRESERVED)) {
+            $this->stream->advance();
+            $this->stream->skipWhitespace();
+        }
+
         if ($this->stream->is(TokenType::LBRACE)) {
             return $this->context->parseRuleFromSelector($selectorOrProperty, $startLine, $startColumn);
         }
@@ -135,6 +153,14 @@ final class RuleParser
             if ($this->context->isInsideBraces()) {
                 if (str_starts_with(trim($selectorOrProperty), '--')) {
                     return $this->parseDeclarationFromProperty($selectorOrProperty, $startLine, $startColumn);
+                }
+
+                if (
+                    $this->context->isInsideCssFunctionBody()
+                    && strtolower(trim($selectorOrProperty)) === 'result'
+                    && $this->hasRuleBlockAfterColon()
+                ) {
+                    return $this->parseCssFunctionResultDeclaration($selectorOrProperty, $startLine, $startColumn);
                 }
 
                 if ($this->isLikelySelector($selectorOrProperty) && $this->hasRuleBlockAfterColon()) {
@@ -178,6 +204,7 @@ final class RuleParser
         $startColumn        = $this->trackSourceLocations ? $startToken->column : 1;
         $selector           = '';
         $interpolationDepth = 0;
+        $pendingBreak       = false;
 
         while (! $this->stream->isEof()) {
             $token = $this->stream->current();
@@ -190,7 +217,7 @@ final class RuleParser
                 break;
             }
 
-            if (StreamUtils::consumeInterpolationFragment(
+            if (TokenStreamHelper::consumeInterpolationFragment(
                 $this->stream,
                 $selector,
                 $interpolationDepth,
@@ -199,14 +226,56 @@ final class RuleParser
                 continue;
             }
 
+            if (in_array($token->type, [
+                TokenType::COMMENT_SILENT,
+                TokenType::COMMENT_LOUD,
+                TokenType::COMMENT_PRESERVED,
+            ], true)) {
+                $this->stream->advance();
+
+                $commentLine = $token->line;
+
+                $this->stream->skipWhitespace();
+
+                if ($selector !== '' && $selector[-1] !== ' ') {
+                    $selector .= ' ';
+                }
+
+                if (
+                    $this->stream->current()->line > $commentLine
+                    && $selector !== ''
+                    && ! str_ends_with($selector, "\n")
+                ) {
+                    $selector .= "\n";
+                }
+
+                continue;
+            }
+
             if ($token->type === TokenType::WHITESPACE) {
-                $selector .= ' ';
+                if (str_contains($token->value, "\n") && $selector !== '' && $selector[-1] === ',') {
+                    $selector .= "\n";
+                } elseif (str_contains($token->value, "\n") && $selector !== '') {
+                    $pendingBreak = true;
+                    $selector    .= ' ';
+                } else {
+                    $selector .= ' ';
+                }
             } elseif ($token->type === TokenType::STRING) {
-                $selector .= '"' . $token->value . '"';
+                $selector .= '"' . ($token->rawValue ?? $token->value) . '"';
             } elseif ($token->type === TokenType::HASH) {
                 $selector .= '#' . $token->value;
             } else {
-                $selector .= $token->value;
+                if ($token->value === ',' && $pendingBreak) {
+                    $selector     = rtrim($selector) . "\n,";
+                    $pendingBreak = false;
+                } else {
+                    $selector .= $token->value;
+                }
+
+                if ($token->value !== ',') {
+                    $pendingBreak = false;
+                }
             }
 
             $this->stream->advance();
@@ -220,7 +289,6 @@ final class RuleParser
     public function parseDeclarationFromProperty(string $property, int $line = 1, int $column = 1): DeclarationNode
     {
         $this->stream->advance();
-        $this->stream->skipWhitespace();
 
         if (str_starts_with(trim($property), '--')) {
             $value = new StringNode($this->valueContext->parseCustomPropertyValue());
@@ -241,16 +309,24 @@ final class RuleParser
         $depth              = 0;
         $bracketDepth       = 0;
         $interpolationDepth = 0;
+        $pendingBreak       = false;
 
         while (! $this->stream->isEof()) {
             $token = $this->stream->current();
 
-            if (StreamUtils::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
+            if (TokenStreamHelper::consumeInterpolationFragment($this->stream, $buffer, $interpolationDepth, $token)) {
                 continue;
             }
 
             if ($token->type === TokenType::WHITESPACE) {
-                $buffer .= ' ';
+                if (str_contains($token->value, "\n") && $buffer !== '' && $buffer[-1] === ',') {
+                    $buffer .= "\n";
+                } elseif (str_contains($token->value, "\n") && $buffer !== '') {
+                    $pendingBreak = true;
+                    $buffer      .= ' ';
+                } else {
+                    $buffer .= ' ';
+                }
 
                 $this->stream->advance();
 
@@ -258,7 +334,7 @@ final class RuleParser
             }
 
             if ($token->type === TokenType::STRING) {
-                $buffer .= '"' . $token->value . '"';
+                $buffer .= '"' . ($token->rawValue ?? $token->value) . '"';
 
                 $this->stream->advance();
 
@@ -285,6 +361,14 @@ final class RuleParser
                 }
 
                 if ($this->context->isInsideBraces()) {
+                    if ($buffer === '' && $nextToken->type === TokenType::IDENTIFIER) {
+                        $buffer .= ':';
+
+                        $this->stream->advance();
+
+                        continue;
+                    }
+
                     break;
                 }
 
@@ -322,10 +406,40 @@ final class RuleParser
             }
 
             if (in_array($token->type, [
-                TokenType::COMMENT_SILENT,
                 TokenType::COMMENT_LOUD,
                 TokenType::COMMENT_PRESERVED,
             ], true)) {
+                $attachedComment = $this->context->isInsideBraces()
+                    && $buffer !== ''
+                    && $buffer[-1] !== ' ';
+
+                $this->stream->advance();
+
+                $commentLine = $token->line;
+
+                $this->stream->skipWhitespace();
+
+                if ($attachedComment) {
+                    $buffer .= $token->type === TokenType::COMMENT_PRESERVED
+                        ? '/*!' . $token->value . '*/'
+                        : '/*' . $token->value . '*/';
+                } elseif ($buffer !== '' && $buffer[-1] !== ' ') {
+                    $buffer .= ' ';
+                }
+
+                if (
+                    ! $attachedComment
+                    && $this->stream->current()->line > $commentLine
+                    && $buffer !== ''
+                    && ! str_ends_with($buffer, "\n")
+                ) {
+                    $buffer .= "\n";
+                }
+
+                continue;
+            }
+
+            if ($token->type === TokenType::COMMENT_SILENT) {
                 break;
             }
 
@@ -349,7 +463,16 @@ final class RuleParser
                 break;
             }
 
-            $buffer .= $token->value;
+            if ($token->value === ',' && $pendingBreak) {
+                $buffer        = rtrim($buffer) . "\n,";
+                $pendingBreak  = false;
+            } else {
+                $buffer .= $token->value;
+            }
+
+            if ($token->value !== ',') {
+                $pendingBreak = false;
+            }
 
             $this->stream->advance();
         }
@@ -389,6 +512,20 @@ final class RuleParser
                 continue;
             }
 
+            if ($token->type === TokenType::RBRACE && $depth > 0) {
+                $depth--;
+
+                continue;
+            }
+
+            if ($this->stream->is(TokenType::HASH) && $this->stream->peek()->type === TokenType::LBRACE) {
+                $depth++;
+
+                $this->stream->advance(2);
+
+                continue;
+            }
+
             if ($depth === 0 && $token->type === TokenType::LBRACE) {
                 $this->stream->setPosition($savedPosition);
 
@@ -411,6 +548,23 @@ final class RuleParser
         return false;
     }
 
+    private function isVariableNameContinuedByInterpolation(): bool
+    {
+        $saved = $this->stream->getPosition();
+
+        $this->stream->advance();
+
+        while ($this->stream->is(TokenType::WHITESPACE)) {
+            $this->stream->advance();
+        }
+
+        $isInterpolated = $this->stream->is(TokenType::HASH) && $this->stream->peek()->type === TokenType::LBRACE;
+
+        $this->stream->setPosition($saved);
+
+        return $isInterpolated;
+    }
+
     private function parseCssVariableDeclaration(string $tokenValue, int $line = 1, int $column = 1): DeclarationNode
     {
         $colonPosition = strpos($tokenValue, ':');
@@ -425,17 +579,33 @@ final class RuleParser
         $inlineValue = trim(substr($tokenValue, $colonPosition + 1));
 
         $this->stream->advance();
-        $this->stream->skipWhitespace();
 
         $tailValue = $this->valueContext->parseCustomPropertyValue();
-        $separator = $inlineValue !== '' && $tailValue !== '' ? ' ' : '';
-        $value     = $inlineValue . $separator . $tailValue;
+        $separator = $inlineValue !== '' && $tailValue !== ''
+            && ! str_starts_with($tailValue, ' ')
+            && ! str_starts_with($tailValue, "\t")
+            && $tailValue[0] !== '('
+            ? ' '
+            : '';
 
+        $value     = $inlineValue . $separator . $tailValue;
         $modifiers = $this->valueContext->parseValueModifiers();
 
         $this->consumeSemicolon();
 
-        return new DeclarationNode($property, new StringNode(trim($value)), $line, $column, $modifiers['important']);
+        return new DeclarationNode($property, new StringNode($value), $line, $column, $modifiers['important']);
+    }
+
+    private function parseCssFunctionResultDeclaration(string $property, int $line = 1, int $column = 1): DeclarationNode
+    {
+        $this->stream->advance();
+
+        $value     = new StringNode(trim($this->valueContext->parseCustomPropertyValue()));
+        $modifiers = $this->valueContext->parseValueModifiers();
+
+        $this->consumeSemicolon();
+
+        return new DeclarationNode($property, $value, $line, $column, $modifiers['important']);
     }
 
     private function consumeIdentifier(): string

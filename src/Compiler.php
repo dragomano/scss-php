@@ -7,13 +7,16 @@ namespace Bugo\SCSS;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\StatementNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Utils\StringEscapeDecoder;
 use Bugo\SCSS\Values\ValueFactory;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
 use function basename;
 use function file_put_contents;
+use function implode;
 use function str_contains;
+use function str_replace;
 
 final readonly class Compiler implements CompilerInterface
 {
@@ -47,8 +50,18 @@ final readonly class Compiler implements CompilerInterface
         $syntax ??= Syntax::SCSS;
 
         try {
-            $source      = $this->normalizeSource($source, $syntax);
-            $ast         = $this->parse($source);
+            $this->ctx->outputState->hoistCssImports = true;
+
+            $source = $this->normalizeSource($source, $syntax);
+
+            $this->parser->setPlainCss($syntax === Syntax::CSS);
+
+            try {
+                $ast = $this->parse($source);
+            } finally {
+                $this->parser->setPlainCss(false);
+            }
+
             $environment = $this->buildEnvironment($ast, str_contains($source, '@extend'));
             $compiled    = $this->compileAst($ast, $environment);
 
@@ -67,8 +80,8 @@ final readonly class Compiler implements CompilerInterface
             : $path;
 
         return $this->compileString(
-            $loaded['content'],
-            Syntax::fromPath($path, $loaded['content']),
+            $loaded->content,
+            Syntax::fromPath($path, $loaded->content),
             $sourceFile,
         );
     }
@@ -76,7 +89,9 @@ final readonly class Compiler implements CompilerInterface
     private function createContext(): CompilerContext
     {
         return new CompilerContext(
-            valueFactory: new ValueFactory($this->options->outputHexColors),
+            valueFactory: new ValueFactory(
+                compressed: $this->options->style === Style::COMPRESSED,
+            ),
         );
     }
 
@@ -102,8 +117,9 @@ final readonly class Compiler implements CompilerInterface
 
         if ($collectExtends) {
             $this->runtime->selector()->collectExtends($ast, $environment);
-            $this->runtime->selector()->finalizeCollectedExtends();
         }
+
+        $this->runtime->extendsGraph()->finalize($ast);
 
         return $environment;
     }
@@ -125,7 +141,20 @@ final readonly class Compiler implements CompilerInterface
 
     private function postProcess(string $compiled, string $source): string
     {
-        $optimized = $this->runtime->render()->optimize($compiled);
+        $cssImports = $this->ctx->outputState->cssImports;
+
+        if ($cssImports !== []) {
+            $compiled = implode("\n", $cssImports)
+                . ($compiled !== '' ? "\n" . $compiled : '');
+        }
+
+        $optimized = str_replace(
+            StringEscapeDecoder::PROTECTED_HASH,
+            '#',
+            $compiled,
+        );
+
+        $optimized = $this->runtime->render()->optimize($optimized);
 
         if ($this->options->sourceMapFile !== null) {
             $sourceMap = $this->runtime->render()->buildSourceMap($optimized, $source);

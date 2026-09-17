@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Loader;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -85,6 +85,7 @@ describe('Compiler', function () {
             .message, .alert {
               color: red;
             }
+
             .info, .alert {
               background: green;
             }
@@ -125,6 +126,61 @@ describe('Compiler', function () {
                 ->toThrow(SassErrorException::class, 'Complex selectors may not be extended');
         });
 
+        it('supports @extend without trailing semicolon', function () {
+            $source = <<<'SCSS'
+            .base {
+              color: red;
+            }
+
+            .alert {
+              @extend .base
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .base, .alert {
+              color: red;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('silently ignores missing target when @extend is optional', function () {
+            $source = <<<'SCSS'
+            .base {
+              color: red;
+            }
+
+            .alert {
+              @extend .missing !optional;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .base {
+              color: red;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('still throws for a missing private placeholder target', function () {
+            $source = <<<'SCSS'
+            .alert {
+              @extend %-missing;
+            }
+            SCSS;
+
+            expect(fn() => $this->compiler->compileString($source))
+                ->toThrow(SassErrorException::class, 'The target selector was not found.');
+        });
+
         it('throws when @extend crosses media query boundaries', function () {
             $source = <<<'SCSS'
             @media screen and (max-width: 600px) {
@@ -143,6 +199,67 @@ describe('Compiler', function () {
                 ->toThrow(SassErrorException::class, 'You may not @extend selectors across media queries.');
         });
 
+        it('throws when extending a rule declared outside media from an inner context', function () {
+            $source = <<<'SCSS'
+            .error {
+              border: 1px #f00;
+            }
+
+            @media print {
+              .note {
+                @extend .error;
+              }
+            }
+            SCSS;
+
+            expect(fn() => $this->compiler->compileString($source))
+                ->toThrow(SassErrorException::class, 'You may not @extend selectors across media queries.');
+        });
+
+        it('extends universal selector', function () {
+            $source = <<<'SCSS'
+            .m {
+              @extend *;
+            }
+
+            * {
+              color: red;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            *, .m {
+              color: red;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('extends namespaced universal selector', function () {
+            $source = <<<'SCSS'
+            .m {
+              @extend svg|*;
+            }
+
+            svg|* {
+              fill: blue;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            svg|*, .m {
+              fill: blue;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
         it('extends simple selectors inside pseudo-classes', function () {
             $source = <<<'SCSS'
             .error:hover {
@@ -159,6 +276,7 @@ describe('Compiler', function () {
             .error:hover, .error--serious:hover {
               background-color: #fee;
             }
+
             .error--serious {
               border-width: 3px;
             }
@@ -193,12 +311,14 @@ describe('Compiler', function () {
             p.info {
               background-color: #dee9fc;
             }
+
             .guide .info, .guide .content nav.sidebar, .content .guide nav.sidebar {
-              border: 1px solid rgba(0, 0, 0, .8);
+              border: 1px solid rgba(0, 0, 0, 0.8);
               border-radius: 2px;
             }
+
             main.content .info, main.content nav.sidebar {
-              font-size: .8em;
+              font-size: 0.8em;
             }
             CSS;
 
@@ -295,6 +415,40 @@ describe('Compiler', function () {
             $expected = /** @lang text */ <<<'CSS'
             .layout > .warning .title, .sidebar .layout > .notice .title {
               color: red;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('keeps source line breaks in combinator selector lists when other rules use @extend', function () {
+            $source = <<<'SCSS'
+            .article {
+              color: red;
+            }
+
+            .layout {
+              .a+.b,
+              .c+.d {
+                margin: 0;
+              }
+            }
+
+            .featured {
+              @extend .article;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .article, .featured {
+              color: red;
+            }
+
+            .layout .a + .b,
+            .layout .c + .d {
+              margin: 0;
             }
             CSS;
 
@@ -468,12 +622,15 @@ describe('Compiler', function () {
               padding: 10px;
               color: #333;
             }
+
             .success {
               border-color: green;
             }
+
             .error {
               border-color: red;
             }
+
             .warning {
               border-color: yellow;
             }
@@ -509,16 +666,18 @@ describe('Compiler', function () {
             $expected = /** @lang text */ <<<'CSS'
             .reset-buttons, .action-buttons {
               box-sizing: border-box;
-              border-top: 1px rgba(0, 0, 0, .12) solid;
+              border-top: 1px rgba(0, 0, 0, 0.12) solid;
               padding: 16px 0;
               width: 100%;
             }
             .reset-buttons:hover, .action-buttons:hover {
-              border: 2px rgba(0, 0, 0, .5) solid;
+              border: 2px rgba(0, 0, 0, 0.5) solid;
             }
+
             .action-buttons {
               color: #4285f4;
             }
+
             .reset-buttons {
               color: #cddc39;
             }
@@ -624,5 +783,30 @@ describe('Compiler', function () {
                 }
             }
         });
+
+        it('compiles many @extend directives without performance regression', function () {
+            $scss = /** @lang SCSS */ <<<'SCSS'
+            @use "sass:math";
+            @for $i from 1 through 30 {
+              .a-#{$i} {
+                %ph-#{$i} {color: red}
+              }
+              @for $j from 1 through 30 {
+                .b-#{$i}-#{$j} {
+                  @extend %ph-#{$i};
+                  width: math.div($i * 100%, $j);
+                }
+              }
+            }
+            SCSS;
+
+            $start   = hrtime(true);
+            $css     = $this->compiler->compileString($scss);
+            $elapsed = (hrtime(true) - $start) / 1e9;
+
+            expect($css)->toContain('.a-1 .b-1-1')
+                ->and($css)->toContain('.a-30 .b-30-30')
+                ->and($elapsed)->toBeLessThan(3.0);
+        })->group('performance');
     });
 });

@@ -8,14 +8,18 @@ use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Runtime\ResolvedCallArguments;
 
 use function array_filter;
+use function array_merge;
 use function array_values;
+use function is_array;
 use function str_ends_with;
 use function str_starts_with;
 use function trim;
@@ -94,25 +98,35 @@ final readonly class CallArgumentResolver
 
     /**
      * @param array<int, AstNode> $arguments
-     * @return array{0: array<int, AstNode>, 1: array<string, AstNode>}
      */
-    public function resolveCallArguments(array $arguments, Environment $env): array
+    public function resolveCallArguments(array $arguments, Environment $env): ResolvedCallArguments
     {
-        $positional = [];
-        $named      = [];
+        $positional  = [];
+        $spread      = [];
+        $named       = [];
+        $separator   = 'comma';
+        $spreadCount = 0;
 
         foreach ($arguments as $argument) {
             if ($argument instanceof SpreadArgumentNode) {
-                $spread = $this->valueEvaluator->evaluate($argument->value, $env);
+                $spreadValue = $this->valueEvaluator->evaluate($argument->value, $env);
 
-                foreach ($this->cssArgument->expandSpreadValue($spread) as $spreadArgument) {
+                $spreadCount++;
+
+                if ($spreadCount === 1 && $spreadValue instanceof ListNode) {
+                    $separator = $spreadValue->separator;
+                }
+
+                $expanded = $this->cssArgument->expandSpreadValue($spreadValue);
+
+                foreach ($expanded as $spreadArgument) {
                     if ($spreadArgument instanceof NamedArgumentNode) {
-                        $named[$spreadArgument->name] = $spreadArgument->value;
+                        $named[$spreadArgument->name] = $this->valueEvaluator->evaluate($spreadArgument->value, $env);
 
                         continue;
                     }
 
-                    $positional[] = $spreadArgument;
+                    $spread[] = $this->valueEvaluator->evaluate($spreadArgument, $env);
                 }
 
                 continue;
@@ -127,24 +141,28 @@ final readonly class CallArgumentResolver
             $positional[] = $this->valueEvaluator->evaluate($argument, $env);
         }
 
-        return [$positional, $named];
+        if ($spreadCount !== 1) {
+            $separator = 'comma';
+        }
+
+        return new ResolvedCallArguments(array_merge($positional, $spread), $named, $separator);
     }
 
     /**
      * @param array<int, AstNode> $arguments
      * @return array<int, AstNode>
      */
-    public function expandCallArguments(array $arguments, Environment $env): array
+    public function expandCallArguments(array $arguments, Environment $env, bool $skipConcatenation = false): array
     {
-        return $this->cssArgument->expandCallArguments($arguments, $env);
+        return $this->cssArgument->expandCallArguments($arguments, $env, $skipConcatenation);
     }
 
     /**
      * @param array<int, AstNode> $arguments
      * @return array<int, AstNode>
      */
-    public function expandCssCallArguments(array $arguments, Environment $env): array
+    public function expandCssCallArguments(array $arguments, Environment $env, bool $skipConcatenation = false): array
     {
-        return $this->cssArgument->expandCssCallArguments($arguments, $env);
+        return $this->cssArgument->expandCssCallArguments($arguments, $env, $skipConcatenation);
     }
 }

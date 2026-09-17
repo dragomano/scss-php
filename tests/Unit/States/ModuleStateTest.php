@@ -104,4 +104,39 @@ describe('ModuleState', function () {
         expect($state->getByNamespace('alias'))->toBe($module)
             ->and($state->getById('id'))->toBe($module);
     });
+
+    it('takeEmittedCssState() clears emitted flags and returns them', function () {
+        $state = new ModuleState();
+
+        $state->emittedForwardCss['forwarded'] = true;
+        $state->emittedUseCss['used']          = true;
+        $state->emittedModuleCss['module']     = true;
+
+        $snapshot = $state->takeEmittedCssState();
+
+        expect($snapshot)->toBe([
+            'forward' => ['forwarded' => true],
+            'use'     => ['used' => true],
+            'module'  => ['module' => true],
+        ])
+            ->and($state->emittedForwardCss)->toBe([])
+            ->and($state->emittedUseCss)->toBe([])
+            ->and($state->emittedModuleCss)->toBe([]);
+    });
+
+    it('restoreEmittedCssState() puts the snapshot back', function () {
+        $state = new ModuleState();
+
+        $state->emittedUseCss['inner'] = true;
+
+        $state->restoreEmittedCssState([
+            'forward' => ['forwarded' => true],
+            'use'     => ['used' => true],
+            'module'  => ['module' => true],
+        ]);
+
+        expect($state->emittedForwardCss)->toBe(['forwarded' => true])
+            ->and($state->emittedUseCss)->toBe(['used' => true])
+            ->and($state->emittedModuleCss)->toBe(['module' => true]);
+    });
 });

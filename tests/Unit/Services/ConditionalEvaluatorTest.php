@@ -6,8 +6,10 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
+use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
@@ -15,7 +17,7 @@ use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\ComparisonListEvaluatorInterface;
 use Bugo\SCSS\Services\ConditionalEvaluator;
 use Bugo\SCSS\Values\ValueFactory;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('ConditionalEvaluator', function () {
     beforeEach(function () {
@@ -128,6 +130,26 @@ describe('ConditionalEvaluator', function () {
 
         expect($result)->toBeInstanceOf(StringNode::class)
             ->and($result->value)->toBe('yes');
+    });
+
+    it('expands spread arguments when decoding legacy if() clauses', function () {
+        $spreadValue = new ListNode([new NumberNode(5)], 'space');
+
+        $singleSpread = $this->evaluator->evaluateInlineIfFunction('if', [
+            new BooleanNode(true),
+            new SpreadArgumentNode($spreadValue),
+        ], $this->env);
+
+        $nullSpread = $this->evaluator->evaluateInlineIfFunction('if', [
+            new BooleanNode(true),
+            new NumberNode(7),
+            new SpreadArgumentNode(new NullNode()),
+        ], $this->env);
+
+        expect($singleSpread)->toBeInstanceOf(NumberNode::class)
+            ->and($singleSpread->value)->toBe(5)
+            ->and($nullSpread)->toBeInstanceOf(NumberNode::class)
+            ->and($nullSpread->value)->toBe(7);
     });
 
     it('returns css expressions for unquoted inline if strings and functions', function () {
@@ -467,5 +489,76 @@ describe('ConditionalEvaluator', function () {
         expect($emptyResult)->toBeInstanceOf(BooleanNode::class)
             ->and($emptyResult->value)->toBeFalse()
             ->and($nullResult)->toBeNull();
+    });
+
+    it('expands named arguments inside spread lists', function () {
+        $result = $this->evaluator->evaluateInlineIfFunction('if', [
+            new SpreadArgumentNode(new ListNode([
+                new NamedArgumentNode('if-true', new NumberNode(5)),
+            ], 'space')),
+            new BooleanNode(true),
+        ], $this->env);
+
+        expect($result)->toBeInstanceOf(NumberNode::class)
+            ->and($result->value)->toBe(5);
+    });
+
+    it('keeps multi group css conditions intact when stripping raw parens', function () {
+        $result = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
+            new BooleanNode(false),
+            new StringNode('or'),
+            new StringNode('(a) (b)'),
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
+
+        expect($result)->toBeInstanceOf(StringNode::class)
+            ->and($result->value)->toBe('if((a) (b): yes; else: no)');
+    });
+
+    it('normalizes nested legacy if functions inside conditions', function () {
+        $result = $this->evaluator->evaluateInlineIfFunction('if', [
+            new FunctionNode('if', [new BooleanNode(true), new NumberNode(1), new NumberNode(2)]),
+            new StringNode('yes'),
+            new StringNode('no'),
+        ], $this->env);
+
+        expect($result)->toBeInstanceOf(StringNode::class)
+            ->and($result->value)->toBe('if(if(true, 1, 2): yes; else: no)');
+    });
+
+    it('normalizes logical operator functions inside inline if list conditions', function () {
+        $result = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
+            new FunctionNode('not', [new BooleanNode(true)]),
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
+
+        expect($result)->toBeInstanceOf(StringNode::class)
+            ->and($result->value)->toBe('no');
+    });
+
+    it('merges interpolated function calls followed by empty groups', function () {
+        $result = $this->evaluator->evaluateInlineIfFunction('if', [new ListNode([
+            new StringNode('fn'),
+            new ListNode([], 'space', false, 1),
+        ], 'space'), new StringNode('yes'), new StringNode('no')], $this->env);
+
+        expect($result)->toBeInstanceOf(StringNode::class)
+            ->and($result->value)->toBe('if(fn(): yes; else: no)');
+    });
+
+    it('evaluates legacy sass conditions merged into logical operators', function () {
+        $logicAndResult = $this->evaluator->evaluateLogicalList(new ListNode([
+            new FunctionNode('sass', [new BooleanNode(true)]),
+            new StringNode('and'),
+            new BooleanNode(true),
+        ], 'space'), $this->env);
+
+        $negatedResult = $this->evaluator->evaluateLogicalList(new ListNode([
+            new StringNode('not'),
+            new FunctionNode('sass', [new BooleanNode(true)]),
+            new StringNode('step'),
+        ], 'space'), $this->env);
+
+        expect($logicAndResult)->toBeInstanceOf(BooleanNode::class)
+            ->and($logicAndResult->value)->toBeTrue()
+            ->and($negatedResult)->toBeNull();
     });
 });

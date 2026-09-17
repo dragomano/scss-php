@@ -17,12 +17,19 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
+use Bugo\SCSS\Utils\CssNamedColors;
+use Bugo\SCSS\Utils\NameHelper;
+use Bugo\SCSS\Utils\StringEscapeDecoder;
 
+use function array_key_last;
+use function ctype_alnum;
 use function implode;
 use function in_array;
 use function str_contains;
+use function str_ends_with;
+use function str_replace;
+use function str_starts_with;
 use function strlen;
-use function strpbrk;
 use function strpos;
 use function strtolower;
 use function substr;
@@ -39,15 +46,26 @@ final readonly class FunctionCallParser
     public function parseIdentifierOrFunction(): AstNode
     {
         $startToken = $this->stream->current();
-        $identifier = StreamUtils::parseQualifiedIdentifier($this->stream);
+        $identifier = TokenStreamHelper::parseQualifiedIdentifier($this->stream);
+
+        if ($this->isSpecialProgidName($identifier)
+            && $this->stream->is(TokenType::COLON)
+            && $this->hasSpecialProgidFunctionAhead()
+        ) {
+            return $this->parseSpecialProgidFunction($identifier);
+        }
 
         if ($this->stream->is(TokenType::LPAREN)) {
-            if ($identifier === 'url') {
-                return $this->parseUrlFunctionFromName();
+            if ($this->isSpecialUrlName($identifier)) {
+                return $this->parseUrlFunctionFromName($identifier);
             }
 
-            if ($identifier === 'var') {
-                return $this->parseVarFunction();
+            if (strtolower($identifier) === 'var') {
+                return $this->parseVarFunction($identifier);
+            }
+
+            if ($this->isSpecialGeneralName($identifier)) {
+                return $this->parseSpecialGeneralFunction($identifier);
             }
 
             return $this->parseFunctionFromName($identifier);
@@ -58,9 +76,7 @@ final readonly class FunctionCallParser
             && $this->stream->is(TokenType::WHITESPACE)
             && $this->stream->peek()->type === TokenType::LPAREN
         ) {
-            $this->stream->skipWhitespace();
-
-            return $this->parseFunctionFromName($identifier);
+            return new StringNode($identifier, false, $startToken->line, $startToken->column);
         }
 
         $moduleVariableSeparator = strpos($identifier, '.$');
@@ -88,125 +104,16 @@ final readonly class FunctionCallParser
             return new NullNode();
         }
 
+        if (isset(CssNamedColors::NAMED_HEX[$normalizedIdentifier])) {
+            return new ColorNode($identifier, $startToken->line, $startToken->column);
+        }
+
         return new StringNode($identifier, false, $startToken->line, $startToken->column);
     }
 
-    public function parseVarFunction(): FunctionNode
+    public function parseVarFunction(string $name = 'var'): FunctionNode
     {
         $this->stream->advance();
-
-        $arguments = [];
-
-        $this->stream->skipWhitespace();
-
-        $name = $this->parseSingleValueNode();
-
-        if ($name !== null) {
-            $arguments[] = $name;
-        }
-
-        $this->stream->skipWhitespace();
-
-        if ($this->stream->consume(TokenType::COMMA)) {
-            $fallback = $this->parsingContext->parseValueUntil([TokenType::RPAREN]);
-
-            if ($fallback !== null) {
-                $arguments[] = $fallback;
-            }
-        }
-
-        $this->stream->consume(TokenType::RPAREN);
-
-        return new FunctionNode('var', $arguments);
-    }
-
-    public function parseUrlFunctionFromName(): FunctionNode
-    {
-        $this->stream->advance();
-
-        $argument = '';
-        $depth    = 1;
-
-        while (! $this->stream->isEof()) {
-            $token = $this->stream->current();
-
-            if ($token->type === TokenType::LPAREN) {
-                $depth++;
-
-                $argument .= '(';
-
-                $this->stream->advance();
-
-                continue;
-            }
-
-            if ($token->type === TokenType::RPAREN) {
-                $depth--;
-
-                if ($depth === 0) {
-                    $this->stream->advance();
-
-                    break;
-                }
-
-                $argument .= ')';
-
-                $this->stream->advance();
-
-                continue;
-            }
-
-            if ($token->type === TokenType::WHITESPACE) {
-                $this->stream->advance();
-
-                continue;
-            }
-
-            if ($token->type === TokenType::HASH && $this->stream->peek()->type === TokenType::LBRACE) {
-                $argument .= '#{';
-
-                $this->stream->advance(2);
-
-                continue;
-            }
-
-            if ($token->type === TokenType::HASH) {
-                $argument .= '#' . $token->value;
-            } elseif ($token->type === TokenType::STRING) {
-                $argument .= $this->quoteStringForReparse($token->value);
-            } else {
-                $argument .= StreamUtils::tokenToRawString($token->type, $token->value);
-            }
-
-            $this->stream->advance();
-        }
-
-        $argument = trim($argument);
-
-        if ($argument === '') {
-            return new FunctionNode('url', []);
-        }
-
-        if ($this->isValidUnquotedUrl($argument)) {
-            return new FunctionNode('url', [new StringNode($argument)]);
-        }
-
-        return new FunctionNode('url', [$this->inlineValueParser->parseInlineValue($argument)]);
-    }
-
-    public function parseFunctionFromName(string $name): FunctionNode
-    {
-        $line = $this->stream->current()->line;
-
-        $this->stream->advance();
-
-        if ($name === 'if') {
-            $inlineIfArguments = $this->tryParseInlineIfExpressionArguments();
-
-            if ($inlineIfArguments !== null) {
-                return new FunctionNode($name, $inlineIfArguments, $line, modernSyntax: true);
-            }
-        }
 
         $arguments = [];
         $loopCount = 0;
@@ -226,6 +133,21 @@ final readonly class FunctionCallParser
 
             if ($this->stream->is(TokenType::COMMA)) {
                 $this->stream->advance();
+                $this->stream->skipWhitespace();
+
+                if ($this->stream->consume(TokenType::RPAREN)) {
+                    $last = null;
+
+                    if ($arguments !== []) {
+                        $last = $arguments[array_key_last($arguments)];
+                    }
+
+                    if (! $last instanceof SpreadArgumentNode && ! $last instanceof NamedArgumentNode) {
+                        $arguments[] = new StringNode('');
+                    }
+
+                    break;
+                }
             }
 
             $this->stream->skipWhitespace();
@@ -236,19 +158,204 @@ final readonly class FunctionCallParser
             if ($potentialArg !== null) {
                 $this->stream->skipWhitespace();
 
-                // Legacy = operator for IE compatibility (creates unquoted string)
+                if ($this->stream->is(TokenType::COLON)) {
+                    $this->stream->setPosition($savedPos);
+
+                    if ($this->stream->is(TokenType::DOLLAR)) {
+                        $varRef = $this->parsingContext->parseVariableReference();
+
+                        $this->stream->skipWhitespace();
+
+                        if ($this->stream->consume(TokenType::COLON)) {
+                            $this->stream->skipWhitespace();
+
+                            $value = $this->parsingContext->parseCommaSeparatedValue();
+
+                            if ($value !== null) {
+                                $arguments[] = new NamedArgumentNode($varRef->name, $value);
+
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                $this->stream->setPosition($savedPos);
+
+                $arg = $this->parseFunctionArgument();
+
+                if ($arg !== null) {
+                    $arguments[] = $this->expandVariableInVarName($arg);
+
+                    continue;
+                }
+
+                break;
+            }
+
+            $this->stream->setPosition($savedPos);
+
+            $arg = $this->parseFunctionArgument();
+
+            if ($arg !== null) {
+                $arguments[] = $this->expandVariableInVarName($arg);
+
+                continue;
+            }
+
+            break;
+        }
+
+        return new FunctionNode($name, $arguments);
+    }
+
+    public function parseUrlFunctionFromName(?string $identifier = null): FunctionNode
+    {
+        $lowerName   = strtolower($identifier ?? 'url');
+        $isBareUrl   = $lowerName === 'url';
+        $isVendorUrl = str_starts_with($lowerName, '-') && str_ends_with($lowerName, '-url');
+
+        if (! $isBareUrl && ! $isVendorUrl) {
+            return $this->parseFunctionFromName($identifier ?? 'url');
+        }
+
+        $savedPosition = $this->stream->getPosition();
+        $argument      = $this->parseSpecialFunctionArgument(true, true);
+
+        if ($argument === '') {
+            return new FunctionNode('url', []);
+        }
+
+        if ($isVendorUrl && $this->startsWithStringQuote($argument)) {
+            $this->stream->setPosition($savedPosition);
+
+            return $this->parseFunctionFromName($identifier ?? 'url');
+        }
+
+        if ($this->isPlainCssUrlArgument($argument)) {
+            $quote = $argument[0];
+
+            if ($quote !== '"' && $quote !== "'") {
+                $argument = str_replace('\\#{', '\\' . StringEscapeDecoder::PROTECTED_HASH . '{', $argument);
+            }
+
+            if (
+                $quote !== '"' && $quote !== "'"
+                && str_contains($argument, '\\')
+                && ! str_contains($argument, '#')
+            ) {
+                $argument = StringEscapeDecoder::decodeUnquotedUrlEscapes($argument);
+            }
+
+            return new FunctionNode('url', [new StringNode($argument)]);
+        }
+
+        return new FunctionNode($identifier ?? 'url', [$this->inlineValueParser->parseInlineValue($argument)]);
+    }
+
+    public function parseFunctionFromName(string $name): FunctionNode
+    {
+        $line = $this->stream->current()->line;
+
+        if (strtolower($name) === 'css' && $this->stream->is(TokenType::LPAREN) && $this->stream->getSource() !== '') {
+            $raw = $this->captureRawCssArgument();
+
+            return new FunctionNode($name, [new StringNode($raw)], $line);
+        }
+
+        $this->stream->advance();
+
+        if ($name === 'if') {
+            $inlineIfArguments = $this->tryParseInlineIfExpressionArguments();
+
+            if ($inlineIfArguments !== null) {
+                return new FunctionNode($name, $inlineIfArguments, $line, modernSyntax: true);
+            }
+        }
+
+        $arguments = $this->parseFunctionArguments($name);
+
+        return new FunctionNode($name, $arguments, $line);
+    }
+
+    public function parseFunctionFromInterpolatedName(StringNode $dynamicName): FunctionNode
+    {
+        $line = $this->stream->current()->line;
+
+        $this->stream->advance();
+
+        $arguments = $this->parseFunctionArguments($dynamicName->value);
+
+        return new FunctionNode(name: '', arguments: $arguments, line: $line, dynamicName: $dynamicName);
+    }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     * @return array<int, AstNode>
+     */
+    private function parseFunctionArguments(string $rawName, array $arguments = []): array
+    {
+        $loopCount = 0;
+
+        while (! $this->stream->isEof()) {
+            $loopCount++;
+
+            if ($loopCount > 100) {
+                break;
+            }
+
+            $this->stream->skipWhitespace();
+
+            if ($this->stream->consume(TokenType::RPAREN)) {
+                break;
+            }
+
+            if ($this->stream->is(TokenType::COMMA)) {
+                $this->stream->advance();
+                $this->stream->skipWhitespace();
+
+                if ($this->stream->consume(TokenType::RPAREN)) {
+                    break;
+                }
+            }
+
+            $this->stream->skipWhitespace();
+
+            $savedPos     = $this->stream->getPosition();
+            $potentialArg = $this->parseSingleValueNode();
+
+            if ($potentialArg !== null) {
+                $this->stream->skipWhitespace();
+
                 if ($this->stream->is(TokenType::ASSIGN)) {
                     $this->stream->advance();
                     $this->stream->skipWhitespace();
 
-                    $rightSide = $this->parseSingleValueNode();
+                    $rightSide = $this->parseFunctionArgument();
 
                     if ($rightSide !== null) {
-                        // Convert both sides to strings and combine with =
-                        $leftStr  = $this->nodeToString($potentialArg);
-                        $rightStr = $this->nodeToString($rightSide);
+                        $leftStr = $this->nodeToString($potentialArg);
 
-                        $arguments[] = new StringNode($leftStr . '=' . $rightStr, false);
+                        if ($this->containsDynamicValue($rightSide)) {
+                            $items = [
+                                new StringNode($leftStr . '='),
+                                new StringNode('+'),
+                            ];
+
+                            if ($rightSide instanceof ListNode && $rightSide->separator === 'space') {
+                                foreach ($rightSide->items as $item) {
+                                    $items[] = $item;
+                                }
+                            } else {
+                                $items[] = $rightSide;
+                            }
+
+                            $arguments[] = new ListNode($items, 'space');
+                        } else {
+                            $rightStr = $this->nodeToString($rightSide);
+
+                            $arguments[] = new StringNode($leftStr . '=' . $rightStr, false);
+                        }
 
                         continue;
                     }
@@ -294,15 +401,11 @@ final readonly class FunctionCallParser
 
                 if ($arg !== null) {
                     $arguments[] = $arg;
-
-                    continue;
                 }
-
-                break;
             }
         }
 
-        return new FunctionNode($name, $arguments, $line);
+        return $arguments;
     }
 
     private function parseSingleValueNode(): ?AstNode
@@ -310,37 +413,368 @@ final readonly class FunctionCallParser
         return $this->parsingContext->parseSingleValue();
     }
 
+    private function captureRawCssArgument(): string
+    {
+        $open = $this->stream->expect(TokenType::LPAREN);
+
+        $depth      = 1;
+        $closeStart = null;
+        $source     = $this->stream->getSource();
+
+        while (! $this->stream->isEof()) {
+            $token = $this->stream->current();
+
+            if ($token->type === TokenType::LPAREN) {
+                $depth++;
+
+                $this->stream->advance();
+
+                continue;
+            }
+
+            if ($token->type === TokenType::RPAREN) {
+                $depth--;
+
+                if ($depth === 0) {
+                    $closeStart = $token->start;
+
+                    $this->stream->advance();
+
+                    break;
+                }
+
+                $this->stream->advance();
+
+                continue;
+            }
+
+            $this->stream->advance();
+        }
+
+        if ($closeStart === null) {
+            return '';
+        }
+
+        $start = $open->start + 1;
+
+        return trim(substr($source, $start, $closeStart - $start));
+    }
+
     private function parseFunctionArgument(): ?AstNode
     {
         $argument = $this->parsingContext->parseCommaSeparatedValue();
 
-        if ($argument !== null && StreamUtils::consumeEllipsis($this->stream)) {
+        if ($argument !== null && TokenStreamHelper::consumeEllipsis($this->stream)) {
             return new SpreadArgumentNode($argument);
         }
 
         return $argument;
     }
 
-    private function quoteStringForReparse(string $value): string
+    private function parseSpecialGeneralFunction(string $identifier): FunctionNode
     {
-        $quote = str_contains($value, '"') && ! str_contains($value, "'")
-            ? "'"
-            : '"';
+        $argument = $this->parseSpecialFunctionArgument();
 
-        $escaped = '';
-        $length  = strlen($value);
+        return new FunctionNode(strtolower($identifier), [new StringNode($argument)]);
+    }
 
-        for ($index = 0; $index < $length; $index++) {
-            $char = $value[$index];
+    private function parseSpecialProgidFunction(string $identifier): FunctionNode
+    {
+        $name     = strtolower($identifier) . ':' . $this->collectProgidSuffixName();
+        $argument = $this->parseSpecialFunctionArgument();
 
-            if ($char === '\\' || $char === $quote) {
-                $escaped .= '\\';
+        return new FunctionNode($name, [new StringNode($argument)]);
+    }
+
+    private function collectProgidSuffixName(): string
+    {
+        $suffix = '';
+
+        $this->stream->consume(TokenType::COLON);
+
+        while (! $this->stream->isEof()) {
+            $token = $this->stream->current();
+
+            if (! in_array($token->type, [TokenType::IDENTIFIER, TokenType::DOT], true)) {
+                break;
             }
 
-            $escaped .= $char;
+            $suffix .= TokenStreamHelper::tokenToRawString($token->type, $token->value);
+
+            $this->stream->advance();
         }
 
-        return $quote . $escaped . $quote;
+        return $suffix;
+    }
+
+    private function parseSpecialFunctionArgument(bool $trimWhitespace = false, bool $preserveSilentComments = false): string
+    {
+        $source             = $this->stream->getSource();
+        $open               = $this->stream->current();
+        $depth              = 0;
+        $interpolationDepth = 0;
+        $closeStart         = null;
+        $tokenValues        = [];
+
+        $this->stream->advance();
+
+        while (! $this->stream->isEof()) {
+            $token = $this->stream->current();
+
+            if ($token->type === TokenType::HASH && $this->stream->peek()->type === TokenType::LBRACE) {
+                $interpolationDepth++;
+
+                $tokenValues[] = str_starts_with($token->value, '#') ? $token->value : '#';
+                $tokenValues[] = $this->stream->peek()->value;
+
+                $this->stream->advance(2);
+
+                continue;
+            }
+
+            if ($interpolationDepth > 0 && $token->type === TokenType::RBRACE) {
+                $interpolationDepth--;
+
+                $tokenValues[] = $token->value;
+
+                $this->stream->advance();
+
+                continue;
+            }
+
+            if ($interpolationDepth === 0 && $token->type === TokenType::LPAREN) {
+                $tokenValues[] = $token->value;
+
+                $depth++;
+
+                $this->stream->advance();
+
+                continue;
+            }
+
+            if ($interpolationDepth === 0 && $token->type === TokenType::RPAREN) {
+                if ($depth === 0) {
+                    $closeStart = $token->start;
+
+                    $this->stream->advance();
+
+                    break;
+                }
+
+                $depth--;
+
+                $tokenValues[] = $token->value;
+
+                $this->stream->advance();
+
+                continue;
+            }
+
+            $raw = match (true) {
+                $token->type === TokenType::HASH && ! str_starts_with($token->value, '#') => '#' . $token->value,
+                $token->type === TokenType::STRING => '"' . str_replace('\\', '\\\\', $token->value) . '"',
+                default => $token->value,
+            };
+
+            $tokenValues[] = $raw;
+
+            if ($interpolationDepth > 0) {
+                $this->stream->advance();
+
+                continue;
+            }
+
+            $this->stream->advance();
+        }
+
+        if ($closeStart === null) {
+            return '';
+        }
+
+        $argument = $source === ''
+            ? implode('', $tokenValues)
+            : substr($source, $open->start + 1, $closeStart - $open->start - 1);
+        $argument = $this->collapseSpecialFunctionWhitespace($argument, $preserveSilentComments);
+
+        if (! $trimWhitespace) {
+            return $argument;
+        }
+
+        return trim($argument);
+    }
+
+    private function collapseSpecialFunctionWhitespace(string $value, bool $preserveSilentComments = false): string
+    {
+        $result = '';
+        $length = strlen($value);
+        $index  = 0;
+
+        while ($index < $length) {
+            $char = $value[$index];
+
+            if ($char === ' ' || $char === "\t" || $char === "\r" || $char === "\n") {
+                $result .= ' ';
+
+                while ($index < $length
+                    && ($value[$index] === ' ' || $value[$index] === "\t"
+                        || $value[$index] === "\r" || $value[$index] === "\n")
+                ) {
+                    $index++;
+                }
+
+                continue;
+            }
+
+            if (! $preserveSilentComments && $char === '/' && $index + 1 < $length && $value[$index + 1] === '/') {
+                $newline = strpos($value, "\n", $index);
+
+                $index = $newline === false ? $length : $newline + 1;
+
+                continue;
+            }
+
+            $result .= $char;
+
+            $index++;
+        }
+
+        return $result;
+    }
+
+    private function isSpecialUrlName(string $identifier): bool
+    {
+        $lower = strtolower($identifier);
+
+        return $lower === 'url' || str_ends_with($lower, '-url');
+    }
+
+    private function startsWithStringQuote(string $argument): bool
+    {
+        $first = $argument[0] ?? '';
+
+        return $first === '"' || $first === "'";
+    }
+
+    private function expandVariableInVarName(AstNode $argument): AstNode
+    {
+        if (! $argument instanceof StringNode || $argument->quoted) {
+            return $argument;
+        }
+
+        $dollar = strpos($argument->value, '$');
+
+        if ($dollar === false) {
+            return $argument;
+        }
+
+        $name   = '';
+        $length = strlen($argument->value);
+
+        for ($index = $dollar + 1; $index < $length; $index++) {
+            $char = $argument->value[$index];
+
+            if (! ctype_alnum($char) && $char !== '-' && $char !== '_') {
+                return $argument;
+            }
+
+            $name .= $char;
+        }
+
+        if ($name === '') {
+            return $argument;
+        }
+
+        $variable = new VariableReferenceNode($name);
+
+        if ($dollar === 0) {
+            return $variable;
+        }
+
+        return new ListNode([new StringNode(substr($argument->value, 0, $dollar)), $variable], 'space');
+    }
+
+    private function hasSpecialProgidFunctionAhead(): bool
+    {
+        $offset = 1;
+
+        while (true) {
+            $type = $this->stream->peek($offset)->type;
+
+            if ($type === TokenType::IDENTIFIER || $type === TokenType::DOT) {
+                $offset++;
+
+                continue;
+            }
+
+            return $type === TokenType::LPAREN;
+        }
+    }
+
+    private function isSpecialGeneralName(string $identifier): bool
+    {
+        return NameHelper::isSpecialCssFunctionName($identifier);
+    }
+
+    private function isSpecialProgidName(string $identifier): bool
+    {
+        $lower = strtolower($identifier);
+
+        return $lower === 'progid' || str_ends_with($lower, '-progid');
+    }
+
+    private function isPlainCssUrlArgument(string $argument): bool
+    {
+        $first = $argument[0] ?? '';
+
+        if ($first === '"' || $first === "'") {
+            return true;
+        }
+
+        if (str_starts_with($argument, '//')) {
+            return true;
+        }
+
+        if (str_starts_with($argument, '/*')) {
+            return true;
+        }
+
+        if (str_starts_with(strtolower($argument), 'if(')) {
+            return false;
+        }
+
+        if (str_contains($argument, '#{')) {
+            return true;
+        }
+
+        if (str_contains($argument, '$')) {
+            return false;
+        }
+
+        return ! $this->containsArithmeticOperator($argument);
+    }
+
+    private function containsArithmeticOperator(string $text): bool
+    {
+        $length = strlen($text);
+
+        for ($index = 0; $index < $length; $index++) {
+            $char = $text[$index];
+
+            if (! in_array($char, ['+', '*', '/', '%', '-'], true)) {
+                continue;
+            }
+
+            $left  = $index > 0 && $text[$index - 1] !== ' ' && $text[$index - 1] !== "\t";
+            $right = $index + 1 < $length && $text[$index + 1] !== ' ' && $text[$index + 1] !== "\t";
+
+            if ($left && $right) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -350,35 +784,49 @@ final readonly class FunctionCallParser
     {
         $savedPosition = $this->stream->getPosition();
 
-        $arguments = [];
-        $condition = $this->parsingContext->parseValueUntil([TokenType::COLON, TokenType::COMMA, TokenType::RPAREN]);
+        $clauses = [];
+        $else    = null;
 
-        if ($condition === null) {
-            $this->stream->setPosition($savedPosition);
+        while (true) {
+            $this->stream->skipWhitespace();
 
-            return null;
-        }
+            if ($this->stream->consume(TokenType::SEMICOLON)) {
+                $this->stream->skipWhitespace();
+            }
 
-        if (! $this->stream->is(TokenType::COLON)) {
-            $this->stream->setPosition($savedPosition);
+            if (
+                $this->stream->is(TokenType::IDENTIFIER)
+                && strtolower($this->stream->current()->value) === 'else'
+            ) {
+                $this->stream->advance();
+                $this->stream->skipWhitespace();
+                $this->stream->consume(TokenType::COLON);
+                $this->stream->skipWhitespace();
 
-            return null;
-        }
+                $else ??= $this->parsingContext->parseValueUntil([TokenType::RPAREN, TokenType::SEMICOLON]);
 
-        $arguments[] = $condition;
+                continue;
+            }
 
-        $this->stream->advance();
-        $this->stream->skipWhitespace();
+            $condition = $this->parsingContext->parseValueUntil([TokenType::COLON, TokenType::COMMA, TokenType::RPAREN]);
 
-        $truthy = $this->parsingContext->parseValueUntil([TokenType::SEMICOLON, TokenType::RPAREN, TokenType::COMMA]);
+            if ($condition === null || ! $this->stream->is(TokenType::COLON)) {
+                break;
+            }
 
-        if ($truthy !== null) {
-            $arguments[] = $truthy;
-        }
+            $this->stream->advance();
+            $this->stream->skipWhitespace();
 
-        $this->stream->skipWhitespace();
+            $value = $this->parsingContext->parseValueUntil([TokenType::SEMICOLON, TokenType::RPAREN, TokenType::COMMA]);
 
-        if ($this->stream->consume(TokenType::SEMICOLON)) {
+            $clauses[] = [$condition, $value];
+
+            $this->stream->skipWhitespace();
+
+            if (! $this->stream->consume(TokenType::SEMICOLON)) {
+                break;
+            }
+
             $this->stream->skipWhitespace();
 
             if (
@@ -389,53 +837,71 @@ final readonly class FunctionCallParser
                 $this->stream->skipWhitespace();
                 $this->stream->consume(TokenType::COLON);
                 $this->stream->skipWhitespace();
-            }
 
-            $falsy = $this->parsingContext->parseValueUntil([TokenType::RPAREN]);
+                $else ??= $this->parsingContext->parseValueUntil([TokenType::RPAREN, TokenType::SEMICOLON]);
 
-            if ($falsy !== null) {
-                $arguments[] = $falsy;
+                continue;
             }
         }
 
+        if ($clauses === [] && $else === null) {
+            $this->stream->setPosition($savedPosition);
+
+            return null;
+        }
+
+        if ($this->stream->is(TokenType::COMMA)) {
+            $this->stream->setPosition($savedPosition);
+
+            return null;
+        }
+
+        $arguments = [];
+
+        foreach ($clauses as [$condition, $value]) {
+            if ($value === null) {
+                continue;
+            }
+
+            $arguments[] = $condition;
+            $arguments[] = $value;
+        }
+
+        if ($else !== null) {
+            $arguments[] = new StringNode('__else__');
+            $arguments[] = $else;
+        }
+
         $this->stream->skipWhitespace();
+
+        if ($this->stream->consume(TokenType::SEMICOLON)) {
+            $this->stream->skipWhitespace();
+        }
+
         $this->stream->consume(TokenType::RPAREN);
 
         return $arguments;
     }
 
-    private function isValidUnquotedUrl(string $argument): bool
+    private function containsDynamicValue(AstNode $node): bool
     {
-        if (str_contains($argument, '$') || str_contains($argument, '+')) {
-            return false;
+        if ($node instanceof VariableReferenceNode) {
+            return true;
         }
 
-        $withoutInterpolation = '';
+        if ($node instanceof StringNode) {
+            return str_contains($node->value, '#{');
+        }
 
-        $length = strlen($argument);
-        $index  = 0;
-
-        while ($index < $length) {
-            if ($argument[$index] === '#' && $index + 1 < $length && $argument[$index + 1] === '{') {
-                $closingBrace = strpos($argument, '}', $index + 2);
-
-                if ($closingBrace !== false) {
-                    $index = $closingBrace + 1;
-
-                    continue;
+        if ($node instanceof ListNode) {
+            foreach ($node->items as $item) {
+                if ($this->containsDynamicValue($item)) {
+                    return true;
                 }
             }
-
-            $withoutInterpolation .= $argument[$index];
-
-            $index++;
         }
 
-        if ($withoutInterpolation === '') {
-            return false;
-        }
-
-        return strpbrk($withoutInterpolation, " \t\n\r\0\x0B\"'()") === false;
+        return false;
     }
 
     private function nodeToString(AstNode $node): string

@@ -13,11 +13,17 @@ use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Values\ValueFactory;
+
+use function count;
 
 final class AstValueComparator
 {
     public static function equals(AstNode $left, AstNode $right): bool
     {
+        $left  = self::unwrapSingleParenthesizedList($left);
+        $right = self::unwrapSingleParenthesizedList($right);
+
         if ($left instanceof BooleanNode && $right instanceof BooleanNode) {
             return $left->value === $right->value;
         }
@@ -27,11 +33,19 @@ final class AstValueComparator
         }
 
         if ($left instanceof NumberNode && $right instanceof NumberNode) {
-            return $left->value === $right->value && $left->unit === $right->unit;
+            return (float) $left->value === (float) $right->value && $left->unit === $right->unit;
         }
 
         if ($left instanceof StringNode && $right instanceof StringNode) {
             return $left->value === $right->value;
+        }
+
+        if ($left instanceof StringNode && $right instanceof FunctionNode) {
+            return $left->value === self::functionToCss($right);
+        }
+
+        if ($left instanceof FunctionNode && $right instanceof StringNode) {
+            return self::functionToCss($left) === $right->value;
         }
 
         if ($left instanceof ColorNode && $right instanceof ColorNode) {
@@ -53,11 +67,11 @@ final class AstValueComparator
         }
 
         if ($left instanceof ListNode && $right instanceof ListNode) {
-            if (
-                $left->separator !== $right->separator
-                || $left->bracketed !== $right->bracketed
-                || count($left->items) !== count($right->items)
-            ) {
+            if ($left->separator !== $right->separator && count($left->items) > 1 && count($right->items) > 1) {
+                return false;
+            }
+
+            if ($left->bracketed !== $right->bracketed || count($left->items) !== count($right->items)) {
                 return false;
             }
 
@@ -89,5 +103,28 @@ final class AstValueComparator
         }
 
         return false;
+    }
+
+    private static function unwrapSingleParenthesizedList(AstNode $node): AstNode
+    {
+        if (
+            $node instanceof ListNode
+            && $node->parenthesized > 0
+            && ! $node->bracketed
+            && count($node->items) === 1
+        ) {
+            return $node->items[0];
+        }
+
+        return $node;
+    }
+
+    private static function functionToCss(FunctionNode $node): ?string
+    {
+        if ($node->capturedScope !== null) {
+            return null;
+        }
+
+        return (new ValueFactory())->fromAst($node, formatter: null)->toCss();
     }
 }

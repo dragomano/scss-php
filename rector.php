@@ -1,10 +1,8 @@
 <?php declare(strict_types=1);
 
 use Rector\CodeQuality\Rector\BooleanOr\RepeatedOrEqualToInArrayRector;
-use Rector\CodingStyle\Rector\If_\NullableCompareToNullRector;
 use Rector\Config\RectorConfig;
 use Rector\Exception\Configuration\InvalidConfigurationException;
-use Rector\Php81\Rector\FuncCall\NullToStrictStringFuncCallArgRector;
 use Rector\Privatization\Rector\ClassConst\PrivatizeFinalClassConstantRector;
 use Rector\Privatization\Rector\ClassMethod\PrivatizeFinalClassMethodRector;
 use Rector\Privatization\Rector\Property\PrivatizeFinalClassPropertyRector;
@@ -15,8 +13,6 @@ try {
             __DIR__ . '/src',
         ])
         ->withSkip([
-            NullableCompareToNullRector::class,
-            NullToStrictStringFuncCallArgRector::class,
             RepeatedOrEqualToInArrayRector::class,
         ])
         ->withPhpSets()

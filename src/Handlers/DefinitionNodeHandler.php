@@ -8,6 +8,7 @@ use Bugo\SCSS\Nodes\FunctionDeclarationNode;
 use Bugo\SCSS\Nodes\MixinNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
+use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Context;
 use Bugo\SCSS\Services\Evaluator;
@@ -68,15 +69,57 @@ final readonly class DefinitionNodeHandler
 
     public function handleVariableDeclaration(VariableDeclarationNode $node, TraversalContext $ctx): string
     {
-        $ctx->env->getCurrentScope()->setVariable(
-            $node->name,
-            $this->evaluation->evaluateValueWithSlashDivision($node->value, $ctx->env),
-            $node->global,
-            $node->default,
-            $node->line,
-        );
+        $scope = $ctx->env->getCurrentScope();
+
+        $value = $this->evaluation->evaluateValueWithSlashDivision($node->value, $ctx->env);
+
+        if ($node->global) {
+            $scope->setVariable($node->name, $value, true, $node->default, $node->line);
+        } else {
+            $scope->setVariableLocal($node->name, $value, $node->default, $node->line);
+        }
+
+        $origin = $scope->findImportedVariableOrigin($node->name);
+
+        $isForwardedOrigin = $origin !== null
+            && $scope->findForwardedVariableOrigin($node->name) !== null;
+
+        if ($origin !== null && ($this->isGlobalAssignment($node, $scope) || $isForwardedOrigin)) {
+            /** @psalm-var mixed $value */
+            $value       = $scope->getVariable($node->name);
+            $originScope = $origin['scope'];
+            $originName  = $origin['name'];
+
+            while (true) {
+                $originScope->setVariableLocal($originName, $value);
+
+                $forwarded = $originScope->findForwardedVariableOrigin($originName);
+
+                if ($forwarded === null) {
+                    break;
+                }
+
+                $originScope = $forwarded['scope'];
+                $originName  = $forwarded['name'];
+            }
+        }
 
         return '';
+    }
+
+    private function isGlobalAssignment(VariableDeclarationNode $node, Scope $scope): bool
+    {
+        if ($node->global) {
+            return true;
+        }
+
+        $global = $scope->getGlobalScope();
+
+        if ($scope === $global) {
+            return true;
+        }
+
+        return $scope->isFlowControlScope() && $scope->getParent() === $global;
     }
 
     private function isDeprecatedName(string $name): bool

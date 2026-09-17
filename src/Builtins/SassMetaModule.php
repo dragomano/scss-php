@@ -16,11 +16,14 @@ use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\EachNode;
 use Bugo\SCSS\Nodes\ForNode;
 use Bugo\SCSS\Nodes\FunctionNode;
+use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\NamedArgumentNode;
+use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
@@ -30,16 +33,19 @@ use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Runtime\ScopedCallableDefinition;
 use Bugo\SCSS\Runtime\VariableDefinition;
 use Bugo\SCSS\Utils\NameHelper;
-use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Values\AstValueType;
-use Bugo\SCSS\Values\SassFunctionRef;
+use Bugo\SCSS\Values\SassCalculation;
 use LogicException;
 
+use function array_diff;
+use function array_map;
 use function array_slice;
+use function array_values;
 use function count;
 use function get_debug_type;
 use function implode;
 use function in_array;
+use function str_starts_with;
 
 final class SassMetaModule extends AbstractModule
 {
@@ -72,6 +78,35 @@ final class SassMetaModule extends AbstractModule
         'variable-exists',
     ];
 
+    private const BUILTIN_META_MIXINS = [
+        'apply',
+        'load-css',
+    ];
+
+    /**
+     * @var array<string, array<int, string>>
+     */
+    private const PARAMETER_NAMES = [
+        'accepts-content'        => ['mixin'],
+        'calc-args'              => ['calc'],
+        'calc-name'              => ['calc'],
+        'call'                   => ['function'],
+        'content-exists'         => [],
+        'feature-exists'         => ['feature'],
+        'function-exists'        => ['name', 'module'],
+        'get-function'           => ['name', 'css', 'module'],
+        'get-mixin'              => ['name', 'module'],
+        'global-variable-exists' => ['name', 'module'],
+        'inspect'                => ['value'],
+        'keywords'               => ['args'],
+        'mixin-exists'           => ['name', 'module'],
+        'module-functions'       => ['module'],
+        'module-mixins'          => ['module'],
+        'module-variables'       => ['module'],
+        'type-of'                => ['value'],
+        'variable-exists'        => ['name'],
+    ];
+
     public function getName(): string
     {
         return 'meta';
@@ -84,7 +119,10 @@ final class SassMetaModule extends AbstractModule
 
     public function getGlobalAliases(): array
     {
-        return $this->globalAliases(self::FUNCTIONS);
+        return $this->globalAliases(array_values(array_diff(
+            self::FUNCTIONS,
+            ['calc-args', 'calc-name'],
+        )));
     }
 
     /**
@@ -96,11 +134,15 @@ final class SassMetaModule extends AbstractModule
         $previousDisplayName = $this->beginBuiltinCall($name, $context);
 
         try {
+            if ($named !== []) {
+                $positional = $this->mergeNamedArguments($positional, $named, self::PARAMETER_NAMES[$name] ?? []);
+            }
+
             return match ($name) {
-                'accepts-content'        => $this->acceptsContent($positional, $context),
-                'calc-args'              => $this->calcArgs($positional),
-                'calc-name'              => $this->calcName($positional),
-                'call'                   => $this->callFunction($positional, $context),
+                'accepts-content'        => $this->acceptsContent($positional, $named, $context),
+                'calc-args'              => $this->calcArgs($positional, $named),
+                'calc-name'              => $this->calcName($positional, $named),
+                'call'                   => $this->callFunction($positional, $named, $context),
                 'content-exists'         => $this->contentExists($context),
                 'feature-exists'         => $this->featureExists($positional, $context),
                 'function-exists'        => $this->functionExists($positional, $named, $context),
@@ -108,7 +150,7 @@ final class SassMetaModule extends AbstractModule
                 'get-mixin'              => $this->getMixin($positional, $named, $context),
                 'global-variable-exists' => $this->globalVariableExists($positional, $named, $context),
                 'inspect'                => $this->inspect($positional),
-                'keywords'               => $this->keywords($positional),
+                'keywords'               => $this->keywords($positional, $named),
                 'mixin-exists'           => $this->mixinExists($positional, $named, $context),
                 'module-functions'       => $this->moduleFunctions($positional, $context),
                 'module-mixins'          => $this->moduleMixins($positional, $context),
@@ -125,13 +167,19 @@ final class SassMetaModule extends AbstractModule
     /**
      * @param array<int, AstNode> $positional
      */
-    private function acceptsContent(array $positional, ?BuiltinCallContext $context): AstNode
+    /**
+     * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
+     */
+    private function acceptsContent(array $positional, array $named, ?BuiltinCallContext $context): AstNode
     {
-        if (! isset($positional[0])) {
+        $mixinArg = $positional[0] ?? $named['mixin'] ?? null;
+
+        if (! ($mixinArg instanceof AstNode)) {
             return $this->boolNode(false);
         }
 
-        $reference = $this->mixinReferenceName($positional[0]);
+        $reference = $this->mixinReferenceName($mixinArg);
 
         if ($reference === null) {
             return $this->boolNode(false);
@@ -141,6 +189,14 @@ final class SassMetaModule extends AbstractModule
         $mixinBody = $this->resolveMixinBody($scope, $reference);
 
         if ($mixinBody === null) {
+            if ($reference === 'meta.apply') {
+                return $this->boolNode(true);
+            }
+
+            if ($reference === 'meta.load-css') {
+                return $this->boolNode(false);
+            }
+
             return $this->boolNode(false);
         }
 
@@ -149,39 +205,62 @@ final class SassMetaModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    private function calcArgs(array $positional): AstNode
+    private function calcArgs(array $positional, array $named): AstNode
     {
-        if (count($positional) < 1 || ! ($positional[0] instanceof FunctionNode)) {
+        $calc = $positional[0] ?? $named['calc'] ?? null;
+
+        if (! ($calc instanceof FunctionNode)) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.calc-args'),
                 'a calculation function value',
             );
         }
 
-        return new ListNode($positional[0]->arguments, 'comma');
+        $args = [];
+
+        foreach ($calc->arguments as $argument) {
+            if ($argument instanceof NumberNode) {
+                $args[] = $argument;
+            } elseif ($argument instanceof FunctionNode && SassCalculation::isCalculationFunctionName($argument->name)) {
+                $args[] = $argument;
+            } else {
+                $args[] = new StringNode($this->formatValue($argument), false);
+            }
+        }
+
+        return new ListNode($args, 'comma');
     }
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    private function calcName(array $positional): AstNode
+    private function calcName(array $positional, array $named): AstNode
     {
-        if (count($positional) < 1 || ! ($positional[0] instanceof FunctionNode)) {
+        $calc = $positional[0] ?? $named['calc'] ?? null;
+
+        if (! ($calc instanceof FunctionNode)) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.calc-name'),
                 'a calculation function value',
             );
         }
 
-        return new StringNode($positional[0]->name);
+        return new StringNode($calc->name, true);
     }
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    private function callFunction(array $positional, ?BuiltinCallContext $context): AstNode
+    private function callFunction(array $positional, array $named, ?BuiltinCallContext $context): AstNode
     {
+        if (isset($named['function']) && ($positional[0] ?? null) === $named['function']) {
+            unset($named['function']);
+        }
+
         if (count($positional) < 1) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.call'),
@@ -198,13 +277,49 @@ final class SassMetaModule extends AbstractModule
             );
         }
 
+        $original      = $positional[0];
+        $qualifiedName = $name;
+
+        if ($original instanceof FunctionRefNode && $original->module !== null) {
+            $qualifiedName = $original->module . '.' . $name;
+        }
+
+        $arguments = array_slice($positional, 1);
+
+        if ($original instanceof FunctionRefNode && $original->css) {
+            $parts = [];
+
+            foreach ($arguments as $argument) {
+                $parts[] = $this->formatValue($argument);
+            }
+
+            return new StringNode($name . '(' . implode(', ', $parts) . ')');
+        }
+
+        foreach ($named as $argumentName => $value) {
+            $arguments[] = new NamedArgumentNode($argumentName, $value);
+        }
+
         $registry = $context->registry;
-        $result   = $registry->tryCall($name, array_slice($positional, 1), $context);
+        $result   = $registry->tryCall($qualifiedName, $arguments, $context);
 
         if ($result === null) {
-            $capturedScope = $positional[0] instanceof FunctionNode ? $positional[0]->capturedScope : null;
+            $capturedScope    = null;
+            $lockedDefinition = null;
 
-            return new FunctionNode($name, array_slice($positional, 1), capturedScope: $capturedScope);
+            if ($original instanceof FunctionRefNode) {
+                $lockedDefinition = $original->lockedDefinition;
+            } elseif ($original instanceof FunctionNode) {
+                $capturedScope    = $original->capturedScope;
+                $lockedDefinition = $original->lockedDefinition;
+            }
+
+            return new FunctionNode(
+                $name,
+                $arguments,
+                capturedScope: $capturedScope,
+                lockedDefinition: $lockedDefinition,
+            );
         }
 
         return $result;
@@ -238,7 +353,7 @@ final class SassMetaModule extends AbstractModule
         $this->warnAboutDeprecatedMetaFunction($context, 'feature-exists', $positional);
 
         return $this->boolNode(in_array(
-            NameNormalizer::normalize($positional[0]->value),
+            $positional[0]->value,
             self::SUPPORTED_FEATURES,
             true,
         ));
@@ -283,15 +398,32 @@ final class SassMetaModule extends AbstractModule
      */
     private function getFunction(array $positional, array $named, ?BuiltinCallContext $context): AstNode
     {
-        $name   = $this->requiredString($positional, 'meta.get-function');
+        $name = $this->requiredString($positional, 'meta.get-function');
+
+        $cssValue = $named['css'] ?? null;
+
+        if ($cssValue instanceof BooleanNode && $cssValue->value) {
+            return new FunctionRefNode($name, css: true);
+        }
+
         $module = $this->optionalModuleName($named['module'] ?? null);
         $scope  = $this->scopeFromContext($context);
 
         if ($module !== null) {
-            $hasBuiltin = $context?->registry?->hasFunction($name, $module) === true;
-            $hasUser    = $scope->getModule($module)?->hasFunction($name) ?? false;
+            $hasBuiltin  = $context?->registry?->hasFunction($name, $module) === true;
+            $moduleScope = $scope->getModule($module);
 
-            if (! $hasBuiltin && ! $hasUser) {
+            if ($moduleScope !== null && $moduleScope->hasFunction($name)) {
+                if (! $hasBuiltin) {
+                    $lockedDefinition = $moduleScope->findFunction($name)?->definition;
+
+                    return new FunctionRefNode($name, $module, $lockedDefinition, $moduleScope);
+                }
+
+                return new FunctionRefNode($name, $module);
+            }
+
+            if (! $hasBuiltin) {
                 throw ModuleResolutionException::callableNotFound(
                     $this->builtinErrorContext('meta.get-function'),
                     $name,
@@ -299,9 +431,7 @@ final class SassMetaModule extends AbstractModule
                 );
             }
 
-            $reference = new SassFunctionRef($module . '.' . $name);
-
-            return new StringNode($reference->name());
+            return new FunctionRefNode($name, module: $module);
         }
 
         $hasBuiltin = $context?->registry?->hasFunction($name) === true;
@@ -315,12 +445,12 @@ final class SassMetaModule extends AbstractModule
         }
 
         if ($hasUser && ! $hasBuiltin) {
-            return new FunctionNode($name, capturedScope: $scope);
+            $lockedDefinition = $scope->findFunction($name)?->definition;
+
+            return new FunctionRefNode($name, lockedDefinition: $lockedDefinition, capturedScope: $scope);
         }
 
-        $reference = new SassFunctionRef($name);
-
-        return new StringNode($reference->name());
+        return new FunctionRefNode($name);
     }
 
     /**
@@ -330,21 +460,27 @@ final class SassMetaModule extends AbstractModule
     private function getMixin(array $positional, array $named, ?BuiltinCallContext $context): AstNode
     {
         $name   = $this->requiredString($positional, 'meta.get-mixin');
-        $module = $this->optionalModuleName($named['module'] ?? null);
+        $module = $this->optionalModuleArgument($positional, $named);
         $scope  = $this->scopeFromContext($context);
 
         if ($module !== null) {
             $moduleScope = $scope->getModule($module);
 
-            if ($moduleScope === null || ! $moduleScope->hasMixin($name)) {
-                throw ModuleResolutionException::callableNotFound(
-                    $this->builtinErrorContext('meta.get-mixin'),
-                    $name,
-                    $module,
-                );
+            if ($moduleScope !== null && $moduleScope->hasMixin($name)) {
+                $lockedDefinition = $moduleScope->findMixin($name)?->definition;
+
+                return new MixinRefNode($module . '.' . $name, lockedDefinition: $lockedDefinition);
             }
 
-            return new MixinRefNode($module . '.' . $name);
+            if ($module === 'meta' && in_array($name, self::BUILTIN_META_MIXINS, true)) {
+                return new MixinRefNode($module . '.' . $name);
+            }
+
+            throw ModuleResolutionException::callableNotFound(
+                $this->builtinErrorContext('meta.get-mixin'),
+                $name,
+                $module,
+            );
         }
 
         if (! $scope->hasMixin($name)) {
@@ -354,7 +490,9 @@ final class SassMetaModule extends AbstractModule
             );
         }
 
-        return new MixinRefNode($name);
+        $lockedDefinition = $scope->findMixin($name)?->definition;
+
+        return new MixinRefNode($name, lockedDefinition: $lockedDefinition);
     }
 
     /**
@@ -390,22 +528,23 @@ final class SassMetaModule extends AbstractModule
             );
         }
 
-        return new StringNode($this->formatValue($positional[0]));
+        return new StringNode($this->formatForInspect($positional[0]));
     }
 
     /**
      * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
      */
-    private function keywords(array $positional): AstNode
+    private function keywords(array $positional, array $named): AstNode
     {
-        if (count($positional) < 1) {
+        $value = $positional[0] ?? $named['args'] ?? null;
+
+        if ($value === null) {
             throw new MissingFunctionArgumentsException(
                 $this->builtinErrorContext('meta.keywords'),
                 'an argument list value',
             );
         }
-
-        $value = $positional[0];
 
         if ($value instanceof ArgumentListNode) {
             $pairs = [];
@@ -462,7 +601,7 @@ final class SassMetaModule extends AbstractModule
 
                 foreach ($builtinFunctions as $function) {
                     $pairs[] = new MapPair(
-                        new StringNode($function),
+                        new StringNode($function, true),
                         new FunctionNode($module . '.' . $function, capturedScope: $scope),
                     );
                 }
@@ -481,8 +620,8 @@ final class SassMetaModule extends AbstractModule
 
         foreach ($scope->getFunctions() as $name => $_function) {
             $pairs[] = new MapPair(
-                new StringNode($name),
-                new FunctionNode($module . '.' . $name, capturedScope: $scope),
+                new StringNode($name, true),
+                new FunctionRefNode($name, $module, $scope->findFunction($name)?->definition, $scope),
             );
         }
 
@@ -495,16 +634,29 @@ final class SassMetaModule extends AbstractModule
     private function moduleMixins(array $positional, ?BuiltinCallContext $context): AstNode
     {
         $module = $this->requiredString($positional, 'meta.module-mixins');
+        $isMeta = $context?->registry?->resolveModuleAlias($module) === 'meta';
         $scope  = $this->scopeFromContext($context)->getModule($module);
 
-        if ($scope === null) {
+        if ($scope === null && ! $isMeta) {
             throw ModuleResolutionException::unknownNamespace($module);
         }
 
         $pairs = [];
 
-        foreach ($scope->getMixins() as $name => $_mixin) {
-            $pairs[] = new MapPair(new StringNode($name), new MixinRefNode($module . '.' . $name));
+        if ($isMeta) {
+            foreach (self::BUILTIN_META_MIXINS as $name) {
+                $pairs[] = new MapPair(new StringNode($name, true), new MixinRefNode($module . '.' . $name));
+            }
+        }
+
+        foreach ($scope?->getMixins() ?? [] as $name => $_mixin) {
+            $pairs[] = new MapPair(
+                new StringNode($name, true),
+                new MixinRefNode(
+                    $module . '.' . $name,
+                    lockedDefinition: $scope?->findMixin($name)?->definition,
+                ),
+            );
         }
 
         return new MapNode($pairs);
@@ -529,7 +681,7 @@ final class SassMetaModule extends AbstractModule
                 continue;
             }
 
-            $pairs[] = new MapPair(new StringNode($name), $value);
+            $pairs[] = new MapPair(new StringNode($name, true), $value);
         }
 
         return new MapNode($pairs);
@@ -547,7 +699,13 @@ final class SassMetaModule extends AbstractModule
             );
         }
 
-        return new StringNode($this->astType($positional[0]));
+        $value = $positional[0];
+
+        if ($value instanceof MapNode && $value->isEmptyList) {
+            return new StringNode(AstValueType::List->value);
+        }
+
+        return new StringNode($this->astType($value));
     }
 
     /**
@@ -707,6 +865,10 @@ final class SassMetaModule extends AbstractModule
 
     private function functionNameFromValue(AstNode $value): ?string
     {
+        if ($value instanceof FunctionRefNode) {
+            return $value->name;
+        }
+
         if ($value instanceof FunctionNode) {
             return $value->name;
         }
@@ -820,5 +982,110 @@ final class SassMetaModule extends AbstractModule
     private function formatValue(AstNode $node): string
     {
         return $this->valueFactory()->fromAst($node)->toCss();
+    }
+
+    private function formatForInspect(AstNode $node): string
+    {
+        if ($node instanceof ArgumentListNode) {
+            return $this->inspectList(new ListNode($node->items, $node->separator, $node->bracketed));
+        }
+
+        if ($node instanceof ListNode) {
+            return $this->inspectList($node);
+        }
+
+        if ($node instanceof MapNode) {
+            return $this->inspectMap($node);
+        }
+
+        return $this->formatValue($node);
+    }
+
+    private function inspectList(ListNode $node): string
+    {
+        $items = [];
+
+        foreach ($node->items as $item) {
+            $items[] = $this->inspectListItem($item, $node->separator);
+        }
+
+        if ($items === []) {
+            return $node->bracketed ? '[]' : '()';
+        }
+
+        $sep = match ($node->separator) {
+            'comma' => ', ',
+            'slash' => ' / ',
+            default => ' ',
+        };
+
+        $result = implode($sep, $items);
+
+        if ($node->bracketed) {
+            if (count($items) === 1 && $node->separator === 'comma') {
+                return '[' . $result . ',]';
+            }
+
+            return '[' . $result . ']';
+        }
+
+        if (count($items) === 1) {
+            if ($node->separator === 'comma') {
+                return '(' . $result . ',)';
+            }
+
+            if ($node->separator === 'slash') {
+                return '(' . $items[0] . '/)';
+            }
+        }
+
+        return $result;
+    }
+
+    private function inspectListItem(AstNode $node, string $parentSeparator): string
+    {
+        if ($node instanceof ListNode) {
+            $inner = $this->inspectList($node);
+
+            if (str_starts_with($inner, '(') || str_starts_with($inner, '[')) {
+                return $inner;
+            }
+
+            if ($node->separator === 'comma' || $node->parenthesized || $parentSeparator === 'space') {
+                return '(' . $inner . ')';
+            }
+
+            return $inner;
+        }
+
+        if ($node instanceof MapNode) {
+            return $this->inspectMap($node);
+        }
+
+        return $this->formatValue($node);
+    }
+
+    private function inspectMap(MapNode $node): string
+    {
+        $parts = [];
+
+        foreach ($node->pairs as $pair) {
+            $parts[] = $this->inspectMapItem($pair->key) . ': ' . $this->inspectMapItem($pair->value);
+        }
+
+        return '(' . implode(', ', $parts) . ')';
+    }
+
+    private function inspectMapItem(AstNode $node): string
+    {
+        if ($node instanceof ArgumentListNode) {
+            $node = new ListNode($node->items, $node->separator, $node->bracketed);
+        }
+
+        if ($node instanceof ListNode && $node->separator === 'comma' && ! $node->bracketed) {
+            return '(' . $this->inspectList($node) . ')';
+        }
+
+        return $this->formatForInspect($node);
     }
 }

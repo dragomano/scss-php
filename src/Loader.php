@@ -8,20 +8,23 @@ use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Closure;
 use Symfony\Component\Filesystem\Path;
 
+use function array_merge;
 use function array_unshift;
+use function basename;
 use function file_get_contents;
 use function getcwd;
 use function in_array;
 use function is_file;
 use function is_readable;
 use function is_string;
-use function pathinfo;
 use function realpath;
 use function rtrim;
 use function str_ends_with;
+use function str_starts_with;
+use function strlen;
+use function strrpos;
 use function strtolower;
-
-use const DIRECTORY_SEPARATOR;
+use function substr;
 
 final class Loader implements LoaderInterface
 {
@@ -77,13 +80,10 @@ final class Loader implements LoaderInterface
         }
     }
 
-    /**
-     * @return array{path: string, content: string}
-     */
-    public function load(string $url, bool $fromImport = false): array
+    public function load(string $url, bool $fromImport = false): LoadedFile
     {
         if (str_starts_with($url, 'sass:')) {
-            return ['path' => $url, 'content' => ''];
+            return new LoadedFile($url, '');
         }
 
         if ($loaded = $this->tryLoadFile($url, $fromImport)) {
@@ -103,10 +103,7 @@ final class Loader implements LoaderInterface
         throw ModuleResolutionException::importNotFound($url);
     }
 
-    /**
-     * @return array{path: string, content: string}|null
-     */
-    private function tryLoadFile(string $path, bool $fromImport): ?array
+    private function tryLoadFile(string $path, bool $fromImport): ?LoadedFile
     {
         if (! $fromImport && $this->isImportOnlyPath($path)) {
             return null;
@@ -125,7 +122,7 @@ final class Loader implements LoaderInterface
                 return null;
             }
 
-            return ['path' => $resolvedPath, 'content' => $content];
+            return new LoadedFile($resolvedPath, $content);
         }
 
         return null;
@@ -147,30 +144,70 @@ final class Loader implements LoaderInterface
      */
     private function resolveCandidates(string $url, bool $fromImport): array
     {
-        $url     = rtrim($url, '/\\');
-        $parts   = pathinfo($url);
-        $dirname = $parts['dirname'] ?? '';
-        $dir     = $dirname === '.' || $dirname === '' ? '' : $dirname . DIRECTORY_SEPARATOR;
-        $name    = $parts['filename'];
+        $url       = rtrim($url, '/\\');
+        $lastSlash = strrpos($url, '/');
+        $dir       = $lastSlash !== false ? substr($url, 0, $lastSlash) . '/' : '';
+        $base      = $lastSlash !== false ? substr($url, $lastSlash + 1) : $url;
 
-        $extensions = isset($parts['extension']) ? ['.' . $parts['extension']] : ['.scss', '.sass', '.css'];
+        foreach (['.scss', '.sass', '.css'] as $extension) {
+            if (str_ends_with($base, $extension)) {
+                $prefix = substr($base, 0, -strlen($extension));
+
+                $candidates = [];
+
+                if ($fromImport) {
+                    $candidates = array_merge($candidates, $this->suffixedCandidates($dir, $prefix, '.import' . $extension));
+                }
+
+                return array_merge($candidates, $this->suffixedCandidates($dir, $prefix, $extension));
+            }
+        }
+
+        $fileBase = $dir . $base;
+
+        return array_merge(
+            $this->extensionCandidates($fileBase, $fromImport),
+            $this->extensionCandidates($fileBase . '/index', $fromImport),
+        );
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extensionCandidates(string $fileBase, bool $fromImport): array
+    {
+        $lastSlash = strrpos($fileBase, '/');
+        $dir       = $lastSlash !== false ? substr($fileBase, 0, $lastSlash) . '/' : '';
+        $name      = $lastSlash !== false ? substr($fileBase, $lastSlash + 1) : $fileBase;
+
         $candidates = [];
 
-        foreach ($extensions as $ext) {
-            if ($fromImport && ($ext === '.scss' || $ext === '.sass')) {
-                $candidates[] = $dir . '_' . $name . '.import' . $ext;
-                $candidates[] = $dir . $name . '.import' . $ext;
-                $candidates[] = $dir . $name . DIRECTORY_SEPARATOR . '_index.import' . $ext;
-                $candidates[] = $dir . $name . DIRECTORY_SEPARATOR . 'index.import' . $ext;
+        if ($fromImport) {
+            foreach (['.import.sass', '.import.scss', '.import.css'] as $suffix) {
+                $candidates = array_merge($candidates, $this->suffixedCandidates($dir, $name, $suffix));
             }
+        }
 
-            $candidates[] = $dir . '_' . $name . $ext;
-            $candidates[] = $dir . $name . $ext;
-            $candidates[] = $dir . $name . DIRECTORY_SEPARATOR . '_index' . $ext;
-            $candidates[] = $dir . $name . DIRECTORY_SEPARATOR . 'index' . $ext;
+        foreach (['.sass', '.scss', '.css'] as $suffix) {
+            $candidates = array_merge($candidates, $this->suffixedCandidates($dir, $name, $suffix));
         }
 
         return $candidates;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function suffixedCandidates(string $dir, string $name, string $suffix): array
+    {
+        $full = $dir . $name . $suffix;
+        $base = basename($full);
+
+        if (str_starts_with($base, '_')) {
+            return [$full];
+        }
+
+        return [$full, $dir . '_' . $name . $suffix];
     }
 
     /**

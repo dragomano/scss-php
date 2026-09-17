@@ -6,49 +6,42 @@ namespace Bugo\SCSS\Values;
 
 use Bugo\SCSS\Utils\UnitConverter;
 
+use function abs;
+use function count;
+use function fdiv;
 use function is_infinite;
 use function is_int;
 use function is_nan;
 use function rtrim;
-use function sprintf;
 use function str_contains;
+use function str_repeat;
+use function str_replace;
 use function str_starts_with;
+use function strlen;
+use function strpos;
+use function substr;
+use function var_export;
+
+use const PHP_INT_MAX;
 
 final class SassNumber extends AbstractSassValue
 {
-    private const ZERO_UNITS = [
-        'cm',
-        'em',
-        'in',
-        'mm',
-        'pc',
-        'pt',
-        'px',
-        'rem',
-        'vmax',
-        'vmin',
-    ];
-
     public function __construct(
         private readonly int|float $value,
         private readonly ?string $unit = null,
-        private readonly bool $preserveZeroUnit = false,
+        private readonly bool $compressed = false,
     ) {}
 
     public function toCss(): string
     {
-        if (! is_int($this->value) && (is_nan($this->value) || is_infinite($this->value))) {
-            return $this->formatNonFiniteValue();
+        if ($this->isNonFinite()) {
+            return 'calc(' . $this->formatNonFiniteExpression() . ')';
         }
 
         $number = $this->formatNumberValue($this->value);
 
         if (! $this->isCompoundUnit($this->unit)) {
-            return $number . $this->formatUnit($number, $this->unit);
-        }
-
-        if ($number === '0' && ! $this->preserveZeroUnit) {
-            return '0';
+            return $number . $this->formatUnit($this->unit);
         }
 
         return $this->formatCompoundUnitAsCalc($number, $this->unit ?? '');
@@ -59,37 +52,144 @@ final class SassNumber extends AbstractSassValue
         return true;
     }
 
+    public function toCalcOperandCss(): string
+    {
+        return $this->isNonFinite() ? $this->formatNonFiniteExpression() : $this->toCss();
+    }
+
     private function formatNumberValue(int|float $value): string
     {
         if (is_int($value)) {
-            return $this->compressLeadingZero((string) $value);
+            return (string) $value;
         }
 
-        $formatted = rtrim(sprintf('%.10F', $value), '0');
-        $trimmed   = rtrim($formatted, '.');
+        if (abs($value) < PHP_INT_MAX) {
+            $truncated = (int) $value;
 
-        if ($trimmed === '-0') {
-            return '0';
+            if ((float) $truncated === $value) {
+                $sign = $truncated === 0 && $this->isNegativeZero($value) ? '-' : '';
+
+                return $sign . $truncated;
+            }
         }
 
-        return $this->compressLeadingZero($trimmed);
+        $text = $this->removeExponent(str_replace('E', 'e', var_export($value, true)));
+
+        if (str_contains($text, '.')) {
+            $text = rtrim(rtrim($text, '0'), '.');
+        }
+
+        if (strlen($text) >= 12) {
+            $text = $this->roundDecimalString($text);
+        }
+
+        return $this->compressLeadingZero($text);
     }
 
-    private function formatNonFiniteValue(): string
+    private function isNegativeZero(float $value): bool
+    {
+        return $value === 0.0 && fdiv(1.0, $value) < 0;
+    }
+
+    private function removeExponent(string $text): string
+    {
+        $ePos = strpos($text, 'e');
+
+        if ($ePos === false) {
+            return $text;
+        }
+
+        $negative = str_starts_with($text, '-');
+        $mantissa = $negative ? substr($text, 1, $ePos - 1) : substr($text, 0, $ePos);
+        $exponent = (int) substr($text, $ePos + 1);
+
+        $dotPos = (int) strpos($mantissa, '.');
+        $digits = substr($mantissa, 0, $dotPos) . substr($mantissa, $dotPos + 1);
+
+        $decimalIndex = $dotPos + $exponent;
+
+        if ($decimalIndex <= 0) {
+            return ($negative ? '-' : '') . '0.' . str_repeat('0', -$decimalIndex) . $digits;
+        }
+
+        return ($negative ? '-' : '') . $digits . str_repeat('0', $decimalIndex - strlen($digits));
+    }
+
+    private function roundDecimalString(string $text): string
+    {
+        $dot = strpos($text, '.');
+
+        if ($dot === false) {
+            return $text;
+        }
+
+        $negative = str_starts_with($text, '-');
+        $intPart  = $negative ? substr($text, 1, $dot - 1) : substr($text, 0, $dot);
+        $fracPart = substr($text, $dot + 1);
+
+        if (strlen($fracPart) <= 10) {
+            return $text;
+        }
+
+        $significant = substr($fracPart, 0, 10);
+        $carry       = ((int) $fracPart[10]) >= 5;
+
+        if ($carry) {
+            for ($i = 9; $i >= 0; $i--) {
+                if ($significant[$i] !== '9') {
+                    $significant[$i] = (string) ((int) $significant[$i] + 1);
+                    $carry = false;
+
+                    break;
+                }
+
+                $significant[$i] = '0';
+            }
+
+            if ($carry) {
+                $intPart = (string) ((int) $intPart + 1);
+            }
+        }
+
+        $significant = rtrim($significant, '0');
+
+        if ($significant === '') {
+            return $negative && $intPart === '0' ? '0' : ($negative ? '-' : '') . $intPart;
+        }
+
+        return ($negative ? '-' : '') . $intPart . '.' . $significant;
+    }
+
+    private function isNonFinite(): bool
+    {
+        return ! is_int($this->value) && (is_nan($this->value) || is_infinite($this->value));
+    }
+
+    private function formatNonFiniteExpression(): string
     {
         $keyword = is_nan($this->value)
             ? 'NaN'
             : ($this->value < 0 ? '-infinity' : 'infinity');
 
         if ($this->unit === null || $this->unit === '') {
-            return 'calc(' . $keyword . ')';
+            return $keyword;
         }
 
-        return 'calc(' . $keyword . ' * ' . $this->formatUnitFactor($this->unit) . ')';
+        [$numerator, $denominator] = UnitConverter::parseParts($this->unit);
+
+        if ($numerator === [] && $denominator !== []) {
+            return $keyword . $this->formatCompoundUnitSuffix($this->unit);
+        }
+
+        return $keyword . ' * ' . $this->formatUnitFactor($this->unit);
     }
 
     private function compressLeadingZero(string $number): string
     {
+        if (! $this->compressed) {
+            return $number;
+        }
+
         if (str_starts_with($number, '0.') && strlen($number) > 2) {
             return substr($number, 1);
         }
@@ -101,24 +201,9 @@ final class SassNumber extends AbstractSassValue
         return $number;
     }
 
-    private function formatUnit(string $number, ?string $unit): string
+    private function formatUnit(?string $unit): string
     {
-        if ($unit === null || $unit === '' || $number !== '0' || $this->preserveZeroUnit) {
-            return $unit ?? '';
-        }
-
-        /** @var array<string, true>|null $set */
-        static $set = null;
-
-        if ($set === null) {
-            $set = [];
-
-            foreach (self::ZERO_UNITS as $zeroUnit) {
-                $set[$zeroUnit] = true;
-            }
-        }
-
-        return isset($set[$unit]) ? '' : $unit;
+        return $unit ?? '';
     }
 
     private function isCompoundUnit(?string $unit): bool
@@ -133,11 +218,7 @@ final class SassNumber extends AbstractSassValue
 
     private function formatUnitFactor(string $unit): string
     {
-        if (! $this->isCompoundUnit($unit)) {
-            return '1' . $unit;
-        }
-
-        return '1' . $this->formatCompoundUnitSuffix($unit);
+        return '1' . ($this->isCompoundUnit($unit) ? $this->formatCompoundUnitSuffix($unit) : $unit);
     }
 
     private function formatCompoundUnitSuffix(string $unit): string

@@ -1,27 +1,13 @@
-name: PHP Tests
+name: PHP Coverage
 
 on:
+  workflow_call:
+
   workflow_dispatch:
 
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "src/**"
-      - "tests/**"
-
-permissions:
-  contents: write
-
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        php: [8.2, 8.3, 8.4, 8.5]
-
-    runs-on: ${{ matrix.os }}
+  coverage:
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
@@ -29,9 +15,9 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ matrix.php }}
+          php-version: 8.5
           extensions: zip
-          coverage: ${{ matrix.os == 'ubuntu-latest' && matrix.php == '8.5' && 'xdebug' || 'none' }}
+          coverage: xdebug
 
       - name: Configure GitHub token
         run: composer config github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
@@ -39,33 +25,11 @@ jobs:
       - name: Install dependencies
         run: composer install
 
-      - name: Run PHP-CS-Fixer
-        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.5'
-        run: composer run fix
-
-      - name: Run Rector
-        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.5'
-        run: composer run rector
-
-      - name: Run PHPStan
-        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.5'
-        run: composer run phpstan
-
-      - name: Run Psalm
-        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.5'
-        run: composer run psalm
-
-      - name: Run tests
+      - name: Run tests with coverage
         shell: bash
-        run: |
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.php }}" = "8.5" ]; then
-            vendor/bin/pest --colors=always --coverage-clover build/logs/clover.xml
-          else
-            vendor/bin/pest --colors=always
-          fi
+        run: RUN_SASS_SPEC=1 vendor/bin/pest --colors=always --coverage-clover build/logs/clover.xml --exclude-group=performance
 
       - name: Upload coverage results to Coveralls
-        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.5'
         env:
           COVERALLS_REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

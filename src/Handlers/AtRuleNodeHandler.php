@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Handlers;
 
+use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\NodeDispatcherInterface;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -18,11 +20,20 @@ use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
+use Bugo\SCSS\Utils\GroupStartChunk;
 use Bugo\SCSS\Utils\OutputChunk;
 use Bugo\SCSS\Utils\RawChunk;
 
 use function count;
+use function in_array;
+use function ltrim;
+use function str_contains;
+use function str_ends_with;
+use function str_starts_with;
+use function strlen;
 use function strtolower;
+use function substr;
+use function substr_count;
 use function trim;
 
 final readonly class AtRuleNodeHandler
@@ -32,14 +43,19 @@ final readonly class AtRuleNodeHandler
         private Evaluator $evaluation,
         private Render $render,
         private Selector $selector,
+        private DeferredChunkManager $chunks,
     ) {}
 
     public function handleAtRoot(AtRootNode $node, TraversalContext $ctx): string
     {
         $saved         = $this->render->savePosition();
+        $ruleWasEmpty  = ! $this->render->outputState()->deferral->currentRuleHasOutput;
         $atRootResult  = $this->selector->compileAtRootBody($node, $ctx->env);
         $chunk         = $atRootResult['chunk'];
-        $deferredChunk = $this->render->createDeferredChunk($chunk, $saved);
+        $deferredChunk = new GroupStartChunk(
+            $this->render->createDeferredChunk($chunk, $saved),
+            isEarly: $ruleWasEmpty,
+        );
 
         if ($chunk === '') {
             $this->render->restorePosition($saved);
@@ -85,8 +101,16 @@ final readonly class AtRuleNodeHandler
     {
         $prefix = $this->render->indentPrefix($ctx->indent);
 
+        $directiveName = str_contains($node->name, '#{')
+            ? $this->evaluation->interpolateText($node->name, $ctx->env)
+            : $node->name;
+
         if ($node->name === 'content') {
             return $this->compileContentDirective($node, $ctx);
+        }
+
+        if ($node->name === 'charset') {
+            return '';
         }
 
         $output          = '';
@@ -94,31 +118,63 @@ final readonly class AtRuleNodeHandler
         $resolvedPrelude = '';
 
         if ($node->prelude !== '') {
-            $resolvedPrelude = $this->selector->resolveDirectivePrelude($node->prelude, $ctx->env);
+            $isKeyframes = $this->isKeyframesName($directiveName);
 
-            $prelude = ' ' . $resolvedPrelude;
+            if ($isKeyframes || str_contains($node->name, '#{')) {
+                // For @keyframes and interpolated names, only interpolate #{} but don't resolve $var references
+                $resolvedPrelude = str_contains($node->prelude, '#{')
+                    ? $this->evaluation->interpolateText($node->prelude, $ctx->env)
+                    : $node->prelude;
+
+                $resolvedPrelude = $this->selector->collapseWhitespaceInPrelude($resolvedPrelude);
+            } else {
+                $lowerName = strtolower($node->name);
+
+                if ($lowerName === 'media') {
+                    $resolvedPrelude = $this->selector->normalizeMediaQueryPrelude(
+                        $this->selector->evaluateMediaFeatureOperands(
+                            $this->selector->resolveDirectivePrelude($node->prelude, $ctx->env),
+                            $ctx->env,
+                        ),
+                    );
+                } elseif ($lowerName === '-moz-document') {
+                    $resolvedPrelude = $this->selector->stripAllComments(
+                        $this->interpolatePreludeOnly($node->prelude, $ctx->env),
+                    );
+                } else {
+                    $resolvedPrelude = $this->interpolatePreludeOnly($node->prelude, $ctx->env);
+
+                    if ($node->hasBlock) {
+                        $resolvedPrelude = $this->selector->stripCommentsExceptTrailing($resolvedPrelude);
+                    } else {
+                        $resolvedPrelude = $this->selector->stripLeadingComments($resolvedPrelude);
+                    }
+
+                    $resolvedPrelude = $this->selector->collapseWhitespaceInPrelude($resolvedPrelude);
+                }
+            }
+
+            $prelude = $resolvedPrelude === '' ? '' : ' ' . $resolvedPrelude;
         }
 
         if (! $node->hasBlock) {
-            $this->render->appendChunk($output, $prefix . '@' . $node->name . $prelude . ';', $node);
+            $this->render->appendChunk($output, $prefix . '@' . $directiveName . $prelude . ';', $node);
 
             return $output;
         }
 
-        $this->render->appendChunk($output, $prefix . '@' . $node->name . $prelude . ' {', $node);
-
-        $first = true;
-
         $outputState = $this->render->outputState();
         $outputState->deferral->atRuleStack[] = [];
 
-        $deferredMergedMediaChunks = [];
-
-        $parentAtRuleStack = $this->selector->getCurrentAtRuleStack($ctx->env);
+        /** @var list<array{chunk: OutputChunk, isMerged: bool}> $orderedChunks */
+        $orderedChunks      = [];
+        $parentSegmentSaved = $this->render->savePosition();
+        $hasParentContent   = false;
+        $parentAtRuleStack  = $this->selector->getCurrentAtRuleStack($ctx->env);
 
         $currentAtRuleStack   = $parentAtRuleStack;
         $currentAtRuleStack[] = AtRuleContextEntry::directive(
-            strtolower($node->name),
+            $this->isKeyframesName($directiveName) ? strtolower($directiveName) : strtolower($node->name),
             trim($resolvedPrelude),
         );
 
@@ -134,6 +190,38 @@ final readonly class AtRuleNodeHandler
              */
             $body = $node->body;
 
+            // For keyframes with comment-only body, output compact format { /**/ }
+            if (
+                $this->isCommentOnlyBody($body)
+                && (
+                    $this->isKeyframesName($directiveName)
+                    || $this->isOnlyEmptyLoudCommentBody($body)
+                )
+            ) {
+                $this->render->appendChunk(
+                    $output,
+                    $prefix . '@' . $directiveName . $prelude . ' { /**/ }',
+                    $node,
+                );
+
+                $orderedChunks[] = [
+                    'chunk'    => $this->render->createDeferredChunk($output, $parentSegmentSaved),
+                    'isMerged' => false,
+                ];
+
+                $this->render->restorePosition($parentSegmentSaved);
+
+                $ctx->env->exitScope();
+
+                $this->selector->drainDeferredAtRuleEscapes();
+
+                $result = '';
+
+                $this->appendResolvedChunk($result, $orderedChunks[0]['chunk']);
+
+                return $result;
+            }
+
             foreach ($body as $child) {
                 if ($this->evaluation->applyVariableDeclaration($child, $ctx->env)) {
                     continue;
@@ -144,32 +232,76 @@ final readonly class AtRuleNodeHandler
                     && $child instanceof DirectiveNode
                     && strtolower($child->name) === 'media'
                 ) {
-                    $childPrelude  = $this->selector->resolveDirectivePrelude($child->prelude, $ctx->env);
-                    $parentPrelude = trim($resolvedPrelude);
-                    $mergedPrelude = $this->selector->combineMediaQueryPreludes($parentPrelude, $childPrelude);
-                    $mergedNode    = new DirectiveNode('media', $mergedPrelude, $child->body, true);
-                    $saved         = $this->render->savePosition();
-
-                    $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $parentAtRuleStack);
-
-                    $mergedChunk = $this->render->trimTrailingNewlines(
-                        $this->dispatcher->compileWithContext($mergedNode, $mergedCtx),
+                    $childPrelude = $this->selector->normalizeMediaQueryPrelude(
+                        $this->selector->evaluateMediaFeatureOperands(
+                            $this->selector->resolveDirectivePrelude($child->prelude, $ctx->env),
+                            $ctx->env,
+                        ),
                     );
 
-                    $deferredMergedChunk = $this->render->createDeferredChunk($mergedChunk, $saved);
+                    $mergedPrelude = $this->selector->mergeMediaQueryPreludes(trim($resolvedPrelude), $childPrelude);
 
-                    $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $currentAtRuleStack);
-
-                    $this->render->restorePosition($saved);
-
-                    if ($mergedChunk !== '') {
-                        $deferredMergedMediaChunks[] = $deferredMergedChunk;
+                    if ($mergedPrelude === '') {
+                        continue;
                     }
 
-                    continue;
+                    if ($mergedPrelude !== null) {
+                        if ($hasParentContent) {
+                            $this->render->appendChunk($output, "\n" . $prefix . '}');
+
+                            $orderedChunks[] = [
+                                'chunk'    => $this->render->createDeferredChunk($output, $parentSegmentSaved),
+                                'isMerged' => false,
+                            ];
+
+                            $this->render->restorePosition($parentSegmentSaved);
+
+                            $output             = '';
+                            $hasParentContent   = false;
+                            $parentSegmentSaved = $this->render->savePosition();
+                        }
+
+                        $mergedNode = new DirectiveNode('media', $mergedPrelude, $child->body, true);
+                        $saved      = $this->render->savePosition();
+
+                        $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $parentAtRuleStack);
+
+                        $mergedChunk = $this->render->trimTrailingNewlines(
+                            $this->dispatcher->compileWithContext($mergedNode, $mergedCtx),
+                        );
+
+                        $deferredMergedChunk = $this->render->createDeferredChunk($mergedChunk, $saved);
+
+                        $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $currentAtRuleStack);
+
+                        $this->render->restorePosition($saved);
+
+                        if ($mergedChunk !== '') {
+                            $orderedChunks[] = [
+                                'chunk'    => $deferredMergedChunk,
+                                'isMerged' => true,
+                            ];
+                        }
+
+                        continue;
+                    }
                 }
 
-                $this->render->appendChunk($output, "\n");
+                if (! $hasParentContent) {
+                    $parentSegmentSaved = $this->render->savePosition();
+
+                    $this->render->appendChunk($output, $prefix . '@' . $directiveName . $prelude . ' {', $node);
+                }
+
+                $collectMappings     = $this->render->collectSourceMappings();
+                $preCompileSaved     = null;
+                $lengthBeforeNewline = strlen($output);
+
+                if ($collectMappings) {
+                    $preCompileSaved = $this->render->savePosition();
+
+                    $this->render->appendChunk($output, "\n");
+                }
 
                 /** @var Visitable $child */
                 $compiled = $this->render->trimAndAdjustState(
@@ -177,12 +309,31 @@ final readonly class AtRuleNodeHandler
                 );
 
                 if ($compiled === '') {
+                    if (! $hasParentContent) {
+                        $this->render->restorePosition($parentSegmentSaved);
+
+                        $output = '';
+                    } elseif ($preCompileSaved !== null) {
+                        $this->render->restorePosition($preCompileSaved);
+
+                        $output = substr($output, 0, $lengthBeforeNewline);
+                    }
+
                     continue;
                 }
 
-                $output .= $compiled;
+                $inlineComment = $child instanceof CommentNode
+                    && ! $hasParentContent
+                    && ! $collectMappings
+                    && $child->line === $node->line + substr_count($node->prelude, "\n");
 
-                $first = false;
+                if (! $collectMappings) {
+                    $this->render->appendChunk($output, $inlineComment ? ' ' : "\n");
+                }
+
+                $output .= $inlineComment ? ltrim($compiled) : $compiled;
+
+                $hasParentContent = true;
             }
         } finally {
             $ctx->env->exitScope();
@@ -190,12 +341,37 @@ final readonly class AtRuleNodeHandler
 
         $outsideChunks = $this->selector->drainDeferredAtRuleEscapes();
 
-        if ($first) {
+        if ($hasParentContent) {
+            if (! $this->render->collectSourceMappings()) {
+                $output = $this->selector->optimizeAdjacentSiblingRuleBlocks($output);
+            }
+
+            $this->render->appendChunk($output, "\n" . $prefix . '}');
+
+            $orderedChunks[] = [
+                'chunk'    => $this->render->createDeferredChunk($output, $parentSegmentSaved),
+                'isMerged' => false,
+            ];
+
+            $this->render->restorePosition($parentSegmentSaved);
+        } elseif (
+            ! in_array(strtolower($node->name), ['media', 'supports'], true)
+            && ! $this->escapedChunksReopenDirective($outsideChunks, $directiveName)
+        ) {
+            $emptyOutput = $prefix . '@' . $directiveName . $prelude . ' {}';
+
+            $orderedChunks[] = [
+                'chunk'    => $this->render->createDeferredChunk($emptyOutput, $parentSegmentSaved),
+                'isMerged' => false,
+            ];
+        }
+
+        if ($orderedChunks === []) {
             if ($outsideChunks === []) {
                 return '';
             }
 
-            $separator = $this->render->outputSeparator();
+            $separator = "\n" . Render::CONTINUATION_MARK;
             $result    = '';
 
             foreach ($outsideChunks as $index => $chunk) {
@@ -209,36 +385,100 @@ final readonly class AtRuleNodeHandler
             return $result;
         }
 
-        if (! $this->render->collectSourceMappings()) {
-            $output = $this->selector->optimizeAdjacentSiblingRuleBlocks($output);
-        }
+        $result    = '';
+        $separator = "\n" . Render::CONTINUATION_MARK;
 
-        $this->render->appendChunk($output, "\n" . $prefix . '}');
+        foreach ($orderedChunks as $index => $entry) {
+            if ($index > 0) {
+                $previous = $orderedChunks[$index - 1];
 
-        if ($outsideChunks !== []) {
-            $separator = $this->render->outputSeparator();
-
-            foreach ($outsideChunks as $chunk) {
-                $this->render->appendChunk($output, $separator);
-                $this->appendResolvedChunk($output, new RawChunk($chunk));
+                $this->render->appendChunk(
+                    $result,
+                    $previous['isMerged'] && ! $entry['isMerged'] ? "\n" : $separator,
+                );
             }
+
+            $this->appendResolvedChunk($result, $entry['chunk']);
         }
 
-        if ($deferredMergedMediaChunks !== []) {
-            $separator = $this->render->outputSeparator();
-
-            foreach ($deferredMergedMediaChunks as $chunk) {
-                $this->render->appendChunk($output, $separator);
-                $this->appendResolvedChunk($output, $chunk);
-            }
+        foreach ($outsideChunks as $chunk) {
+            $this->render->appendChunk($result, $separator);
+            $this->appendResolvedChunk($result, new RawChunk($chunk));
         }
 
-        return $output;
+        return $result;
     }
 
     private function appendResolvedChunk(string &$output, OutputChunk $chunk): void
     {
         $this->render->appendOutputChunk($output, $chunk);
+    }
+
+    /**
+     * @param array<int, string> $outsideChunks
+     */
+    private function escapedChunksReopenDirective(array $outsideChunks, string $directiveName): bool
+    {
+        $needle = strtolower('@' . $directiveName);
+
+        foreach ($outsideChunks as $chunk) {
+            if (str_starts_with(ltrim($chunk), $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function interpolatePreludeOnly(string $prelude, \Bugo\SCSS\Runtime\Environment $env): string
+    {
+        return str_contains($prelude, '#{')
+            ? $this->evaluation->interpolateText($prelude, $env)
+            : $prelude;
+    }
+
+    private function isKeyframesName(string $name): bool
+    {
+        $name = strtolower($name);
+
+        return $name === 'keyframes'
+            || str_ends_with($name, '-keyframes');
+    }
+
+    /**
+     * @param array<int, AstNode> $body
+     */
+    private function isCommentOnlyBody(array $body): bool
+    {
+        if ($body === []) {
+            return true;
+        }
+
+        foreach ($body as $child) {
+            if (! $child instanceof CommentNode) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, AstNode> $body
+     */
+    private function isOnlyEmptyLoudCommentBody(array $body): bool
+    {
+        if ($body === [] || count($body) > 1) {
+            return false;
+        }
+
+        foreach ($body as $child) {
+            if (! $child instanceof CommentNode || $child->value !== '') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function compileContentDirective(DirectiveNode $node, TraversalContext $ctx): string
@@ -261,42 +501,59 @@ final readonly class AtRuleNodeHandler
             )
             : [];
 
-        $contentScope         = $ctx->env->getCurrentScope()->getScopeVariable('__meta_content_scope');
-        $mixinParentSelector  = $ctx->env->getCurrentScope()->getStringVariable('__parent_selector');
-        $moduleGlobalTarget   = $ctx->env->getCurrentScope()->getScopeVariable('__module_global_target');
-        $contentCallArguments = $this->evaluation->parseContentCallArguments($node->prelude);
-        $atRuleStack          = $this->selector->getCurrentAtRuleStack($ctx->env);
+        $contentScope          = $ctx->env->getCurrentScope()->getScopeVariable('__meta_content_scope');
+        $mixinParentSelector   = $ctx->env->getCurrentScope()->getStringVariable('__parent_selector');
+        $moduleGlobalTarget    = $ctx->env->getCurrentScope()->getScopeVariable('__module_global_target');
+        $contentCallArguments  = $this->evaluation->parseContentCallArguments($node->prelude);
+        $atRuleStack           = $this->selector->getCurrentAtRuleStack($ctx->env);
+        $executionEntryScope   = $ctx->env->getCurrentScope();
+        $isDirectAtRootContent = $executionEntryScope->isInsideAtRootWithoutRule();
 
-        [$resolvedPositional, $resolvedNamed] = $this->evaluation->resolveCallArguments(
+        $resolved = $this->evaluation->resolveCallArguments(
             $contentCallArguments,
             $ctx->env,
         );
 
-        if ($contentScope === null) {
-            $contentScope = $ctx->env->getCurrentScope();
-        }
+        $contentScope ??= $ctx->env->getCurrentScope();
 
         $ctx->env->enterScope($contentScope);
 
+        $childScope = $ctx->env->getCurrentScope();
+
+        $childScope->markAsCallableBody();
+
         if ($mixinParentSelector instanceof StringNode) {
-            $ctx->env->getCurrentScope()->setVariableLocal('__parent_selector', $mixinParentSelector);
+            $childScope->setVariableLocal('__parent_selector', $mixinParentSelector);
+        }
+
+        if ($isDirectAtRootContent && $mixinParentSelector !== null && $mixinParentSelector->value !== '') {
+            $childScope->setVariableLocal('__at_root_strip_parent', $this->evaluation->createBooleanNode(true));
         }
 
         if ($moduleGlobalTarget instanceof Scope) {
-            $ctx->env->getCurrentScope()->setVariableLocal('__module_global_target', $moduleGlobalTarget);
+            $childScope->setVariableLocal('__module_global_target', $moduleGlobalTarget);
         }
 
         if ($atRuleStack !== []) {
-            $ctx->env->getCurrentScope()->setVariableLocal('__at_rule_stack', $atRuleStack);
+            $childScope->setVariableLocal('__at_rule_stack', $atRuleStack);
         }
 
         if ($contentArguments !== []) {
             $this->evaluation->bindParametersToCurrentScope(
                 $contentArguments,
-                $resolvedPositional,
-                $resolvedNamed,
-                $ctx->env->getCurrentScope(),
+                $resolved->positional,
+                $resolved->named,
+                $childScope,
+                $ctx->env,
             );
+        }
+
+        $contentVarsBefore = $contentScope->getVariables();
+
+        $contentParameterNames = [];
+
+        foreach ($contentArguments as $argument) {
+            $contentParameterNames[] = $argument->name;
         }
 
         $output     = '';
@@ -304,7 +561,12 @@ final readonly class AtRuleNodeHandler
         $contentCtx = $ctx;
 
         try {
-            if ($mixinParentSelector instanceof StringNode && $this->shouldWrapContentInParentRule($atRuleStack)) {
+            if (
+                $mixinParentSelector instanceof StringNode
+                && ! $isDirectAtRootContent
+                && $this->shouldWrapContentInParentRule($atRuleStack)
+                && ! $this->isEnclosingRuleCloserThanAtRule($executionEntryScope)
+            ) {
                 $wrappedContent = new RuleNode($mixinParentSelector->value, $contentBlock);
                 $compiled       = $this->dispatcher->compileWithContext($wrappedContent, $contentCtx);
 
@@ -315,27 +577,57 @@ final readonly class AtRuleNodeHandler
                 return $output;
             }
 
-            /**
-             * @var iterable<AstNode> $contentBlock
-             */
-            foreach ($contentBlock as $child) {
-                /** @var Visitable $child */
-                $compiled = $this->dispatcher->compileWithContext($child, $contentCtx);
+            if ($atRuleStack === []) {
+                $childScope->setVariableLocal(
+                    '__parent_rule_has_rendered_children',
+                    $this->render->outputState()->deferral->currentRuleHasOutput,
+                );
 
-                if ($compiled === '') {
+                $output = $this->chunks->compileBodyChunks($contentBlock, $contentCtx, $contentScope);
+            } else {
+                /**
+                 * @var iterable<AstNode> $contentBlock
+                 */
+                foreach ($contentBlock as $child) {
+                    /** @var Visitable $child */
+                    $compiled = $this->render->trimAndAdjustState(
+                        $this->dispatcher->compileWithContext($child, $contentCtx),
+                    );
+
+                    if ($compiled === '') {
+                        continue;
+                    }
+
+                    if (! $first) {
+                        $this->render->appendChunk($output, "\n");
+                    }
+
+                    $this->render->appendChunk($output, $compiled, $child);
+
+                    $first = false;
+                }
+            }
+        } finally {
+            $childSnapshotAfter = $childScope->getVariables();
+            $ctx->env->exitScope();
+        }
+
+        $executionScope = $ctx->env->getCurrentScope();
+
+        /** @var mixed $value */
+        foreach ($childSnapshotAfter as $name => $value) {
+            if (isset($contentVarsBefore[$name]) && $contentVarsBefore[$name] !== $value) {
+                if ($name !== '' && $name[0] === '-') {
                     continue;
                 }
 
-                if (! $first) {
-                    $this->render->appendChunk($output, "\n");
+                if (in_array($name, $contentParameterNames, true)) {
+                    continue;
                 }
 
-                $this->render->appendChunk($output, $compiled, $child);
-
-                $first = false;
+                $contentScope->setVariableLocal($name, $value);
+                $executionScope->setVariableLocal($name, $value);
             }
-        } finally {
-            $ctx->env->exitScope();
         }
 
         return $output;
@@ -356,6 +648,20 @@ final readonly class AtRuleNodeHandler
             }
 
             if ($entry->name === 'media') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isEnclosingRuleCloserThanAtRule(Scope $scope): bool
+    {
+        $ruleDefinition      = $scope->findVariableDefinition('__parent_selector');
+        $directiveDefinition = $scope->findVariableDefinition('__at_rule_stack');
+
+        for ($current = $ruleDefinition?->scope; $current !== null; $current = $current->getParent()) {
+            if ($current === $directiveDefinition?->scope) {
                 return true;
             }
         }

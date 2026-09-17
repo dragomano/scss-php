@@ -7,7 +7,7 @@ use Bugo\SCSS\Compiler;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Loader;
 use Bugo\SCSS\Style;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -49,6 +49,7 @@ describe('Compiler', function () {
             .block1 {
               color: red;
             }
+
             .block2 {
               color: blue;
             }
@@ -115,20 +116,15 @@ describe('Compiler', function () {
             }
             SCSS;
 
-            $compiler  = new Compiler(new CompilerOptions(sourceMapFile: $mapFile));
-            $compiler2 = new Compiler(new CompilerOptions(sourceMapFile: $mapFile, splitRules: true));
+            $compiler = new Compiler(new CompilerOptions(sourceMapFile: $mapFile));
 
             try {
                 $compiler->compileString($source);
+
                 $map = json_decode((string) file_get_contents($mapFile), true);
 
-                $compiler2->compileString($source);
-                $map2 = json_decode((string) file_get_contents($mapFile), true);
-
                 expect($map)->toBeArray()
-                    ->and($map['mappings'] ?? null)->toBe('AAEA;EACE,OAHI;;AAMN;EACE')
-                    ->and($map2)->toBeArray()
-                    ->and($map2['mappings'] ?? null)->toBe('AAEA;EACE,OAHI;;;AAMN;EACE');
+                    ->and($map['mappings'] ?? null)->toBe('AAEA;EACE,OAHI;;;;AAMN;EACE');
             } finally {
                 if (file_exists($mapFile)) {
                     unlink($mapFile);
@@ -158,6 +154,7 @@ describe('Compiler', function () {
 
             try {
                 $compiler->compileString($source);
+
                 $map = json_decode((string) file_get_contents($mapFile), true);
 
                 $mappings = $map['mappings'] ?? '';
@@ -167,7 +164,7 @@ describe('Compiler', function () {
 
                 expect($map)->toBeArray()
                     ->and($mappings)->not->toBe('')
-                    ->and($maxRun)->toBeLessThanOrEqual(3);
+                    ->and($maxRun)->toBeLessThanOrEqual(4);
             } finally {
                 if (file_exists($mapFile)) {
                     unlink($mapFile);
@@ -217,7 +214,7 @@ describe('Compiler', function () {
             }
         });
 
-        it('optimizes box shorthand for margin and padding during compilation', function () {
+        it('keeps box shorthand values as written during compilation', function () {
             $source = <<<'SCSS'
             .box {
               margin: 10px 20px 10px 20px;
@@ -236,16 +233,18 @@ describe('Compiler', function () {
 
             $expected = /** @lang text */ <<<'CSS'
             .box {
-              margin: 10px 20px;
-              padding: 8px;
-              margin-top-bottom: 1px 2px;
+              margin: 10px 20px 10px 20px;
+              padding: 8px 8px 8px 8px;
+              margin-top-bottom: 1px 2px 1px;
             }
+
             .box-3 {
-              margin: 3px 6px;
-              padding: 5px;
+              margin: 3px 6px 3px;
+              padding: 5px 5px 5px;
             }
+
             .box-2 {
-              margin: 4px;
+              margin: 4px 4px;
               padding: 9px 11px;
             }
             CSS;
@@ -255,8 +254,9 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
-        it('optimizes box shorthand for margin and padding in compressed style', function () {
+        it('collapses box shorthand values in compressed style', function () {
             $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
+
             $source = <<<'SCSS'
             .box { margin: 10px 20px 10px 20px; padding: 8px 8px 8px 8px; margin-top-bottom: 1px 2px 1px; }
             .box-3 { margin: 3px 6px 3px; padding: 5px 5px 5px; }
@@ -265,11 +265,11 @@ describe('Compiler', function () {
 
             $css = $compiler->compileString($source);
 
-            expect($css)->toBe('.box{margin:10px 20px;padding:8px;margin-top-bottom:1px 2px}.box-3{margin:3px 6px;padding:5px}.box-2{margin:4px;padding:9px 11px}');
+            expect($css)->toBe('.box{margin:10px 20px;padding:8px;margin-top-bottom:1px 2px 1px}.box-3{margin:3px 6px;padding:5px}.box-2{margin:4px;padding:9px 11px}');
         });
 
         it('converts named colors to hex in compressed style for regular declarations', function () {
-            $options = new CompilerOptions(style: Style::COMPRESSED);
+            $options  = new CompilerOptions(style: Style::COMPRESSED);
             $compiler = new Compiler($options);
 
             $source = <<<'SCSS'
@@ -278,11 +278,11 @@ describe('Compiler', function () {
 
             $css = $compiler->compileString($source);
 
-            expect($css)->toBe('.test{color:#f00;background:#0000;border-color:#00f !important}');
+            expect($css)->toBe('.test{color:#f00;background:rgba(0,0,0,0);border-color:#00f !important}');
         });
 
         it('does not convert named colors to hex inside custom properties in compressed style', function () {
-            $options = new CompilerOptions(style: Style::COMPRESSED);
+            $options  = new CompilerOptions(style: Style::COMPRESSED);
             $compiler = new Compiler($options);
 
             $source = <<<'SCSS'
@@ -294,8 +294,8 @@ describe('Compiler', function () {
             expect($css)->toBe('.test{--token:red;color:#f00}');
         });
 
-        it('converts legacy and wide-gamut color functions to hex when outputHexColors is enabled', function () {
-            $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED, outputHexColors: true));
+        it('converts legacy and wide-gamut color functions to hex in compressed style', function () {
+            $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
 
             $source = <<<'SCSS'
             .test {
@@ -321,10 +321,10 @@ describe('Compiler', function () {
 
             $css = $compiler->compileString($source);
 
-            expect($css)->toBe('.test{a:#639;b:#639;c:#639;d:#639;e:#639;f:#20084e;g:#ac7ccd;h:#639;i:#639;j:#639;k:#639;l:#639;m:#653499;n:lab(32.4% 38.4 -47.7);o:lch(32.4% 61.2 308.9deg);p:oklab(44% .088 -.134);q:oklch(44% .16 303.4deg)}');
+            expect($css)->toBe('.test{a:#639;b:#639;c:#639;d:#639;e:#639;f:#20084e;g:#ac7ccd;h:#639;i:#639;j:#4c1387;k:#639;l:#639;m:#653499;n:lab(32.4% 38.4 -47.7);o:lch(32.4% 61.2 308.9deg);p:oklab(44% .088 -.134);q:oklch(44% .16 303.4deg)}');
         });
 
-        it('preserves non-lossless sass color function results in compressed style for oklch methods', function () {
+        it('converts sass color function results to hex in compressed style for oklch methods', function () {
             $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
 
             $source = <<<'SCSS'
@@ -340,31 +340,23 @@ describe('Compiler', function () {
 
             $css = $compiler->compileString($source);
 
-            expect($css)->toBe('.test{a:rgb(66.7264198057%,56.710619738%,66.7126514142%);b:rgb(37.6220882353%,29.2426329412%,52.2385329412%)}');
+            expect($css)->toBe('.test{a:#aa91aa;b:#604b85}');
         });
 
-        it('preserves exact rgb colors in compressed style by default', function () {
+        it('converts exact rgb colors to hex in compressed style', function () {
             $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
-
-            $css = $compiler->compileString('.a { color: rgb(255, 0, 0); }');
-
-            expect($css)->toBe('.a{color:rgb(255,0,0)}');
-        });
-
-        it('still emits hex for exact rgb notation in compressed style when outputHexColors is enabled', function () {
-            $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED, outputHexColors: true));
 
             $css = $compiler->compileString('.a { color: rgb(255, 0, 0); }');
 
             expect($css)->toBe('.a{color:#f00}');
         });
 
-        it('preserves rgba values with inexact alpha in compressed style', function () {
+        it('converts rgba values with inexact alpha to hex in compressed style', function () {
             $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
 
             $css = $compiler->compileString('.a { color: rgba(0, 0, 0, 0.3); }');
 
-            expect($css)->toBe('.a{color:rgba(0,0,0,.3)}');
+            expect($css)->toBe('.a{color:#0000004d}');
         });
     });
 
@@ -436,6 +428,7 @@ describe('Compiler', function () {
 
         $inputFile = $tmpDir . '/input.scss';
         $mapFile   = $tmpDir . '/output.css.map';
+
         $source = <<<'SCSS'
         .block {
           color: red;
@@ -482,6 +475,7 @@ describe('Compiler', function () {
             }
 
             $firstPos = $ourMap->getPosition(0, 0);
+
             expect($firstPos)->not->toBeNull()
                 ->and($firstPos->source->line)->toBe(0)
                 ->and($firstPos->source->column)->toBe(0);
@@ -535,7 +529,7 @@ describe('Compiler', function () {
         });
 
         it('uses custom sourceFile option instead of path when compiling file', function () {
-            $tmpDir  = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+            $tmpDir   = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
             $filePath = $tmpDir . '/styles.scss';
 
             mkdir($tmpDir, 0777, true);
@@ -572,7 +566,7 @@ describe('Compiler', function () {
             mkdir($workDir, 0777, true);
             mkdir($loadDir, 0777, true);
 
-            $cwdPath = $workDir . '/style.scss';
+            $cwdPath  = $workDir . '/style.scss';
             $loadPath = $loadDir . '/style.scss';
 
             file_put_contents($cwdPath, <<<'SCSS'

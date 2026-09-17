@@ -10,5 +10,7 @@ interface RuleParserContextInterface
 {
     public function isInsideBraces(): bool;
 
+    public function isInsideCssFunctionBody(): bool;
+
     public function parseRuleFromSelector(string $selector, int $line = 1, int $column = 1): RuleNode;
 }

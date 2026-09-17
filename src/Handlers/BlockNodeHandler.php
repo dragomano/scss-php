@@ -29,12 +29,12 @@ use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Style;
 
 use function implode;
+use function str_starts_with;
+use function strtolower;
 use function trim;
 
 final readonly class BlockNodeHandler
 {
-    private DeferredChunkManager $chunks;
-
     private MixinHandler $mixin;
 
     /** @var list<CompilationStepInterface> */
@@ -50,21 +50,12 @@ final readonly class BlockNodeHandler
         private Module $module,
         private Render $render,
         private Selector $selector,
+        private DeferredChunkManager $chunks,
     ) {
-        $this->chunks = new DeferredChunkManager(
-            $this->dispatcher,
-            $this->context,
-            $this->evaluation,
-            $this->render,
-            $this->selector,
-        );
-
         $this->mixin = new MixinHandler(
-            $this->dispatcher,
             $this->evaluation,
             $registry,
             $this->module,
-            $this->render,
             $this->selector,
             $this->chunks,
         );
@@ -87,10 +78,15 @@ final readonly class BlockNodeHandler
     {
         $ctx->env->enterScope();
 
+        if (str_starts_with(strtolower($node->selector), '@function --')) {
+            $ctx->env->getCurrentScope()->setInsideCssFunctionBody(true);
+        }
+
         $outputState = $this->render->outputState();
 
-        $outputState->deferral->atRootStack[]   = [];
-        $outputState->deferral->bubblingStack[] = [];
+        $outputState->deferral->atRootStack[]        = [];
+        $outputState->deferral->bubblingStack[]      = [];
+        $outputState->deferral->currentRuleHasOutput = false;
 
         $ruleCtx = new RuleCompilationContext(
             node: $node,
@@ -116,9 +112,10 @@ final readonly class BlockNodeHandler
 
     public function handleSupports(SupportsNode $node, TraversalContext $ctx): string
     {
-        $output    = '';
-        $prefix    = $this->render->indentPrefix($ctx->indent);
-        $condition = $this->selector->resolveSupportsCondition($node->condition, $ctx->env);
+        $output         = '';
+        $prefix         = $this->render->indentPrefix($ctx->indent);
+        $condition      = $this->selector->resolveSupportsCondition($node->condition, $ctx->env);
+        $headerPosition = $this->render->savePosition();
 
         $this->render->appendChunk($output, $prefix . '@supports ' . $condition . ' {');
 
@@ -151,6 +148,7 @@ final readonly class BlockNodeHandler
                         $this->evaluation->evaluateValue($child->value, $ctx->env),
                         $child->global,
                         $child->default,
+                        $child->line,
                     );
 
                     continue;
@@ -209,7 +207,9 @@ final readonly class BlockNodeHandler
                 return $outside;
             }
 
-            $this->render->appendChunk($output, '}');
+            $this->render->restorePosition($headerPosition);
+
+            return '';
         }
 
         if ($outsideChunks !== []) {

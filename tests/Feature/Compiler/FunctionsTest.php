@@ -5,12 +5,28 @@ declare(strict_types=1);
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Syntax;
-use Tests\ArrayLogger;
+use Tests\Support\ArrayLogger;
 
 describe('Compiler', function () {
     beforeEach(function () {
         $this->logger   = new ArrayLogger();
         $this->compiler = new Compiler(logger: $this->logger);
+    });
+
+    it('preserves escaped interpolation in unquoted urls', function () {
+        $source = <<<'SCSS'
+        a { b: url(\#{}); c: url("\#{literal}"); d: url(#{"file"}.png); }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        a {
+          b: url(\#{});
+          c: url("#{literal}");
+          d: url(file.png);
+        }
+        CSS;
+
+        expect($this->compiler->compileString($source))->toEqualCss($expected);
     });
 
     it('evaluates user-defined functions', function () {

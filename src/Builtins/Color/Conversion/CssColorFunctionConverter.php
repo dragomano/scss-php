@@ -16,6 +16,8 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Values\AstValueInspector;
 
 use function abs;
+use function count;
+use function in_array;
 use function round;
 use function strtolower;
 
@@ -62,7 +64,7 @@ final readonly class CssColorFunctionConverter
                 return null;
             }
 
-            [$x, $y, $z] = $this->colorSpaceConverter->xyzD50ToD65($xyz[0]->x, $xyz[0]->y, $xyz[0]->z);
+            [$x, $y, $z] = $this->colorSpaceConverter->d50ToD65((float) $xyz[0]->x, (float) $xyz[0]->y, (float) $xyz[0]->z);
 
             return [new XyzColor($x, $y, $z), $xyz[1]];
         }
@@ -97,7 +99,7 @@ final readonly class CssColorFunctionConverter
             return null;
         }
 
-        [$x, $y, $z] = $this->colorSpaceConverter->xyzD65ToD50($xyz[0]->x, $xyz[0]->y, $xyz[0]->z);
+        [$x, $y, $z] = $this->colorSpaceConverter->d65ToD50((float) $xyz[0]->x, (float) $xyz[0]->y, (float) $xyz[0]->z);
 
         return [new XyzColor($x, $y, $z), $xyz[1]];
     }
@@ -279,9 +281,9 @@ final readonly class CssColorFunctionConverter
             return [$this->colorSpaceConverter->labToXyzD50($lightness, $channel2, $channel3), $opacity];
         }
 
-        $xyzD65 = $this->colorSpaceConverter->lchChannelsToXyzD65($lightness, $channel2, $channel3);
+        $xyzD65 = $this->colorSpaceConverter->lchToXyzD65($lightness, $channel2, $channel3);
 
-        [$x, $y, $z] = $this->colorSpaceConverter->xyzD65ToD50($xyzD65->x, $xyzD65->y, $xyzD65->z);
+        [$x, $y, $z] = $this->colorSpaceConverter->d65ToD50((float) $xyzD65->x, (float) $xyzD65->y, (float) $xyzD65->z);
 
         return [new XyzColor($x, $y, $z), $opacity];
     }
@@ -325,8 +327,8 @@ final readonly class CssColorFunctionConverter
 
         return [
             $name === 'oklab'
-                ? $this->colorSpaceConverter->oklabChannelsToXyzD65($lightness / 100.0, $channel2, $channel3)
-                : $this->colorSpaceConverter->oklchChannelsToXyzD65($lightness / 100.0, $channel2, $channel3),
+                ? $this->colorSpaceConverter->oklabToXyzD65($lightness / 100.0, $channel2, $channel3)
+                : $this->colorSpaceConverter->oklchToXyzD65($lightness / 100.0, $channel2, $channel3),
             $opacity,
         ];
     }
@@ -557,7 +559,7 @@ final readonly class CssColorFunctionConverter
                 return null;
             }
 
-            return $this->colorSpaceConverter->clamp($value, 100.0);
+            return $value;
         });
     }
 

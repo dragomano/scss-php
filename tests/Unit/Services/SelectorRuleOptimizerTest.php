@@ -73,4 +73,85 @@ describe('SelectorRuleOptimizer', function () {
         expect($this->optimizer->optimizeAdjacentSiblingRuleBlocks($input))
             ->toBe($input);
     });
+
+    it('collapses redundant same-property declarations to the last one when collapsing is enabled', function () {
+        $input = /** @lang text */ <<<'CSS'
+        .a {
+          color: red;
+          color: blue;
+        }
+        CSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .a {
+          color: blue;
+        }
+        CSS;
+
+        expect($this->optimizer->optimizeRuleBlock($input, true))
+            ->toBe($expected);
+    });
+
+    it('keeps vendor-prefixed fallback values when collapsing redundant declarations', function () {
+        $input = /** @lang text */ <<<'CSS'
+        .w {
+          display: -webkit-box;
+          display: -moz-box;
+          display: -webkit-flex;
+          display: flex;
+        }
+        CSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .w {
+          display: -webkit-box;
+          display: -moz-box;
+          display: -webkit-flex;
+          display: flex;
+        }
+        CSS;
+
+        expect($this->optimizer->optimizeRuleBlock($input, true))
+            ->toBe($expected);
+    });
+
+    it('keeps !important declarations when collapsing redundant declarations', function () {
+        $input = /** @lang text */ <<<'CSS'
+        .a {
+          color: red !important;
+          color: blue;
+        }
+        CSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .a {
+          color: red !important;
+          color: blue;
+        }
+        CSS;
+
+        expect($this->optimizer->optimizeRuleBlock($input, true))
+            ->toBe($expected);
+    });
+
+    it('collapses redundant declarations per property without losing unrelated properties', function () {
+        $input = /** @lang text */ <<<'CSS'
+        .a {
+          color: red;
+          margin: 0;
+          color: blue;
+          margin: 2px;
+        }
+        CSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .a {
+          color: blue;
+          margin: 2px;
+        }
+        CSS;
+
+        expect($this->optimizer->optimizeRuleBlock($input, true))
+            ->toBe($expected);
+    });
 });

@@ -7,6 +7,7 @@ namespace Bugo\SCSS\Parser;
 use Bugo\SCSS\Lexer\Token;
 use Bugo\SCSS\Lexer\TokenStream;
 use Bugo\SCSS\Lexer\TokenType;
+use Bugo\SCSS\Utils\StringEscapeDecoder;
 use Closure;
 
 use function in_array;
@@ -14,7 +15,7 @@ use function max;
 use function strtolower;
 use function trim;
 
-final class StreamUtils
+final class TokenStreamHelper
 {
     public static function consumeIdentifier(TokenStream $stream): string
     {
@@ -59,6 +60,16 @@ final class StreamUtils
         return $value;
     }
 
+    public static function wrapComment(Token $token): ?string
+    {
+        return match ($token->type) {
+            TokenType::COMMENT_LOUD      => '/*' . $token->value . '*/',
+            TokenType::COMMENT_PRESERVED => '/*!' . $token->value . '*/',
+            TokenType::COMMENT_SILENT    => '//' . $token->value,
+            default                      => null,
+        };
+    }
+
     public static function updateNestingDepth(Token $token, int &$parenDepth, int &$bracketDepth): void
     {
         if ($token->type === TokenType::LPAREN) {
@@ -96,7 +107,7 @@ final class StreamUtils
         }
 
         if ($quoteStringToken && $token->type === TokenType::STRING) {
-            $buffer .= '"' . $token->value . '"';
+            $buffer .= '"' . ($token->rawValue ?? StringEscapeDecoder::encodeQuotedContent($token->value, '"')) . '"';
 
             return;
         }
@@ -133,11 +144,37 @@ final class StreamUtils
         return false;
     }
 
+    public static function consumeInterpolationFragmentOnly(
+        TokenStream $stream,
+        int &$interpolationDepth,
+        Token $token,
+    ): bool {
+        if ($token->type === TokenType::HASH && $stream->peek()->type === TokenType::LBRACE) {
+            $interpolationDepth++;
+
+            $stream->advance(2);
+
+            return true;
+        }
+
+        if ($interpolationDepth > 0 && $token->type === TokenType::RBRACE) {
+            $interpolationDepth--;
+
+            $stream->advance();
+
+            return true;
+        }
+
+        return false;
+    }
+
     public static function readRawUntil(TokenStream $stream, Closure $shouldStop): string
     {
         $result       = '';
         $parenDepth   = 0;
         $bracketDepth = 0;
+        $interpDepth  = 0;
+        $previous     = null;
 
         while (! $stream->isEof()) {
             $token = $stream->current();
@@ -150,15 +187,38 @@ final class StreamUtils
                 $bracketDepth++;
             } elseif ($token->type === TokenType::RBRACKET) {
                 $bracketDepth--;
+            } elseif (
+                $token->type === TokenType::LBRACE
+                && $previous !== null
+                && $previous->type === TokenType::HASH
+            ) {
+                $interpDepth++;
             }
 
-            if ($parenDepth === 0 && $bracketDepth === 0 && $shouldStop($token)) {
+            $isInterpolationClose = $token->type === TokenType::RBRACE && $interpDepth > 0;
+
+            if ($isInterpolationClose) {
+                $interpDepth--;
+            }
+
+            if (
+                ! $isInterpolationClose
+                && $parenDepth === 0
+                && $bracketDepth === 0
+                && $shouldStop($token)
+            ) {
                 break;
             }
 
-            $result .= $token->type === TokenType::WHITESPACE
-                ? ' '
-                : self::tokenToRawString($token->type, $token->value);
+            if ($token->type === TokenType::WHITESPACE) {
+                $result .= ' ';
+            } elseif ($token->type === TokenType::STRING) {
+                $result .= '"' . ($token->rawValue ?? $token->value) . '"';
+            } else {
+                $result .= self::tokenToRawString($token->type, $token->value);
+            }
+
+            $previous = $token;
 
             $stream->advance();
         }
@@ -225,6 +285,14 @@ final class StreamUtils
         $buffer = '';
 
         while ($stream->match(TokenType::IDENTIFIER, TokenType::DOT)) {
+            if (
+                $stream->is(TokenType::DOT)
+                && $stream->peek()->type === TokenType::DOT
+                && $stream->peek(2)->type === TokenType::DOT
+            ) {
+                break;
+            }
+
             $buffer .= $stream->current()->value;
 
             $stream->advance();

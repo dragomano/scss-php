@@ -5,15 +5,22 @@ declare(strict_types=1);
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Handlers\DeclarationNodeHandler;
 use Bugo\SCSS\Nodes\DeclarationNode;
+use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
+use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
+use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Text;
-use Tests\RuntimeFactory;
+use Bugo\SCSS\States\OutputState;
+use Tests\Support\RuntimeFactory;
 
 it('renders declarations with important flag', function () {
     $runtime = RuntimeFactory::createRuntime();
@@ -48,12 +55,13 @@ it('replaces declaration value with non-strict arithmetic result when available'
     $evaluation->shouldReceive('evaluateArithmeticList')->once()->with($list, false, $env)->andReturn($resolved);
     $evaluation->shouldReceive('isSassNullValue')->once()->with($resolved)->andReturn(false);
     $evaluation->shouldReceive('shouldCompressNamedColorForProperty')->once()->with('width')->andReturn(false);
-    $evaluation->shouldReceive('tryEvaluateFormattedDeclarationExpression')->once()->with('width', $resolved, $env)->andReturn(null);
+    $evaluation->shouldReceive('tryEvaluateFormattedDeclarationExpression')->once()->with('width', $resolved, $env, null)->andReturn(null);
     $evaluation->shouldReceive('format')->once()->with($resolved, $env)->andReturn('5');
     $evaluation->shouldReceive('normalizeDeclarationSlashSpacing')->once()->with('width', '5')->andReturn('5');
 
     $render = mock(Render::class);
     $render->shouldReceive('indentPrefix')->once()->with(0)->andReturn('');
+    $render->shouldReceive('outputState')->once()->andReturn(new OutputState());
     $render->shouldReceive('collectSourceMappings')->once()->andReturn(false);
 
     $text = mock(Text::class);
@@ -76,12 +84,12 @@ it('interpolates formatted declaration values that still contain interpolation m
     $evaluation->shouldReceive('evaluateDeclarationValue')->once()->with($value, 'color', $env)->andReturn($evaluated);
     $evaluation->shouldReceive('isSassNullValue')->once()->with($evaluated)->andReturn(false);
     $evaluation->shouldReceive('shouldCompressNamedColorForProperty')->once()->with('color')->andReturn(false);
-    $evaluation->shouldReceive('tryEvaluateFormattedDeclarationExpression')->once()->with('color', $evaluated, $env)->andReturn(null);
     $evaluation->shouldReceive('format')->once()->with($evaluated, $env)->andReturn('#{$name}');
     $evaluation->shouldReceive('normalizeDeclarationSlashSpacing')->once()->with('color', '#{$name}')->andReturn('#{$name}');
 
     $render = mock(Render::class);
     $render->shouldReceive('indentPrefix')->once()->with(0)->andReturn('');
+    $render->shouldReceive('outputState')->once()->andReturn(new OutputState());
     $render->shouldReceive('collectSourceMappings')->once()->andReturn(false);
 
     $text = mock(Text::class);
@@ -161,4 +169,47 @@ it('allows bare declarations for descriptor-compatible directive contexts and re
 
     expect(fn() => $runtime->declaration()->handle(new DeclarationNode('color', new StringNode('red')), $ctx))
         ->toThrow(SassErrorException::class, 'Expected identifier.');
+});
+
+it('skips blank lines while reindenting custom property values', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = RuntimeFactory::context();
+
+    expect($runtime->declaration()->handle(new DeclarationNode('--x', new StringNode("1px\n\n2px")), $ctx))
+        ->toBe("--x:1px\n\n2px;");
+});
+
+it('preserves sass null arguments in raw css function values when plain css is active', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = new TraversalContext(new Environment(), 0, true);
+
+    expect($runtime->declaration()->handle(
+        new DeclarationNode('color', new FunctionNode('fn', [new NullNode()])),
+        $ctx,
+    ))->toBe('color: fn(null);');
+});
+
+it('preserves sass null entries in raw css map values when plain css is active', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = new TraversalContext(new Environment(), 0, true);
+
+    expect($runtime->declaration()->handle(
+        new DeclarationNode('color', new MapNode([
+            new MapPair(new StringNode('a'), new NullNode()),
+        ])),
+        $ctx,
+    ))->toBe('color: (a: null);');
+});
+
+it('renders named arguments inside raw css function values when plain css is active', function () {
+    $runtime = RuntimeFactory::createRuntime();
+    $ctx     = new TraversalContext(new Environment(), 0, true);
+
+    expect($runtime->declaration()->handle(
+        new DeclarationNode('color', new FunctionNode('fn', [
+            new NamedArgumentNode('a', new NumberNode(1)),
+            new NullNode(),
+        ])),
+        $ctx,
+    ))->toBe('color: fn($a: 1, null);');
 });

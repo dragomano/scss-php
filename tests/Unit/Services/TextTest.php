@@ -13,7 +13,7 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\Text;
-use Tests\RuntimeFactory;
+use Tests\Support\RuntimeFactory;
 
 describe('Text service', function () {
     beforeEach(function () {
@@ -59,6 +59,127 @@ describe('Text service', function () {
 
         it('keeps trailing text when interpolation is not closed', function () {
             expect($this->text->replaceInterpolations('a#{b', $this->env))->toBe('a#{b');
+        });
+
+        it('skips quoted braces when finding the end of an interpolation', function () {
+            expect($this->text->replaceInterpolations('#{ "}" }', $this->env))->toBe('}');
+        });
+
+        it('skips loud comments with braces when finding the end of an interpolation', function () {
+            expect($this->text->replaceInterpolations('#{ a /* } */ b }', $this->env))->toBe('a b');
+        });
+
+        it('preserves spacing of nested interpolation resolving to a space list', function () {
+            expect($this->text->interpolateText('#{#{"["\'foo\'"]"}}', $this->env))->toBe('[ foo ]');
+        });
+
+        it('treats nested interpolation results as string literals inside expressions', function () {
+            expect($this->text->interpolateText('#{#{1}+#{2}}', $this->env))->toBe('12');
+        });
+
+        it('assembles quoted templates containing nested interpolations verbatim', function () {
+            expect($this->text->interpolateText('"[#{"["\'foo\'"]"}]"', $this->env))->toBe('"[[ foo ]]"');
+        });
+    });
+
+    describe('resolveSupportsCondition()', function () {
+        it('evaluates arithmetic in both halves of a feature declaration', function () {
+            expect($this->text->resolveSupportsCondition('(1 + 1: 2 * 3)', $this->env))->toBe('(2: 6)');
+        });
+
+        it('drops redundant parentheses around a group', function () {
+            expect($this->text->resolveSupportsCondition('((((a: b))))', $this->env))->toBe('(a: b)');
+        });
+
+        it('keeps parentheses and colons inside quoted values', function () {
+            expect($this->text->resolveSupportsCondition('(a: "b: c)")', $this->env))->toBe('(a: "b: c)")');
+        });
+
+        it('strips a leading comment from an anything expression', function () {
+            expect($this->text->resolveSupportsCondition('(/**/ a b)', $this->env))->toBe('(a b)');
+        });
+
+        it('keeps custom property values unevaluated', function () {
+            expect($this->text->resolveSupportsCondition('(--a: 1 + 1)', $this->env))->toBe('(--a: 1 + 1)');
+        });
+
+        it('keeps function arguments unevaluated', function () {
+            expect($this->text->resolveSupportsCondition('a(1 + 1)', $this->env))->toBe('a(1 + 1)');
+        });
+
+        it('concatenates operands when an expression is not a valid Sass value', function () {
+            $this->env->getCurrentScope()->setVariable('feature', new StringNode('feature2'));
+
+            expect($this->text->resolveSupportsCondition('($feature + 3: b)', $this->env))
+                ->toBe('(feature23: b)');
+        });
+
+        it('ignores a colon inside a quoted feature name', function () {
+            expect($this->text->resolveSupportsCondition('("a: b": c)', $this->env))->toBe('("a: b": c)');
+        });
+
+        it('ignores escaped quotes when scanning a quoted value', function () {
+            expect($this->text->resolveSupportsCondition('(a: "b\\") c")', $this->env))
+                ->toBe('(a: "b\\") c")');
+        });
+
+        it('keeps an unterminated quoted value as is', function () {
+            expect($this->text->resolveSupportsCondition('(a: "b) {c', $this->env))->toBe('(a: "b) {c');
+        });
+
+        it('keeps a group without a feature name as an anything expression', function () {
+            expect($this->text->resolveSupportsCondition('(: b)', $this->env))->toBe('(: b)');
+        });
+
+        it('keeps an invalid custom property name as an anything expression', function () {
+            expect($this->text->resolveSupportsCondition('(--a b: c)', $this->env))->toBe('(--a b: c)');
+        });
+
+        it('keeps a feature declaration without a value as an anything expression', function () {
+            expect($this->text->resolveSupportsCondition('(a:)', $this->env))->toBe('(a:)');
+        });
+
+        it('concatenates operands when evaluation throws a Sass error', function () {
+            expect($this->text->resolveSupportsCondition('(a: 1px + 1em)', $this->env))->toBe('(a: 1px1em)')
+                ->and($this->text->resolveSupportsCondition('(a: nth((), 1) + 1)', $this->env))
+                ->toBe('(a: nth((), 1) + 1)');
+        });
+
+        it('ignores arithmetic nested in parentheses or brackets', function () {
+            expect($this->text->resolveSupportsCondition('(a: b(c + d))', $this->env))->toBe('(a: b(c + d))')
+                ->and($this->text->resolveSupportsCondition('(a: [1 + 1])', $this->env))->toBe('(a: [1 + 1])');
+        });
+
+        it('empties a group holding only a line comment without a newline', function () {
+            expect($this->text->resolveSupportsCondition('(// comment)', $this->env))->toBe('()');
+        });
+
+        it('empties function arguments holding a line comment without a newline', function () {
+            expect($this->text->resolveSupportsCondition('a(// comment)', $this->env))->toBe('a()');
+        });
+
+        it('joins custom property values across a carriage return and newline', function () {
+            expect($this->text->resolveSupportsCondition("(--a: 1\r\n2)", $this->env))->toBe('(--a: 12)');
+        });
+
+        it('strips an unterminated leading comment before a feature declaration', function () {
+            expect($this->text->resolveSupportsCondition('/* x (a: b)', $this->env))->toBe('(a: b)');
+        });
+
+        it('strips a line comment without a newline before a feature declaration', function () {
+            expect($this->text->resolveSupportsCondition('// x (a: b)', $this->env))->toBe('x (a: b)');
+        });
+
+        it('collapses concatenation into a non function parenthesis after a failed evaluation', function () {
+            expect($this->text->resolveSupportsCondition('(a: 1px + 1em (x))', $this->env))->toBe('(a: 1px1em x)');
+        });
+
+        it('keeps a percent sign after plus when evaluation fails', function () {
+            expect($this->text->resolveSupportsCondition('(a: 1px + %)', $this->env))->toBe('(a: 1px + %)');
+        });
+
+        it('keeps a map operand after plus when evaluation fails', function () {
+            expect($this->text->resolveSupportsCondition('(a: 1px + (a: b))', $this->env))->toBe('(a: 1px + (a: b))');
         });
     });
 
@@ -214,6 +335,8 @@ describe('Text service', function () {
                 new class implements ParserInterface {
                     public function setTrackSourceLocations(bool $track): void {}
 
+                    public function setPlainCss(bool $plainCss): void {}
+
                     public function parse(string $source): RootNode
                     {
                         return new RootNode([new StringNode('not-a-rule')]);
@@ -255,6 +378,154 @@ describe('Text service', function () {
             $result = $this->text->interpolateText('#{1 + 2}', $this->env);
 
             expect($result)->toBe('3');
+        });
+
+        it('falls back to raw template content when quoted interpolation is never closed', function () {
+            expect($this->text->interpolateText('#{ "#{ "a{" x }" }', $this->env))->toBe('a{ x');
+        });
+
+        it('keeps nested interpolation as literal when its closing brace is missing', function () {
+            expect($this->text->interpolateText('#{ #{ "a{" x }}', $this->env))->toBe('a{ x');
+        });
+
+        it('skips escaped hashes when tracking quote state before nested interpolation', function () {
+            expect($this->text->interpolateText('#{a\\\\#{b}}', $this->env))->toBe('a\\\\ b');
+        });
+
+        it('treats a quoted fragment with an inner quote before interpolation as a literal', function () {
+            expect($this->text->interpolateText('#{ "a"#{b}"" }', $this->env))->toBe('a b ');
+        });
+    });
+
+    describe('evaluateMediaFeatureOperands()', function () {
+        it('keeps the rest of the prelude when a feature group is never closed', function () {
+            expect($this->text->evaluateMediaFeatureOperands('(unclosed', $this->env))->toBe('(unclosed');
+        });
+
+        it('keeps comparison operands inside quotes intact', function () {
+            expect($this->text->evaluateMediaFeatureOperands('(width >= "a\\\"b")', $this->env))
+                ->toBe('(width >= "a\\\"b")');
+        });
+
+        it('keeps the original operand when formatting yields an empty value', function () {
+            $text = new Text(
+                new class implements ParserInterface {
+                    public function setTrackSourceLocations(bool $track): void {}
+
+                    public function setPlainCss(bool $plainCss): void {}
+
+                    public function parse(string $source): RootNode
+                    {
+                        return new RootNode([]);
+                    }
+
+                    public function parseInlineExpression(string $expr): AstNode
+                    {
+                        return new NumberNode(1);
+                    }
+                },
+                new class implements AstValueEvaluatorInterface {
+                    public function evaluate(AstNode $node, Environment $env): AstNode
+                    {
+                        return $node;
+                    }
+                },
+                new class implements AstValueFormatterInterface {
+                    public function format(AstNode $node, Environment $env): string
+                    {
+                        return '';
+                    }
+                },
+            );
+
+            expect($text->evaluateMediaFeatureOperands('(width: 1 + 2)', $this->env))->toBe('(width: 1 + 2)');
+        });
+    });
+
+    describe('stripAllComments()', function () {
+        it('stops at an unterminated comment and keeps preceding text', function () {
+            expect($this->text->stripAllComments('a /* unterminated'))->toBe('a');
+        });
+    });
+
+    describe('stripLeadingComments()', function () {
+        it('returns an empty string for an unterminated leading comment', function () {
+            expect($this->text->stripLeadingComments('/* no close'))->toBe('');
+        });
+    });
+
+    describe('stripCommentsExceptTrailing()', function () {
+        it('strips comments from the head while keeping the trailing comment', function () {
+            expect($this->text->stripCommentsExceptTrailing('/* a */ b /* c */'))->toBe(' b /* c */');
+        });
+
+        it('keeps the whole text when a head comment is unterminated', function () {
+            expect($this->text->stripCommentsExceptTrailing('/* a */ /*/'))->toBe('');
+        });
+
+        it('falls back to stripping all comments when no trailing comment open is found', function () {
+            expect($this->text->stripCommentsExceptTrailing('x/*/'))->toBe('x');
+        });
+    });
+
+    describe('resolveDirectivePrelude()', function () {
+        it('returns an empty string for an empty prelude', function () {
+            expect($this->text->resolveDirectivePrelude('', $this->env))->toBe('');
+        });
+
+        it('keeps an unterminated loud comment in the prelude', function () {
+            expect($this->text->resolveDirectivePrelude('screen /* c', $this->env))->toBe('screen /* c');
+        });
+
+        it('keeps a negated media type as is', function () {
+            expect($this->text->resolveDirectivePrelude('(not screen)', $this->env))->toBe('(not screen)');
+        });
+
+        it('keeps a negated group with a non-parenthesized tail as is', function () {
+            expect($this->text->resolveDirectivePrelude('(not (a) and b)', $this->env))->toBe('(not (a) and b)');
+        });
+
+        it('keeps an unclosed interpolation span as is', function () {
+            expect($this->text->resolveDirectivePrelude('x#{unclosed', $this->env))->toBe('x#{unclosed');
+        });
+    });
+
+    describe('normalizeMediaQueryPrelude()', function () {
+        it('keeps interpolations with nested braces intact', function () {
+            expect($this->text->normalizeMediaQueryPrelude('screen and (min-#{"wid{t}h"}: 100px)'))
+                ->toBe('screen and (min-#{"wid{t}h"}: 100px)');
+        });
+    });
+
+    describe('normalizeCssImportQuery()', function () {
+        it('returns an empty import for an empty query', function () {
+            expect($this->text->normalizeCssImportQuery('', $this->env))->toBe('');
+        });
+
+        it('keeps an unclosed url() source without a query', function () {
+            expect($this->text->normalizeCssImportQuery('url(unclosed', $this->env))->toBe('url(unclosed');
+        });
+
+        it('keeps a plain source without a query', function () {
+            expect($this->text->normalizeCssImportQuery('screen', $this->env))->toBe('screen');
+        });
+
+        it('keeps an unclosed feature group as is', function () {
+            expect($this->text->normalizeCssImportQuery('"x" (unclosed', $this->env))->toBe('"x" (unclosed');
+        });
+
+        it('resolves interpolation in a feature group with an invalid static name', function () {
+            $this->env->getCurrentScope()->setVariable('a', new StringNode('color'));
+
+            expect($this->text->normalizeCssImportQuery('"x" (#{$a}: b)', $this->env))->toBe('"x" (color: b)');
+        });
+
+        it('resolves an empty feature group to empty parentheses', function () {
+            expect($this->text->normalizeCssImportQuery('"x" ( )', $this->env))->toBe('"x" ()');
+        });
+
+        it('unquotes a quoted feature group', function () {
+            expect($this->text->normalizeCssImportQuery('"a" ("x")', $this->env))->toBe('"a" (x)');
         });
     });
 });

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\States;
 
+use Bugo\SCSS\LoadedFile;
+use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Runtime\Scope;
 
 final class ModuleState
@@ -14,7 +16,7 @@ final class ModuleState
     /** @var array<string, string> */
     private array $idToNamespace = [];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, LoadedModule> */
     public array $importedModules = [];
 
     /** @var array<string, array{id?: string, scope: Scope, css: string}> */
@@ -26,6 +28,12 @@ final class ModuleState
     /** @var array<string, bool> */
     public array $emittedUseCss = [];
 
+    /** @var array<string, bool> */
+    public array $emittedModuleCss = [];
+
+    /** @var array<string, LoadedModule> */
+    public array $anonymousUseModules = [];
+
     public int $importEvaluationDepth = 0;
 
     public int $callDepth = 0;
@@ -35,9 +43,38 @@ final class ModuleState
     /** @var array<string, bool> */
     public array $loadingFiles = [];
 
+    /** @var array<string, LoadedFile> */
+    public array $prefetchedFiles = [];
+
+    /** @var array<string, RootNode> */
+    public array $prefetchedAsts = [];
+
+    public string $currentModuleId = '';
+
+    public string $currentImportRoot = '';
+
+    /** @var array<string, array<string, string>> */
+    public array $branchModuleCss = [];
+
+    /** @var array<string, array<string, bool>> */
+    public array $branchCompileFiles = [];
+
+    /** @var array<string, array<string, bool>> */
+    public array $branchEmittedCss = [];
+
+    /**
+     * Emitted-CSS snapshot taken when the current @import evaluation started.
+     *
+     * @var array{forward: array<string, bool>, use: array<string, bool>, module: array<string, bool>}|null
+     */
+    public ?array $importEmittedSnapshot = null;
+
+    public int $branchSessionDepth = 0;
+
     public function registerModule(string $namespace, string $id, Scope $scope, string $css): void
     {
         $module = new LoadedModule($id, $scope, $css);
+
         $this->loadedModules[$namespace] = $module;
         $this->idToNamespace[$id]        = $namespace;
     }
@@ -65,6 +102,51 @@ final class ModuleState
         $this->idToNamespace[$module->id] = $namespace;
     }
 
+    public function prefetchModule(string $parentId, string $url, string $path, string $content, RootNode $ast): void
+    {
+        $this->prefetchedFiles[$parentId . "\0" . $url] = new LoadedFile($path, $content);
+
+        $this->prefetchedAsts[$path] = $ast;
+    }
+
+    public function prefetchedFile(string $url): ?LoadedFile
+    {
+        return $this->prefetchedFiles[$this->currentModuleId . "\0" . $url] ?? null;
+    }
+
+    public function prefetchedAst(string $path): ?RootNode
+    {
+        return $this->prefetchedAsts[$path] ?? null;
+    }
+
+    /**
+     * @return array{forward: array<string, bool>, use: array<string, bool>, module: array<string, bool>}
+     */
+    public function takeEmittedCssState(): array
+    {
+        $snapshot = [
+            'forward' => $this->emittedForwardCss,
+            'use'     => $this->emittedUseCss,
+            'module'  => $this->emittedModuleCss,
+        ];
+
+        $this->emittedForwardCss = [];
+        $this->emittedUseCss     = [];
+        $this->emittedModuleCss  = [];
+
+        return $snapshot;
+    }
+
+    /**
+     * @param array{forward: array<string, bool>, use: array<string, bool>, module: array<string, bool>} $snapshot
+     */
+    public function restoreEmittedCssState(array $snapshot): void
+    {
+        $this->emittedForwardCss = $snapshot['forward'];
+        $this->emittedUseCss     = $snapshot['use'];
+        $this->emittedModuleCss  = $snapshot['module'];
+    }
+
     public function reset(): void
     {
         $this->loadedModules         = [];
@@ -73,9 +155,20 @@ final class ModuleState
         $this->forwardedModules      = [];
         $this->emittedForwardCss     = [];
         $this->emittedUseCss         = [];
+        $this->emittedModuleCss      = [];
+        $this->anonymousUseModules   = [];
         $this->importEvaluationDepth = 0;
         $this->callDepth             = 0;
         $this->loadingFiles          = [];
         $this->hasUseDirective       = false;
+        $this->prefetchedFiles       = [];
+        $this->prefetchedAsts        = [];
+        $this->currentModuleId       = '';
+        $this->currentImportRoot     = '';
+        $this->branchModuleCss       = [];
+        $this->branchCompileFiles    = [];
+        $this->branchEmittedCss      = [];
+        $this->importEmittedSnapshot = null;
+        $this->branchSessionDepth    = 0;
     }
 }

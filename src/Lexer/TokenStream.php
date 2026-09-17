@@ -19,11 +19,18 @@ final class TokenStream
     /**
      * @param array<int, Token> $tokens
      */
-    public function __construct(private array $tokens)
-    {
+    public function __construct(
+        private array $tokens,
+        public readonly string $source = '',
+    ) {
         $this->length = count($this->tokens);
 
         $this->tokens[$this->length] = $this->tokens[$this->length - 1];
+    }
+
+    public function getSource(): string
+    {
+        return $this->source;
     }
 
     public function current(): Token
@@ -87,6 +94,30 @@ final class TokenStream
             $tokenType = $this->tokens[$position]->type;
 
             if ($tokenType !== TokenType::WHITESPACE && $tokenType !== TokenType::COMMENT_SILENT) {
+                break;
+            }
+
+            $position++;
+        }
+
+        $this->position = $position;
+    }
+
+    public function skipWhitespaceAndComments(): void
+    {
+        $position = $this->position;
+
+        while ($position < $this->length) {
+            $tokenType = $this->tokens[$position]->type;
+
+            if (
+                ! in_array($tokenType, [
+                    TokenType::WHITESPACE,
+                    TokenType::COMMENT_SILENT,
+                    TokenType::COMMENT_LOUD,
+                    TokenType::COMMENT_PRESERVED,
+                ], true)
+            ) {
                 break;
             }
 

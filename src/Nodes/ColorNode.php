@@ -6,5 +6,9 @@ namespace Bugo\SCSS\Nodes;
 
 final class ColorNode extends AstNode
 {
-    public function __construct(public string $value) {}
+    public function __construct(
+        public string $value,
+        public int $line = 0,
+        public int $column = 0,
+    ) {}
 }

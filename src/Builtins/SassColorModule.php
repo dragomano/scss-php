@@ -141,6 +141,32 @@ final class SassColorModule extends AbstractModule
     {
         $previousDisplayName = $this->beginBuiltinCall($name, $context);
 
+        if (! isset($positional[0]) && isset($named['color'])) {
+            $positional[0] = $named['color'];
+
+            unset($named['color']);
+        }
+
+        if (! isset($positional[1]) && isset($named['amount'])) {
+            $positional[1] = $named['amount'];
+
+            unset($named['amount']);
+        }
+
+        if (! isset($positional[1]) && isset($named['degrees'])) {
+            $positional[1] = $named['degrees'];
+
+            unset($named['degrees']);
+        }
+
+        foreach (['color', 'channel'] as $index => $argument) {
+            if (! isset($positional[$index]) && isset($named[$argument])) {
+                $positional[$index] = $named[$argument];
+
+                unset($named[$argument]);
+            }
+        }
+
         try {
             return match ($name) {
                 'adjust-hue'             => $this->functions->adjustHue($positional, $context),
@@ -157,24 +183,24 @@ final class SassColorModule extends AbstractModule
                 'change', 'change-color' => $this->functions->changeColor($positional, $named),
                 'channel'                => $this->channelInspector->channel($positional, $named),
                 'color'                  => $this->constructors->colorFunction($positional),
-                'complement'             => $this->functions->complement($positional),
+                'complement'             => $this->functions->complement($positional, $named),
                 'darken',
                 'desaturate',
                 'lighten',
                 'saturate'               => $this->legacyChannelAdjustment($name, $positional, $context),
                 'grayscale'              => $this->functions->grayscale($positional),
-                'hsl'                    => $this->constructors->hslFunction($positional),
-                'hsla'                   => $this->constructors->hslaFunction($positional),
-                'hwb'                    => $this->constructors->hwbFunction($positional),
+                'hsl'                    => $this->constructors->hslFunction($positional, $named),
+                'hsla'                   => $this->constructors->hslaFunction($positional, $named),
+                'hwb'                    => $this->constructors->hwbFunction($positional, $named),
                 'ie-hex-str'             => $this->constructors->ieHexStr($positional),
                 'invert'                 => $this->functions->invert($positional, $named),
-                'is-in-gamut'            => $this->channelInspector->isInGamut($positional),
+                'is-in-gamut'            => $this->channelInspector->isInGamut($positional, $named),
                 'is-legacy'              => $this->channelInspector->isLegacy($positional),
                 'is-missing'             => $this->channelInspector->isMissing($positional),
                 'is-powerless'           => $this->channelInspector->isPowerless($positional, $named),
                 'lab'                    => $this->constructors->labFunction($positional),
                 'lch'                    => $this->constructors->lchFunction($positional),
-                'legacy-rgba'            => $this->constructors->legacyRgbaFunction($positional),
+                'legacy-rgba'            => $this->constructors->legacyRgbaFunction($positional, $named),
                 'mix'                    => $this->functions->mix($positional, $named),
                 'oklab'                  => $this->constructors->oklabFunction($positional),
                 'oklch'                  => $this->constructors->oklchFunction($positional),
@@ -182,9 +208,9 @@ final class SassColorModule extends AbstractModule
                 'fade-in',
                 'transparentize',
                 'fade-out'               => $this->legacyAlphaAdjustment($name, $positional, $context),
-                'rgb'                    => $this->constructors->rgbFunction($positional),
-                'rgba'                   => $this->constructors->rgbaFunction($positional),
-                'same'                   => $this->functions->same($positional),
+                'rgb'                    => $this->constructors->rgbFunction($positional, $named),
+                'rgba'                   => $this->constructors->rgbaFunction($positional, $named),
+                'same'                   => $this->functions->same($positional, $named),
                 'scale', 'scale-color'   => $this->functions->scaleColor($positional, $named),
                 'space'                  => $this->channelInspector->space($positional),
                 'to-gamut'               => $this->spaceConverter->toGamut($positional, $named),

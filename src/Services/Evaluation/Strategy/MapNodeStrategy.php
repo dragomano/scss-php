@@ -10,16 +10,13 @@ use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Services\Evaluation\EvaluationStrategyInterface;
-use Closure;
+use Bugo\SCSS\Services\Evaluation\ValueEvaluatorInterface;
 
 use function array_slice;
 
 final readonly class MapNodeStrategy implements EvaluationStrategyInterface
 {
-    /**
-     * @param Closure(AstNode, Environment, EvaluationOptions): AstNode $evaluateValue
-     */
-    public function __construct(private Closure $evaluateValue) {}
+    public function __construct(private ValueEvaluatorInterface $evaluateValue) {}
 
     public function supports(AstNode $node): bool
     {
@@ -34,8 +31,8 @@ final readonly class MapNodeStrategy implements EvaluationStrategyInterface
         $default = EvaluationOptions::default();
 
         foreach ($node->pairs as $pair) {
-            $evaluatedKey   = ($this->evaluateValue)($pair->key, $env, $default);
-            $evaluatedValue = ($this->evaluateValue)($pair->value, $env, $default);
+            $evaluatedKey   = $this->evaluateValue->evaluate($pair->key, $env, $default);
+            $evaluatedValue = $this->evaluateValue->evaluate($pair->value, $env, $default);
 
             if ($pairs !== null) {
                 $pairs[] = new MapPair($evaluatedKey, $evaluatedValue);

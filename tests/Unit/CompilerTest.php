@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Exceptions\ExtendOutsideStyleRuleException;
 use Bugo\SCSS\Exceptions\InvalidSyntaxException;
 use Bugo\SCSS\Exceptions\SassErrorException;
+use Bugo\SCSS\Style;
 use Bugo\SCSS\Syntax;
 
 describe('Compiler', function () {
-    it('compiles basic color to hex when outputHexColors is enabled', function () {
-        $compiler = new Compiler(options: new CompilerOptions(outputHexColors: true));
+    it('compiles basic color to hex in compressed style', function () {
+        $compiler = new Compiler(options: new CompilerOptions(style: Style::COMPRESSED));
         $css      = $compiler->compileString('.test { color: rgb(255, 0, 0); }');
 
         expect($css)->toContain('#f00');
@@ -34,6 +36,30 @@ describe('Compiler', function () {
             );
     });
 
+    it('compiles an empty bracketed list in indented sass', function () {
+        expect((new Compiler())->compileString("a\n  b: []", Syntax::SASS))->toEqualCss("a {\n  b: [];\n}");
+    });
+
+    it('compiles a bracketed list after an opening line break in indented sass', function () {
+        expect((new Compiler())->compileString("a\n  b: [\n    c]", Syntax::SASS))->toEqualCss("a {\n  b: [c];\n}");
+    });
+
+    it('compiles a bracketed list before a closing line break in indented sass', function () {
+        expect((new Compiler())->compileString("a\n  b: [c\n    ]", Syntax::SASS))->toEqualCss("a {\n  b: [c];\n}");
+    });
+
+    it('compiles a multiline bracketed list after an opening line break in indented sass', function () {
+        expect((new Compiler())->compileString("a\n  b: [\n    c d]", Syntax::SASS))->toEqualCss("a {\n  b: [c d];\n}");
+    });
+
+    it('compiles a multiline bracketed list between values in indented sass', function () {
+        expect((new Compiler())->compileString("a\n  b: [c\n    d]", Syntax::SASS))->toEqualCss("a {\n  b: [c d];\n}");
+    });
+
+    it('compiles a multiline bracketed list before a closing line break in indented sass', function () {
+        expect((new Compiler())->compileString("a\n  b: [c d\n    ]", Syntax::SASS))->toEqualCss("a {\n  b: [c d];\n}");
+    });
+
     it('throws for unexpected closing parentheses in indented sass before compilation', function () {
         $compiler = new Compiler();
         $source   = ".grid\n  color: red)\n";
@@ -53,15 +79,12 @@ describe('Compiler', function () {
             );
     });
 
-    it('throws for unterminated multiline comments in indented sass before compilation', function () {
+    it('auto-closes unterminated multiline comments in indented sass before compilation', function () {
         $compiler = new Compiler();
         $source   = ".grid\n  /* comment\n";
 
         expect(fn() => $compiler->compileString($source, Syntax::SASS))
-            ->toThrow(
-                InvalidSyntaxException::class,
-                'Unterminated comment starting at line 2.',
-            );
+            ->not->toThrow(InvalidSyntaxException::class);
     });
 
     it('throws for incomplete directive headers in indented sass before compilation', function () {
@@ -96,5 +119,27 @@ describe('Compiler', function () {
 
         expect(fn() => $compiler->compileString($source))
             ->toThrow(SassErrorException::class, '@error: Expected identifier.');
+    });
+
+    it('throws a domain exception for a root-level @extend in scss', function () {
+        $compiler = new Compiler();
+
+        expect(fn() => $compiler->compileString('@extend b;'))
+            ->toThrow(ExtendOutsideStyleRuleException::class, '@extend may only be used within style rules.');
+    });
+
+    it('throws a domain exception for a root-level @extend in indented sass', function () {
+        $compiler = new Compiler();
+        $source   = "@extend b\n  !optional\n";
+
+        expect(fn() => $compiler->compileString($source, Syntax::SASS))
+            ->toThrow(ExtendOutsideStyleRuleException::class, '@extend may only be used within style rules.');
+    });
+
+    it('still compiles @extend nested inside a style rule', function () {
+        $compiler = new Compiler();
+
+        expect($compiler->compileString('.a { @extend .b; } .b { color: red; }'))
+            ->toEqualCss(".b, .a {\n  color: red;\n}");
     });
 });

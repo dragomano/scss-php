@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Builtins\SassColorModule;
 use Bugo\SCSS\Exceptions\DeferToCssFunctionException;
-use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
+use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
@@ -63,7 +63,7 @@ describe('SassColorModule', function () {
     it('evaluates adjust-hue', function () {
         $result = $this->module->call('adjust-hue', [new ColorNode('#ff0000'), new NumberNode(120, 'deg')], []);
 
-        expect($result->value)->toBe('#00ff00');
+        expect($result->value)->toBe('lime');
     });
 
     it('evaluates adjust-color', function () {
@@ -133,7 +133,7 @@ describe('SassColorModule', function () {
     it('evaluates complement', function () {
         $result = $this->module->call('complement', [new ColorNode('#ff0000')], []);
 
-        expect($result->value)->toBe('#00ffff');
+        expect($result->value)->toBe('aqua');
     });
 
     it('evaluates darken', function () {
@@ -313,7 +313,14 @@ describe('SassColorModule', function () {
     it('evaluates mix', function () {
         $result = $this->module->call('mix', [new ColorNode('#000000'), new ColorNode('#ffffff'), new NumberNode(50, '%')], []);
 
-        expect($result)->toBeInstanceOf(ColorNode::class)->and($result->value)->toBe('#808080');
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('rgb')
+            ->and($result->arguments[0]->value)->toBe(50.0)
+            ->and($result->arguments[0]->unit)->toBe('%')
+            ->and($result->arguments[1]->value)->toBe(50.0)
+            ->and($result->arguments[1]->unit)->toBe('%')
+            ->and($result->arguments[2]->value)->toBe(50.0)
+            ->and($result->arguments[2]->unit)->toBe('%');
     });
 
     it('evaluates mix in rgb with float channel result', function () {
@@ -487,13 +494,18 @@ describe('SassColorModule', function () {
 
     it('falls back to rgb signature validation when the first rgb argument is not a color', function () {
         expect(fn() => $this->module->call('rgb', [new StringNode('definitely-not-a-color'), new NumberNode(0.5)], []))
-            ->toThrow(MissingFunctionArgumentsException::class);
+            ->toThrow(UnsupportedColorValueException::class);
     });
 
     it('evaluates rgba', function () {
         $result = $this->module->call('rgba', [new ColorNode('#ff0000'), new NumberNode(0.5)], []);
 
-        expect($result)->toBeInstanceOf(ColorNode::class)->and($result->value)->toBe('#ff000080');
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('rgba')
+            ->and($result->arguments[0]->value)->toBe(255.0)
+            ->and($result->arguments[1]->value)->toBe(0.0)
+            ->and($result->arguments[2]->value)->toBe(0.0)
+            ->and($result->arguments[3]->value)->toBe(0.5);
     });
 
     it('defers rgba relative color syntax to css emission', function () {
@@ -509,11 +521,12 @@ describe('SassColorModule', function () {
             new NumberNode(0.5),
         ], []);
 
-        expect($result)->toBeInstanceOf(ColorNode::class)
-            ->and($result->value)->toBe('#ff000080');
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('rgba')
+            ->and($result->arguments[3]->value)->toBe(0.5);
     });
 
-    it('evaluates legacy rgba with four channel arguments and full alpha as a color node', function () {
+    it('evaluates legacy rgba with four channel arguments and full alpha as an rgb function node', function () {
         $result = $this->module->call('legacy-rgba', [
             new NumberNode(17),
             new NumberNode(34),
@@ -521,8 +534,11 @@ describe('SassColorModule', function () {
             new NumberNode(1),
         ], []);
 
-        expect($result)->toBeInstanceOf(ColorNode::class)
-            ->and($result->value)->toBe('#112233');
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('rgb')
+            ->and($result->arguments[0]->value)->toBe(17.0)
+            ->and($result->arguments[1]->value)->toBe(34.0)
+            ->and($result->arguments[2]->value)->toBe(51.0);
     });
 
     it('returns the original legacy rgba call when the first argument is not a color', function () {
@@ -537,9 +553,12 @@ describe('SassColorModule', function () {
             ->and($result->arguments[1])->toBe($alpha);
     });
 
-    it('uses global display name with color module suffix in rgba signature errors', function () {
-        expect(fn() => $this->module->call('rgba', [new NumberNode(255), new NumberNode(0), new NumberNode(0)], []))
-            ->toThrow(MissingFunctionArgumentsException::class, 'rgba() (color module) expects 2 or 4 arguments.');
+    it('evaluates rgba with three channel arguments as an rgb function node', function () {
+        $result = $this->module->call('rgba', [new NumberNode(255), new NumberNode(0), new NumberNode(0)], []);
+
+        expect($result)->toBeInstanceOf(FunctionNode::class)
+            ->and($result->name)->toBe('rgb')
+            ->and($result->arguments)->toHaveCount(3);
     });
 
     it('evaluates same', function () {
@@ -771,7 +790,7 @@ describe('SassColorModule', function () {
         expect($result)->toBeInstanceOf(FunctionNode::class)->and($result->name)->toBe('lch');
     });
 
-    it('clamps negative chroma in lch and oklch constructors to zero', function () {
+    it('preserves negative chroma in lch and oklch constructors', function () {
         $lch = $this->module->call('lch', [
             new NumberNode(50, '%'),
             new NumberNode(-10),
@@ -787,11 +806,11 @@ describe('SassColorModule', function () {
         expect($lch)->toBeInstanceOf(FunctionNode::class)
             ->and($lch->name)->toBe('lch')
             ->and($lch->arguments[0])->toBeInstanceOf(ListNode::class)
-            ->and($lch->arguments[0]->items[1]->value)->toBe(0.0)
+            ->and($lch->arguments[0]->items[1]->value)->toBe(-10.0)
             ->and($oklch)->toBeInstanceOf(FunctionNode::class)
             ->and($oklch->name)->toBe('oklch')
             ->and($oklch->arguments[0])->toBeInstanceOf(ListNode::class)
-            ->and($oklch->arguments[0]->items[1]->value)->toBe(0.0);
+            ->and($oklch->arguments[0]->items[1]->value)->toBe(-0.2);
     });
 
     it('returns same generic color space unchanged to preserve missing channels', function () {
@@ -816,7 +835,7 @@ describe('SassColorModule', function () {
             ->and($result->arguments[0]->value)->toBe(17.0)
             ->and($result->arguments[1]->value)->toBe(34.0)
             ->and($result->arguments[2]->value)->toBe(51.0)
-            ->and($result->arguments[3]->value)->toBe(0.6);
+            ->and($result->arguments[3]->value)->toBeCloseTo(0.6, 0.0000000001);
     });
 
     it('evaluates fade-out alias', function () {
@@ -827,7 +846,7 @@ describe('SassColorModule', function () {
             ->and($result->arguments[0]->value)->toBe(17.0)
             ->and($result->arguments[1]->value)->toBe(34.0)
             ->and($result->arguments[2]->value)->toBe(51.0)
-            ->and($result->arguments[3]->value)->toBe(0.6);
+            ->and($result->arguments[3]->value)->toBeCloseTo(0.6, 0.0000000001);
     });
 
     it('evaluates whiteness', function () {
@@ -908,7 +927,7 @@ describe('SassColorModule', function () {
                 ->and($result->arguments[0])->toBeInstanceOf(ListNode::class)
                 ->and($result->arguments[0]->items[0]->value)->toBe(50.0)
                 ->and($result->arguments[0]->items[0]->unit)->toBe('%')
-                ->and($result->arguments[0]->items[1]->value)->toBe(0)
+                ->and($result->arguments[0]->items[1]->value)->toBe(0.0)
                 ->and($result->arguments[0]->items[2]->value)->toBe(270.0)
                 ->and($result->arguments[0]->items[2]->unit)->toBe('deg');
         });

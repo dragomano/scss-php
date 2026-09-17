@@ -6,6 +6,7 @@ use Bugo\SCSS\Lexer\Token;
 use Bugo\SCSS\Lexer\TokenStream;
 use Bugo\SCSS\Lexer\TokenType;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
@@ -93,6 +94,11 @@ function createRuleParserForTest(array $tokens, array $overrides = []): array
             return ($this->isInsideBraces)();
         }
 
+        public function isInsideCssFunctionBody(): bool
+        {
+            return false;
+        }
+
         public function parseRuleFromSelector(string $selector, int $line = 1, int $column = 1): RuleNode
         {
             return ($this->parseRuleFromSelector)($selector, $line, $column);
@@ -115,7 +121,7 @@ describe('RuleParser', function () {
             /** @var VariableDeclarationNode $node */
             expect($node)->toBeInstanceOf(VariableDeclarationNode::class)
                 ->and($node->name)->toBe('color')
-                ->and($node->value)->toBeInstanceOf(StringNode::class)
+                ->and($node->value)->toBeInstanceOf(ColorNode::class)
                 ->and($node->global)->toBeFalse()
                 ->and($node->default)->toBeFalse();
         });
@@ -611,6 +617,130 @@ describe('RuleParser', function () {
 
             expect($ruleParser->hasRuleBlockAfterColon())->toBeFalse()
                 ->and($stream->getPosition())->toBe(0);
+        });
+    });
+
+    describe('comment and selector edge cases', function () {
+        it('skips loud comments left after a silent comment in a declaration head', function () {
+            [$ruleParser] = createRuleParserForTest([
+                ruleParserTestToken(TokenType::IDENTIFIER, 'color'),
+                ruleParserTestToken(TokenType::WHITESPACE, ' '),
+                ruleParserTestToken(TokenType::COMMENT_SILENT, 'c'),
+                ruleParserTestToken(TokenType::WHITESPACE, ' '),
+                ruleParserTestToken(TokenType::COMMENT_LOUD, 'd'),
+                ruleParserTestToken(TokenType::COLON, ':'),
+                ruleParserTestToken(TokenType::IDENTIFIER, 'red'),
+                ruleParserTestToken(TokenType::SEMICOLON, ';'),
+                ruleParserTestToken(TokenType::EOF),
+            ], [
+                'isInsideBraces' => static fn(): bool => true,
+            ]);
+
+            $node = $ruleParser->parseRuleOrDeclaration();
+
+            /** @var DeclarationNode $node */
+            expect($node)->toBeInstanceOf(DeclarationNode::class)
+                ->and($node->property)->toBe('color');
+        });
+
+        it('stops selector accumulation in parseRule at a semicolon', function () {
+            [$ruleParser] = createRuleParserForTest([
+                ruleParserTestToken(TokenType::IDENTIFIER, 'a'),
+                ruleParserTestToken(TokenType::SEMICOLON, ';'),
+                ruleParserTestToken(TokenType::EOF),
+            ]);
+
+            $node = $ruleParser->parseRule();
+
+            /** @var RuleNode $node */
+            expect($node)->toBeInstanceOf(RuleNode::class)
+                ->and($node->selector)->toBe('a');
+        });
+
+        it('separates a selector part from a loud comment without whitespace', function () {
+            [$ruleParser] = createRuleParserForTest([
+                ruleParserTestToken(TokenType::HASH, 'x'),
+                ruleParserTestToken(TokenType::COMMENT_LOUD, 'c'),
+                ruleParserTestToken(TokenType::WHITESPACE, ' '),
+                ruleParserTestToken(TokenType::IDENTIFIER, 'y'),
+                ruleParserTestToken(TokenType::LBRACE, '{'),
+                ruleParserTestToken(TokenType::RBRACE, '}'),
+                ruleParserTestToken(TokenType::EOF),
+            ]);
+
+            $node = $ruleParser->parseRule();
+
+            /** @var RuleNode $node */
+            expect($node)->toBeInstanceOf(RuleNode::class)
+                ->and($node->selector)->toBe('#x y');
+        });
+
+        it('moves a newline before a comma into the accumulated selector', function () {
+            [$ruleParser] = createRuleParserForTest([
+                ruleParserTestToken(TokenType::IDENTIFIER, 'a'),
+                ruleParserTestToken(TokenType::WHITESPACE, "\n"),
+                ruleParserTestToken(TokenType::COMMA, ','),
+                ruleParserTestToken(TokenType::WHITESPACE, ' '),
+                ruleParserTestToken(TokenType::IDENTIFIER, 'b'),
+                ruleParserTestToken(TokenType::LBRACE, '{'),
+                ruleParserTestToken(TokenType::RBRACE, '}'),
+                ruleParserTestToken(TokenType::EOF),
+            ]);
+
+            $node = $ruleParser->parseRule();
+
+            /** @var RuleNode $node */
+            expect($node)->toBeInstanceOf(RuleNode::class)
+                ->and($node->selector)->toBe("a\n, b");
+        });
+
+        it('attaches preserved comments directly to the accumulated property', function () {
+            [$ruleParser] = createRuleParserForTest([
+                ruleParserTestToken(TokenType::IDENTIFIER, 'color'),
+                ruleParserTestToken(TokenType::COMMENT_PRESERVED, 'x'),
+                ruleParserTestToken(TokenType::COLON, ':'),
+                ruleParserTestToken(TokenType::IDENTIFIER, 'red'),
+                ruleParserTestToken(TokenType::SEMICOLON, ';'),
+                ruleParserTestToken(TokenType::EOF),
+            ], [
+                'isInsideBraces' => static fn(): bool => true,
+            ]);
+
+            expect($ruleParser->parseSelectorOrProperty())->toBe('color/*!x*/');
+        });
+
+        it('keeps a plain separator after detached top-level comments', function () {
+            [$ruleParser] = createRuleParserForTest([
+                ruleParserTestToken(TokenType::IDENTIFIER, 'a'),
+                ruleParserTestToken(TokenType::COMMENT_LOUD, 'c'),
+                ruleParserTestToken(TokenType::WHITESPACE, ' '),
+                ruleParserTestToken(TokenType::LBRACE, '{'),
+                ruleParserTestToken(TokenType::RBRACE, '}'),
+                ruleParserTestToken(TokenType::EOF),
+            ]);
+
+            expect($ruleParser->parseSelectorOrProperty())->toBe('a');
+        });
+
+        it('separates inline and tail parts of a custom property value', function () {
+            [$ruleParser] = createRuleParserForTest([
+                ruleParserTestToken(TokenType::CSS_VARIABLE, '--x:foo'),
+                ruleParserTestToken(TokenType::EOF),
+            ], [
+                'isInsideBraces' => static fn(): bool => true,
+                'parseCustomPropertyValue' => static fn(): string => 'bar',
+            ]);
+
+            $node = $ruleParser->parseRuleOrDeclaration();
+
+            /** @var DeclarationNode $node */
+            expect($node)->toBeInstanceOf(DeclarationNode::class)
+                ->and($node->property)->toBe('--x');
+
+            /** @var StringNode $value */
+            $value = $node->value;
+
+            expect($value->value)->toBe('foo bar');
         });
     });
 });

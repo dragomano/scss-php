@@ -11,10 +11,13 @@ use Bugo\SCSS\Nodes\Visitable;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\States\OutputState;
 use Bugo\SCSS\Utils\DeferredChunk;
+use Bugo\SCSS\Utils\GroupStartChunk;
 use Bugo\SCSS\Utils\OutputChunk;
 use Bugo\SCSS\Utils\SourceMapOptions;
 use Bugo\SCSS\Utils\SourceMapPosition;
 
+use function array_slice;
+use function array_splice;
 use function count;
 use function explode;
 use function implode;
@@ -27,6 +30,8 @@ use function substr_count;
 
 final readonly class Render
 {
+    public const CONTINUATION_MARK = "\x00";
+
     public function __construct(
         private CompilerContext $ctx,
         private CompilerOptions $options,
@@ -46,25 +51,7 @@ final readonly class Render
 
     public function optimize(string $compiled): string
     {
-        $optimized = $this->ctx->optimizer->optimize($compiled, $this->options);
-
-        if (
-            $optimized !== $compiled
-            && $this->sourceMapHelper->shouldRemapMappingsAfterOptimization(
-                $this->options->sourceMapFile,
-                count($this->ctx->sourceMapState->mappings),
-                $compiled,
-                $optimized,
-            )
-        ) {
-            $this->ctx->sourceMapState->mappings = $this->sourceMapHelper->remapMappingsAfterOptimization(
-                $this->ctx->sourceMapState->mappings,
-                $compiled,
-                $optimized,
-            );
-        }
-
-        return $optimized;
+        return $this->ctx->optimizer->optimize($compiled, $this->options);
     }
 
     public function appendChunk(string &$output, string $chunk, ?Visitable $origin = null): void
@@ -285,6 +272,12 @@ final readonly class Render
 
     public function appendOutputChunk(string &$output, OutputChunk $chunk): void
     {
+        if ($chunk instanceof GroupStartChunk) {
+            $this->appendOutputChunk($output, $chunk->inner());
+
+            return;
+        }
+
         if ($chunk instanceof DeferredChunk) {
             $this->appendDeferredChunk($output, $chunk);
 

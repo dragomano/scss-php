@@ -9,7 +9,8 @@ use Bugo\BenchmarkUtils\CompilationResult;
 use Bugo\BenchmarkUtils\CompilerAdapterInterface;
 use Bugo\BenchmarkUtils\ReportGenerator;
 use Bugo\BenchmarkUtils\ScssGenerator;
-use Bugo\Sass\Compiler as EmbeddedCompiler;
+use Bugo\Sass\Compiler as SassCliCompiler;
+use Bugo\Sass\EmbeddedCompiler;
 use Bugo\Sass\Options;
 use Bugo\SCSS\Cache\CachingCompiler;
 use Bugo\SCSS\Cache\TrackingLoader;
@@ -102,7 +103,8 @@ $allResults   = [];
 $aggregate    = [];
 $compilerList = [
     'bugo/scss-php',
-    'bugo/scss-php+cache',
+    'bugo/scss-php + cache',
+    'bugo/sass-embedded-php (cli)',
     'bugo/sass-embedded-php',
     'scssphp/scssphp',
 ];
@@ -120,18 +122,16 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
                 outputFile: 'result-bugo-scss-php.css',
                 sourceMapFile: $sourceMap ? 'result-bugo-scss-php.css.map' : null,
                 includeSources: false,
-                outputHexColors: true,
             );
 
             return new SassCompiler($options);
         })
-        ->addCompiler('bugo/scss-php+cache', function () use ($scss, $scssFile, $sourceMap, $minimize) {
+        ->addCompiler('bugo/scss-php + cache', function () use ($scss, $scssFile, $sourceMap, $minimize) {
             $options = new CompilerOptions(
                 style: $minimize ? Style::COMPRESSED : Style::EXPANDED,
                 outputFile: 'result-bugo-scss-php-cache.css',
                 sourceMapFile: $sourceMap ? 'result-bugo-scss-php-cache.css.map' : null,
                 includeSources: false,
-                outputHexColors: true,
             );
 
             file_put_contents($scssFile, $scss, LOCK_EX);
@@ -145,12 +145,22 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
                 $scssFile,
             );
         })
+        ->addCompiler('bugo/sass-embedded-php (cli)', function () use ($sourceMap, $minimize) {
+            $compiler = new SassCliCompiler();
+            $compiler->setOptions(new Options(
+                style: $minimize ? 'compressed' : 'expanded',
+                includeSources: false,
+                sourceMapPath: $sourceMap ? 'result-sass-embedded-php-cli.css.map' : null,
+                sourceFile: 'generated.scss',
+            ));
+
+            return $compiler;
+        })
         ->addCompiler('bugo/sass-embedded-php', function () use ($sourceMap, $minimize) {
             $compiler = new EmbeddedCompiler();
             $compiler->setOptions(new Options(
                 style: $minimize ? 'compressed' : 'expanded',
                 includeSources: false,
-                removeEmptyLines: true,
                 sourceMapPath: $sourceMap ? 'result-sass-embedded-php.css.map' : null,
                 sourceFile: 'generated.scss',
             ));
