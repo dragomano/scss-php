@@ -72,3 +72,9 @@ jobs:
       - name: Run tests
         shell: bash
         run: vendor/bin/pest --colors=always
+
+  coverage:
+    name: Coverage
+    needs: [checks, test]
+    uses: ./.github/workflows/coverage.yml
+    secrets: inherit
