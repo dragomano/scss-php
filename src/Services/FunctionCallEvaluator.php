@@ -421,7 +421,7 @@ final readonly class FunctionCallEvaluator
             $suggestion .= ')';
 
             $this->diagnosticHandler->handle(
-                'warn',
+                DiagnosticType::WARNING,
                 new StringNode(implode(' ', [
                     'The Sass if() syntax is deprecated in favor of the modern CSS syntax.',
                     'Use `' . $suggestion . '` instead.',
@@ -589,7 +589,7 @@ final readonly class FunctionCallEvaluator
         }
 
         return function (string $message) use ($env, $node): void {
-            $this->diagnosticHandler->handle('warn', new StringNode($message), $env, $node);
+            $this->diagnosticHandler->handle(DiagnosticType::WARNING, new StringNode($message), $env, $node);
         };
     }
 }

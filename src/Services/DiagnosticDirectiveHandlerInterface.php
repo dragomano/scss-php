@@ -9,5 +9,5 @@ use Bugo\SCSS\Runtime\Environment;
 
 interface DiagnosticDirectiveHandlerInterface
 {
-    public function handle(string $kind, AstNode $message, Environment $env, ?AstNode $statement = null): void;
+    public function handle(DiagnosticType $type, AstNode $message, Environment $env, ?AstNode $statement = null): void;
 }

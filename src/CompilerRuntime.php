@@ -23,6 +23,7 @@ use Bugo\SCSS\Services\Context;
 use Bugo\SCSS\Services\CssArgumentEvaluator;
 use Bugo\SCSS\Services\DiagnosticDirectiveHandler;
 use Bugo\SCSS\Services\DiagnosticDirectiveHandlerInterface;
+use Bugo\SCSS\Services\DiagnosticService;
 use Bugo\SCSS\Services\EachLoopBinder;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\ExtendsGraphResolver;
@@ -48,6 +49,8 @@ final class CompilerRuntime
     private readonly CompilerDispatcher $dispatcher;
 
     private ?Context $context = null;
+
+    private ?DiagnosticService $diagnostics = null;
 
     private ?Condition $condition = null;
 
@@ -164,7 +167,12 @@ final class CompilerRuntime
 
     public function context(): Context
     {
-        return $this->context ??= new Context($this->ctx, $this->options, $this->logger);
+        return $this->context ??= new Context($this->ctx, $this->options, $this->logger, $this->diagnostics());
+    }
+
+    public function diagnostics(): DiagnosticService
+    {
+        return $this->diagnostics ??= new DiagnosticService($this->ctx, $this->options, $this->logger);
     }
 
     public function comment(): CommentNodeHandler
@@ -420,6 +428,7 @@ final class CompilerRuntime
             $this->context(),
             $this->evaluation(),
             $this->render(),
+            $this->diagnostics(),
         );
     }
 

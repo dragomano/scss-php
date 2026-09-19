@@ -23,6 +23,7 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\CallableParameterBinder;
 use Bugo\SCSS\Services\DiagnosticDirectiveHandlerInterface;
+use Bugo\SCSS\Services\DiagnosticType;
 use Bugo\SCSS\Services\EachLoopBinderInterface;
 use Bugo\SCSS\Services\LoopIterator;
 use Bugo\SCSS\Services\UserFunctionExecutor;
@@ -82,9 +83,9 @@ describe('UserFunctionExecutor', function () {
             new class ($this) implements DiagnosticDirectiveHandlerInterface {
                 public function __construct(private readonly object $testCase) {}
 
-                public function handle(string $kind, AstNode $message, Environment $env, ?AstNode $statement = null): void
+                public function handle(DiagnosticType $type, AstNode $message, Environment $env, ?AstNode $statement = null): void
                 {
-                    $this->testCase->diagnostics[] = $kind;
+                    $this->testCase->diagnostics[] = $type->directive();
                 }
             },
             new LoopIterator(),

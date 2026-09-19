@@ -194,19 +194,19 @@ final readonly class UserFunctionExecutor
             }
 
             if ($statement instanceof DebugNode) {
-                $this->diagnosticHandler->handle('debug', $statement->message, $env, $statement);
+                $this->diagnosticHandler->handle(DiagnosticType::DEBUG, $statement->message, $env, $statement);
 
                 continue;
             }
 
             if ($statement instanceof WarnNode) {
-                $this->diagnosticHandler->handle('warn', $statement->message, $env, $statement);
+                $this->diagnosticHandler->handle(DiagnosticType::WARNING, $statement->message, $env, $statement);
 
                 continue;
             }
 
             if ($statement instanceof ErrorNode) {
-                $this->diagnosticHandler->handle('error', $statement->message, $env, $statement);
+                $this->diagnosticHandler->handle(DiagnosticType::ERROR, $statement->message, $env, $statement);
             }
 
             if ($statement instanceof WhileNode) {

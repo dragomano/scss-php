@@ -14,6 +14,8 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Services\Context;
+use Bugo\SCSS\Services\DiagnosticService;
+use Bugo\SCSS\Services\DiagnosticType;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Tests\Support\ArrayLogger;
@@ -47,18 +49,20 @@ it('throws sass error for error directives handled through the public dispatcher
     $runtime = RuntimeFactory::createRuntime(logger: $logger);
     $ctx     = RuntimeFactory::context();
 
-    expect(fn() => $runtime->diagnostic()->handleDirective('error', new StringNode('boom'), $ctx))
+    expect(fn() => $runtime->diagnostic()->handleDirective(DiagnosticType::ERROR, new StringNode('boom'), $ctx))
         ->toThrow(SassErrorException::class, 'boom');
 });
 
 it('uses non-strict arithmetic result when diagnostic message evaluates to a list', function () {
-    $env  = RuntimeFactory::context()->env;
-    $ctx  = RuntimeFactory::context($env);
-    $list = new ListNode([new NumberNode(1), new StringNode('+'), new NumberNode(2)], 'space');
-    $sum  = new NumberNode(3);
-
-    $logger  = new ArrayLogger();
-    $context = new Context(new CompilerContext(), new CompilerOptions(), $logger);
+    $env         = RuntimeFactory::context()->env;
+    $ctx         = RuntimeFactory::context($env);
+    $list        = new ListNode([new NumberNode(1), new StringNode('+'), new NumberNode(2)], 'space');
+    $sum         = new NumberNode(3);
+    $logger      = new ArrayLogger();
+    $compilerCtx = new CompilerContext();
+    $options     = new CompilerOptions();
+    $context     = new Context($compilerCtx, $options, $logger);
+    $diagnostics = new DiagnosticService($compilerCtx, $options, $logger);
 
     $evaluation = mock(Evaluator::class);
     $evaluation->shouldReceive('containsSlashToken')->once()->with($list, true)->andReturn(false);
@@ -68,7 +72,7 @@ it('uses non-strict arithmetic result when diagnostic message evaluates to a lis
     $render = mock(Render::class);
     $render->shouldReceive('format')->once()->with($sum, $env)->andReturn('3');
 
-    $handler = new DiagnosticNodeHandler($context, $evaluation, $render);
+    $handler = new DiagnosticNodeHandler($context, $evaluation, $render, $diagnostics);
 
     expect($handler->handleDebug(new DebugNode($list, 7, 1), $ctx))->toBe('')
         ->and($logger->records)->toHaveCount(1)
@@ -82,7 +86,7 @@ it('logs diagnostics without location when origin is omitted', function () {
     $runtime = RuntimeFactory::createRuntime(logger: $logger);
     $ctx     = RuntimeFactory::context();
 
-    $runtime->diagnostic()->handleDirective('debug', new StringNode('manual'), $ctx);
+    $runtime->diagnostic()->handleDirective(DiagnosticType::DEBUG, new StringNode('manual'), $ctx);
 
     expect($logger->records)->toHaveCount(1)
         ->and($logger->records[0]['level'])->toBe('debug')

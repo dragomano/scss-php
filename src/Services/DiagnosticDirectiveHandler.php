@@ -13,10 +13,10 @@ final readonly class DiagnosticDirectiveHandler implements DiagnosticDirectiveHa
 {
     public function __construct(private CompilerRuntime $runtime) {}
 
-    public function handle(string $kind, AstNode $message, Environment $env, ?AstNode $statement = null): void
+    public function handle(DiagnosticType $type, AstNode $message, Environment $env, ?AstNode $statement = null): void
     {
         $this->runtime->diagnostic()->handleDirective(
-            $kind,
+            $type,
             $message,
             new TraversalContext($env, 0),
             $statement,

@@ -14,6 +14,7 @@ final readonly class Context
         private CompilerContext $ctx,
         private CompilerOptions $options,
         private LoggerInterface $logger,
+        private ?DiagnosticService $diagnostics = null,
     ) {}
 
     public function options(): CompilerOptions
@@ -33,19 +34,8 @@ final readonly class Context
 
     public function logWarning(string $message, ?int $line = null): void
     {
-        if ($this->options->verboseLogging) {
-            $this->logger->warning($message, [
-                'file' => $this->ctx->currentSourceFile,
-                'line' => $line,
-            ]);
+        $diagnostics = $this->diagnostics ?? new DiagnosticService($this->ctx, $this->options, $this->logger);
 
-            return;
-        }
-
-        $sourceFile = $this->ctx->currentSourceFile;
-        $location   = $sourceFile . ($line !== null ? ':' . $line : '');
-        $logMessage = $location ? "$location >>> $message" : $message;
-
-        $this->logger->warning($logMessage);
+        $diagnostics->warning($message, $line);
     }
 }

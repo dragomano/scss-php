@@ -9,6 +9,7 @@ use Bugo\SCSS\Nodes\DeprecatedExpressionNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Services\DiagnosticDirectiveHandlerInterface;
+use Bugo\SCSS\Services\DiagnosticType;
 use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Services\Evaluation\EvaluationStrategyInterface;
 use Bugo\SCSS\Services\Evaluation\ValueEvaluatorInterface;
@@ -29,7 +30,7 @@ final readonly class DeprecatedExpressionStrategy implements EvaluationStrategyI
     {
         /** @var DeprecatedExpressionNode $node */
         $this->diagnosticHandler->handle(
-            'warn',
+            DiagnosticType::WARNING,
             new StringNode($node->message, true),
             $env,
             $node,

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Handlers;
 
-use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\DebugNode;
@@ -15,6 +14,8 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\WarnNode;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Context;
+use Bugo\SCSS\Services\DiagnosticService;
+use Bugo\SCSS\Services\DiagnosticType;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Style;
@@ -28,65 +29,66 @@ final readonly class DiagnosticNodeHandler
         private Context $context,
         private Evaluator $evaluation,
         private Render $render,
+        private DiagnosticService $diagnostics,
     ) {}
 
     public function handleDebug(DebugNode $node, TraversalContext $ctx): string
     {
-        [$message, $line, $column] = $this->buildPayload('debug', $node->message, $ctx, $node);
+        [$message, $line, $column] = $this->buildPayload(DiagnosticType::DEBUG, $node->message, $ctx, $node);
 
-        $this->log('debug', $message, $line, $column);
+        $this->diagnostics->log(DiagnosticType::DEBUG, $message, $line, $column);
 
         return '';
     }
 
     public function handleWarn(WarnNode $node, TraversalContext $ctx): string
     {
-        [$message, $line, $column] = $this->buildPayload('warn', $node->message, $ctx, $node);
+        [$message, $line, $column] = $this->buildPayload(DiagnosticType::WARNING, $node->message, $ctx, $node);
 
-        $this->log('warn', $message, $line, $column);
+        $this->diagnostics->log(DiagnosticType::WARNING, $message, $line, $column);
 
         return '';
     }
 
     public function handleError(ErrorNode $node, TraversalContext $ctx): never
     {
-        [$message, $line, $column] = $this->buildPayload('error', $node->message, $ctx, $node);
+        [$message, $line, $column] = $this->buildPayload(DiagnosticType::ERROR, $node->message, $ctx, $node);
 
-        $this->logError($message, $line, $column);
+        $this->diagnostics->error($message, $line, $column);
     }
 
     public function handleDirective(
-        string $directive,
+        DiagnosticType $type,
         AstNode $messageNode,
         TraversalContext $ctx,
         ?AstNode $origin = null,
     ): void {
-        [$message, $line, $column] = $this->buildPayload($directive, $messageNode, $ctx, $origin);
+        [$message, $line, $column] = $this->buildPayload($type, $messageNode, $ctx, $origin);
 
-        if ($directive === 'error') {
-            $this->logError($message, $line, $column);
+        if ($type === DiagnosticType::ERROR) {
+            $this->diagnostics->error($message, $line, $column);
         }
 
-        $this->log($directive, $message, $line, $column);
+        $this->diagnostics->log($type, $message, $line, $column);
     }
 
     /**
      * @return array{0: string, 1: int|null, 2: int|null}
      */
     private function buildPayload(
-        string $directive,
+        DiagnosticType $type,
         AstNode $messageNode,
         TraversalContext $ctx,
         ?AstNode $origin = null,
     ): array {
         $evaluated = $this->evaluateMessage($messageNode, $ctx);
 
-        if ($directive === 'debug' && $this->context->options()->style === Style::COMPRESSED) {
+        if ($type === DiagnosticType::DEBUG && $this->context->options()->style === Style::COMPRESSED) {
             $evaluated = $this->evaluation->compressNamedColorsForOutput($evaluated);
         }
 
         $formatted = $this->render->format($evaluated, $ctx->env);
-        $message   = $this->extractMessage($directive, $evaluated, $formatted);
+        $message   = $this->extractMessage($type, $evaluated, $formatted);
 
         [$line, $column] = $this->extractLocation($origin);
 
@@ -112,10 +114,10 @@ final readonly class DiagnosticNodeHandler
         return $evaluated;
     }
 
-    private function extractMessage(string $directive, AstNode $evaluated, string $formatted): string
+    private function extractMessage(DiagnosticType $type, AstNode $evaluated, string $formatted): string
     {
         if ($evaluated instanceof NullNode) {
-            return $directive === 'warn' ? '' : 'null';
+            return $type === DiagnosticType::WARNING ? '' : 'null';
         }
 
         if ($evaluated instanceof BooleanNode) {
@@ -140,38 +142,5 @@ final readonly class DiagnosticNodeHandler
             isset($data['line']) && is_int($data['line']) ? $data['line'] : null,
             isset($data['column']) && is_int($data['column']) ? $data['column'] : null,
         ];
-    }
-
-    private function log(string $directive, string $message, ?int $line, ?int $column): void
-    {
-        $sourceFile = $this->context->currentSourceFile();
-
-        if ($this->context->options()->verboseLogging) {
-            $logMessage = $message;
-            $context    = [
-                'directive'  => $directive,
-                'file'       => $sourceFile,
-                'sourceFile' => $sourceFile,
-                'line'       => $line,
-                'column'     => $column,
-            ];
-        } else {
-            $location   = $sourceFile . ($line !== null ? ':' . $line : '');
-            $logMessage = $location ? "$location >>> $message" : $message;
-            $context    = [];
-        }
-
-        match ($directive) {
-            'debug' => $this->context->logger()->debug($logMessage, $context),
-            'warn'  => $this->context->logger()->warning($logMessage, $context),
-            default => $this->context->logger()->error($logMessage, $context),
-        };
-    }
-
-    private function logError(string $message, ?int $line, ?int $column): never
-    {
-        $this->log('error', $message, $line, $column);
-
-        throw new SassErrorException($message, $this->context->currentSourceFile(), $line, $column);
     }
 }
