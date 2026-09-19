@@ -10,6 +10,7 @@ use function ctype_xdigit;
 use function dechex;
 use function hexdec;
 use function ord;
+use function str_replace;
 use function strcspn;
 use function strlen;
 use function strpos;
@@ -69,6 +70,11 @@ final class StringEscapeDecoder
         }
 
         return $result;
+    }
+
+    public static function restoreHashes(string $text): string
+    {
+        return str_replace(self::PROTECTED_HASH, '#', $text);
     }
 
     public static function decodeLiteral(string $raw): string

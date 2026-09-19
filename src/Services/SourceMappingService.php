@@ -15,8 +15,13 @@ use function is_numeric;
 use function max;
 use function min;
 use function strlen;
+use function strpos;
+use function strrpos;
+use function substr_count;
 
-final class RenderSourceMapHelper
+use const PHP_INT_MAX;
+
+final class SourceMappingService
 {
     public function shouldRemapMappingsAfterOptimization(
         ?string $sourceMapFile,
@@ -98,6 +103,34 @@ final class RenderSourceMapHelper
      * @param array<int, SourceMapMapping> $mappings
      * @return array<int, SourceMapMapping>
      */
+    public function shiftMappingsByPrefix(array $mappings, string $prefix): array
+    {
+        if ($mappings === [] || $prefix === '') {
+            return $mappings;
+        }
+
+        $lineShift   = substr_count($prefix, "\n");
+        $lastNewline = strrpos($prefix, "\n");
+        $columnShift = $lastNewline === false ? strlen($prefix) : strlen($prefix) - $lastNewline - 1;
+
+        foreach ($mappings as $index => $mapping) {
+            $line   = $mapping->generated->line;
+            $column = $mapping->generated->column;
+
+            $newColumn = $line === 1 ? $column + $columnShift : $column;
+
+            $mappings[$index] = $mapping->withGeneratedPosition(
+                new SourceMapPosition($line + $lineShift, $newColumn),
+            );
+        }
+
+        return $mappings;
+    }
+
+    /**
+     * @param array<int, SourceMapMapping> $mappings
+     * @return array<int, SourceMapMapping>
+     */
     public function remapMappingsAfterOptimization(array $mappings, string $before, string $after): array
     {
         if ($mappings === []) {
@@ -138,8 +171,8 @@ final class RenderSourceMapHelper
         $i   = 0;
         $j   = 0;
 
-        while ($i < $oldLength || $j < $newLength) {
-            if ($i < $oldLength && $j < $newLength && $before[$i] === $after[$j]) {
+        while ($i < $oldLength && $j < $newLength) {
+            if ($before[$i] === $after[$j]) {
                 $map[$i] = $j;
                 $i++;
                 $j++;
@@ -147,27 +180,35 @@ final class RenderSourceMapHelper
                 continue;
             }
 
-            if ($i < $oldLength && ($j >= $newLength || ($i + 1 < $oldLength && $before[$i + 1] === $after[$j]))) {
+            $deletion  = strpos($before, $after[$j], $i);
+            $insertion = strpos($after, $before[$i], $j);
+
+            $deleteSkip = $deletion === false ? PHP_INT_MAX : $deletion - $i;
+            $insertSkip = $insertion === false ? PHP_INT_MAX : $insertion - $j;
+
+            if ($deleteSkip === PHP_INT_MAX && $insertSkip === PHP_INT_MAX) {
                 $map[$i] = $j;
                 $i++;
-
-                continue;
-            }
-
-            if ($j < $newLength && ($i >= $oldLength || ($j + 1 < $newLength && $before[$i] === $after[$j + 1]))) {
                 $j++;
 
                 continue;
             }
 
-            if ($i < $oldLength) {
-                $map[$i] = $j;
-                $i++;
-
-                if ($j < $newLength) {
-                    $j++;
+            if ($deleteSkip <= $insertSkip) {
+                while ($i < $deletion) {
+                    $map[$i] = $j;
+                    $i++;
                 }
+
+                continue;
             }
+
+            $j = (int) $insertion;
+        }
+
+        while ($i < $oldLength) {
+            $map[$i] = $newLength;
+            $i++;
         }
 
         $map[$oldLength] = $newLength;

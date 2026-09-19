@@ -15,12 +15,14 @@ use function substr;
 
 final readonly class OutputOptimizer
 {
+    public const CHARSET_DECLARATION = "@charset \"UTF-8\";\n";
+
     public function __construct(
         private CompressedCssFormatter $compressedCssFormatter = new CompressedCssFormatter(),
         private ExpandedCssFormatter $expandedCssFormatter = new ExpandedCssFormatter(),
     ) {}
 
-    public function optimize(string $css, CompilerOptions $options): string
+    public function optimizeBody(string $css, CompilerOptions $options): string
     {
         if ($options->style === Style::COMPRESSED) {
             $css = $this->removeSourceMapComments($css);
@@ -30,7 +32,12 @@ final readonly class OutputOptimizer
             ? $this->compressedCssFormatter->format($css)
             : $this->expandedCssFormatter->format($css);
 
-        return $this->addCharsetIfNeeded($this->stripContinuationMarks($css));
+        return $this->stripContinuationMarks($css);
+    }
+
+    public function charsetPrefix(string $css): string
+    {
+        return mb_check_encoding($css, 'ASCII') ? '' : self::CHARSET_DECLARATION;
     }
 
     private function removeSourceMapComments(string $css): string
@@ -51,14 +58,5 @@ final readonly class OutputOptimizer
     private function stripContinuationMarks(string $css): string
     {
         return str_replace(Render::CONTINUATION_MARK, '', $css);
-    }
-
-    private function addCharsetIfNeeded(string $css): string
-    {
-        if (! mb_check_encoding($css, 'ASCII')) {
-            return '@charset "UTF-8";' . "\n" . $css;
-        }
-
-        return $css;
     }
 }

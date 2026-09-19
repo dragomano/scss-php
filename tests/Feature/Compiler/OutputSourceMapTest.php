@@ -124,7 +124,7 @@ describe('Compiler', function () {
                 $map = json_decode((string) file_get_contents($mapFile), true);
 
                 expect($map)->toBeArray()
-                    ->and($map['mappings'] ?? null)->toBe('AAEA;EACE,OAHI;;;;AAMN;EACE');
+                    ->and($map['mappings'] ?? null)->toBe('AAEA;EACE,OAHI;;;AAMN;EACE');
             } finally {
                 if (file_exists($mapFile)) {
                     unlink($mapFile);
@@ -484,6 +484,206 @@ describe('Compiler', function () {
                 if (file_exists($f)) {
                     unlink($f);
                 }
+            }
+
+            if (is_dir($tmpDir)) {
+                rmdir($tmpDir);
+            }
+        }
+    });
+
+    it('maps expanded top-level blocks to their real generated line', function () {
+        $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        $mapFile = $tmpDir . '/output.css.map';
+
+        // Two top-level blocks separated by a blank line: the second block must map to its actual
+        // generated line, not one line below (no extra empty segment for the separator).
+        $source = <<<'SCSS'
+        .block {
+          color: red;
+        }
+
+        body {
+          background: black;
+        }
+        SCSS;
+
+        $compiler = new Compiler(new CompilerOptions(sourceMapFile: $mapFile));
+
+        try {
+            $css  = $compiler->compileString($source);
+            $body = substr($css, 0, (int) strpos($css, "\n/*# sourceMappingURL="));
+
+            $lines    = explode("\n", $body);
+            $bodyLine = array_search('body {', $lines, true);
+            $bgLine   = array_search('  background: black;', $lines, true);
+
+            $map = new AxySourceMap(json_decode((string) file_get_contents($mapFile), true));
+
+            // Collect the generated line for each source line among the decoded mappings.
+            $generatedBySource = [];
+            foreach ($map->find() as $position) {
+                $generatedBySource[$position->source->line] = $position->generated->line;
+            }
+
+            // "body {" is source line 4, "background" is source line 5 (0-based). Each must map to
+            // the generated line where it actually sits, with no off-by-one from the separator.
+            expect($generatedBySource[4] ?? null)->toBe($bodyLine)
+                ->and($generatedBySource[5] ?? null)->toBe($bgLine);
+        } finally {
+            if (file_exists($mapFile)) {
+                unlink($mapFile);
+            }
+
+            if (is_dir($tmpDir)) {
+                rmdir($tmpDir);
+            }
+        }
+    });
+
+    it('remaps decoded positions to the compressed output after optimization', function () {
+        $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        $mapFile = $tmpDir . '/output.css.map';
+
+        $options = new CompilerOptions(
+            style: Style::COMPRESSED,
+            sourceMapFile: $mapFile,
+        );
+
+        $compiler = new Compiler($options);
+
+        // Hex shortening, comment removal, whitespace compaction, zero-unit stripping and
+        // box-shorthand collapsing all shift positions after the mappings were recorded.
+        $source = <<<'SCSS'
+        .alpha {
+          color: #aabbcc;
+          margin: 4px 4px 4px 4px;
+        }
+        /* comment */
+        .beta {
+          width: 0px;
+        }
+        SCSS;
+
+        try {
+            $css  = $compiler->compileString($source);
+            $body = substr($css, 0, (int) strpos($css, "\n/*# sourceMappingURL="));
+            $map  = new AxySourceMap(json_decode((string) file_get_contents($mapFile), true));
+
+            // Every decoded generated position must fall inside the compressed body and point at
+            // the same token the mapping links to in the source.
+            $betaColumn = strpos($body, '.beta');
+
+            expect($body)->toBe('.alpha{color:#abc;margin:4px}.beta{width:0}')
+                ->and($betaColumn)->not->toBeFalse();
+
+            foreach ($map->find() as $position) {
+                expect($position->generated->line)->toBe(0)
+                    ->and($position->generated->column)->toBeLessThanOrEqual(strlen($body));
+            }
+
+            $betaPosition = $map->getPosition(0, (int) $betaColumn);
+
+            expect($betaPosition)->not->toBeNull()
+                ->and($betaPosition->source->line)->toBe(5);
+        } finally {
+            if (file_exists($mapFile)) {
+                unlink($mapFile);
+            }
+
+            if (is_dir($tmpDir)) {
+                rmdir($tmpDir);
+            }
+        }
+    });
+
+    it('shifts compressed mappings by the hoisted @import prefix without changing the css', function () {
+        $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        $mapFile = $tmpDir . '/output.css.map';
+
+        $source = <<<'SCSS'
+        @import "theme.css";
+        .block {
+          color: #aabbcc;
+        }
+        SCSS;
+
+        try {
+            $withMap = (new Compiler(new CompilerOptions(
+                style: Style::COMPRESSED,
+                sourceMapFile: $mapFile,
+            )))->compileString($source);
+
+            $withoutMap = (new Compiler(new CompilerOptions(
+                style: Style::COMPRESSED,
+            )))->compileString($source);
+
+            $body = substr($withMap, 0, (int) strpos($withMap, "\n/*# sourceMappingURL="));
+
+            // The css must stay byte-identical to a compile without a source map.
+            expect($body)->toBe($withoutMap)
+                ->and($body)->toBe('@import "theme.css";.block{color:#abc}');
+
+            $map = new AxySourceMap(json_decode((string) file_get_contents($mapFile), true));
+
+            // The .block selector sits after the hoisted @import prefix; its generated column
+            // must account for that prefix.
+            $blockColumn = (int) strpos($body, '.block');
+
+            $blockPosition = $map->getPosition(0, $blockColumn);
+
+            expect($blockPosition)->not->toBeNull()
+                ->and($blockPosition->source->line)->toBe(1);
+        } finally {
+            if (file_exists($mapFile)) {
+                unlink($mapFile);
+            }
+
+            if (is_dir($tmpDir)) {
+                rmdir($tmpDir);
+            }
+        }
+    });
+
+    it('shifts compressed mappings down by one line when a charset is prepended', function () {
+        $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        $mapFile = $tmpDir . '/output.css.map';
+
+        $source = <<<'SCSS'
+        .icon {
+          content: "→";
+        }
+        SCSS;
+
+        try {
+            $css = (new Compiler(new CompilerOptions(
+                style: Style::COMPRESSED,
+                sourceMapFile: $mapFile,
+            )))->compileString($source);
+
+            expect($css)->toStartWith('@charset "UTF-8";' . "\n");
+
+            $map = new AxySourceMap(json_decode((string) file_get_contents($mapFile), true));
+
+            // The charset line pushes every mapping to generated line 1 (0-based).
+            foreach ($map->find() as $position) {
+                expect($position->generated->line)->toBe(1);
+            }
+        } finally {
+            if (file_exists($mapFile)) {
+                unlink($mapFile);
             }
 
             if (is_dir($tmpDir)) {

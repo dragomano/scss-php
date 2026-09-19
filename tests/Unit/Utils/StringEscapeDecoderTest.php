@@ -114,6 +114,19 @@ describe('StringEscapeDecoder', function () {
         });
     });
 
+    describe('restoreHashes()', function () {
+        it('turns every sentinel back into a literal hash', function () {
+            $sentinel = StringEscapeDecoder::PROTECTED_HASH;
+
+            expect(StringEscapeDecoder::restoreHashes($sentinel . '{a}' . $sentinel . '{b}'))
+                ->toBe('#{a}#{b}');
+        });
+
+        it('leaves text without sentinels untouched', function () {
+            expect(StringEscapeDecoder::restoreHashes('.a{color:red}'))->toBe('.a{color:red}');
+        });
+    });
+
     describe('encodeQuotedContent()', function () {
         it('passes the protected hash through verbatim', function () {
             expect(StringEscapeDecoder::encodeQuotedContent(StringEscapeDecoder::PROTECTED_HASH . 'x', '"'))

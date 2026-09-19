@@ -62,7 +62,7 @@ final readonly class RootNodeHandler
 
                 $dummy = '';
 
-                $this->render->appendChunk($dummy, "\n\n");
+                $this->render->appendChunk($dummy, "\n");
             }
 
             $importCount = count($outputState->cssImports);

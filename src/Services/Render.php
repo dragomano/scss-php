@@ -36,7 +36,7 @@ final readonly class Render
         private CompilerContext $ctx,
         private CompilerOptions $options,
         private AstValueFormatterInterface $valueFormatter,
-        private RenderSourceMapHelper $sourceMapHelper = new RenderSourceMapHelper(),
+        private SourceMappingService $sourceMapping = new SourceMappingService(),
     ) {}
 
     public function indentPrefix(int $indent): string
@@ -49,9 +49,52 @@ final readonly class Render
         return $this->valueFormatter->format($node, $env);
     }
 
-    public function optimize(string $compiled): string
+    public function optimizeBody(string $compiled): string
     {
-        return $this->ctx->optimizer->optimize($compiled, $this->options);
+        return $this->ctx->optimizer->optimizeBody($compiled, $this->options);
+    }
+
+    public function prependCharset(string $css): string
+    {
+        $prefix = $this->ctx->optimizer->charsetPrefix($css);
+
+        if ($prefix === '') {
+            return $css;
+        }
+
+        $this->shiftMappingsByPrefix($prefix);
+
+        return $prefix . $css;
+    }
+
+    public function remapMappingsAfterOptimization(string $before, string $after): void
+    {
+        $sourceMapState = $this->ctx->sourceMapState;
+
+        if (! $this->sourceMapping->shouldRemapMappingsAfterOptimization(
+            $this->options->sourceMapFile,
+            count($sourceMapState->mappings),
+            $before,
+            $after,
+        )) {
+            return;
+        }
+
+        $sourceMapState->mappings = $this->sourceMapping->remapMappingsAfterOptimization(
+            $sourceMapState->mappings,
+            $before,
+            $after,
+        );
+    }
+
+    public function shiftMappingsByPrefix(string $prefix): void
+    {
+        $sourceMapState = $this->ctx->sourceMapState;
+
+        $sourceMapState->mappings = $this->sourceMapping->shiftMappingsByPrefix(
+            $sourceMapState->mappings,
+            $prefix,
+        );
     }
 
     public function appendChunk(string &$output, string $chunk, ?Visitable $origin = null): void
@@ -79,7 +122,7 @@ final readonly class Render
 
             $sourceMapState->generatedColumn = $baseColumn + $indent;
 
-            $this->sourceMapHelper->appendMapping(
+            $this->sourceMapping->appendMapping(
                 $sourceMapState->mappings,
                 $sourceMapState->generatedLine,
                 $sourceMapState->generatedColumn,
@@ -93,7 +136,7 @@ final readonly class Render
                     if ($pending['owner'] === $origin) {
                         $sourceMapState->generatedColumn = $baseColumn + $pending['offset'];
 
-                        $this->sourceMapHelper->appendRawMapping(
+                        $this->sourceMapping->appendRawMapping(
                             $sourceMapState->mappings,
                             $sourceMapState->generatedLine,
                             $sourceMapState->generatedColumn,
