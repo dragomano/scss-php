@@ -103,15 +103,12 @@ final readonly class ExtendsGraphResolver
         }
 
         $rootBuilt = $this->extends->buildExtensionStore();
+        $rootStore = $rootBuilt['store'];
+        $stores    = $graph['stores'];
+        $metas     = $graph['metas'];
 
-        $rootStore             = $rootBuilt['store'];
-        $rootHasOwnExtensions  = $rootStore['extensions'] !== [];
-
-        $stores                = $graph['stores'];
         $stores[self::ROOT_ID] = $rootStore;
-
-        $metas                = $graph['metas'];
-        $metas[self::ROOT_ID] = $rootBuilt['meta'];
+        $metas[self::ROOT_ID]  = $rootBuilt['meta'];
 
         $branches     = $this->resolveImportBranches($graph);
         $useReachable = $this->transitiveClosure(self::ROOT_ID, $graph['upstream'], []);
@@ -139,11 +136,11 @@ final readonly class ExtendsGraphResolver
 
                 $edges = $graph['upstream'][$moduleId] ?? [];
 
-                foreach ($graph['importEdges'][$moduleId] ?? [] as $dependency => $_) {
+                foreach ($graph['importEdges'][$moduleId] ?? [] as $dependency => $__) {
                     $edges[$dependency] = true;
                 }
 
-                foreach ($edges as $dependency => $_) {
+                foreach ($edges as $dependency => $__) {
                     if (isset($nodes[$dependency])) {
                         $upstream[$moduleId][$dependency] = true;
                     }
@@ -227,8 +224,6 @@ final readonly class ExtendsGraphResolver
                 ];
             }
         }
-
-        $rootStore = $stores[self::ROOT_ID];
 
         if ($snapshot['events'] === [] && ! $rootHasOwnExtensions) {
             $this->extends->finalizeCollectedExtends();
@@ -564,18 +559,18 @@ final readonly class ExtendsGraphResolver
                 $upstream  = [];
                 $exclusive = [];
 
-                foreach ($nodes as $moduleId => $_) {
+                foreach ($nodes as $moduleId => $__) {
                     if (! isset($useReachable[$moduleId])) {
                         $exclusive[$moduleId] = true;
                     }
 
                     $edges = $graph['upstream'][$moduleId] ?? [];
 
-                    foreach ($importEdges[$moduleId] ?? [] as $dependency => $_) {
+                    foreach ($importEdges[$moduleId] ?? [] as $dependency => $___) {
                         $edges[$dependency] = true;
                     }
 
-                    foreach ($edges as $dependency => $_) {
+                    foreach ($edges as $dependency => $___) {
                         if (isset($nodes[$dependency])) {
                             $upstream[$moduleId][$dependency] = true;
                         }

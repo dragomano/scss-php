@@ -44,8 +44,6 @@ use function substr_replace;
 use function trim;
 
 /**
- * @phpstan-type Complex array<int, SelectorComponent>
- *
  * @psalm-type Complex=array<int, SelectorComponent>
  */
 final readonly class SelectorTokenizer
@@ -256,11 +254,6 @@ final readonly class SelectorTokenizer
                     }
                 }
 
-                foreach ($replacementTokens as $token) {
-                    if (! in_array($token, $orderedTokens, true)) {
-                        $orderedTokens[] = $token;
-                    }
-                }
             } else {
                 foreach ($remainingTokens as $token) {
                     if (! in_array($token, $orderedTokens, true)) {
@@ -268,10 +261,11 @@ final readonly class SelectorTokenizer
                     }
                 }
 
-                foreach ($replacementTokens as $token) {
-                    if (! in_array($token, $orderedTokens, true)) {
-                        $orderedTokens[] = $token;
-                    }
+            }
+
+            foreach ($replacementTokens as $token) {
+                if (! in_array($token, $orderedTokens, true)) {
+                    $orderedTokens[] = $token;
                 }
             }
 
@@ -283,9 +277,7 @@ final readonly class SelectorTokenizer
         }
 
         if ($this->extractTypeToken($replacementTokens) !== '') {
-            $unified = $this->unifyCompounds($replacement, $remainingCompound);
-
-            return $unified;
+            return $this->unifyCompounds($replacement, $remainingCompound);
         }
 
         foreach ($remainingTokens as $token) {
@@ -817,9 +809,6 @@ final readonly class SelectorTokenizer
         return array_values($unique);
     }
 
-    /**
-     * @return string
-     */
     public function normalizeSelectorAttributes(string $selector): string
     {
         if (! str_contains($selector, '[')) {
@@ -909,7 +898,7 @@ final readonly class SelectorTokenizer
             $normalizedInner = $this->normalizePseudoArguments($inner);
 
             if ($this->isSelectorListPseudo($name)) {
-                $parts           = $this->splitAtTopLevel($normalizedInner, [','], handleQuotes: true, trim: true);
+                $parts           = $this->splitAtTopLevel($normalizedInner, [','], handleQuotes: true);
                 $normalizedInner = implode(', ', $parts);
             }
 
@@ -1011,7 +1000,7 @@ final readonly class SelectorTokenizer
             }
 
             if ($char === '[') {
-                $end = $this->skipVerbatimRegion($selector, $index, '[', ']');
+                $end = $this->skipVerbatimRegion($selector, $index);
 
                 $result .= substr($selector, $index, $end - $index);
                 $index   = $end;
@@ -1170,46 +1159,6 @@ final readonly class SelectorTokenizer
         }
 
         return $variants;
-    }
-
-    /**
-     * @param array<int, string> $targets single-compound target selectors
-     * @param array<int, string> $extenders complex selectors
-     * @return array{0: array<int, string>, 1: bool}
-     */
-    public function extendSelectorPartByTargetsWithFlag(
-        string $part,
-        array $targets,
-        array $extenders,
-    ): array {
-        $allVariants = $this->extendSelectorPartByTargets($part, $targets, $extenders, true);
-
-        $partComponents = $this->parseComplexComponents($part);
-        $hasPseudo      = false;
-
-        if ($partComponents !== []) {
-            $compoundTokens = $this->tokenizeCompound($this->normalizeCompoundPseudoTokens($partComponents[0]->sel));
-
-            foreach ($compoundTokens as $token) {
-                $pseudo = $this->parsePseudoToken($token);
-
-                if ($pseudo !== null && $pseudo['selector'] !== null) {
-                    $baseName = $this->pseudoBaseName($pseudo['name']);
-
-                    if (in_array($baseName, self::FLATTENABLE_PSEUDO_BASE_NAMES, true)
-                        || $baseName === self::NOT_PSEUDO_BASE_NAME
-                        || in_array($baseName, self::NTH_OF_PSEUDO_BASE_NAMES, true)
-                        || in_array($baseName, self::PLAIN_INSERT_PSEUDO_BASE_NAMES, true)
-                    ) {
-                        $hasPseudo = true;
-
-                        break;
-                    }
-                }
-            }
-        }
-
-        return [$allVariants, $hasPseudo];
     }
 
     public function normalizeExtendPart(string $part): string
@@ -1618,8 +1567,7 @@ final readonly class SelectorTokenizer
     {
         /** @var array<string> $items */
         $items        = [];
-        /** @var string $buffer */
-        $buffer       = '';
+        $buffer       = substr($complex, 0, 0);
         $length       = strlen($complex);
         $parenDepth   = 0;
         $bracketDepth = 0;
@@ -2719,7 +2667,7 @@ final readonly class SelectorTokenizer
         $extenderTrailing  = $extenderComplexes[0][$lastExtenderIndex]->comb;
         $extenderAncestors = array_slice($extenderComplexes[0], 0, -1);
 
-        if ($extenderLead !== '' && in_array($extenderLead, ['>', '+', '~'], true)) {
+        if (in_array($extenderLead, ['>', '+', '~'], true)) {
             array_unshift($extenderAncestors, new SelectorComponent('', $extenderLead));
 
             if ($lead === $extenderLead) {
@@ -3095,7 +3043,6 @@ final readonly class SelectorTokenizer
         array $extenders,
     ): ?string {
         $targetTokenSets = [];
-        $targetStrings   = [];
 
         foreach ($targets as $target) {
             $targetComplexes = $this->parseSelectorList($target);
@@ -3114,7 +3061,6 @@ final readonly class SelectorTokenizer
 
             if ($tokens !== []) {
                 $targetTokenSets[] = $tokens;
-                $targetStrings[]   = $target;
             }
         }
 
@@ -4134,6 +4080,8 @@ final readonly class SelectorTokenizer
      * @param string $general
      * @param string $specific
      * @param Complex $parents
+     * @param bool $strictSemantics
+     * @return bool
      */
     private function compoundIsSuperselector(
         string $general,
@@ -4229,6 +4177,7 @@ final readonly class SelectorTokenizer
      * @param string $general
      * @param string $specific
      * @param Complex $parents
+     * @return bool
      */
     private function strictCompoundIsSuperselector(string $general, string $specific, array $parents): bool
     {
@@ -4450,8 +4399,9 @@ final readonly class SelectorTokenizer
 
     /**
      * @param string $generalToken
-     * @param array<int, string>  $specificTokens
+     * @param array<int, string> $specificTokens
      * @param Complex $parents
+     * @return bool
      */
     private function selectorPseudoIsSuperselector(string $generalToken, array $specificTokens, array $parents): bool
     {
@@ -4625,14 +4575,14 @@ final readonly class SelectorTokenizer
      * @param array<int, string> $tokens
      * @return array<int, array<int, Complex>>
      */
-    private function selectorPseudoArgs(array $tokens, string $rawName, bool $isClass = true): array
+    private function selectorPseudoArgs(array $tokens, string $rawName): array
     {
         $args = [];
 
         foreach ($tokens as $token) {
             $pseudo = $this->parsePseudoToken($token);
 
-            if ($pseudo === null || $pseudo['isElement'] === $isClass) {
+            if ($pseudo === null || $pseudo['isElement'] === true) {
                 continue;
             }
 
@@ -4813,7 +4763,7 @@ final readonly class SelectorTokenizer
         return '\\' . dechex($byte) . ' ';
     }
 
-    private function skipVerbatimRegion(string $text, int $startIndex, string $open, string $close): int
+    private function skipVerbatimRegion(string $text, int $startIndex): int
     {
         $length = strlen($text);
         $depth  = 0;
@@ -4841,9 +4791,9 @@ final readonly class SelectorTokenizer
                 continue;
             }
 
-            if ($char === $open) {
+            if ($char === '[') {
                 $depth++;
-            } elseif ($char === $close) {
+            } elseif ($char === ']') {
                 $depth--;
 
                 if ($depth === 0) {
@@ -4887,8 +4837,6 @@ final readonly class SelectorTokenizer
 
                 continue;
             }
-
-            $pseudoStart = $index;
 
             $index++;
 
@@ -5202,8 +5150,6 @@ final readonly class SelectorTokenizer
         $length = strlen($value);
         $index  = 0;
         $sign   = 1;
-        $a      = 0;
-        $b      = null;
 
         if ($value[$index] === '+' || $value[$index] === '-') {
             $sign = $value[$index] === '-' ? -1 : 1;

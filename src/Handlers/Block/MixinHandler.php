@@ -216,8 +216,6 @@ final readonly class MixinHandler
     ): string {
         $this->module->incrementCallDepth();
 
-        $output = '';
-
         $includeCallScope = $ctx->env->getCurrentScope();
 
         $ctx->env->enterScope($mixin->closureScope);

@@ -519,10 +519,18 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
+     * @param AstNode $original
+     * @param string $nativeSpace
      * @param ChannelVector $channels
+     * @param float|null $alpha
+     * @return AstNode
      */
-    public function serializeModifiedColor(AstNode $original, string $nativeSpace, array $channels, ?float $alpha): AstNode
-    {
+    public function serializeModifiedColor(
+        AstNode $original,
+        string $nativeSpace,
+        array $channels,
+        ?float $alpha,
+    ): AstNode {
         foreach ($channels as $i => $channel) {
             if ($channel !== null && abs($channel) < 0.000000000001) {
                 $channels[$i] = 0.0;
@@ -552,7 +560,13 @@ final readonly class ColorFunctionEvaluator
             case 'hwb':
                 if ($c0 === null || $c1 === null || $c2 === null || $alpha === null) {
                     return $this->converter->buildFunctionalColorNode('hwb', [
-                        $c0 === null ? new StringNode('none') : ($c0 == 0.0 ? new StringNode('0deg') : new NumberNode($this->runtime->spaceConverter->normalizeHue($c0), 'deg')),
+                        $c0 === null
+                            ? new StringNode('none')
+                            : (
+                                $c0 == 0.0
+                                    ? new StringNode('0deg')
+                                    : new NumberNode($this->runtime->spaceConverter->normalizeHue($c0), 'deg')
+                            ),
                         $c1 === null ? new StringNode('none') : new NumberNode($c1, '%'),
                         $c2 === null ? new StringNode('none') : new NumberNode($c2, '%'),
                     ], min($alpha ?? 1.0, 1.0));
@@ -560,6 +574,7 @@ final readonly class ColorFunctionEvaluator
 
                 if ($this->isOutOfPercentageRange($c1, $c2) || $c1 + $c2 > 100.0) {
                     $hwbSrgb = $this->dartMath->hwbToSrgb($c0, $c1, $c2);
+
                     [$h, $saturation, $lightness] = $this->dartMath->srgbToHsl(
                         $hwbSrgb[0],
                         $hwbSrgb[1],
@@ -592,7 +607,12 @@ final readonly class ColorFunctionEvaluator
                 }
 
                 return $nativeSpace === 'lab'
-                    ? $this->converter->buildLabColorNodeWithNone(['l' => $c0, 'a' => $c1, 'b' => $c2, 'alpha' => $alpha ?? 1.0])
+                    ? $this->converter->buildLabColorNodeWithNone([
+                        'l'     => $c0,
+                        'a'     => $c1,
+                        'b'     => $c2,
+                        'alpha' => $alpha ?? 1.0,
+                    ])
                     : $this->converter->buildOklabColorNodeWithNone([
                         'l'     => $c0 === null ? null : $c0 * 100.0,
                         'a'     => $c1,
@@ -987,16 +1007,7 @@ final readonly class ColorFunctionEvaluator
                 $nativeSpace,
             );
 
-            if (($nativeSpace === 'lch' || $nativeSpace === 'oklch')
-                && $channels[1] !== null
-                && $this->dartMath->fuzzyEquals($channels[1], 0.0)
-            ) {
-                $channels[2] = null;
-            }
-
-            if (in_array($nativeSpace, ['rgb', 'hsl', 'hwb'], true)) {
-                $channels = [$channels[0] ?? 0.0, $channels[1] ?? 0.0, $channels[2] ?? 0.0];
-            }
+            $channels = $this->normalizeMissingChromaHue($channels, $nativeSpace, true);
         }
 
         return $this->serializeModifiedColor($color, $nativeSpace, $channels, $alpha);
@@ -1005,6 +1016,8 @@ final readonly class ColorFunctionEvaluator
     /**
      * @param ChannelVector $destChannels
      * @param ChannelVector $sourceChannels
+     * @param string $sourceSpace
+     * @param string $destSpace
      * @return ChannelVector
      */
     private function preserveAnalogousMissingChannels(
@@ -1078,6 +1091,8 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
+     * @param string $from
+     * @param string $to
      * @param ChannelVector $channels
      * @return ChannelVector
      */
@@ -1165,17 +1180,17 @@ final readonly class ColorFunctionEvaluator
 
         return match ($type) {
             'byte'           => $unit === '%' ? $value * 2.55 : $value,
-            'unit01'         => $unit === '%' ? $value / 100.0 : $value,
+            'unit01',
+            'fraction01',
+            'alpha'          => $unit === '%' ? $value / 100.0 : $value,
             'percent',
             'percent-flex',
-            'percent-sat'    => $value,
-            'fraction01'     => $unit === '%' ? $value / 100.0 : $value,
-            'lab-ab'         => $unit === '%' ? $value * 1.25 : $value,
-            'oklab-ab'       => $unit === '%' ? $value * 0.004 : $value,
-            'lch-c'          => $unit === '%' ? $value * 1.5 : $value,
-            'oklch-c'        => $unit === '%' ? $value * 0.004 : $value,
-            'alpha'          => $unit === '%' ? $value / 100.0 : $value,
+            'percent-sat',
             'alpha-adjust'   => $value,
+            'lab-ab'         => $unit === '%' ? $value * 1.25 : $value,
+            'oklab-ab',
+            'oklch-c'        => $unit === '%' ? $value * 0.004 : $value,
+            'lch-c'          => $unit === '%' ? $value * 1.5 : $value,
             default          => throw new UnsupportedColorSpaceException($type, 'color'),
         };
     }
@@ -1218,12 +1233,7 @@ final readonly class ColorFunctionEvaluator
                 : $this->channelValueFromNode($node, $types[$i]);
         }
 
-        if (($nativeSpace === 'lch' || $nativeSpace === 'oklch')
-            && $channels[1] !== null
-            && $this->dartMath->fuzzyEquals($channels[1], 0.0)
-        ) {
-            $channels[2] = null;
-        }
+        $channels = $this->normalizeMissingChromaHue($channels, $nativeSpace);
 
         if ($alphaNode !== null) {
             $alpha = AstValueInspector::isNoneKeyword($alphaNode)
@@ -1238,7 +1248,10 @@ final readonly class ColorFunctionEvaluator
 
     /**
      * @param ChannelVector $channels
+     * @param float|null $alpha
      * @param array<string, float|null> $provided
+     * @param string $targetSpace
+     * @param string $mode
      * @return array{0: ChannelVector, 1: float|null}
      */
     private function modifyChannels(
@@ -1350,7 +1363,32 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
+     * @param ChannelVector $channels
+     * @param string $space
+     * @param bool $fillMissing
+     * @return ChannelVector
+     */
+    private function normalizeMissingChromaHue(array $channels, string $space, bool $fillMissing = false): array
+    {
+        if (($space === 'lch' || $space === 'oklch')
+            && $channels[1] !== null
+            && $this->dartMath->fuzzyEquals($channels[1], 0.0)
+        ) {
+            $channels[2] = null;
+        }
+
+        if ($fillMissing && in_array($space, ['rgb', 'hsl', 'hwb'], true)) {
+            $channels = [$channels[0] ?? 0.0, $channels[1] ?? 0.0, $channels[2] ?? 0.0];
+        }
+
+        return $channels;
+    }
+
+    /**
      * @param ChannelVector $channels rgb bytes
+     * @param float|null $alpha
+     * @param bool $hslDerived
+     * @return AstNode
      */
     private function serializeLegacyRgb(array $channels, ?float $alpha, bool $hslDerived = false): AstNode
     {
@@ -1438,6 +1476,7 @@ final readonly class ColorFunctionEvaluator
 
     /**
      * @param ChannelVector $channels
+     * @return bool
      */
     private function hasFuzzyIntegralBytes(array $channels): bool
     {
@@ -1452,11 +1491,12 @@ final readonly class ColorFunctionEvaluator
 
     /**
      * @param ChannelVector $channels
+     * @return bool
      */
     private function hasBoundaryBytes(array $channels): bool
     {
         foreach ($channels as $channel) {
-            if ($channel === null || ! ($channel === 0.0 || $channel === 255.0)) {
+            if (! ($channel === 0.0 || $channel === 255.0)) {
                 return false;
             }
         }
@@ -1480,7 +1520,10 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
+     * @param string $space
      * @param ChannelVector $channels
+     * @param float|null $alpha
+     * @return FunctionNode
      */
     private function buildGenericModernNode(string $space, array $channels, ?float $alpha): FunctionNode
     {
@@ -1503,7 +1546,10 @@ final readonly class ColorFunctionEvaluator
     }
 
     /**
+     * @param string $space
      * @param ChannelVector $channels
+     * @param float $alpha
+     * @return FunctionNode
      */
     private function buildOutOfRangeFunctionalNode(string $space, array $channels, float $alpha): FunctionNode
     {

@@ -30,36 +30,65 @@ final class StringHelper
         return strlen($value) >= 2 && self::hasMatchingQuotes($value);
     }
 
-    public static function unescapeQuotedContent(string $value): string
+    /**
+     * @return array{0: string, 1: string}|null
+     */
+    public static function parseNumberPrefix(string $value): ?array
     {
-        $result = '';
-        $length = strlen($value);
-        $index  = 0;
-
-        while ($index < $length) {
-            $char = $value[$index];
-
-            if ($char !== '\\' || $index + 1 >= $length) {
-                $result .= $char;
-                $index++;
-
-                continue;
-            }
-
-            $next = $value[$index + 1];
-
-            if (in_array($next, ['\\', '"', "'"], true)) {
-                $result .= $next;
-                $index += 2;
-
-                continue;
-            }
-
-            $result .= '\\' . $next;
-            $index += 2;
+        if ($value === '') {
+            return null;
         }
 
-        return $result;
+        $length    = strlen($value);
+        $index     = ($value[0] === '+' || $value[0] === '-') ? 1 : 0;
+        $hasDigits = false;
+
+        while ($index < $length && self::isAsciiDigit($value[$index])) {
+            $index++;
+            $hasDigits = true;
+        }
+
+        if ($index < $length && $value[$index] === '.') {
+            $index++;
+
+            while ($index < $length && self::isAsciiDigit($value[$index])) {
+                $index++;
+                $hasDigits = true;
+            }
+        }
+
+        if (! $hasDigits) {
+            return null;
+        }
+
+        return [substr($value, 0, $index), substr($value, $index)];
+    }
+
+    public static function consumeQuotedChar(string $text, int &$i, string &$quote): bool
+    {
+        $char = $text[$i];
+
+        if ($quote !== '') {
+            if ($char === '\\') {
+                $i++;
+
+                return true;
+            }
+
+            if ($char === $quote) {
+                $quote = '';
+            }
+
+            return true;
+        }
+
+        if ($char === '"' || $char === "'") {
+            $quote = $char;
+
+            return true;
+        }
+
+        return false;
     }
 
     public static function hasMatchingQuotes(string $value): bool
@@ -110,5 +139,10 @@ final class StringHelper
         }
 
         return $trimmed;
+    }
+
+    private static function isAsciiDigit(string $char): bool
+    {
+        return $char >= '0' && $char <= '9';
     }
 }

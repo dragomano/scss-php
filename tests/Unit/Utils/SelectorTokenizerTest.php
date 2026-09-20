@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Bugo\SCSS\Utils\SelectorComponent;
 use Bugo\SCSS\Utils\SelectorTokenizer;
 
 describe('SelectorTokenizer', function () {
@@ -483,25 +484,6 @@ describe('SelectorTokenizer 100% lines', function () {
             ->and($this->tokenizer->normalizeExtendPart(' '))->toBe('');
     });
 
-    it('extendSelectorPartByTargetsWithFlag() exposes pseudo handling flag', function () {
-        expect($this->tokenizer->extendSelectorPartByTargetsWithFlag('a', ['a'], ['b']))
-            ->toBe([['a', 'b'], false])
-            ->and($this->tokenizer->extendSelectorPartByTargetsWithFlag(':is(a)', ['a'], ['b']))
-            ->toBe([[':is(a, b)'], true])
-            ->and($this->tokenizer->weave([]))->toBe([]);
-
-        $woven = $this->tokenizer->unifyComplexes(
-            $this->tokenizer->parseComplexComponents('a'),
-            $this->tokenizer->parseComplexComponents('a +'),
-        );
-
-        expect($woven)->toHaveCount(1);
-        /** @var SelectorComponent $first */
-        $first = $woven[0][0];
-
-        expect($first->sel)->toBe('a')->and($first->comb)->toBe('+');
-    });
-
     it('weaveExtendedSelector() handles bogus input and invalid replacements', function () {
         expect($this->tokenizer->weaveExtendedSelector('a > > b', 'a', 'b'))->toBe([])
             ->and($this->tokenizer->weaveExtendedSelector('a', 'a', ' '))->toBe([])
@@ -530,6 +512,11 @@ describe('SelectorTokenizer 100% lines', function () {
                 $this->tokenizer->parseComplexComponents('a >'),
                 $this->tokenizer->parseComplexComponents('b +'),
             ))->toBeNull()
+            ->and($this->tokenizer->unifyComplexes(
+                $this->tokenizer->parseComplexComponents('a.x'),
+                $this->tokenizer->parseComplexComponents('a.y +'),
+            ))->toEqual([[new SelectorComponent('a.x.y', '+')]])
+            ->and($this->tokenizer->weave([]))->toBe([])
             ->and($this->tokenizer->unifyCompoundsStrict('a', '::before::after::x'))->toBeNull();
     });
 
@@ -633,9 +620,8 @@ describe('SelectorTokenizer 100% lines', function () {
             ->and($t->normalizeNthArguments('a:nth-child(-2 n + 3)'))->toBe('a:nth-child(-2 n + 3)')
             ->and($t->normalizeNthArguments('a:nth-child(ODD)'))->toBe('a:nth-child(ODD)')
             ->and($t->normalizeNthArguments('a:nth-child(2n+1 x)'))->toBe('a:nth-child(2n+1 x)')
-            ->and($t->normalizeNthArguments('a:nth-child(+)'))->toBe('a:nth-child(+)');
-
-        expect($t->normalizeNthArguments('a:nth-child(2n)'))->toBe('a:nth-child(2n)')
+            ->and($t->normalizeNthArguments('a:nth-child(+)'))->toBe('a:nth-child(+)')
+            ->and($t->normalizeNthArguments('a:nth-child(2n)'))->toBe('a:nth-child(2n)')
             ->and($t->normalizeNthArguments('a:nth-child(+3)'))->toBe('a:nth-child(3)')
             ->and($t->normalizeNthArguments('a:nth-child(-0n+5)'))->toBe('a:nth-child(0n+5)')
             ->and($t->normalizeNthArguments('a:nth-last-child(1n+0)'))->toBe('a:nth-last-child(n)');

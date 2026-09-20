@@ -74,6 +74,9 @@ final readonly class FunctionCallEvaluator
         private LoggerInterface $logger,
     ) {}
 
+    /**
+     * @throws Throwable
+     */
     public function evaluate(FunctionNode $node, Environment $env): AstNode
     {
         if ($node->capturedScope !== null && $node->arguments === []) {
@@ -288,8 +291,6 @@ final readonly class FunctionCallEvaluator
                         if (AstValueInspector::isNoneKeyword($item)) {
                             $hasMissing = true;
                         }
-
-                        continue;
                     }
                 }
 
@@ -356,6 +357,9 @@ final readonly class FunctionCallEvaluator
         return NameHelper::splitNamespacedName($name)['member'];
     }
 
+    /**
+     * @throws Throwable
+     */
     private function evaluateBuiltinOrCssFunction(FunctionNode $node, Environment $env): AstNode
     {
         if (strtolower($node->name) === 'not' && count($node->arguments) === 1) {

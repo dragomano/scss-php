@@ -9,6 +9,7 @@ use function array_map;
 use function array_values;
 use function count;
 use function implode;
+use function intdiv;
 use function ltrim;
 use function max;
 use function rtrim;
@@ -273,12 +274,12 @@ final class SelectorHelper
         $result       = [];
 
         for ($combo = 0; $combo < $combinations; $combo++) {
-            $variant    = $segments[0];
-            $remaining  = $combo;
+            $variant   = $segments[0];
+            $remaining = $combo;
 
             for ($ampIndex = 0; $ampIndex < $ampersandCount; $ampIndex++) {
                 $power      = (int) ($partCount ** ($ampersandCount - 1 - $ampIndex));
-                $partIndex  = (int) ($remaining / $power);
+                $partIndex  = intdiv($remaining, $power);
                 $remaining -= $partIndex * $power;
                 $variant   .= trim($parentParts[$partIndex] ?? '') . $segments[$ampIndex + 1];
             }
@@ -300,23 +301,7 @@ final class SelectorHelper
         for ($i = 0; $i < $length; $i++) {
             $char = $selector[$i];
 
-            if ($quote !== '') {
-                if ($char === '\\') {
-                    $i++;
-
-                    continue;
-                }
-
-                if ($char === $quote) {
-                    $quote = '';
-                }
-
-                continue;
-            }
-
-            if ($char === '"' || $char === "'") {
-                $quote = $char;
-
+            if (StringHelper::consumeQuotedChar($selector, $i, $quote)) {
                 continue;
             }
 

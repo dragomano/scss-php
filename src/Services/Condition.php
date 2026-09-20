@@ -35,7 +35,6 @@ use function array_key_exists;
 use function array_map;
 use function count;
 use function ctype_alpha;
-use function ctype_digit;
 use function ctype_xdigit;
 use function in_array;
 use function is_array;
@@ -571,8 +570,6 @@ final readonly class Condition
                 continue;
             }
 
-            $isPowerless = false;
-
             if ($name === 'hsl' || $name === 'hsla') {
                 $isPowerless = match ($index) {
                     0       => $valueOf(1) === 0.0 || $valueOf(2) === 0.0 || $valueOf(2) === 100.0,
@@ -885,43 +882,13 @@ final readonly class Condition
      */
     private function parseNumberLiteral(string $value): ?array
     {
-        if ($value === '') {
+        $parts = StringHelper::parseNumberPrefix($value);
+
+        if ($parts === null) {
             return null;
         }
 
-        $length = strlen($value);
-        $index  = 0;
-
-        if ($value[$index] === '+' || $value[$index] === '-') {
-            $index++;
-        }
-
-        if ($index >= $length) {
-            return null;
-        }
-
-        $hasDigits = false;
-
-        while ($index < $length && ctype_digit($value[$index])) {
-            $index++;
-            $hasDigits = true;
-        }
-
-        if ($index < $length && $value[$index] === '.') {
-            $index++;
-
-            while ($index < $length && ctype_digit($value[$index])) {
-                $index++;
-                $hasDigits = true;
-            }
-        }
-
-        if (! $hasDigits) {
-            return null;
-        }
-
-        $numberRaw = substr($value, 0, $index);
-        $unit      = substr($value, $index);
+        [$numberRaw, $unit] = $parts;
 
         if ($unit !== '') {
             $unitLength = strlen($unit);

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Builtins\Color\Support;
 
-use Bugo\Iris\Converters\NormalizedRgbChannels;
 use Bugo\Iris\Converters\SpaceConverter;
 use Bugo\Iris\Spaces\RgbColor;
 
@@ -23,29 +22,15 @@ final readonly class LegacyColorMath
      */
     public function rgbToHsl(RgbColor $rgb): array
     {
-        $r = $rgb->rValue() / 255.0;
-        $g = $rgb->gValue() / 255.0;
-        $b = $rgb->bValue() / 255.0;
-
-        $max   = max($r, $g, $b);
-        $min   = min($r, $g, $b);
-        $delta = $max - $min;
-        $l     = ($max + $min) / 2.0;
+        $channels = RgbChannelScale::toNormalizedChannels($rgb);
+        $l        = ($channels->max + $channels->min) / 2.0;
 
         $h = $this->spaceConverter->hueFromNormalizedRgb(
-            new NormalizedRgbChannels(
-                r: $r,
-                g: $g,
-                b: $b,
-                a: $rgb->a,
-                max: $max,
-                min: $min,
-                delta: $delta,
-            ),
+            $channels,
         );
 
         $denom = 1.0 - abs(2.0 * $l - 1.0);
-        $s     = $delta > 0.0 ? $delta / $denom : 0.0;
+        $s     = $channels->delta > 0.0 ? $channels->delta / $denom : 0.0;
 
         return [
             'h' => $this->spaceConverter->normalizeHue($h),
@@ -70,7 +55,7 @@ final readonly class LegacyColorMath
     }
 
     /**
-     * Shifts an hsl channel by a signed delta, clamping like dart-sass:
+     * Shifts a hsl channel by a signed delta, clamping like dart-sass:
      * hue wraps around 360 degrees, alpha is clamped to [0, 1] and
      * saturation/lightness are clamped to [0, 100].
      *

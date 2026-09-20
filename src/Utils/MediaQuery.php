@@ -38,7 +38,7 @@ final readonly class MediaQuery
      */
     public static function parseList(string $prelude): ?array
     {
-        $parts = self::splitTopLevel($prelude, ',');
+        $parts = self::splitTopLevel($prelude);
         $queries = [];
 
         foreach ($parts as $part) {
@@ -105,6 +105,7 @@ final readonly class MediaQuery
     }
 
     /**
+     * @param MediaQuery $other
      * @return self|MergeOutcome
      */
     public function merge(self $other): self|MergeOutcome
@@ -378,11 +379,11 @@ final readonly class MediaQuery
     /**
      * @return list<string>
      */
-    private static function splitTopLevel(string $text, string $separator): array
+    private static function splitTopLevel(string $text): array
     {
         $points = self::scanTopLevelBoundaries(
             $text,
-            static fn(string $text, int $i, int $length): int => $text[$i] === $separator ? 1 : 0,
+            static fn(string $text, int $i, int $length): int => $text[$i] === ',' ? 1 : 0,
         );
 
         $parts = [];

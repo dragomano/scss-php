@@ -2,10 +2,8 @@
 
 declare(strict_types=1);
 
-use Bugo\Iris\Spaces\RgbColor;
 use Bugo\SCSS\Builtins\Color\ColorModuleFactory;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
-use Bugo\SCSS\Exceptions\UnsupportedColorSpaceException;
 use Bugo\SCSS\Exceptions\UnsupportedColorValueException;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\FunctionNode;
@@ -362,22 +360,6 @@ describe('ColorSpaceConverter', function () {
         expect($result->lValue())->toBeFloat()
             ->and($result->cValue())->toBeFloat()
             ->and($result->hValue())->toBeFloat();
-    });
-
-    it('converts rgb colors to working-space channels and rejects unsupported spaces', function () {
-        $rgb = new RgbColor(12.0, 34.0, 56.0, 0.25);
-
-        $a98      = $this->interop->rgbToWorkingSpaceChannels($rgb, 'a98-rgb');
-        $prophoto = $this->interop->rgbToWorkingSpaceChannels($rgb, 'prophoto-rgb');
-        $rec2020  = $this->interop->rgbToWorkingSpaceChannels($rgb, 'rec2020');
-
-        expect($a98)->toHaveCount(3)
-            ->and($prophoto)->toHaveCount(3)
-            ->and($rec2020)->toHaveCount(3)
-            ->and(fn() => $this->interop->rgbToWorkingSpaceChannels($rgb, 'bogus'))
-            ->toThrow(UnsupportedColorSpaceException::class)
-            ->and(fn() => $this->interop->workingSpaceChannelsToRgb('bogus', [0.1, 0.2, 0.3], 0.25))
-            ->toThrow(UnsupportedColorSpaceException::class);
     });
 
     it('handles incomplete and alpha-bearing hsl channel extraction', function () {
@@ -774,31 +756,6 @@ describe('ColorSpaceConverter', function () {
         expect($result)->toBeInstanceOf(FunctionNode::class)
             ->and($result)->not->toBe($mix)
             ->and($result->name)->toBe('color');
-    });
-
-    it('exposes display-p3 working-space channel conversion', function () {
-        $rgb = new RgbColor(12.0, 34.0, 56.0, 0.25);
-
-        $channels = $this->interop->rgbToWorkingSpaceChannels($rgb, 'display-p3');
-
-        expect($channels)->toHaveCount(3)
-            ->and($channels[0])->toBeCloseTo(0.06897245119607551)
-            ->and($channels[1])->toBeCloseTo(0.1313120260928885)
-            ->and($channels[2])->toBeCloseTo(0.21278366536387594);
-    });
-
-    it('converts working-space channels back to rgb including alpha', function () {
-        $a98 = $this->interop->workingSpaceChannelsToRgb('a98-rgb', [
-            0.10600652665779493,
-            0.15252996199964947,
-            0.22761092713899572,
-        ], 0.25);
-
-        expect($a98)->toBeInstanceOf(RgbColor::class)
-            ->and($a98->rValue())->toBeCloseTo(12.0)
-            ->and($a98->gValue())->toBeCloseTo(34.0)
-            ->and($a98->bValue())->toBeCloseTo(56.0)
-            ->and($a98->a)->toBeCloseTo(0.25);
     });
 
     it('extracts lch missing data from color nodes', function () {

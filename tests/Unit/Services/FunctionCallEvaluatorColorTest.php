@@ -18,7 +18,7 @@ describe('Compiler function evaluator color paths', function () {
         foreach ($cases as $case) {
             expect($this->compiler->compileString($case[0]))->toEqualCss(
                 /** @lang text */
-                ".a {\n  {$case[1]};\n}",
+                ".a {\n  $case[1];\n}",
             );
         }
     });

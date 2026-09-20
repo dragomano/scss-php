@@ -6,8 +6,6 @@ namespace Bugo\SCSS\Handlers\Rule;
 
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Bugo\SCSS\Runtime\AtRuleContextEntry;
-use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Services\Context;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
@@ -16,9 +14,7 @@ use Bugo\SCSS\Services\Selector;
 use function array_pop;
 use function ctype_digit;
 use function implode;
-use function is_array;
 use function str_contains;
-use function str_ends_with;
 use function str_replace;
 use function str_starts_with;
 use function strlen;
@@ -61,7 +57,7 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
             $ruleCtx->selector       = $selector;
             $ruleCtx->omitOwnRuleOutput = false;
         } else {
-            $insideKeyframes = $this->isInsideKeyframes($scope);
+            $insideKeyframes = $scope->isInsideKeyframes();
 
             // Normalize scientific notation in keyframe selectors (13E+1% → 13e+1%)
             if ($insideKeyframes) {
@@ -106,7 +102,7 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
 
             if ($this->selector->hasAdjacentCompoundSelectors($diagnosticSelector)) {
                 $this->context->logWarning(
-                    "The selector \"{$diagnosticSelector}\" uses adjacent compound selectors "
+                    "The selector \"$diagnosticSelector\" uses adjacent compound selectors "
                     . '(e.g. "[attr]a"). This is not valid CSS and will be an error in a future release. '
                     . 'Add a combinator or whitespace between the compound selectors.',
                     $node->line,
@@ -128,28 +124,6 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
         $scope->setVariableLocal('__parent_selector', new StringNode($parentSelectorValue));
 
         return null;
-    }
-
-    private function isInsideKeyframes(Scope $scope): bool
-    {
-        if (! $scope->hasVariable('__at_rule_stack')) {
-            return false;
-        }
-
-        $atRuleStack = $scope->getVariable('__at_rule_stack');
-
-        if (! is_array($atRuleStack)) {
-            return false;
-        }
-
-        /** @var list<AtRuleContextEntry|array<string, mixed>> $atRuleStack */
-        foreach ($atRuleStack as $entry) {
-            if ($entry instanceof AtRuleContextEntry && $entry->name !== null && str_ends_with($entry->name, 'keyframes')) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private function normalizeScientificNotation(string $selector): string

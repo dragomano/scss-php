@@ -19,9 +19,9 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
+use Bugo\SCSS\Utils\StringEscapeDecoder;
 
 use function abs;
-use function chr;
 use function count;
 use function ctype_digit;
 use function ctype_space;
@@ -783,7 +783,7 @@ final readonly class ValueParser implements
                 if ($codePoint < 0x20 || $codePoint === 0x7F) {
                     $result .= '\\' . strtolower(dechex($codePoint)) . ' ';
                 } else {
-                    $result .= $this->encodeCodePointToUtf8($codePoint);
+                    $result .= StringEscapeDecoder::codePointToUtf8($codePoint);
                 }
 
                 $i = $position;
@@ -798,24 +798,6 @@ final readonly class ValueParser implements
         }
 
         return $result;
-    }
-
-    private function encodeCodePointToUtf8(int $codePoint): string
-    {
-        if ($codePoint <= 0x7F) {
-            return chr($codePoint & 0x7F);
-        }
-
-        if ($codePoint <= 0x7FF) {
-            return chr(0xC0 | ($codePoint >> 6)) . chr(0x80 | ($codePoint & 0x3F));
-        }
-
-        if ($codePoint <= 0xFFFF) {
-            return chr(0xE0 | ($codePoint >> 12)) . chr(0x80 | (($codePoint >> 6) & 0x3F)) . chr(0x80 | ($codePoint & 0x3F));
-        }
-
-        return chr(0xF0 | (($codePoint >> 18) & 0x07)) . chr(0x80 | (($codePoint >> 12) & 0x3F))
-            . chr(0x80 | (($codePoint >> 6) & 0x3F)) . chr(0x80 | ($codePoint & 0x3F));
     }
 
     private function utf8WidthAt(string $value, int $position): int

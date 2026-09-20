@@ -358,7 +358,7 @@ describe('CallableDirectiveParser CSS function names', function () {
         ]);
 
         /* @var $node RuleNode */
-        $node = $parser->parseFunctionDirective('function', 1, 1);
+        $node = $parser->parseFunctionDirective();
 
         expect($node)->toBeInstanceOf(RuleNode::class)
             ->and($node->selector)->toBe('@function --f-#{a');
@@ -379,7 +379,7 @@ describe('CallableDirectiveParser CSS function names', function () {
         ]);
 
         /* @var $node RuleNode */
-        $node = $parser->parseFunctionDirective('function', 1, 1);
+        $node = $parser->parseFunctionDirective();
 
         expect($node)->toBeInstanceOf(RuleNode::class)
             ->and($node->selector)->toBe('@function --f()');
@@ -401,7 +401,7 @@ describe('CallableDirectiveParser CSS function names', function () {
         ]);
 
         /* @var $node RuleNode */
-        $node = $parser->parseFunctionDirective('function', 1, 1);
+        $node = $parser->parseFunctionDirective();
 
         expect($node)->toBeInstanceOf(RuleNode::class)
             ->and($node->selector)->toBe('@function --f(1 p())');
@@ -419,7 +419,7 @@ describe('CallableDirectiveParser CSS function names', function () {
         ]);
 
         /* @var $node RuleNode */
-        $node = $parser->parseFunctionDirective('function', 1, 1);
+        $node = $parser->parseFunctionDirective();
 
         expect($node)->toBeInstanceOf(RuleNode::class)
             ->and($node->selector)->toBe('@function --f()');

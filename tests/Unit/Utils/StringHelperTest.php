@@ -87,29 +87,45 @@ describe('StringHelper', function () {
         });
     });
 
-    describe('unescapeQuotedContent()', function () {
-        it('unescapes escaped backslash', function () {
-            expect(StringHelper::unescapeQuotedContent('\\\\'))->toBe('\\');
+    describe('consumeQuotedChar()', function () {
+        it('opens a quote state on an opening quote', function () {
+            $i     = 0;
+            $quote = '';
+
+            expect(StringHelper::consumeQuotedChar('"a"', $i, $quote))->toBeTrue()
+                ->and($quote)->toBe('"');
         });
 
-        it('unescapes escaped double quote', function () {
-            expect(StringHelper::unescapeQuotedContent('\\"'))->toBe('"');
+        it('closes a quote state on the matching quote', function () {
+            $i     = 2;
+            $quote = '"';
+
+            expect(StringHelper::consumeQuotedChar('"a"', $i, $quote))->toBeTrue()
+                ->and($quote)->toBe('');
         });
 
-        it('unescapes escaped single quote', function () {
-            expect(StringHelper::unescapeQuotedContent("\\'"))->toBe("'");
+        it('skips the escaped character after a backslash', function () {
+            $i     = 1;
+            $quote = '"';
+
+            expect(StringHelper::consumeQuotedChar('"\\""', $i, $quote))->toBeTrue()
+                ->and($i)->toBe(2);
         });
 
-        it('keeps unsupported escape sequence unchanged', function () {
-            expect(StringHelper::unescapeQuotedContent('\n\q'))->toBe('\n\q');
+        it('keeps the quote state on ordinary characters', function () {
+            $i     = 1;
+            $quote = '"';
+
+            expect(StringHelper::consumeQuotedChar('"a"', $i, $quote))->toBeTrue()
+                ->and($quote)->toBe('"');
         });
 
-        it('returns plain text unchanged', function () {
-            expect(StringHelper::unescapeQuotedContent('hello'))->toBe('hello');
-        });
+        it('reports characters outside quotes as not consumed', function () {
+            $i     = 0;
+            $quote = '';
 
-        it('handles trailing backslash at end of string unchanged', function () {
-            expect(StringHelper::unescapeQuotedContent('a\\'))->toBe('a\\');
+            expect(StringHelper::consumeQuotedChar('a', $i, $quote))->toBeFalse()
+                ->and($i)->toBe(0);
         });
     });
 });

@@ -785,7 +785,7 @@ describe('Compiler', function () {
         });
 
         it('compiles many @extend directives without performance regression', function () {
-            $scss = /** @lang SCSS */ <<<'SCSS'
+            $scss = /** @lang text */ <<<'SCSS'
             @use "sass:math";
             @for $i from 1 through 30 {
               .a-#{$i} {

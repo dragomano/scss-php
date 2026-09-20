@@ -12,6 +12,8 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Utils\NameNormalizer;
 
 use function array_key_exists;
+use function is_array;
+use function str_ends_with;
 use function str_starts_with;
 
 final class Scope
@@ -73,6 +75,28 @@ final class Scope
         return $this->insideCssFunctionBody;
     }
 
+    public function isInsideKeyframes(): bool
+    {
+        if (! $this->hasVariable('__at_rule_stack')) {
+            return false;
+        }
+
+        $atRuleStack = $this->getVariable('__at_rule_stack');
+
+        if (! is_array($atRuleStack)) {
+            return false;
+        }
+
+        /** @var list<AtRuleContextEntry|array<string, mixed>> $atRuleStack */
+        foreach ($atRuleStack as $entry) {
+            if ($entry instanceof AtRuleContextEntry && $entry->name !== null && str_ends_with($entry->name, 'keyframes')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function markAsFlowControlScope(): void
     {
         $this->flowControlScope = true;
@@ -81,11 +105,6 @@ final class Scope
     public function markAsCallableBody(): void
     {
         $this->callableBody = true;
-    }
-
-    public function isCallableBody(): bool
-    {
-        return $this->callableBody;
     }
 
     public function isFlowControlScope(): bool

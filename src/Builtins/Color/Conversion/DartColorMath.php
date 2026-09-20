@@ -33,7 +33,7 @@ final readonly class DartColorMath
     private const LAB_EPSILON = 0.0088564516790356311;
 
     /**
-     * Row-major transformation matrices (dart-sass conversions.dart)
+     * Row-major transformation matrices
      *
      * @var array<string, array<int, float>>
      */
@@ -341,11 +341,7 @@ final readonly class DartColorMath
         }
 
         return match ($from) {
-            'hsl'               => $this->fromSrgb($to, $this->hslToSrgb(
-                $channels[0] ?? 0.0,
-                $channels[1] ?? 0.0,
-                $channels[2] ?? 0.0,
-            )),
+            'hsl'               => $this->fromSrgb($to, $this->hslToSrgb($channels[0] ?? 0.0, $channels[1] ?? 0.0, $channels[2] ?? 0.0)),
             'hwb'               => $this->hwbConvert($to, $channels),
             'rgb'               => $this->fromSrgb($to, $this->scaleRgbLegacyChannels($channels)),
             'srgb'              => $this->fromSrgb($to, $channels),
@@ -355,8 +351,7 @@ final readonly class DartColorMath
             'a98-rgb',
             'prophoto-rgb',
             'rec2020',
-            'xyz-d65'
-                                => $this->convertLinear($from, $to, $channels),
+            'xyz-d65'           => $this->convertLinear($from, $to, $channels),
             'xyz-d50'           => $this->xyzD50Convert($to, $channels),
             'lab'               => $this->labConvert($to, $channels),
             'lch'               => $this->lchConvert($to, $channels),
@@ -736,16 +731,7 @@ final readonly class DartColorMath
             return $this->labToLch($lightness ?? 0.0, $a ?? 0.0, $b ?? 0.0);
         }
 
-        $matrix = self::MATRICES['oklabToLms'];
-        $lValue = $lightness ?? 0.0;
-        $aValue = $a ?? 0.0;
-        $bValue = $b ?? 0.0;
-
-        return $this->lmsConvert($to, [
-            $this->cube($matrix[0] * $lValue + $matrix[1] * $aValue + $matrix[2] * $bValue),
-            $this->cube($matrix[3] * $lValue + $matrix[4] * $aValue + $matrix[5] * $bValue),
-            $this->cube($matrix[6] * $lValue + $matrix[7] * $aValue + $matrix[8] * $bValue),
-        ]);
+        return $this->oklabToLms($to, $lightness, $a, $b);
     }
 
     /**
@@ -761,13 +747,23 @@ final readonly class DartColorMath
         $a = ($chroma ?? 0.0) * cos($hueRadians);
         $b = ($chroma ?? 0.0) * sin($hueRadians);
 
+        return $this->oklabToLms($to, $lightness, $a, $b);
+    }
+
+    /**
+     * @return array{0: float|null, 1: float|null, 2: float|null}
+     */
+    private function oklabToLms(string $to, ?float $lightness, ?float $a, ?float $b): array
+    {
         $matrix = self::MATRICES['oklabToLms'];
         $lValue = $lightness ?? 0.0;
+        $aValue = $a ?? 0.0;
+        $bValue = $b ?? 0.0;
 
         return $this->lmsConvert($to, [
-            $this->cube($matrix[0] * $lValue + $matrix[1] * $a + $matrix[2] * $b),
-            $this->cube($matrix[3] * $lValue + $matrix[4] * $a + $matrix[5] * $b),
-            $this->cube($matrix[6] * $lValue + $matrix[7] * $a + $matrix[8] * $b),
+            $this->cube($matrix[0] * $lValue + $matrix[1] * $aValue + $matrix[2] * $bValue),
+            $this->cube($matrix[3] * $lValue + $matrix[4] * $aValue + $matrix[5] * $bValue),
+            $this->cube($matrix[6] * $lValue + $matrix[7] * $aValue + $matrix[8] * $bValue),
         ]);
     }
 
@@ -780,7 +776,7 @@ final readonly class DartColorMath
         $f1     = ($lValue + 16.0) / 116.0;
 
         $y = $lValue > self::LAB_KAPPA * self::LAB_EPSILON
-            ? $this->cube(($lValue + 16.0) / 116.0) * 1.0
+            ? $this->cube(($lValue + 16.0) / 116.0)
             : $lValue / self::LAB_KAPPA;
 
         return $this->xyzD50Convert($to, [
@@ -822,8 +818,8 @@ final readonly class DartColorMath
      */
     private function computeHue(float $r, float $g, float $b): array
     {
-        $max   = max(max($r, $g), $b);
-        $min   = min(min($r, $g), $b);
+        $max   = max($r, $g, $b);
+        $min   = min($r, $g, $b);
         $delta = $max - $min;
 
         if ($max === $min) {
@@ -875,7 +871,7 @@ final readonly class DartColorMath
     {
         return match ($to) {
             'srgb', 'srgb-linear', 'rgb' => match ($from) {
-                'display-p3-linear' => self::MATRICES['linearDisplayP3ToLinearSrgb'],
+                'display-p3-linear',
                 'display-p3'        => self::MATRICES['linearDisplayP3ToLinearSrgb'],
                 'a98-rgb'           => self::MATRICES['linearA98RgbToLinearSrgb'],
                 'prophoto-rgb'      => self::MATRICES['linearProphotoRgbToLinearSrgb'],
@@ -886,7 +882,7 @@ final readonly class DartColorMath
                 default             => throw new LogicException("Unsupported matrix source \"$from\"."),
             },
             'display-p3', 'display-p3-linear' => match ($from) {
-                'srgb'         => self::MATRICES['linearSrgbToLinearDisplayP3'],
+                'srgb',
                 'srgb-linear'  => self::MATRICES['linearSrgbToLinearDisplayP3'],
                 'a98-rgb'      => self::MATRICES['linearA98RgbToLinearDisplayP3'],
                 'prophoto-rgb' => self::MATRICES['linearProphotoRgbToLinearDisplayP3'],
@@ -897,9 +893,9 @@ final readonly class DartColorMath
                 default        => throw new LogicException("Unsupported matrix source \"$from\"."),
             },
             'a98-rgb' => match ($from) {
-                'srgb'              => self::MATRICES['linearSrgbToLinearA98Rgb'],
+                'srgb',
                 'srgb-linear'       => self::MATRICES['linearSrgbToLinearA98Rgb'],
-                'display-p3'        => self::MATRICES['linearDisplayP3ToLinearA98Rgb'],
+                'display-p3',
                 'display-p3-linear' => self::MATRICES['linearDisplayP3ToLinearA98Rgb'],
                 'prophoto-rgb'      => self::MATRICES['linearProphotoRgbToLinearA98Rgb'],
                 'rec2020'           => self::MATRICES['linearRec2020ToLinearA98Rgb'],
@@ -909,9 +905,9 @@ final readonly class DartColorMath
                 default             => throw new LogicException("Unsupported matrix source \"$from\"."),
             },
             'prophoto-rgb' => match ($from) {
-                'srgb'              => self::MATRICES['linearSrgbToLinearProphotoRgb'],
+                'srgb',
                 'srgb-linear'       => self::MATRICES['linearSrgbToLinearProphotoRgb'],
-                'display-p3'        => self::MATRICES['linearDisplayP3ToLinearProphotoRgb'],
+                'display-p3',
                 'display-p3-linear' => self::MATRICES['linearDisplayP3ToLinearProphotoRgb'],
                 'a98-rgb'           => self::MATRICES['linearA98RgbToLinearProphotoRgb'],
                 'rec2020'           => self::MATRICES['linearRec2020ToLinearProphotoRgb'],
@@ -921,9 +917,9 @@ final readonly class DartColorMath
                 default             => throw new LogicException("Unsupported matrix source \"$from\"."),
             },
             'rec2020' => match ($from) {
-                'srgb'              => self::MATRICES['linearSrgbToLinearRec2020'],
+                'srgb',
                 'srgb-linear'       => self::MATRICES['linearSrgbToLinearRec2020'],
-                'display-p3'        => self::MATRICES['linearDisplayP3ToLinearRec2020'],
+                'display-p3',
                 'display-p3-linear' => self::MATRICES['linearDisplayP3ToLinearRec2020'],
                 'a98-rgb'           => self::MATRICES['linearA98RgbToLinearRec2020'],
                 'prophoto-rgb'      => self::MATRICES['linearProphotoRgbToLinearRec2020'],
@@ -933,9 +929,9 @@ final readonly class DartColorMath
                 default             => throw new LogicException("Unsupported matrix source \"$from\"."),
             },
             'xyz-d65' => match ($from) {
-                'srgb'              => self::MATRICES['linearSrgbToXyzD65'],
+                'srgb',
                 'srgb-linear'       => self::MATRICES['linearSrgbToXyzD65'],
-                'display-p3'        => self::MATRICES['linearDisplayP3ToXyzD65'],
+                'display-p3',
                 'display-p3-linear' => self::MATRICES['linearDisplayP3ToXyzD65'],
                 'a98-rgb'           => self::MATRICES['linearA98RgbToXyzD65'],
                 'prophoto-rgb'      => self::MATRICES['linearProphotoRgbToXyzD65'],
@@ -945,9 +941,9 @@ final readonly class DartColorMath
                 default             => throw new LogicException("Unsupported matrix source \"$from\"."),
             },
             'xyz-d50' => match ($from) {
-                'srgb'              => self::MATRICES['linearSrgbToXyzD50'],
+                'srgb',
                 'srgb-linear'       => self::MATRICES['linearSrgbToXyzD50'],
-                'display-p3'        => self::MATRICES['linearDisplayP3ToXyzD50'],
+                'display-p3',
                 'display-p3-linear' => self::MATRICES['linearDisplayP3ToXyzD50'],
                 'a98-rgb'           => self::MATRICES['linearA98RgbToXyzD50'],
                 'prophoto-rgb'      => self::MATRICES['linearProphotoRgbToXyzD50'],
@@ -957,9 +953,9 @@ final readonly class DartColorMath
                 default             => throw new LogicException("Unsupported matrix source \"$from\"."),
             },
             'lms' => match ($from) {
-                'srgb'              => self::MATRICES['linearSrgbToLms'],
+                'srgb',
                 'srgb-linear'       => self::MATRICES['linearSrgbToLms'],
-                'display-p3'        => self::MATRICES['linearDisplayP3ToLms'],
+                'display-p3',
                 'display-p3-linear' => self::MATRICES['linearDisplayP3ToLms'],
                 'a98-rgb'           => self::MATRICES['linearA98RgbToLms'],
                 'prophoto-rgb'      => self::MATRICES['linearProphotoRgbToLms'],

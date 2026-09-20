@@ -212,7 +212,7 @@ final readonly class FlowControlNodeHandler
                         if (! $isPropertyBlock) {
                             $dummyOutput = '';
 
-                            $this->chunks->appendIncludedRuleChunk($dummyOutput, $first, $child, $ctx, false);
+                            $this->chunks->appendIncludedRuleChunk($dummyOutput, $first, $child, $ctx);
 
                             continue;
                         }

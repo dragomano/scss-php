@@ -8,8 +8,6 @@ use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Visitor;
 
 /**
- * @phpstan-import-type NodeList from AstNode
- *
  * @psalm-import-type NodeList from AstNode
  */
 final class IfNode extends StatementNode

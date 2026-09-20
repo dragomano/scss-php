@@ -61,11 +61,6 @@ final class Parser implements
         $this->initSubParsers();
     }
 
-    public static function clearInlineExpressionCache(): void
-    {
-        self::$inlineExpressionCache = [];
-    }
-
     public function setTrackSourceLocations(bool $track): void
     {
         $this->trackSourceLocations = $track;

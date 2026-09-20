@@ -48,7 +48,7 @@ describe('Escaped hash protection', function () {
     it('does not emit a charset rule for output that is ascii after restoration', function () {
         $css = $this->compiler->compileString('.a { c: "\#{x}"; }');
 
-        expect($css)->toContain('"#{x}"');
-        expect($css)->not->toContain('@charset');
+        expect($css)->toContain('"#{x}"')
+            ->and($css)->not->toContain('@charset');
     });
 });

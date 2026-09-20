@@ -125,6 +125,6 @@ final class AstValueComparator
             return null;
         }
 
-        return (new ValueFactory())->fromAst($node, formatter: null)->toCss();
+        return (new ValueFactory())->fromAst($node)->toCss();
     }
 }

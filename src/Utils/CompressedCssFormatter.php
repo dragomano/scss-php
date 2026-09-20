@@ -545,25 +545,7 @@ final readonly class CompressedCssFormatter
         while ($i < $length) {
             $char = $css[$i];
 
-            if (! $inString && ($char === '"' || $char === "'")) {
-                $inString = true;
-                $quote    = $char;
-                $parts[]  = $char;
-
-                $i++;
-
-                continue;
-            }
-
-            if ($inString) {
-                if ($char === $quote && ($i === 0 || $css[$i - 1] !== '\\')) {
-                    $inString = false;
-                }
-
-                $parts[] = $char;
-
-                $i++;
-
+            if ($this->consumeQuotedChar($css, $i, $inString, $quote, $parts)) {
                 continue;
             }
 
@@ -625,25 +607,7 @@ final readonly class CompressedCssFormatter
         while ($i < $length) {
             $char = $css[$i];
 
-            if (! $inString && ($char === '"' || $char === "'")) {
-                $inString = true;
-                $quote    = $char;
-                $parts[]  = $char;
-
-                $i++;
-
-                continue;
-            }
-
-            if ($inString) {
-                if ($char === $quote && ($i === 0 || $css[$i - 1] !== '\\')) {
-                    $inString = false;
-                }
-
-                $parts[] = $char;
-
-                $i++;
-
+            if ($this->consumeQuotedChar($css, $i, $inString, $quote, $parts)) {
                 continue;
             }
 
@@ -679,5 +643,37 @@ final readonly class CompressedCssFormatter
         }
 
         return $parts !== [] ? implode('', $parts) : '';
+    }
+
+    /**
+     * @param list<string> $parts
+     */
+    private function consumeQuotedChar(string $css, int &$i, bool &$inString, string &$quote, array &$parts): bool
+    {
+        $char = $css[$i];
+
+        if (! $inString && ($char === '"' || $char === "'")) {
+            $inString = true;
+            $quote    = $char;
+            $parts[]  = $char;
+
+            $i++;
+
+            return true;
+        }
+
+        if ($inString) {
+            if ($char === $quote && ($i === 0 || $css[$i - 1] !== '\\')) {
+                $inString = false;
+            }
+
+            $parts[] = $char;
+
+            $i++;
+
+            return true;
+        }
+
+        return false;
     }
 }

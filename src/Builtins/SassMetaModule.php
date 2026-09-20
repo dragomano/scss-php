@@ -193,11 +193,8 @@ final class SassMetaModule extends AbstractModule
                 return $this->boolNode(true);
             }
 
-            if ($reference === 'meta.load-css') {
-                return $this->boolNode(false);
-            }
-
             return $this->boolNode(false);
+
         }
 
         return $this->boolNode($this->mixinBodyAcceptsContent($mixinBody));

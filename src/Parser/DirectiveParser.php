@@ -235,7 +235,6 @@ final readonly class DirectiveParser
                 break;
             }
 
-            $savedPos  = $this->stream->getPosition();
             $elseToken = $this->stream->current();
 
             $this->stream->advance();

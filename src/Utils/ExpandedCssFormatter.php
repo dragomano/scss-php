@@ -230,34 +230,7 @@ final readonly class ExpandedCssFormatter
         while ($i < $length) {
             $char = $css[$i];
 
-            if ($inString) {
-                if ($char === '\\') {
-                    $i += 2;
-
-                    continue;
-                }
-
-                if ($char === '#' && $i + 1 < $length && $css[$i + 1] === '{') {
-                    $i = StringEscapeDecoder::skipInterpolation($css, $i + 1);
-
-                    continue;
-                }
-
-                if ($char === $quote) {
-                    $inString = false;
-                }
-
-                $i++;
-
-                continue;
-            }
-
-            if ($char === '"' || $char === "'") {
-                $inString = true;
-                $quote    = $char;
-
-                $i++;
-
+            if ($this->consumeQuotedChar($css, $length, $i, $inString, $quote)) {
                 continue;
             }
 
@@ -334,34 +307,7 @@ final readonly class ExpandedCssFormatter
         while ($i < $length) {
             $char = $css[$i];
 
-            if ($inString) {
-                if ($char === '\\') {
-                    $i += 2;
-
-                    continue;
-                }
-
-                if ($char === '#' && $i + 1 < $length && $css[$i + 1] === '{') {
-                    $i = StringEscapeDecoder::skipInterpolation($css, $i + 1);
-
-                    continue;
-                }
-
-                if ($char === $quote) {
-                    $inString = false;
-                }
-
-                $i++;
-
-                continue;
-            }
-
-            if ($char === '"' || $char === "'") {
-                $inString = true;
-                $quote    = $char;
-
-                $i++;
-
+            if ($this->consumeQuotedChar($css, $length, $i, $inString, $quote)) {
                 continue;
             }
 
@@ -395,5 +341,43 @@ final readonly class ExpandedCssFormatter
         }
 
         return ['', $length];
+    }
+
+    private function consumeQuotedChar(string $css, int $length, int &$i, bool &$inString, string &$quote): bool
+    {
+        $char = $css[$i];
+
+        if (! $inString && ($char === '"' || $char === "'")) {
+            $inString = true;
+            $quote    = $char;
+
+            $i++;
+
+            return true;
+        }
+
+        if ($inString) {
+            if ($char === '\\') {
+                $i += 2;
+
+                return true;
+            }
+
+            if ($char === '#' && $i + 1 < $length && $css[$i + 1] === '{') {
+                $i = StringEscapeDecoder::skipInterpolation($css, $i + 1);
+
+                return true;
+            }
+
+            if ($char === $quote) {
+                $inString = false;
+            }
+
+            $i++;
+
+            return true;
+        }
+
+        return false;
     }
 }

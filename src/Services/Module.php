@@ -246,11 +246,10 @@ final readonly class Module
 
         $moduleEnv = new Environment();
 
-        $incomingConfig = [];
-
-        foreach ($node->configuration as $name => $valueNode) {
-            $incomingConfig[$name] = $this->evaluation->evaluateValueWithSlashDivision($valueNode, $env);
-        }
+        $incomingConfig = array_map(
+            fn($valueNode): AstNode => $this->evaluation->evaluateValueWithSlashDivision($valueNode, $env),
+            $node->configuration,
+        );
 
         if ($incomingConfig !== []) {
             $moduleEnv->getCurrentScope()->setConfiguredVariables($incomingConfig);
@@ -1100,7 +1099,7 @@ final readonly class Module
         return $this->state()->getById($moduleId);
     }
 
-    private function parseModuleAst(string $path, string $source, ?Syntax $syntax = null): RootNode
+    private function parseModuleAst(string $path, string $source): RootNode
     {
         $prefetched = $this->ctx->moduleState->prefetchedAst($path);
 
@@ -1108,7 +1107,7 @@ final readonly class Module
             return $prefetched;
         }
 
-        $isCss = ($syntax ?? Syntax::fromPath($path, $source)) === Syntax::CSS;
+        $isCss = Syntax::fromPath($path, $source) === Syntax::CSS;
 
         $this->parser->setPlainCss($isCss);
 

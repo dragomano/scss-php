@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Builtins\Color\Conversion;
 
-use Bugo\Iris\Converters\NormalizedRgbChannels;
 use Bugo\Iris\Spaces\HslColor;
 use Bugo\Iris\Spaces\HwbColor;
 use Bugo\Iris\Spaces\LabColor;
@@ -30,7 +29,6 @@ use function abs;
 use function in_array;
 use function is_nan;
 use function max;
-use function min;
 use function round;
 use function str_contains;
 use function str_starts_with;
@@ -153,63 +151,17 @@ final readonly class ColorNodeConverter
         );
     }
 
-    public function toUnclampedRgb(AstNode $color): RgbColor
-    {
-        if ($color instanceof FunctionNode && strtolower($color->name) === 'color') {
-            $space = $this->detectGenericColorSpace($color);
-
-            if ($space === 'srgb') {
-                $channels = $this->extractChannelNodes($color);
-                $red      = $channels[1] ?? null;
-                $green    = $channels[2] ?? null;
-                $blue     = $channels[3] ?? null;
-
-                if (
-                    $red instanceof NumberNode
-                    && $green instanceof NumberNode
-                    && $blue instanceof NumberNode
-                    && ($red->unit === null || $red->unit === '' || $red->unit === '%')
-                    && ($green->unit === null || $green->unit === '' || $green->unit === '%')
-                    && ($blue->unit === null || $blue->unit === '' || $blue->unit === '%')
-                ) {
-                    return new RgbColor(
-                        r: $this->genericSrgbChannelToByte($red),
-                        g: $this->genericSrgbChannelToByte($green),
-                        b: $this->genericSrgbChannelToByte($blue),
-                        a: $this->toAlpha($color),
-                    );
-                }
-            }
-        }
-
-        return $this->toRgb($color);
-    }
-
     public function toHwb(AstNode $color): HwbColor
     {
-        $rgb = $this->toRgb($color);
-        $r   = $rgb->rValue() / 255.0;
-        $g   = $rgb->gValue() / 255.0;
-        $b   = $rgb->bValue() / 255.0;
-
-        $max   = max($r, $g, $b);
-        $min   = min($r, $g, $b);
-        $delta = $max - $min;
+        $rgb      = $this->toRgb($color);
+        $channels = RgbChannelScale::toNormalizedChannels($rgb, 1.0);
 
         return new HwbColor(
             h: $this->runtime->spaceConverter->hueFromNormalizedRgb(
-                new NormalizedRgbChannels(
-                    r: $r,
-                    g: $g,
-                    b: $b,
-                    a: 1.0,
-                    max: $max,
-                    min: $min,
-                    delta: $delta,
-                ),
+                $channels,
             ),
-            w: $min * 100.0,
-            b: (1.0 - $max) * 100.0,
+            w: $channels->min * 100.0,
+            b: (1.0 - $channels->max) * 100.0,
             a: $rgb->a,
         );
     }
@@ -288,56 +240,6 @@ final readonly class ColorNodeConverter
         }
 
         return false;
-    }
-
-    public function readNativeLab(FunctionNode $color): LabColor
-    {
-        $channels = $this->extractChannelNodes($color);
-
-        return new LabColor(
-            l: $this->runtime->argumentParser->asPercentage($channels[0] ?? null, 'color'),
-            a: $this->runtime->argumentParser->asNumber($channels[1] ?? null, 'color'),
-            b: $this->runtime->argumentParser->asNumber($channels[2] ?? null, 'color'),
-            alpha: 1.0,
-        );
-    }
-
-    /**
-     * @return array{0: float, 1: float, 2: float}
-     */
-    public function extractSrgbChannels(AstNode $color): array
-    {
-        if (! ($color instanceof FunctionNode) || $color->name !== 'color') {
-            $rgb = $this->toRgb($color);
-
-            return [$rgb->rValue() / 255.0, $rgb->gValue() / 255.0, $rgb->bValue() / 255.0];
-        }
-
-        $channels = $this->extractChannelNodes($color);
-
-        return [
-            $this->runtime->argumentParser->asNumber($channels[1] ?? null, 'color'),
-            $this->runtime->argumentParser->asNumber($channels[2] ?? null, 'color'),
-            $this->runtime->argumentParser->asNumber($channels[3] ?? null, 'color'),
-        ];
-    }
-
-    public function extractOklch(AstNode $color, string $context): OklchColor
-    {
-        if ($color instanceof FunctionNode && strtolower($color->name) === 'oklch') {
-            [$channels, $alpha] = $this->extractRawChannels($color);
-
-            return new OklchColor(
-                l: $this->parseLightness($channels[0] ?? null, $context),
-                c: $this->parseChroma($channels[1] ?? null, $context),
-                h: $this->parseHue($channels[2] ?? null, $context),
-                a: $this->parseAlpha($alpha, $context),
-            );
-        }
-
-        return $this->runtime->spaceConverter->rgbToOklch(
-            RgbChannelScale::toNormalized($this->toRgb($color)),
-        );
     }
 
     public function extractOklchMixData(AstNode $color, string $context): LchChannelData
@@ -444,23 +346,7 @@ final readonly class ColorNodeConverter
         return new FunctionNode('rgba', [$r, $g, $b, $alpha]);
     }
 
-    public function serializeLegacyRgbFunction(RgbColor $rgb): FunctionNode
-    {
-        $r = new NumberNode(round($rgb->rValue() * 255.0, 6));
-        $g = new NumberNode(round($rgb->gValue() * 255.0, 6));
-        $b = new NumberNode(round($rgb->bValue() * 255.0, 6));
-
-        if (abs($rgb->a - 1.0) < 0.000001) {
-            return new FunctionNode('rgb', [$r, $g, $b]);
-        }
-
-        return new FunctionNode(
-            'rgba',
-            [$r, $g, $b, new NumberNode(round($rgb->a, 6))],
-        );
-    }
-
-    public function serializeRgbFromAstSource(AstNode $source, RgbColor $byteRgb): AstNode
+    public function serializeByteRgb(RgbColor $byteRgb): AstNode
     {
         $hasFractional = ! $this->dartMath->fuzzyIsInt($byteRgb->rValue())
             || ! $this->dartMath->fuzzyIsInt($byteRgb->gValue())
@@ -727,25 +613,21 @@ final readonly class ColorNodeConverter
      */
     public function buildOklabColorNodeWithNone(array $channels): FunctionNode
     {
-        $lNode = $channels['l'] !== null
-            ? new NumberNode($channels['l'], '%')
-            : new StringNode('none');
-
-        $aNode = $channels['a'] !== null
-            ? new NumberNode($channels['a'])
-            : new StringNode('none');
-
-        $bNode = $channels['b'] !== null
-            ? new NumberNode($channels['b'])
-            : new StringNode('none');
-
-        return $this->buildFunctionalColorNode('oklab', [$lNode, $aNode, $bNode], $channels['alpha']);
+        return $this->buildLabFamilyColorNodeWithNone('oklab', $channels);
     }
 
     /**
      * @param array{l: float|null, a: float|null, b: float|null, alpha: float} $channels
      */
     public function buildLabColorNodeWithNone(array $channels): FunctionNode
+    {
+        return $this->buildLabFamilyColorNodeWithNone('lab', $channels);
+    }
+
+    /**
+     * @param array{l: float|null, a: float|null, b: float|null, alpha: float} $channels
+     */
+    private function buildLabFamilyColorNodeWithNone(string $space, array $channels): FunctionNode
     {
         $lNode = $channels['l'] !== null
             ? new NumberNode($channels['l'], '%')
@@ -759,7 +641,7 @@ final readonly class ColorNodeConverter
             ? new NumberNode($channels['b'])
             : new StringNode('none');
 
-        return $this->buildFunctionalColorNode('lab', [$lNode, $aNode, $bNode], $channels['alpha']);
+        return $this->buildFunctionalColorNode($space, [$lNode, $aNode, $bNode], $channels['alpha']);
     }
 
     public function buildLchColorNodeWithNone(?float $l, ?float $c, ?float $h, float $alpha): FunctionNode
@@ -856,16 +738,5 @@ final readonly class ColorNodeConverter
     private function isMissing(?AstNode $node): bool
     {
         return $node !== null && $this->runtime->argumentParser->isMissingChannelNode($node);
-    }
-
-    private function genericSrgbChannelToByte(NumberNode $channel): float
-    {
-        $value = (float) $channel->value;
-
-        if ($channel->unit === '%') {
-            return $value * 255.0 / 100.0;
-        }
-
-        return $value * 255.0;
     }
 }

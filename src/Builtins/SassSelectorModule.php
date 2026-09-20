@@ -143,10 +143,10 @@ final class SassSelectorModule extends AbstractModule
 
         $this->warnAboutDeprecatedSelectorFunction($context, 'append', $positional);
 
-        $parent = $this->assertSelector($positional[0], 'selector.append');
+        $parent = $this->assertSelector($positional[0]);
 
         for ($i = 1; $i < count($positional); $i++) {
-            $child  = $this->assertSelector($positional[$i], 'selector.append');
+            $child  = $this->assertSelector($positional[$i]);
             $parent = $this->appendSelectors($parent, $child);
         }
 
@@ -167,9 +167,9 @@ final class SassSelectorModule extends AbstractModule
 
         $this->warnAboutDeprecatedSelectorFunction($context, 'extend', $positional);
 
-        $selector = $this->selectorTextArgument($positional[0], 'selector.extend');
-        $target   = $this->selectorTextArgument($positional[1], 'selector.extend');
-        $source   = $this->selectorTextArgument($positional[2], 'selector.extend');
+        $selector = $this->selectorTextArgument($positional[0]);
+        $target   = $this->selectorTextArgument($positional[1]);
+        $source   = $this->selectorTextArgument($positional[2]);
 
         $this->assertNoParentSelector($selector);
         $this->assertNoParentSelector($target);
@@ -249,8 +249,8 @@ final class SassSelectorModule extends AbstractModule
 
         $this->warnAboutDeprecatedSelectorFunction($context, 'is-superselector', $positional);
 
-        $super = $this->assertSelector($positional[0], 'selector.is-superselector');
-        $sub   = $this->assertSelector($positional[1], 'selector.is-superselector');
+        $super = $this->assertSelector($positional[0]);
+        $sub   = $this->assertSelector($positional[1]);
 
         return $this->boolNode($this->tokenizer->listsAreSuperselectors($super, $sub));
     }
@@ -270,14 +270,14 @@ final class SassSelectorModule extends AbstractModule
 
         $this->warnAboutDeprecatedSelectorFunction($context, 'nest', $positional);
 
-        $parent = $this->assertSelector($positional[0], 'selector.nest', true);
+        $parent = $this->assertSelector($positional[0], true);
 
         if (count($positional) === 1) {
             return $this->selectorListNode($parent);
         }
 
         for ($i = 1; $i < count($positional); $i++) {
-            $child  = $this->assertSelector($positional[$i], 'selector.nest', true);
+            $child  = $this->assertSelector($positional[$i], true);
             $parent = $this->nestWithin($parent, $child);
         }
 
@@ -298,7 +298,7 @@ final class SassSelectorModule extends AbstractModule
 
         $this->warnAboutDeprecatedSelectorFunction($context, 'parse', $positional);
 
-        return $this->selectorListNode($this->assertSelector($positional[0], 'selector.parse'));
+        return $this->selectorListNode($this->assertSelector($positional[0]));
     }
 
     /**
@@ -315,9 +315,9 @@ final class SassSelectorModule extends AbstractModule
 
         $this->warnAboutDeprecatedSelectorFunction($context, 'replace', $positional);
 
-        $selector    = $this->selectorTextArgument($positional[0], 'selector.replace');
-        $original    = $this->selectorTextArgument($positional[1], 'selector.replace');
-        $replacement = $this->selectorTextArgument($positional[2], 'selector.replace');
+        $selector    = $this->selectorTextArgument($positional[0]);
+        $original    = $this->selectorTextArgument($positional[1]);
+        $replacement = $this->selectorTextArgument($positional[2]);
 
         $this->assertNoParentSelector($selector);
         $this->assertNoParentSelector($original);
@@ -327,11 +327,11 @@ final class SassSelectorModule extends AbstractModule
 
         foreach ($this->tokenizer->splitAtTopLevel($original, [',']) as $target) {
             if ($this->hasUnsupportedTopLevelCombinator($target)) {
-                throw new SassErrorException("Can't extend complex selector {$target}.");
+                throw new SassErrorException("Can't extend complex selector $target.");
             }
 
             if (count($this->splitSelectorCompounds($target)) > 1) {
-                throw new SassErrorException("Can't extend complex selector {$target}.");
+                throw new SassErrorException("Can't extend complex selector $target.");
             }
 
             $complexes = $this->tokenizer->replaceSelectorTargetInComplexes($complexes, $target, $replacement);
@@ -356,7 +356,7 @@ final class SassSelectorModule extends AbstractModule
 
         $this->warnAboutDeprecatedSelectorFunction($context, 'simple-selectors', $positional);
 
-        $complexes = $this->assertSelector($positional[0], 'selector.simple-selectors');
+        $complexes = $this->assertSelector($positional[0]);
 
         if (
             count($complexes) !== 1
@@ -393,8 +393,8 @@ final class SassSelectorModule extends AbstractModule
 
         $this->warnAboutDeprecatedSelectorFunction($context, 'unify', $positional);
 
-        $first  = $this->assertSelector($positional[0], 'selector.unify');
-        $second = $this->assertSelector($positional[1], 'selector.unify');
+        $first  = $this->assertSelector($positional[0]);
+        $second = $this->assertSelector($positional[1]);
 
         $result = [];
 
@@ -452,9 +452,9 @@ final class SassSelectorModule extends AbstractModule
     /**
      * @return SelectorList
      */
-    private function assertSelector(AstNode $value, string $context, bool $allowParent = false): array
+    private function assertSelector(AstNode $value, bool $allowParent = false): array
     {
-        $text = $this->selectorTextArgument($value, $context);
+        $text = $this->selectorTextArgument($value);
 
         if (! $allowParent && $this->tokenizer->textContainsParentSelector($text)) {
             throw new SassErrorException("Parent selectors aren't allowed here.");
@@ -469,7 +469,7 @@ final class SassSelectorModule extends AbstractModule
         );
     }
 
-    private function selectorTextArgument(AstNode $value, string $context): string
+    private function selectorTextArgument(AstNode $value): string
     {
         return $this->normalizeSelector($this->selectorValueToText($value));
     }

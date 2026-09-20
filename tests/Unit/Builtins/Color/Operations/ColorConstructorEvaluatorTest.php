@@ -26,16 +26,15 @@ describe('ColorConstructorEvaluator', function () {
 
     describe('rgbaFunction', function () {
         it('builds rgb from named red, green and blue channels', function () {
+            /** @var FunctionNode $result */
             $result = $this->constructors->rgbaFunction([], [
                 'red'   => new NumberNode(255),
                 'green' => new NumberNode(0),
                 'blue'  => new NumberNode(0),
             ]);
 
-            expect($result)->toBeInstanceOf(FunctionNode::class);
-
-            /** @var FunctionNode $result */
-            expect($result->name)->toBe('rgb')
+            expect($result)->toBeInstanceOf(FunctionNode::class)
+                ->and($result->name)->toBe('rgb')
                 ->and($result->arguments)->toHaveCount(3)
                 ->and($result->arguments[0])->toBeInstanceOf(NumberNode::class)
                 ->and($result->arguments[0]->value)->toBe(255.0)
@@ -44,6 +43,7 @@ describe('ColorConstructorEvaluator', function () {
         });
 
         it('keeps a named alpha alongside named rgb channels', function () {
+            /** @var FunctionNode $result */
             $result = $this->constructors->rgbaFunction([], [
                 'red'   => new NumberNode(255),
                 'green' => new NumberNode(0),
@@ -51,10 +51,8 @@ describe('ColorConstructorEvaluator', function () {
                 'alpha' => new NumberNode(0.5),
             ]);
 
-            expect($result)->toBeInstanceOf(FunctionNode::class);
-
-            /** @var FunctionNode $result */
-            expect($result->name)->toBe('rgba')
+            expect($result)->toBeInstanceOf(FunctionNode::class)
+                ->and($result->name)->toBe('rgba')
                 ->and($result->arguments)->toHaveCount(4)
                 ->and($result->arguments[3])->toBeInstanceOf(NumberNode::class)
                 ->and($result->arguments[3]->value)->toBe(0.5);
@@ -63,12 +61,11 @@ describe('ColorConstructorEvaluator', function () {
         it('defers rgba with an unresolvable color and numeric alpha to CSS', function () {
             $var = new FunctionNode('var', [new StringNode('--x')]);
 
+            /** @var FunctionNode $result */
             $result = $this->constructors->rgbaFunction([$var, new NumberNode(0.5)]);
 
-            expect($result)->toBeInstanceOf(FunctionNode::class);
-
-            /** @var FunctionNode $result */
-            expect($result->name)->toBe('rgba')
+            expect($result)->toBeInstanceOf(FunctionNode::class)
+                ->and($result->name)->toBe('rgba')
                 ->and($result->arguments)->toHaveCount(2)
                 ->and($result->arguments[0])->toBe($var)
                 ->and($result->arguments[1])->toBeInstanceOf(NumberNode::class)
@@ -78,12 +75,11 @@ describe('ColorConstructorEvaluator', function () {
         it('keeps a non-numeric alpha node when rebuilding a two-argument rgba', function () {
             $alpha = new FunctionNode('var', [new StringNode('--a')]);
 
+            /** @var FunctionNode $result */
             $result = $this->constructors->rgbaFunction([new ColorNode('red'), $alpha]);
 
-            expect($result)->toBeInstanceOf(FunctionNode::class);
-
-            /** @var FunctionNode $result */
-            expect($result->name)->toBe('rgba')
+            expect($result)->toBeInstanceOf(FunctionNode::class)
+                ->and($result->name)->toBe('rgba')
                 ->and($result->arguments)->toHaveCount(4)
                 ->and($result->arguments[0])->toBeInstanceOf(NumberNode::class)
                 ->and($result->arguments[0]->value)->toBe(255.0)
@@ -115,12 +111,11 @@ describe('ColorConstructorEvaluator', function () {
                 new NumberNode(0),
             ];
 
+            /** @var FunctionNode $result */
             $result = $this->constructors->legacyRgbaFunction($positional);
 
-            expect($result)->toBeInstanceOf(FunctionNode::class);
-
-            /** @var FunctionNode $result */
-            expect($result->name)->toBe('rgba')
+            expect($result)->toBeInstanceOf(FunctionNode::class)
+                ->and($result->name)->toBe('rgba')
                 ->and($result->arguments)->toHaveCount(5)
                 ->and($result->arguments[0])->toBe($positional[0])
                 ->and($result->arguments[1])->toBe($positional[1]);
@@ -129,16 +124,15 @@ describe('ColorConstructorEvaluator', function () {
 
     describe('hwbFunction', function () {
         it('emits a modern hwb function when the alpha is missing', function () {
+            /** @var FunctionNode $hueZero */
             $hueZero = $this->constructors->hwbFunction([
                 new NumberNode(0),
                 new NumberNode(30, '%'),
                 new ListNode([new NumberNode(50, '%'), new StringNode('/'), new StringNode('none')], 'space'),
             ]);
 
-            expect($hueZero)->toBeInstanceOf(FunctionNode::class);
-
-            /** @var FunctionNode $hueZero */
-            expect($hueZero->name)->toBe('hwb')
+            expect($hueZero)->toBeInstanceOf(FunctionNode::class)
+                ->and($hueZero->name)->toBe('hwb')
                 ->and($hueZero->arguments)->toHaveCount(1)
                 ->and($hueZero->arguments[0])->toBeInstanceOf(ListNode::class);
 
@@ -153,16 +147,15 @@ describe('ColorConstructorEvaluator', function () {
                 ->and($list->items[3]->value)->toBe('/')
                 ->and($list->items[4]->value)->toBe('none');
 
+            /** @var FunctionNode $hueKept */
             $hueKept = $this->constructors->hwbFunction([
                 new NumberNode(120),
                 new NumberNode(30, '%'),
                 new ListNode([new NumberNode(50, '%'), new StringNode('/'), new StringNode('none')], 'space'),
             ]);
 
-            expect($hueKept)->toBeInstanceOf(FunctionNode::class);
-
-            /** @var FunctionNode $hueKept */
-            expect($hueKept->name)->toBe('hwb')
+            expect($hueKept)->toBeInstanceOf(FunctionNode::class)
+                ->and($hueKept->name)->toBe('hwb')
                 ->and($hueKept->arguments[0])->toBeInstanceOf(ListNode::class);
 
             /** @var ListNode $keptList */
@@ -174,16 +167,15 @@ describe('ColorConstructorEvaluator', function () {
         });
 
         it('emits a modern hwb function when a channel is missing and alpha is present', function () {
+            /** @var FunctionNode $result */
             $result = $this->constructors->hwbFunction([
                 new NumberNode(30, '%'),
                 new ListNode([new StringNode('none'), new StringNode('/'), new NumberNode(120, 'deg')], 'space'),
                 new NumberNode(50, '%'),
             ]);
 
-            expect($result)->toBeInstanceOf(FunctionNode::class);
-
-            /** @var FunctionNode $result */
-            expect($result->name)->toBe('hwb')
+            expect($result)->toBeInstanceOf(FunctionNode::class)
+                ->and($result->name)->toBe('hwb')
                 ->and($result->arguments)->toHaveCount(1)
                 ->and($result->arguments[0])->toBeInstanceOf(ListNode::class);
 
@@ -200,16 +192,15 @@ describe('ColorConstructorEvaluator', function () {
         });
 
         it('replaces a zero hue with 0deg when a channel is missing', function () {
+            /** @var FunctionNode $result */
             $result = $this->constructors->hwbFunction([
                 new NumberNode(0),
                 new ListNode([new StringNode('none'), new StringNode('/'), new NumberNode(120, 'deg')], 'space'),
                 new NumberNode(50, '%'),
             ]);
 
-            expect($result)->toBeInstanceOf(FunctionNode::class);
-
-            /** @var FunctionNode $result */
-            expect($result->arguments[0])->toBeInstanceOf(ListNode::class);
+            expect($result)->toBeInstanceOf(FunctionNode::class)
+                ->and($result->arguments[0])->toBeInstanceOf(ListNode::class);
 
             /** @var ListNode $list */
             $list = $result->arguments[0];
@@ -220,16 +211,15 @@ describe('ColorConstructorEvaluator', function () {
         });
 
         it('treats a missing hue as 0 when extracting slash separated channels', function () {
+            /** @var FunctionNode $result */
             $result = $this->constructors->hwbFunction([
                 new ListNode([new StringNode('none'), new StringNode('/'), new NumberNode(0, 'deg')], 'comma'),
                 new NumberNode(30, '%'),
                 new NumberNode(50, '%'),
             ]);
 
-            expect($result)->toBeInstanceOf(FunctionNode::class);
-
-            /** @var FunctionNode $result */
-            expect($result->arguments[0])->toBeInstanceOf(ListNode::class);
+            expect($result)->toBeInstanceOf(FunctionNode::class)
+                ->and($result->arguments[0])->toBeInstanceOf(ListNode::class);
 
             /** @var ListNode $list */
             $list = $result->arguments[0];

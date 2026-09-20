@@ -1593,23 +1593,7 @@ final readonly class Text
         for ($i = 0; $i < $length; $i++) {
             $char = $text[$i];
 
-            if ($quote !== '') {
-                if ($char === '\\') {
-                    $i++;
-
-                    continue;
-                }
-
-                if ($char === $quote) {
-                    $quote = '';
-                }
-
-                continue;
-            }
-
-            if ($char === '"' || $char === "'") {
-                $quote = $char;
-
+            if (StringHelper::consumeQuotedChar($text, $i, $quote)) {
                 continue;
             }
 

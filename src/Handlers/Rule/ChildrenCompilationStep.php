@@ -20,15 +20,11 @@ use Bugo\SCSS\Nodes\ReturnNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\Visitable;
-use Bugo\SCSS\Runtime\AtRuleContextEntry;
-use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 
 use function count;
-use function is_array;
 use function ltrim;
-use function str_ends_with;
 use function str_replace;
 
 final readonly class ChildrenCompilationStep implements CompilationStepInterface
@@ -81,7 +77,7 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
                 continue;
             }
 
-            if ($this->evaluation->isBubblingAtRuleNode($child) && ! $this->isInsideKeyframes($scope)) {
+            if ($this->evaluation->isBubblingAtRuleNode($child) && ! $scope->isInsideKeyframes()) {
                 if ($ruleCtx->hasRenderedChildren) {
                     $ruleCtx->output = $this->render->trimTrailingNewlines($ruleCtx->output);
 
@@ -170,8 +166,6 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
                     }
 
                     $this->render->appendChunk($ruleCtx->output, ' ' . ltrim($compiled), $child);
-
-                    $lastRenderedLine = $child->line;
                 } elseif ($child instanceof DeclarationNode) {
                     $this->renderRuleOpeningIfNeeded($ruleCtx);
 
@@ -251,27 +245,5 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
         $ruleCtx->hasRenderedChildren = true;
 
         $this->render->outputState()->deferral->currentRuleHasOutput = true;
-    }
-
-    private function isInsideKeyframes(Scope $scope): bool
-    {
-        if (! $scope->hasVariable('__at_rule_stack')) {
-            return false;
-        }
-
-        $atRuleStack = $scope->getVariable('__at_rule_stack');
-
-        if (! is_array($atRuleStack)) {
-            return false;
-        }
-
-        /** @var list<AtRuleContextEntry|array<string, mixed>> $atRuleStack */
-        foreach ($atRuleStack as $entry) {
-            if ($entry instanceof AtRuleContextEntry && $entry->name !== null && str_ends_with($entry->name, 'keyframes')) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

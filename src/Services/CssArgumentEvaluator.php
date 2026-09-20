@@ -314,7 +314,7 @@ final readonly class CssArgumentEvaluator
             return false;
         }
 
-        [$first, $mid, $last] = $node->items;
+        [, $mid] = $node->items;
 
         return $mid instanceof StringNode && $mid->value === '/';
     }

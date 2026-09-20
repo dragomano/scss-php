@@ -15,6 +15,7 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\Visitable;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
+use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
@@ -430,7 +431,7 @@ final readonly class AtRuleNodeHandler
         return false;
     }
 
-    private function interpolatePreludeOnly(string $prelude, \Bugo\SCSS\Runtime\Environment $env): string
+    private function interpolatePreludeOnly(string $prelude, Environment $env): string
     {
         return str_contains($prelude, '#{')
             ? $this->evaluation->interpolateText($prelude, $env)
@@ -609,13 +610,17 @@ final readonly class AtRuleNodeHandler
             }
         } finally {
             $childSnapshotAfter = $childScope->getVariables();
+
             $ctx->env->exitScope();
         }
 
         $executionScope = $ctx->env->getCurrentScope();
 
-        /** @var mixed $value */
         foreach ($childSnapshotAfter as $name => $value) {
+            if (! $value instanceof AstNode) {
+                continue;
+            }
+
             if (isset($contentVarsBefore[$name]) && $contentVarsBefore[$name] !== $value) {
                 if ($name !== '' && $name[0] === '-') {
                     continue;

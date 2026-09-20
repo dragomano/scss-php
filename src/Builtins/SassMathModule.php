@@ -243,6 +243,7 @@ final class SassMathModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @throws SassThrowable
      */
     private function acos(array $positional): AstNode
     {
@@ -261,6 +262,7 @@ final class SassMathModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @throws SassThrowable
      */
     private function asin(array $positional): AstNode
     {
@@ -279,6 +281,7 @@ final class SassMathModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @throws SassThrowable
      */
     private function atan(array $positional): AstNode
     {
@@ -297,6 +300,7 @@ final class SassMathModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @throws SassThrowable
      */
     private function atan2(array $positional): AstNode
     {
@@ -424,6 +428,7 @@ final class SassMathModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @throws SassThrowable
      */
     private function cos(array $positional): AstNode
     {
@@ -456,7 +461,10 @@ final class SassMathModule extends AbstractModule
 
             if ($first instanceof NumberNode || $first instanceof StringNode) {
                 if ($second instanceof NumberNode || $second instanceof StringNode) {
-                    $context?->warn('math.div() will only support number arguments in a future release. Use list.slash() instead for a slash separator.');
+                    $context?->warn(
+                        'math.div() will only support number arguments in a future release. '
+                        . 'Use list.slash() instead for a slash separator.',
+                    );
 
                     return new StringNode((string) $first . '/' . (string) $second);
                 }
@@ -541,6 +549,7 @@ final class SassMathModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @throws SassThrowable
      */
     private function log(array $positional): AstNode
     {
@@ -606,6 +615,7 @@ final class SassMathModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @throws SassThrowable
      */
     private function pow(array $positional): AstNode
     {
@@ -693,6 +703,7 @@ final class SassMathModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @throws SassThrowable
      */
     private function sin(array $positional): AstNode
     {
@@ -713,6 +724,7 @@ final class SassMathModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @throws SassThrowable
      */
     private function sqrt(array $positional): AstNode
     {
@@ -731,6 +743,7 @@ final class SassMathModule extends AbstractModule
 
     /**
      * @param array<int, AstNode> $positional
+     * @throws SassThrowable
      */
     private function tan(array $positional): AstNode
     {

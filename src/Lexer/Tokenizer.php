@@ -140,7 +140,7 @@ final class Tokenizer
         }
 
         if ($char === '.') {
-            return $this->tokenizeNumberOrSingleChar(TokenType::DOT);
+            return $this->tokenizeNumberOrSingleChar();
         }
 
         if ($char === '=') {
@@ -935,7 +935,6 @@ final class Tokenizer
             return $hex;
         }
 
-        $escapedChar = $this->source[$this->position];
         $width       = $this->utf8SequenceWidth();
         $escapedChar = substr($this->source, $this->position, $width);
 
@@ -960,11 +959,11 @@ final class Tokenizer
     private function normalizeIdentifierEscapedCodePoint(int $codePoint): string
     {
         if ($this->isIdentifierCodePoint($codePoint)) {
-            return $this->encodeCodePoint($codePoint);
+            return StringEscapeDecoder::codePointToUtf8($codePoint);
         }
 
         if ($this->isPrintableCodePoint($codePoint)) {
-            return '\\' . $this->encodeCodePoint($codePoint);
+            return '\\' . StringEscapeDecoder::codePointToUtf8($codePoint);
         }
 
         return '\\' . strtolower(dechex($codePoint)) . ' ';
@@ -988,34 +987,6 @@ final class Tokenizer
         }
 
         return $codePoint >= 0x20 && $codePoint <= 0x7E;
-    }
-
-    private function encodeCodePoint(int $codePoint): string
-    {
-        if ($codePoint >= 0 && $codePoint <= 0x7F) {
-            return $this->byte($codePoint);
-        }
-
-        if ($codePoint <= 0x7FF) {
-            return $this->byte(0xC0 | ($codePoint >> 6))
-                . $this->byte(0x80 | ($codePoint & 0x3F));
-        }
-
-        if ($codePoint <= 0xFFFF) {
-            return $this->byte(0xE0 | ($codePoint >> 12))
-                . $this->byte(0x80 | (($codePoint >> 6) & 0x3F))
-                . $this->byte(0x80 | ($codePoint & 0x3F));
-        }
-
-        return $this->byte(0xF0 | ($codePoint >> 18))
-            . $this->byte(0x80 | (($codePoint >> 12) & 0x3F))
-            . $this->byte(0x80 | (($codePoint >> 6) & 0x3F))
-            . $this->byte(0x80 | ($codePoint & 0x3F));
-    }
-
-    private function byte(int $value): string
-    {
-        return chr($value & 0xFF);
     }
 
     private function tokenizeCssVariable(): Token
@@ -1064,7 +1035,7 @@ final class Tokenizer
         return $this->makeToken($singleType, $char, 1);
     }
 
-    private function tokenizeNumberOrSingleChar(TokenType $singleType): Token
+    private function tokenizeNumberOrSingleChar(): Token
     {
         if ($this->isDigit($this->peekChar())) {
             return $this->tokenizeNumber();
@@ -1072,7 +1043,7 @@ final class Tokenizer
 
         $char = $this->source[$this->position];
 
-        return $this->makeToken($singleType, $char, 1);
+        return $this->makeToken(TokenType::DOT, $char, 1);
     }
 
     private function singleCharToken(string $char): ?Token

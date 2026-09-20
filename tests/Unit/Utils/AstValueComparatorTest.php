@@ -92,8 +92,8 @@ describe('AstValueComparator', function () {
         it('compares a string with an equivalent function node', function () {
             $fn = new FunctionNode('rgb', [new NumberNode(255), new NumberNode(0), new NumberNode(0)]);
 
-            expect(AstValueComparator::equals(new StringNode('rgb(255, 0, 0)'), $fn))->toBeTrue();
-            expect(AstValueComparator::equals(new StringNode('rgb(0, 0, 0)'), $fn))->toBeFalse();
+            expect(AstValueComparator::equals(new StringNode('rgb(255, 0, 0)'), $fn))->toBeTrue()
+                ->and(AstValueComparator::equals(new StringNode('rgb(0, 0, 0)'), $fn))->toBeFalse();
         });
 
         it('compares a string with a function node holding a captured scope as unequal', function () {

@@ -33,7 +33,7 @@ final class NumberNode extends AstNode implements Stringable
             }
 
             if (floor($this->value) === $this->value && abs($this->value) < 1e21) {
-                return (string) (int) $this->value . ($this->unit ?? '');
+                return (int) $this->value . ($this->unit ?? '');
             }
         }
 

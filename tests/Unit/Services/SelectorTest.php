@@ -10,13 +10,11 @@ use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\DeclarationNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
-use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\ForNode;
 use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
-use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
@@ -458,13 +456,14 @@ describe('Selector', function () {
         it('sets the flow control parent selector default when compiling nested conditionals', function () {
             $env = new Environment();
 
-            $result = $this->testSelector->compileNestedPropertyBlockChildren([
+            $this->testSelector->compileNestedPropertyBlockChildren([
                 new IfNode('true', [
                     new DeclarationNode('style', new StringNode('red')),
                 ]),
             ], $env, 0, 'border');
 
-            expect($env->getCurrentScope()->getVariable('__parent_selector'))->toBeInstanceOf(StringNode::class);
+            expect($env->getCurrentScope()->getVariable('__parent_selector'))
+                ->toBeInstanceOf(StringNode::class);
         });
 
         describe('base value evaluation', function () {
@@ -524,21 +523,6 @@ describe('Selector', function () {
             expect($this->selector->combineMediaQueryPreludes('all', 'screen'))->toBe('screen')
                 ->and($this->selector->combineMediaQueryPreludes('screen', 'all'))->toBe('screen');
         });
-    });
-
-    it('finalizes collected extends through the selector service', function () {
-        $env = new Environment();
-
-        $this->selector->collectExtends(
-            new RootNode([
-                new RuleNode('.a', [new ExtendNode('.b')]),
-            ]),
-            $env,
-        );
-
-        $this->selector->finalizeCollectedExtends();
-
-        expect(true)->toBeTrue();
     });
 
     it('delegates comment stripping to the text service', function () {

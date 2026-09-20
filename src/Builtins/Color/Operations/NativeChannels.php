@@ -4,17 +4,10 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Builtins\Color\Operations;
 
-use Bugo\SCSS\Builtins\Color\Conversion\ColorSpaceConverter;
-
-/**
- * @phpstan-import-type ChannelVector from ColorSpaceConverter
- *
- * @psalm-import-type ChannelVector from ColorSpaceConverter
- */
 final readonly class NativeChannels
 {
     /**
-     * @param ChannelVector $channels
+     * @param array<int, float|null> $channels
      */
     public function __construct(
         public array $channels,
@@ -22,7 +15,7 @@ final readonly class NativeChannels
     ) {}
 
     /**
-     * @param ChannelVector $channels
+     * @param array<int, float|null> $channels
      */
     public function withChannels(array $channels): self
     {

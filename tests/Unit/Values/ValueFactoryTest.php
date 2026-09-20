@@ -55,11 +55,10 @@ describe('ValueFactory', function () {
             ])),
         ]);
 
+        /** @var SassMap $value */
         $value = $this->factory->fromAst($node);
 
-        expect($value)->toBeInstanceOf(SassMap::class);
-
-        /** @var SassMap $value */
-        expect($value->toCss())->toBe('(width: 10px, nested: (color: red))');
+        expect($value)->toBeInstanceOf(SassMap::class)
+            ->and($value->toCss())->toBe('(width: 10px, nested: (color: red))');
     });
 });

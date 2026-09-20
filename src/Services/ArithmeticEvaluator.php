@@ -205,8 +205,8 @@ final readonly class ArithmeticEvaluator
 
             $sign = $item instanceof StringNode ? trim($item->value) : null;
 
-            if ($sign !== null
-                && ($sign === '+' || $sign === '-')
+            if (
+                ($sign === '+' || $sign === '-')
                 && $next instanceof NumberNode
                 && ($i === 0 || ($previous instanceof StringNode && isset(self::ARITHMETIC_OPERATORS[$previous->value])))
             ) {
@@ -340,7 +340,6 @@ final readonly class ArithmeticEvaluator
 
         $collapsed = [];
 
-        /** @var AstNode $current */
         $current   = $items[0];
         $itemCount = count($items);
 
@@ -482,22 +481,27 @@ final readonly class ArithmeticEvaluator
 
             $value = $item;
 
-            while (
-                $i + 2 < $count
-                && ($op = $items[$i + 1] ?? null) instanceof StringNode
-                && in_array($op->value, ['*', '/', '%'], true)
-                && ($nextItem = $items[$i + 2]) instanceof NumberNode
-                && $value instanceof NumberNode
-                && (
-                    $insideCalc
-                    || ! (
-                        $op->value === '/'
+            while (true) {
+                $op       = $items[$i + 1] ?? null;
+                $nextItem = $items[$i + 2] ?? null;
+
+                if (
+                    $i + 2 >= $count
+                    || ! ($op instanceof StringNode)
+                    || ! in_array($op->value, ['*', '/', '%'], true)
+                    || ! ($nextItem instanceof NumberNode)
+                    || ! ($value instanceof NumberNode)
+                    || (
+                        ! $insideCalc
+                        && $op->value === '/'
                         && $this->isSimpleSlashOperand($value)
                         && $this->isSimpleSlashOperand($nextItem)
                         && ! $this->hasArithmeticContinuation($items, $i + 3)
                     )
-                )
-            ) {
+                ) {
+                    break;
+                }
+
                 $value   = $this->applyOperator($value, $op->value, $nextItem, $insideCalc);
                 $changed = true;
 

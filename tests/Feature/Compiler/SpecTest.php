@@ -95,8 +95,6 @@ if (getenv('RUN_SASS_SPEC') && is_dir($specDir)) {
 
 /**
  * Collects spec files grouped into batches of ~100 for manageable describe blocks.
- *
- * @return array<string, list{absolute: string, relative: string}>
  */
 function collectSpecFilesGrouped(string $specDir): array
 {
@@ -143,9 +141,9 @@ function collectSpecFilesGrouped(string $specDir): array
         $rangeEnd   = $rangeStart + count($batchFiles) - 1;
 
         if ($firstDir === $lastDir) {
-            $label = "{$firstDir} [{$rangeStart}-{$rangeEnd}]";
+            $label = "$firstDir [$rangeStart-$rangeEnd]";
         } else {
-            $label = "{$firstDir}–{$lastDir} [{$rangeStart}-{$rangeEnd}]";
+            $label = "{$firstDir}–$lastDir [$rangeStart-$rangeEnd]";
         }
 
         $grouped[$label] = $batchFiles;
@@ -254,11 +252,11 @@ function parseHrxEntries(string $content): array
 
             if ($path === '' || $path === 'README.md') {
                 $currentPath  = null;
-                $currentLines = [];
             } else {
                 $currentPath  = $path;
-                $currentLines = [];
             }
+
+            $currentLines = [];
         } elseif ($currentPath !== null) {
             $currentLines[] = $line;
         }

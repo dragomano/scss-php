@@ -201,19 +201,6 @@ final class UnitConverter
         return $numerator ? $value * $ratio : $value / $ratio;
     }
 
-    public static function multiply(?string $left, ?string $right): ?string
-    {
-        [$leftNumerator, $leftDenominator]   = self::parseParts($left);
-        [$rightNumerator, $rightDenominator] = self::parseParts($right);
-
-        $numerator   = array_merge($leftNumerator, $rightNumerator);
-        $denominator = array_merge($leftDenominator, $rightDenominator);
-
-        [$numerator, $denominator] = self::cancelParts($numerator, $denominator);
-
-        return self::buildString($numerator, $denominator);
-    }
-
     public static function divide(?string $left, ?string $right): ?string
     {
         [$leftNumerator, $leftDenominator]   = self::parseParts($left);
@@ -247,15 +234,7 @@ final class UnitConverter
      */
     public static function multiplyWithConversion(?string $left, ?string $right): array
     {
-        [$leftNumerator, $leftDenominator]   = self::parseParts($left);
-        [$rightNumerator, $rightDenominator] = self::parseParts($right);
-
-        $numerator   = array_merge($leftNumerator, $rightNumerator);
-        $denominator = array_merge($leftDenominator, $rightDenominator);
-
-        [$numerator, $denominator, $conversionFactor] = self::cancelPartsWithConversion($numerator, $denominator);
-
-        return [self::buildString($numerator, $denominator), $conversionFactor];
+        return self::combineWithConversion(false, $left, $right);
     }
 
     /**
@@ -263,15 +242,7 @@ final class UnitConverter
      */
     public static function divideWithConversion(?string $left, ?string $right): array
     {
-        [$leftNumerator, $leftDenominator]   = self::parseParts($left);
-        [$rightNumerator, $rightDenominator] = self::parseParts($right);
-
-        $numerator   = array_merge($leftNumerator, $rightDenominator);
-        $denominator = array_merge($leftDenominator, $rightNumerator);
-
-        [$numerator, $denominator, $conversionFactor] = self::cancelPartsWithConversion($numerator, $denominator);
-
-        return [self::buildString($numerator, $denominator), $conversionFactor];
+        return self::combineWithConversion(true, $left, $right);
     }
 
     /**
@@ -316,6 +287,27 @@ final class UnitConverter
         }
 
         return [$numerator, $denominator];
+    }
+
+    /**
+     * @return array{0: ?string, 1: float}
+     */
+    private static function combineWithConversion(bool $divide, ?string $left, ?string $right): array
+    {
+        [$leftNumerator, $leftDenominator]   = self::parseParts($left);
+        [$rightNumerator, $rightDenominator] = self::parseParts($right);
+
+        if ($divide) {
+            $numerator   = array_merge($leftNumerator, $rightDenominator);
+            $denominator = array_merge($leftDenominator, $rightNumerator);
+        } else {
+            $numerator   = array_merge($leftNumerator, $rightNumerator);
+            $denominator = array_merge($leftDenominator, $rightDenominator);
+        }
+
+        [$numerator, $denominator, $conversionFactor] = self::cancelPartsWithConversion($numerator, $denominator);
+
+        return [self::buildString($numerator, $denominator), $conversionFactor];
     }
 
     /**

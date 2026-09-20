@@ -23,7 +23,7 @@ function createCalculationEvaluator(?Closure $evaluateArithmetic = null): Calcul
 
     $format = static function (AstNode $node, Environment $env) use (&$format): string {
         if ($node instanceof NumberNode) {
-            return (string) $node->value . ($node->unit ?? '');
+            return $node->value . ($node->unit ?? '');
         }
 
         if ($node instanceof StringNode) {
@@ -57,7 +57,7 @@ function createCalculationEvaluator(?Closure $evaluateArithmetic = null): Calcul
 
     return new CalculationEvaluator(
         new class ($format) implements AstValueFormatterInterface {
-            public function __construct(private Closure $format) {}
+            public function __construct(private readonly Closure $format) {}
 
             public function format(AstNode $node, Environment $env): string
             {
@@ -65,7 +65,7 @@ function createCalculationEvaluator(?Closure $evaluateArithmetic = null): Calcul
             }
         },
         new class ($evaluateArithmetic) implements ArithmeticListEvaluatorInterface {
-            public function __construct(private ?Closure $evaluateArithmetic) {}
+            public function __construct(private readonly ?Closure $evaluateArithmetic) {}
 
             public function evaluate(ListNode $list, bool $strict, Environment $env, bool $insideCalc = false): ?AstNode
             {
@@ -77,7 +77,7 @@ function createCalculationEvaluator(?Closure $evaluateArithmetic = null): Calcul
             }
         },
         new class ($format) implements AstToSassValueConverterInterface {
-            public function __construct(private Closure $format) {}
+            public function __construct(private readonly Closure $format) {}
 
             public function convert(AstNode $node, Environment $env): SassValue
             {
@@ -107,14 +107,13 @@ describe('CalculationEvaluator', function () {
             static fn(ListNode $node, bool $inCalc, Environment $env): ?AstNode => new NumberNode(42, 'px'),
         );
 
+        /** @var NumberNode $result */
         $result = $evaluator->simplifyFunction('calc', [
             new ListNode([new NumberNode(40, 'px'), new StringNode('+'), new NumberNode(2, 'px')], 'space'),
         ], $this->env);
 
-        expect($result)->toBeInstanceOf(NumberNode::class);
-
-        /** @var NumberNode $result */
-        expect($result->value)->toBe(42)
+        expect($result)->toBeInstanceOf(NumberNode::class)
+            ->and($result->value)->toBe(42)
             ->and($result->unit)->toBe('px');
     });
 
@@ -173,6 +172,7 @@ describe('CalculationEvaluator', function () {
     it('handles round edge cases for argument count step fallback and incompatible units', function () {
         $evaluator = createCalculationEvaluator();
 
+        /** @var FunctionNode $deferredStep */
         $deferredStep = $evaluator->simplifyFunction('round', [
             new StringNode('up'),
             new NumberNode(12, 'px'),
@@ -191,10 +191,8 @@ describe('CalculationEvaluator', function () {
             ->toBeInstanceOf(NumberNode::class)
             ->and((float) $evaluator->simplifyFunction('round', [new NumberNode(12, 'px'), new NumberNode(0, 'px')], $this->env)->value)
             ->toBeNan()
-            ->and($evaluator->simplifyFunction('round', [new NumberNode(12, 'px'), new NumberNode(1, 's')], $this->env))->toBeInstanceOf(FunctionNode::class);
-
-        /** @var FunctionNode $deferredStep */
-        expect($deferredStep->arguments)->toHaveCount(3)
+            ->and($evaluator->simplifyFunction('round', [new NumberNode(12, 'px'), new NumberNode(1, 's')], $this->env))->toBeInstanceOf(FunctionNode::class)
+            ->and($deferredStep->arguments)->toHaveCount(3)
             ->and($deferredStep->arguments[0])->toBeInstanceOf(StringNode::class)
             ->and($deferredStep->arguments[1])->toBeInstanceOf(NumberNode::class)
             ->and($deferredStep->arguments[2])->toBeInstanceOf(StringNode::class);
@@ -208,6 +206,7 @@ describe('CalculationEvaluator', function () {
     it('resolves negative constants and leaves unsupported constant syntax untouched', function () {
         $evaluator = createCalculationEvaluator();
 
+        /** @var NumberNode $negativeInfinity */
         $negativeInfinity = $evaluator->simplifyFunction('calc', [
             new ListNode([new StringNode('-'), new StringNode('infinity')]),
         ], $this->env);
@@ -215,10 +214,8 @@ describe('CalculationEvaluator', function () {
         expect($negativeInfinity)->toBeInstanceOf(NumberNode::class)
             ->and($evaluator->simplifyFunction('calc', [
                 new ListNode([new StringNode('+'), new StringNode('infinity')]),
-            ], $this->env))->toBeNull();
-
-        /** @var NumberNode $negativeInfinity */
-        expect($negativeInfinity->value)->toBe(-INF)
+            ], $this->env))->toBeNull()
+            ->and($negativeInfinity->value)->toBe(-INF)
             ->and($negativeInfinity->unit)->toBeNull();
     });
 
@@ -293,15 +290,29 @@ describe('CalculationEvaluator', function () {
         ))->toBe('calc(1 + 2 3)');
     });
 
+    it('keeps parentheses around single-item calc sub lists in operator context', function () {
+        $evaluator = createCalculationEvaluator();
+
+        $argument = new ListNode([
+            new ListNode([new NumberNode(1)], 'space', false, 1),
+            new StringNode('+'),
+            new NumberNode(3),
+        ], 'space');
+
+        expect($evaluator->formatCalculationFunction(
+            new FunctionNode('calc', [$argument]),
+            $this->env,
+        ))->toBe('calc((1) + 3)');
+    });
+
     it('simplifies round not-a-number values without step', function () {
         $evaluator = createCalculationEvaluator();
 
+        /** @var NumberNode $result */
         $result = $evaluator->simplifyFunction('round', [new NumberNode(NAN)], $this->env);
 
-        expect($result)->toBeInstanceOf(NumberNode::class);
-
-        /** @var NumberNode $result */
-        expect($result->value)->toBeNan()->and($result->unit)->toBeNull();
+        expect($result)->toBeInstanceOf(NumberNode::class)
+            ->and($result->value)->toBeNan()->and($result->unit)->toBeNull();
     });
 
     it('rejects modulo arguments with mismatched unit presence', function () {

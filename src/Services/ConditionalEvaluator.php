@@ -55,7 +55,7 @@ final readonly class ConditionalEvaluator
             return null;
         }
 
-        return $this->evaluateInlineIfFunctionInner($name, $arguments, $env);
+        return $this->evaluateInlineIfFunctionInner($arguments, $env);
     }
 
     /**
@@ -107,9 +107,8 @@ final readonly class ConditionalEvaluator
     /**
      * @param array<int, AstNode> $arguments
      */
-    private function evaluateInlineIfFunctionInner(string $name, array $arguments, Environment $env): AstNode
+    private function evaluateInlineIfFunctionInner(array $arguments, Environment $env): AstNode
     {
-
         $decoded  = $this->decodeIfArguments($arguments, $env);
         $clauses  = $decoded['clauses'];
         $else     = $decoded['else'];
@@ -463,7 +462,6 @@ final readonly class ConditionalEvaluator
      */
     private function hasLogicalOperator(array $items): bool
     {
-        /** @var AstNode $item */
         foreach ($items as $item) {
             if (
                 $item instanceof StringNode

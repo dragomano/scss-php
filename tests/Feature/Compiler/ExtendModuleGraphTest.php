@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
+use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
+use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Loader;
 use Tests\Support\ArrayLogger;
 
@@ -300,7 +302,7 @@ describe('Compiler extend module graph', function () {
         $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
 
         expect(fn() => $compiler->compileString(file_get_contents($tmpDir . '/root.scss')))
-            ->toThrow(\Bugo\SCSS\Exceptions\ModuleResolutionException::class);
+            ->toThrow(ModuleResolutionException::class);
     });
 
     it('merges import edges into the use-reachable load-css branch without promoting the imported module to a branch root', function () {
@@ -361,7 +363,7 @@ describe('Compiler extend module graph', function () {
         $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
 
         expect(fn() => $compiler->compileString(file_get_contents($tmpDir . '/root.scss')))
-            ->toThrow(\Bugo\SCSS\Exceptions\ModuleResolutionException::class);
+            ->toThrow(ModuleResolutionException::class);
     });
 
     it('abandons the extend graph when collecting a module store raises a loop boundary error', function () {
@@ -390,6 +392,6 @@ describe('Compiler extend module graph', function () {
         $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
 
         expect(fn() => $compiler->compileString(file_get_contents($tmpDir . '/root.scss')))
-            ->toThrow(\Bugo\SCSS\Exceptions\InvalidLoopBoundaryException::class);
+            ->toThrow(InvalidLoopBoundaryException::class);
     });
 });

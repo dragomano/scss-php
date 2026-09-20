@@ -7,7 +7,6 @@ use Bugo\Iris\Converters\SpaceConverter;
 use Bugo\Iris\LiteralParser;
 use Bugo\Iris\Serializers\LiteralSerializer;
 use Bugo\Iris\Spaces\HwbColor;
-use Bugo\Iris\Spaces\LabColor;
 use Bugo\Iris\Spaces\OklchColor;
 use Bugo\Iris\Spaces\RgbColor;
 use Bugo\Iris\Spaces\XyzColor;
@@ -133,84 +132,19 @@ describe('ColorNodeConverter', function () {
             ->and($this->converter->isLegacyColor($otherNode))->toBeFalse();
     });
 
-    it('converts srgb percentages to unclamped rgb bytes', function () {
-        $color = new FunctionNode('color', [new ListNode([
-            new StringNode('srgb'),
-            new NumberNode(50.0, '%'),
-            new NumberNode(25.0, '%'),
-            new NumberNode(0.0, '%'),
-            new StringNode('/'),
-            new NumberNode(0.4),
-        ])]);
-
-        $rgb = $this->converter->toUnclampedRgb($color);
-
-        expect($rgb->r)->toBe(127.5)
-            ->and($rgb->g)->toBe(63.75)
-            ->and($rgb->b)->toBe(0.0)
-            ->and($rgb->a)->toBe(0.4);
-    });
-
-    it('reads native lab colors and extracts srgb channels', function () {
-        $lab = $this->converter->readNativeLab(new FunctionNode('lab', [
-            new ListNode([
-                new NumberNode(50.0, '%'),
-                new NumberNode(10.0),
-                new NumberNode(-5.0),
-            ], 'space'),
-        ]));
-
-        [$red, $green, $blue] = $this->converter->extractSrgbChannels(new FunctionNode('color', [
-            new ListNode([
-                new StringNode('srgb'),
-                new NumberNode(0.1),
-                new NumberNode(0.2),
-                new NumberNode(0.3),
-            ], 'space'),
-        ]));
-
-        expect($lab)->toBeInstanceOf(LabColor::class)
-            ->and($lab->l)->toBe(50.0)
-            ->and($lab->a)->toBe(10.0)
-            ->and($lab->b)->toBe(-5.0)
-            ->and($red)->toBe(0.1)
-            ->and($green)->toBe(0.2)
-            ->and($blue)->toBe(0.3);
-    });
-
     it('serializes color nodes and rgb functions from iris colors', function () {
         $colorNode  = $this->converter->fromRgb(new RgbColor(255.0, 255.0, 255.0));
         $fractional = $this->converter->serializeRgbResult(new RgbColor(10.5, 20.25, 30.75, 1.0));
-        $legacy     = $this->converter->serializeLegacyRgbFunction(new RgbColor(1.0, 0.5, 0.0, 0.5));
 
         expect($colorNode)->toBeInstanceOf(ColorNode::class)
             ->and($colorNode->value)->toBe('white')
             ->and($fractional)->toBeInstanceOf(FunctionNode::class)
-            ->and($fractional->name)->toBe('rgb')
-            ->and($legacy)->toBeInstanceOf(FunctionNode::class)
-            ->and($legacy->name)->toBe('rgba');
+            ->and($fractional->name)->toBe('rgb');
     });
 
-    it('extracts srgb channels by converting non-color function nodes to rgb', function () {
-        $rgba = new FunctionNode('rgba', [
-            new NumberNode(255),
-            new NumberNode(0),
-            new NumberNode(0),
-            new NumberNode(1.0),
-        ]);
-
-        [$r, $g, $b] = $this->converter->extractSrgbChannels($rgba);
-
-        expect($r)->toBe(1.0)
-            ->and($g)->toBe(0.0)
-            ->and($b)->toBe(0.0);
-    });
-
-    it('returns a color node from serializeRgbFromAstSource when source is a ColorNode and rgb has no fractional values', function () {
-        $source = new ColorNode('#ff0000');
+    it('returns a color node from serializeByteRgb when rgb has no fractional values', function () {
         $rgb    = new RgbColor(255.0, 0.0, 0.0, 1.0);
-
-        $result = $this->converter->serializeRgbFromAstSource($source, $rgb);
+        $result = $this->converter->serializeByteRgb($rgb);
 
         expect($result)->toBeInstanceOf(ColorNode::class);
     });
@@ -220,44 +154,6 @@ describe('ColorNodeConverter', function () {
 
         expect($node)->toBeInstanceOf(FunctionNode::class)
             ->and($node->name)->toBe('rgba');
-    });
-
-    it('parses explicit alpha from oklch node with slash-separated alpha channel', function () {
-        $oklch = new FunctionNode('oklch', [
-            new ListNode([
-                new NumberNode(50.0, '%'),
-                new NumberNode(0.1),
-                new NumberNode(180.0),
-                new StringNode('/'),
-                new NumberNode(0.5),
-            ], 'space'),
-        ]);
-
-        $result = $this->converter->extractOklch($oklch, 'color');
-
-        expect($result)->toBeInstanceOf(OklchColor::class)
-            ->and($result->a)->toBe(0.5);
-    });
-
-    it('falls back to rgb conversion in toUnclampedRgb for non-color-function nodes', function () {
-        $rgb = $this->converter->toUnclampedRgb(new ColorNode('#ff0000'));
-
-        expect($rgb->r)->toBe(255.0)
-            ->and($rgb->g)->toBe(0.0)
-            ->and($rgb->b)->toBe(0.0);
-    });
-
-    it('converts unitless srgb channels to byte values in toUnclampedRgb', function () {
-        $rgb = $this->converter->toUnclampedRgb(new FunctionNode('color', [new ListNode([
-            new StringNode('srgb'),
-            new NumberNode(1.0),
-            new NumberNode(0.0),
-            new NumberNode(0.5),
-        ])]));
-
-        expect($rgb->r)->toBe(255.0)
-            ->and($rgb->g)->toBe(0.0)
-            ->and($rgb->b)->toBe(127.5);
     });
 
     it('treats hex and paren-less strings as legacy colors', function () {
@@ -300,26 +196,11 @@ describe('ColorNodeConverter', function () {
             ->and($result->hueMissing)->toBeFalse();
     });
 
-    it('extracts oklch from non-oklch colors via rgb conversion', function () {
-        $result = $this->converter->extractOklch(new ColorNode('#ff0000'), 'color');
-
-        expect($result)->toBeInstanceOf(OklchColor::class)
-            ->and($result->lValue())->toBeGreaterThan(0.0)
-            ->and($result->cValue())->toBeGreaterThan(0.0);
-    });
-
     it('serializes out of gamut rgb as unclamped hsl', function () {
         $node = $this->converter->serializeRgbResult(new RgbColor(300.0, -10.0, 128.0, 0.5));
 
         expect($node)->toBeInstanceOf(FunctionNode::class)
             ->and($node->name)->toBe('hsla');
-    });
-
-    it('serializes legacy rgb functions without alpha as rgb', function () {
-        $node = $this->converter->serializeLegacyRgbFunction(new RgbColor(1.0, 0.5, 0.0, 1.0));
-
-        expect($node)->toBeInstanceOf(FunctionNode::class)
-            ->and($node->name)->toBe('rgb');
     });
 
     it('serializes as oklch string with zero chroma as percent', function () {

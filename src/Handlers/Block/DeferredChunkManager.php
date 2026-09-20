@@ -60,8 +60,6 @@ final readonly class DeferredChunkManager
         array $leadingRootChunks,
         array $trailingRootChunks,
     ): string {
-        $continuation = "\n" . Render::CONTINUATION_MARK;
-
         $result   = '';
         $previous = null;
 

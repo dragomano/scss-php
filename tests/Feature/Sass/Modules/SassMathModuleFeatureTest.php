@@ -399,7 +399,7 @@ describe('Sass Math Module Feature', function () {
         it('throws when either argument has units', function (string $expression) {
             $scss = <<<SCSS
             @use "sass:math";
-            .math-pow-invalid { value: {$expression}; }
+            .math-pow-invalid { value: $expression; }
             SCSS;
 
             expect(fn() => $this->compiler->compileString($scss))

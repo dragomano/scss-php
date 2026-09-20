@@ -13,7 +13,6 @@ use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Services\Render;
-use Bugo\SCSS\Utils\DeferredChunk;
 use Bugo\SCSS\Utils\RawChunk;
 use Tests\Support\RuntimeFactory;
 
@@ -208,38 +207,21 @@ describe('DeferredChunkManager', function () {
             ->and($trailing)->toBe([]);
     });
 
-    it('returns immediately when there are no deferred include root chunks to interleave', function () {
-        $output      = '.foo { color: red; }';
-        $hasRendered = true;
-        $leading     = [];
-        $contains    = false;
+    it('returns immediately when there is no deferred at-root stack to interleave', function () {
+        $output  = '.foo { color: red; }';
+        $leading = [];
+        $state   = new class {
+            public bool $hasRendered = true;
 
-        $this->manager->interleaveDeferredRootChunks($output, $hasRendered, '', $contains, 0, $leading);
+            public bool $contains = false;
+        };
+
+        $this->manager->interleaveDeferredRootChunks($output, $state->hasRendered, '', $state->contains, 0, $leading);
 
         expect($leading)->toBe([])
             ->and($output)->toBe('.foo { color: red; }')
-            ->and($hasRendered)->toBeTrue();
-    });
-
-    it('interleaves deferred include root chunks into the output when new chunks exist', function () {
-        $deferredChunk = new DeferredChunk('.outside { color: red; }', 1, 0, []);
-        $outputState   = $this->runtime->render()->outputState();
-        $keep          = new RawChunk('keep');
-
-        $outputState->deferral->atRootStack[] = [$keep, $deferredChunk];
-
-        $output      = '';
-        $hasRendered = false;
-        $leading     = [];
-        $contains    = false;
-
-        $this->manager->interleaveDeferredRootChunks($output, $hasRendered, '', $contains, 1, $leading);
-
-        expect($output)->toBe('.outside { color: red; }')
-            ->and($leading)->toBe([])
-            ->and($outputState->deferral->atRootStack[0])->toBe([$keep])
-            ->and($hasRendered)->toBeFalse()
-            ->and($contains)->toBeTrue();
+            ->and($state->hasRendered)->toBeTrue()
+            ->and($state->contains)->toBeFalse();
     });
 
     it('returns immediately for empty included @at-root chunks', function () {

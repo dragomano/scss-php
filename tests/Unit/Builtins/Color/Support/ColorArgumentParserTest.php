@@ -35,7 +35,7 @@ describe('ColorArgumentParser', function () {
     it('does not defer when the exception is not about color arguments', function () {
         $exception = MissingFunctionArgumentsException::count('saturate', 2);
 
-        expect($this->parser->shouldDeferToCss('saturate', $exception))->toBeFalse();
+        expect($this->parser->shouldDeferToCss($exception))->toBeFalse();
     });
 
     it('defers supported css functions with invalid color arguments', function () {
@@ -51,7 +51,7 @@ describe('ColorArgumentParser', function () {
             ->and($this->parser->asHueAngle(new NumberNode(INF), 'spin'))->toBe(0.0)
             ->and($this->parser->asHueAngle(new NumberNode(-INF), 'spin'))->toBe(0.0)
             ->and($this->parser->asHueAngle(new NumberNode(NAN), 'spin'))->toBe(0.0)
-            ->and($this->parser->asHueAngle(new NumberNode(1, 'rad'), 'spin'))->toBe((float) (180.0 / M_PI))
+            ->and($this->parser->asHueAngle(new NumberNode(1, 'rad'), 'spin'))->toBe(180.0 / M_PI)
             ->and($this->parser->asHueAngle(new NumberNode(100, 'grad'), 'spin'))->toBe(90.0);
     });
 

@@ -19,12 +19,6 @@ it('converts values between compatible units', function () {
         ->and(UnitConverter::convert(10.0, 'px', 's'))->toBe(10.0);
 })->covers(UnitConverter::class);
 
-it('combines units for multiplication', function () {
-    expect(UnitConverter::multiply('px', 'px'))->toBe('px*px')
-        ->and(UnitConverter::multiply('deg/s', 's'))->toBe('deg')
-        ->and(UnitConverter::multiply(null, 'px'))->toBe('px');
-})->covers(UnitConverter::class);
-
 it('combines units for division', function () {
     expect(UnitConverter::divide('px', 's'))->toBe('px/s')
         ->and(UnitConverter::divide(null, 'deg/s'))->toBe('s/deg')
@@ -57,10 +51,6 @@ it('converts with unknown unit returns value unchanged', function () {
         ->and(UnitConverter::convert(10.0, 'unknown', 'px'))->toBe(10.0);
 })->covers(UnitConverter::class);
 
-it('multiplies compound units with denominator', function () {
-    expect(UnitConverter::multiply('px*px', 'px'))->toBe('px*px*px');
-})->covers(UnitConverter::class);
-
 it('divides compound units with denominator', function () {
     expect(UnitConverter::divide('px*px', 'px'))->toBe('px');
 })->covers(UnitConverter::class);
@@ -87,10 +77,6 @@ it('caches parseParts results', function () {
     $a = UnitConverter::parseParts('px/s');
     $b = UnitConverter::parseParts('px/s');
     expect($a)->toBe($b);
-})->covers(UnitConverter::class);
-
-it('returns null when multiply cancels all parts', function () {
-    expect(UnitConverter::multiply('px/px', 'px/px'))->toBeNull();
 })->covers(UnitConverter::class);
 
 it('returns null when divide cancels all parts', function () {

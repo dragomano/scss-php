@@ -22,6 +22,7 @@ it('renders plain css rules separated by newlines', function () {
     ]);
 
     expect($renderer->render($root, new Environment()))->toBe(
+        /** @lang text */
         <<<'CSS'
         a {
           /*/* first */*/
@@ -43,6 +44,7 @@ it('supports css import directives and import nodes', function () {
     ]);
 
     expect($renderer->render($root, new Environment()))->toBe(
+        /** @lang text */
         <<<'CSS'
         @import url(a.css);
         @import url(b.css);
@@ -60,6 +62,7 @@ it('skips non visitable children inside rules', function () {
     ]);
 
     expect($renderer->render(new RootNode([$rule]), new Environment()))->toBe(
+        /** @lang text */
         <<<'CSS'
         a {
           /*/* x */*/
@@ -77,6 +80,7 @@ it('hoists bubbling at rules after rule content', function () {
     ]);
 
     expect($renderer->render(new RootNode([$rule]), new Environment()))->toBe(
+        /** @lang text */
         <<<'CSS'
         a {
           /*/* x */*/
@@ -98,6 +102,7 @@ it('marks a rule as css function body when the selector is an @function declarat
     ]);
 
     expect($renderer->render(new RootNode([$rule]), new Environment()))->toBe(
+        /** @lang text */
         <<<'CSS'
         @function --x () {
           /*/* body */*/
@@ -127,6 +132,7 @@ it('renders empty at rule bodies', function () {
     ]);
 
     expect($renderer->render($root, new Environment()))->toBe(
+        /** @lang text */
         <<<'CSS'
         @media screen {}
         @supports display: flex {}

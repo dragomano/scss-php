@@ -8,8 +8,6 @@ use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Scope;
 
 /**
- * @phpstan-import-type NodeList from AstNode
- *
  * @psalm-import-type NodeList from AstNode
  */
 final class FunctionNode extends AstNode

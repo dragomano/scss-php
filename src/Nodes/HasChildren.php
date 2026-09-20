@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Nodes;
 
-use function array_keys;
+use function array_filter;
 use function is_array;
 
 /**
- * @phpstan-import-type NodeList from AstNode
- *
  * @psalm-import-type NodeList from AstNode
  */
 trait HasChildren
@@ -30,13 +28,8 @@ trait HasChildren
                 continue;
             }
 
-            foreach (array_keys($value) as $key) {
-                /** @var mixed $item */
-                $item = $value[$key];
-
-                if ($item instanceof AstNode) {
-                    $children[] = $item;
-                }
+            foreach (array_filter($value, static fn(mixed $item): bool => $item instanceof AstNode) as $item) {
+                $children[] = $item;
             }
         }
 

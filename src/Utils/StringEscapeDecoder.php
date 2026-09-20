@@ -23,8 +23,6 @@ final class StringEscapeDecoder
 {
     public const PROTECTED_HASH = "\u{D800}";
 
-    public const PROTECTED_HASH_CODE_POINT = 0xD800;
-
     private const REPLACEMENT = "\u{FFFD}";
 
     private const REPLACEMENT_CODE_POINT = 0xFFFD;
@@ -137,7 +135,6 @@ final class StringEscapeDecoder
             [$codePoint, $width] = self::decodeCodePointAt($decoded, $index);
 
             $replacement = match (true) {
-                $codePoint === self::PROTECTED_HASH_CODE_POINT => null,
                 $codePoint === 0x0A => '\a',
                 $codePoint === 0x0D => '\d',
                 $codePoint === 0x0B => '\b',
@@ -306,6 +303,37 @@ final class StringEscapeDecoder
         return $result;
     }
 
+    public static function codePointToUtf8(int $codePoint): string
+    {
+        if (
+            $codePoint <= 0
+            || ($codePoint >= 0xD800 && $codePoint <= 0xDFFF)
+            || $codePoint > 0x10FFFF
+        ) {
+            return self::REPLACEMENT;
+        }
+
+        if ($codePoint <= 0x7F) {
+            return chr($codePoint);
+        }
+
+        if ($codePoint <= 0x7FF) {
+            return chr(0xC0 | ($codePoint >> 6))
+                . chr(0x80 | ($codePoint & 0x3F));
+        }
+
+        if ($codePoint <= 0xFFFF) {
+            return chr(0xE0 | ($codePoint >> 12))
+                . chr(0x80 | (($codePoint >> 6) & 0x3F))
+                . chr(0x80 | ($codePoint & 0x3F));
+        }
+
+        return chr(0xF0 | ($codePoint >> 18))
+            . chr(0x80 | (($codePoint >> 12) & 0x3F))
+            . chr(0x80 | (($codePoint >> 6) & 0x3F))
+            . chr(0x80 | ($codePoint & 0x3F));
+    }
+
     private static function decodeEscapeAt(string $text, int &$index): string
     {
         $length = strlen($text);
@@ -356,37 +384,6 @@ final class StringEscapeDecoder
         $index++;
 
         return $char;
-    }
-
-    private static function codePointToUtf8(int $codePoint): string
-    {
-        if (
-            $codePoint <= 0
-            || ($codePoint >= 0xD800 && $codePoint <= 0xDFFF)
-            || $codePoint > 0x10FFFF
-        ) {
-            return self::REPLACEMENT;
-        }
-
-        if ($codePoint <= 0x7F) {
-            return chr($codePoint);
-        }
-
-        if ($codePoint <= 0x7FF) {
-            return chr(0xC0 | ($codePoint >> 6))
-                . chr(0x80 | ($codePoint & 0x3F));
-        }
-
-        if ($codePoint <= 0xFFFF) {
-            return chr(0xE0 | ($codePoint >> 12))
-                . chr(0x80 | (($codePoint >> 6) & 0x3F))
-                . chr(0x80 | ($codePoint & 0x3F));
-        }
-
-        return chr(0xF0 | ($codePoint >> 18))
-            . chr(0x80 | (($codePoint >> 12) & 0x3F))
-            . chr(0x80 | (($codePoint >> 6) & 0x3F))
-            . chr(0x80 | ($codePoint & 0x3F));
     }
 
     /**

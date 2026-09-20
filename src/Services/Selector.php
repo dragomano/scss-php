@@ -392,11 +392,6 @@ final readonly class Selector
         $this->extends->collectExtends($node, $env);
     }
 
-    public function finalizeCollectedExtends(): void
-    {
-        $this->extends->finalizeCollectedExtends();
-    }
-
     public function getCurrentParentSelector(Environment $env): ?string
     {
         if (! $env->getCurrentScope()->hasVariable('__parent_selector')) {
@@ -827,8 +822,6 @@ final readonly class Selector
 
             if ($child instanceof CommentNode && $lastRenderedLine !== null && $child->line === $lastRenderedLine) {
                 $this->render->appendChunk($output, ' ' . ltrim($chunk), $child);
-
-                $lastRenderedLine = $child->line;
 
                 continue;
             }

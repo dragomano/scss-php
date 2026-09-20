@@ -189,19 +189,7 @@ final readonly class CallableDirectiveParser
                     $depth     = substr_count($partialSignature, '(') - substr_count($partialSignature, ')');
 
                     while (! $this->stream->isEof() && $depth > 0) {
-                        $token = $this->stream->current();
-
-                        if ($token->type === TokenType::LPAREN) {
-                            $depth++;
-                        } elseif ($token->type === TokenType::RPAREN) {
-                            $depth--;
-                        }
-
-                        $signature .= $token->type === TokenType::WHITESPACE
-                            ? ' '
-                            : TokenStreamHelper::tokenToRawString($token->type, $token->value);
-
-                        $this->stream->advance();
+                        $this->appendSignatureToken($signature, $depth);
                     }
 
                     $selector .= $signature;
@@ -213,19 +201,7 @@ final readonly class CallableDirectiveParser
                 $depth     = 1;
 
                 while (! $this->stream->isEof() && $depth > 0) {
-                    $token = $this->stream->current();
-
-                    if ($token->type === TokenType::LPAREN) {
-                        $depth++;
-                    } elseif ($token->type === TokenType::RPAREN) {
-                        $depth--;
-                    }
-
-                    $signature .= $token->type === TokenType::WHITESPACE
-                        ? ' '
-                        : TokenStreamHelper::tokenToRawString($token->type, $token->value);
-
-                    $this->stream->advance();
+                    $this->appendSignatureToken($signature, $depth);
                 }
 
                 $selector .= $signature;
@@ -365,5 +341,22 @@ final readonly class CallableDirectiveParser
         }
 
         return new StringNode(trim($defaultValueStr));
+    }
+
+    private function appendSignatureToken(string &$signature, int &$depth): void
+    {
+        $token = $this->stream->current();
+
+        if ($token->type === TokenType::LPAREN) {
+            $depth++;
+        } elseif ($token->type === TokenType::RPAREN) {
+            $depth--;
+        }
+
+        $signature .= $token->type === TokenType::WHITESPACE
+            ? ' '
+            : TokenStreamHelper::tokenToRawString($token->type, $token->value);
+
+        $this->stream->advance();
     }
 }

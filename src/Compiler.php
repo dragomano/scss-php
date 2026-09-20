@@ -47,6 +47,7 @@ final readonly class Compiler implements CompilerInterface
         $this->ctx->currentSourceFile = basename($sourceFile ?: $this->options->sourceFile);
 
         $syntax ??= Syntax::SCSS;
+        $output   = '';
 
         try {
             $this->ctx->outputState->hoistCssImports = true;
@@ -63,11 +64,12 @@ final readonly class Compiler implements CompilerInterface
 
             $environment = $this->buildEnvironment($ast, str_contains($source, '@extend'));
             $compiled    = $this->compileAst($ast, $environment);
-
-            return $this->postProcess($compiled, $source);
+            $output      = $this->postProcess($compiled, $source);
         } finally {
             $this->resetState();
         }
+
+        return $output;
     }
 
     public function compileFile(string $path): string

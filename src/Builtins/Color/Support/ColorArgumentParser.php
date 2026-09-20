@@ -15,6 +15,7 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Utils\StringHelper;
 use Bugo\SCSS\Values\AstValueInspector;
 
 use function array_map;
@@ -22,7 +23,6 @@ use function array_merge;
 use function array_slice;
 use function array_values;
 use function count;
-use function ctype_digit;
 use function implode;
 use function in_array;
 use function is_finite;
@@ -30,7 +30,6 @@ use function is_nan;
 use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
-use function strlen;
 use function strpos;
 use function strtolower;
 use function substr;
@@ -78,7 +77,7 @@ final readonly class ColorArgumentParser
         try {
             return $this->requireColor($positional, 0, $context);
         } catch (MissingFunctionArgumentsException $missingFunctionArgumentsException) {
-            if ($this->shouldDeferToCss($context, $missingFunctionArgumentsException)) {
+            if ($this->shouldDeferToCss($missingFunctionArgumentsException)) {
                 throw new DeferToCssFunctionException(
                     $missingFunctionArgumentsException->getMessage(),
                     0,
@@ -90,7 +89,7 @@ final readonly class ColorArgumentParser
         }
     }
 
-    public function shouldDeferToCss(string $context, MissingFunctionArgumentsException $exception): bool
+    public function shouldDeferToCss(MissingFunctionArgumentsException $exception): bool
     {
         if (! str_contains($exception->getMessage(), 'expects color arguments')) {
             return false;
@@ -767,35 +766,13 @@ final readonly class ColorArgumentParser
 
     private function parseNumericPrefix(string $text): ?NumberNode
     {
-        $length = strlen($text);
-        $index  = 0;
+        $parts = StringHelper::parseNumberPrefix($text);
 
-        if ($index < $length && ($text[$index] === '+' || $text[$index] === '-')) {
-            $index++;
-        }
-
-        $hasDigits = false;
-
-        while ($index < $length && ctype_digit($text[$index])) {
-            $index++;
-            $hasDigits = true;
-        }
-
-        if ($index < $length && $text[$index] === '.') {
-            $index++;
-
-            while ($index < $length && ctype_digit($text[$index])) {
-                $index++;
-                $hasDigits = true;
-            }
-        }
-
-        if (! $hasDigits) {
+        if ($parts === null) {
             return null;
         }
 
-        $numberPart = substr($text, 0, $index);
-        $unitPart   = substr($text, $index);
+        [$numberPart, $unitPart] = $parts;
 
         $value = str_contains($numberPart, '.') ? (float) $numberPart : (int) $numberPart;
 
@@ -810,17 +787,24 @@ final readonly class ColorArgumentParser
 
         $arguments = $node->arguments;
 
+        $spaceNode = ($arguments[0] ?? null) instanceof ListNode
+            ? ($arguments[0]->items[0] ?? null)
+            : null;
+        $percentageNode = ($arguments[1] ?? null) instanceof ListNode
+            ? ($arguments[1]->items[1] ?? null)
+            : null;
+
         if (
             count($arguments) !== 3
             || ! ($arguments[0] instanceof ListNode)
             || ! ($arguments[1] instanceof ListNode)
             || count($arguments[0]->items) !== 2
             || count($arguments[1]->items) !== 2
-            || ! ($arguments[0]->items[0] instanceof StringNode)
-            || strtolower($arguments[0]->items[0]->value) !== 'in'
+            || ! ($spaceNode instanceof StringNode)
+            || strtolower($spaceNode->value) !== 'in'
             || ! ($arguments[1]->items[0] instanceof FunctionNode)
-            || ! ($arguments[1]->items[1] instanceof NumberNode)
-            || (float) $arguments[1]->items[1]->value !== 100.0
+            || ! ($percentageNode instanceof NumberNode)
+            || (float) $percentageNode->value !== 100.0
             || ! ($arguments[2] instanceof StringNode)
         ) {
             return $node;

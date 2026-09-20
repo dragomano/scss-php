@@ -273,7 +273,7 @@ final readonly class FunctionCallParser
             }
         }
 
-        $arguments = $this->parseFunctionArguments($name);
+        $arguments = $this->parseFunctionArguments();
 
         return new FunctionNode($name, $arguments, $line);
     }
@@ -284,17 +284,17 @@ final readonly class FunctionCallParser
 
         $this->stream->advance();
 
-        $arguments = $this->parseFunctionArguments($dynamicName->value);
+        $arguments = $this->parseFunctionArguments();
 
         return new FunctionNode(name: '', arguments: $arguments, line: $line, dynamicName: $dynamicName);
     }
 
     /**
-     * @param array<int, AstNode> $arguments
      * @return array<int, AstNode>
      */
-    private function parseFunctionArguments(string $rawName, array $arguments = []): array
+    private function parseFunctionArguments(): array
     {
+        $arguments = [];
         $loopCount = 0;
 
         while (! $this->stream->isEof()) {
@@ -578,12 +578,6 @@ final readonly class FunctionCallParser
 
             $tokenValues[] = $raw;
 
-            if ($interpolationDepth > 0) {
-                $this->stream->advance();
-
-                continue;
-            }
-
             $this->stream->advance();
         }
 
@@ -839,8 +833,6 @@ final readonly class FunctionCallParser
                 $this->stream->skipWhitespace();
 
                 $else ??= $this->parsingContext->parseValueUntil([TokenType::RPAREN, TokenType::SEMICOLON]);
-
-                continue;
             }
         }
 

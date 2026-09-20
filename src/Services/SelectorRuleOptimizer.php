@@ -77,7 +77,7 @@ final class SelectorRuleOptimizer
 
                 if (
                     $lastDeclarationLineByKey[$declarationKey] !== $index
-                    && ! $this->shouldKeepRedundantDeclaration($collapseRedundantProperties, $line)
+                    && ! $this->shouldKeepRedundantDeclaration($line)
                 ) {
                     $depth += substr_count($line, '{') - substr_count($line, '}');
 
@@ -279,7 +279,7 @@ final class SelectorRuleOptimizer
         return strtolower($property);
     }
 
-    private function shouldKeepRedundantDeclaration(bool $collapseRedundantProperties, string $line): bool
+    private function shouldKeepRedundantDeclaration(string $line): bool
     {
         return $this->declarationHasVendorValue($line) || $this->declarationHasImportant($line);
     }

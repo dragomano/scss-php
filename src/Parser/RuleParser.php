@@ -253,14 +253,7 @@ final class RuleParser
             }
 
             if ($token->type === TokenType::WHITESPACE) {
-                if (str_contains($token->value, "\n") && $selector !== '' && $selector[-1] === ',') {
-                    $selector .= "\n";
-                } elseif (str_contains($token->value, "\n") && $selector !== '') {
-                    $pendingBreak = true;
-                    $selector    .= ' ';
-                } else {
-                    $selector .= ' ';
-                }
+                $this->appendWhitespace($token->value, $selector, $pendingBreak);
             } elseif ($token->type === TokenType::STRING) {
                 $selector .= '"' . ($token->rawValue ?? $token->value) . '"';
             } elseif ($token->type === TokenType::HASH) {
@@ -319,14 +312,7 @@ final class RuleParser
             }
 
             if ($token->type === TokenType::WHITESPACE) {
-                if (str_contains($token->value, "\n") && $buffer !== '' && $buffer[-1] === ',') {
-                    $buffer .= "\n";
-                } elseif (str_contains($token->value, "\n") && $buffer !== '') {
-                    $pendingBreak = true;
-                    $buffer      .= ' ';
-                } else {
-                    $buffer .= ' ';
-                }
+                $this->appendWhitespace($token->value, $buffer, $pendingBreak);
 
                 $this->stream->advance();
 
@@ -478,6 +464,18 @@ final class RuleParser
         }
 
         return trim($buffer);
+    }
+
+    private function appendWhitespace(string $value, string &$buffer, bool &$pendingBreak): void
+    {
+        if (str_contains($value, "\n") && $buffer !== '' && $buffer[-1] === ',') {
+            $buffer .= "\n";
+        } elseif (str_contains($value, "\n") && $buffer !== '') {
+            $pendingBreak = true;
+            $buffer      .= ' ';
+        } else {
+            $buffer .= ' ';
+        }
     }
 
     public function isLikelySelector(string $text): bool

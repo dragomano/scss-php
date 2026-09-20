@@ -17,9 +17,9 @@ use Bugo\SCSS\Nodes\MixinRefNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Utils\SlashOperatorCompactor;
 
 use function array_values;
-use function count;
 use function strrpos;
 use function strtolower;
 use function substr;
@@ -74,7 +74,7 @@ final readonly class ValueFactory
             $separator = $node->separator;
 
             if ($separator === 'space' && $compactSlash) {
-                $items = $this->compactSlashOperatorItems($node->items, $items);
+                $items = SlashOperatorCompactor::compact($node->items, $items);
             }
 
             return new SassList(array_values($items), $separator, $node->bracketed);
@@ -166,64 +166,5 @@ final readonly class ValueFactory
         return $first instanceof StringNode
             && ! $first->quoted
             && strtolower(trim($first->value)) === 'from';
-    }
-
-    /**
-     * Merges preserved-division slash operators (parsed `/` tokens) with their
-     * neighbouring items so `a / b` renders as `a/b`, matching Dart Sass.
-     *
-     * @param array<int, AstNode> $nodes
-     * @param list<string> $items
-     * @return array<int, string>
-     */
-    private function compactSlashOperatorItems(array $nodes, array $items): array
-    {
-        $count = count($items);
-
-        if ($count < 3) {
-            return $items;
-        }
-
-        $isOperator = [];
-
-        foreach ($nodes as $index => $node) {
-            $isOperator[$index] = $node instanceof StringNode
-                && ! $node->quoted
-                && $node->isSlashOperator
-                && $node->value === '/';
-        }
-
-        $hasOperator = false;
-
-        foreach ($isOperator as $isSlashOperator) {
-            if ($isSlashOperator) {
-                $hasOperator = true;
-
-                break;
-            }
-        }
-
-        if (! $hasOperator) {
-            return $items;
-        }
-
-        $result   = [];
-        $previous = null;
-
-        foreach ($items as $index => $item) {
-            if ($previous !== null) {
-                if ($isOperator[$index] || $isOperator[$previous]) {
-                    $result[count($result) - 1] .= $item;
-                } else {
-                    $result[] = $item;
-                }
-            } else {
-                $result[] = $item;
-            }
-
-            $previous = $index;
-        }
-
-        return $result;
     }
 }

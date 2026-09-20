@@ -256,16 +256,6 @@ describe('Scope', function () {
         expect($root->getVariable('v'))->toBe($original);
     });
 
-    it('isCallableBody() reflects the callable body marker', function () {
-        $scope = new Scope();
-
-        expect($scope->isCallableBody())->toBeFalse();
-
-        $scope->markAsCallableBody();
-
-        expect($scope->isCallableBody())->toBeTrue();
-    });
-
     it('default flag applies the configured value when the variable is not defined yet', function () {
         $scope      = new Scope();
         $configured = new StringNode('configured');

@@ -66,7 +66,7 @@ it('prepends a charset and shifts mappings only for non-ascii output', function 
         new SourceMapMapping(new SourceMapPosition(1, 0), new SourceMapPosition(1, 0)),
     ];
 
-    // ASCII output keeps the css and mappings untouched.
+    // ASCII output keeps the CSS and mappings untouched.
     expect($render->prependCharset('.a{color:red}'))->toBe('.a{color:red}')
         ->and($compilerContext->sourceMapState->mappings[0]->generated->line)->toBe(1);
 

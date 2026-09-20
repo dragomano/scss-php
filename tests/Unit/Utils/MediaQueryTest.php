@@ -44,15 +44,15 @@ describe('parseList()', function () {
     it('keeps commas, and keywords and escaped quotes inside strings intact', function () {
         $queries = MediaQuery::parseList('(content: "a and b, c\"")');
 
-        expect($queries)->toBeArray()->toHaveCount(1);
-        expect($queries[0]->conditions)->toBe(['(content: "a and b, c\"")']);
+        expect($queries)->toBeArray()->toHaveCount(1)
+            ->and($queries[0]->conditions)->toBe(['(content: "a and b, c\"")']);
     });
 
     it('does not treat a leading a that is not and as a boundary', function () {
         $queries = MediaQuery::parseList('screen and apple (b)');
 
-        expect($queries)->toBeArray()->toHaveCount(1);
-        expect($queries[0]->toString())->toBe('screen and apple (b)');
+        expect($queries)->toBeArray()->toHaveCount(1)
+            ->and($queries[0]->toString())->toBe('screen and apple (b)');
     });
 
     it('does not treat and without preceding whitespace as a boundary', function () {

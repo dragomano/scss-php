@@ -629,7 +629,7 @@ describe('Compiler', function () {
 
             $body = substr($withMap, 0, (int) strpos($withMap, "\n/*# sourceMappingURL="));
 
-            // The css must stay byte-identical to a compile without a source map.
+            // The css must stay byte-identical to compile without a source map.
             expect($body)->toBe($withoutMap)
                 ->and($body)->toBe('@import "theme.css";.block{color:#abc}');
 

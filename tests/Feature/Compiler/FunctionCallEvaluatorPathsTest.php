@@ -143,7 +143,7 @@ describe('Compiler', function () {
             foreach ($cases as $case) {
                 expect($this->compiler->compileString($case[0]))->toEqualCss(
                     /** @lang text */
-                    ".a {\n  {$case[1]};\n}",
+                    ".a {\n  $case[1];\n}",
                 );
             }
         });
@@ -183,7 +183,7 @@ describe('Compiler', function () {
             foreach ($cases as $case) {
                 expect($this->compiler->compileString($case[0]))->toEqualCss(
                     /** @lang text */
-                    ".a {\n  {$case[1]};\n}",
+                    ".a {\n  $case[1];\n}",
                 );
             }
         });

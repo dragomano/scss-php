@@ -43,6 +43,21 @@ describe('CssColorFunctionConverter', function () {
             ->and($xyz[1])->toBe(1.0);
     });
 
+    it('converts percentage channels in color functions', function () {
+        $rgb = $this->converter->tryConvertToRgba(new FunctionNode('color', [
+            new StringNode('srgb'),
+            new NumberNode(10, '%'),
+            new NumberNode(20, '%'),
+            new NumberNode(30, '%'),
+        ]));
+
+        expect($rgb)->toBeInstanceOf(RgbColor::class)
+            ->and($rgb?->r)->toBe(0.1)
+            ->and($rgb?->g)->toBe(0.2)
+            ->and($rgb?->b)->toBe(0.3)
+            ->and($rgb?->a)->toBe(1.0);
+    });
+
     it('returns null for unsupported channel layout', function () {
         expect($this->converter->tryConvertToRgba(new FunctionNode('rgb', [new StringNode('oops')])))
             ->toBeNull();

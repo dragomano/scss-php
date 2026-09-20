@@ -14,6 +14,7 @@ use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Utils\SlashOperatorCompactor;
 use Bugo\SCSS\Utils\UnitConverter;
 use Bugo\SCSS\Values\SassCalculation;
 use Bugo\SCSS\Values\SassList;
@@ -112,68 +113,10 @@ final readonly class CalculationEvaluator
         }
 
         if ($separator === 'space' && $compactSlash) {
-            $formattedItems = $this->compactSlashOperators($items, $formattedItems);
+            $formattedItems = SlashOperatorCompactor::compact($items, $formattedItems);
         }
 
         return (string) new SassList(array_values($formattedItems), $separator, $bracketed);
-    }
-
-    /**
-     * Compacts preserved-division slash operators with their neighbours.
-     *
-     * @param array<int, AstNode> $nodes
-     * @param list<string> $items
-     * @return array<int, string>
-     */
-    private function compactSlashOperators(array $nodes, array $items): array
-    {
-        $count = count($items);
-
-        if ($count < 3) {
-            return $items;
-        }
-
-        $isOperator = [];
-
-        foreach ($nodes as $index => $node) {
-            $isOperator[$index] = $node instanceof StringNode
-                && ! $node->quoted
-                && $node->isSlashOperator
-                && $node->value === '/';
-        }
-
-        $hasOperator = false;
-
-        foreach ($isOperator as $isSlashOperator) {
-            if ($isSlashOperator) {
-                $hasOperator = true;
-
-                break;
-            }
-        }
-
-        if (! $hasOperator) {
-            return $items;
-        }
-
-        $result   = [];
-        $previous = null;
-
-        foreach ($items as $index => $item) {
-            if ($previous !== null) {
-                if ($isOperator[$index] || $isOperator[$previous]) {
-                    $result[count($result) - 1] .= $item;
-                } else {
-                    $result[] = $item;
-                }
-            } else {
-                $result[] = $item;
-            }
-
-            $previous = $index;
-        }
-
-        return $result;
     }
 
     public function isSlashChain(ListNode $node): bool
@@ -228,8 +171,7 @@ final readonly class CalculationEvaluator
         }
 
         if (
-            ! $argument instanceof ListNode
-            && ($argument instanceof FunctionNode || $argument instanceof NumberNode)
+            ($argument instanceof FunctionNode || $argument instanceof NumberNode)
             && $argument->parenthesized > 0
         ) {
             $inner = $this->valueFormatter->format($argument, $env);
@@ -594,8 +536,6 @@ final readonly class CalculationEvaluator
     {
         $items = [];
 
-        $operatorContext = $this->extractLeadingOperatorContext($list);
-
         foreach ($list->items as $index => $item) {
             if (
                 $item instanceof FunctionNode
@@ -697,7 +637,7 @@ final readonly class CalculationEvaluator
             return true;
         }
 
-        if ($innerPrecedence === $outerPrecedence && $outerOperator !== null && in_array($outerOperator, ['+', '*'], true)) {
+        if ($innerPrecedence === $outerPrecedence && in_array($outerOperator, ['+', '*'], true)) {
             return true;
         }
 

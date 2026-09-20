@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Nodes;
 
 /**
- * @phpstan-import-type NodeList from AstNode
- *
  * @psalm-import-type NodeList from AstNode
  */
 final class ElseIfNode extends AstNode

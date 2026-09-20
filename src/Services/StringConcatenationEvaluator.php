@@ -31,6 +31,8 @@ final readonly class StringConcatenationEvaluator
     private const OPERATOR_WORDS = ['+', '-', '*', '/', '%', 'and', 'or', 'not'];
 
     /**
+     * @param AstValueFormatterInterface $valueFormatter
+     * @param ArithmeticEvaluator $arithmetic
      * @param (Closure(AstNode): bool)|null $isTruthy
      */
     public function __construct(
@@ -276,7 +278,6 @@ final readonly class StringConcatenationEvaluator
         $leftIsString  = $left instanceof StringNode;
         $rightIsString = $right instanceof StringNode;
 
-        /** @var bool $quoted */
         $quoted = false;
         if ($operator === '+') {
             if ($leftIsString) {

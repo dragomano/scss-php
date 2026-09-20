@@ -168,29 +168,23 @@ final readonly class SassNormalizer implements SourceNormalizer
             [$trimmed, $index] = $this->mergeEscapedNewlineContinuation($trimmed, $index, $lines);
             [$trimmed, $index] = $this->mergeCustomPropertyDeclaration(
                 $trimmed,
-                $level,
                 $index,
                 $lines,
-                $indentSize,
             );
-            [$trimmed, $index] = $this->mergeParenthesizedDeclaration($trimmed, $level, $index, $lines, $indentSize);
+            [$trimmed, $index] = $this->mergeParenthesizedDeclaration($trimmed, $index, $lines);
             [$trimmed, $index] = $this->mergeBracketedDeclaration($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeDirectiveHeader($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeBareSingleLineDirective($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeOperatorContinuation($trimmed, $level, $index, $lines, $indentSize);
             [$trimmed, $index] = $this->mergeSingleLineDirectiveParenthesizedCall(
                 $trimmed,
-                $level,
                 $index,
                 $lines,
-                $indentSize,
             );
             [$trimmed, $index] = $this->mergeBlockHeaderParenContinuation(
                 $trimmed,
-                $level,
                 $index,
                 $lines,
-                $indentSize,
             );
             [$trimmed, $index] = $this->mergeInterpolationContinuation(
                 $trimmed,
@@ -629,21 +623,7 @@ final readonly class SassNormalizer implements SourceNormalizer
         for ($index = 0; $index < $length; $index++) {
             $char = $line[$index];
 
-            if ($quote !== null) {
-                if ($escaped) {
-                    $escaped = false;
-                } elseif ($char === '\\') {
-                    $escaped = true;
-                } elseif ($char === $quote) {
-                    $quote = null;
-                }
-
-                continue;
-            }
-
-            if ($char === '"' || $char === "'") {
-                $quote = $char;
-
+            if ($this->consumeQuotedCharacter($char, $quote, $escaped)) {
                 continue;
             }
 
@@ -678,15 +658,7 @@ final readonly class SassNormalizer implements SourceNormalizer
         for ($index = 0; $index < $length; $index++) {
             $char = $line[$index];
 
-            if ($quote !== null) {
-                if ($escaped) {
-                    $escaped = false;
-                } elseif ($char === '\\') {
-                    $escaped = true;
-                } elseif ($char === $quote) {
-                    $quote = null;
-                }
-
+            if (! $inLoud && $this->consumeQuotedCharacter($char, $quote, $escaped)) {
                 continue;
             }
 
@@ -696,12 +668,6 @@ final readonly class SassNormalizer implements SourceNormalizer
 
                     $index++;
                 }
-
-                continue;
-            }
-
-            if ($char === '"' || $char === "'") {
-                $quote = $char;
 
                 continue;
             }
@@ -884,10 +850,8 @@ final readonly class SassNormalizer implements SourceNormalizer
      */
     private function mergeCustomPropertyDeclaration(
         string $trimmed,
-        int $level,
         int $index,
         array $lines,
-        int $indentSize,
     ): array {
         if (! $this->isCustomPropertyDeclaration($trimmed)) {
             return [$trimmed, $index];
@@ -997,21 +961,11 @@ final readonly class SassNormalizer implements SourceNormalizer
         for ($index = 0; $index < $length; $index++) {
             $char = $line[$index];
 
-            if ($quote !== null) {
-                if ($escaped) {
-                    $escaped = false;
-                } elseif ($char === '\\') {
-                    $escaped = true;
-                } elseif ($char === $quote) {
-                    $quote = null;
-                }
-
+            if ($this->consumeQuotedCharacter($char, $quote, $escaped)) {
                 continue;
             }
 
-            if ($char === '"' || $char === "'") {
-                $quote = $char;
-            } elseif ($char === '(' || $char === '[' || $char === '{') {
+            if ($char === '(' || $char === '[' || $char === '{') {
                 $depth++;
             } elseif ($char === ')' || $char === ']' || $char === '}') {
                 $depth--;
@@ -1027,10 +981,8 @@ final readonly class SassNormalizer implements SourceNormalizer
      */
     private function mergeParenthesizedDeclaration(
         string $trimmed,
-        int $level,
         int $index,
         array $lines,
-        int $indentSize,
     ): array {
         $candidate = rtrim($trimmed);
 
@@ -1044,7 +996,7 @@ final readonly class SassNormalizer implements SourceNormalizer
             return [$trimmed, $index];
         }
 
-        return $this->mergeParenthesizedContinuation($candidate, $level, $index, $lines, $indentSize);
+        return $this->mergeParenthesizedContinuation($candidate, $index, $lines);
     }
 
     /**
@@ -1171,10 +1123,8 @@ final readonly class SassNormalizer implements SourceNormalizer
      */
     private function mergeSingleLineDirectiveParenthesizedCall(
         string $trimmed,
-        int $level,
         int $index,
         array $lines,
-        int $indentSize,
     ): array {
         $candidate = rtrim($trimmed);
 
@@ -1182,7 +1132,7 @@ final readonly class SassNormalizer implements SourceNormalizer
             return [$trimmed, $index];
         }
 
-        return $this->mergeParenthesizedContinuation($candidate, $level, $index, $lines, $indentSize);
+        return $this->mergeParenthesizedContinuation($candidate, $index, $lines);
     }
 
     /**
@@ -1191,10 +1141,8 @@ final readonly class SassNormalizer implements SourceNormalizer
      */
     private function mergeBlockHeaderParenContinuation(
         string $trimmed,
-        int $level,
         int $index,
         array $lines,
-        int $indentSize,
     ): array {
         $candidate = rtrim($trimmed);
 
@@ -1328,10 +1276,8 @@ final readonly class SassNormalizer implements SourceNormalizer
      */
     private function mergeParenthesizedContinuation(
         string $merged,
-        int $level,
         int $index,
         array $lines,
-        int $indentSize,
     ): array {
         $depth = $this->parenthesisBalance($merged);
         $line  = $index + 1;
@@ -1645,21 +1591,7 @@ final readonly class SassNormalizer implements SourceNormalizer
         for ($index = 0; $index < $length; $index++) {
             $char = $line[$index];
 
-            if ($quote !== null) {
-                if ($escaped) {
-                    $escaped = false;
-                } elseif ($char === '\\') {
-                    $escaped = true;
-                } elseif ($char === $quote) {
-                    $quote = null;
-                }
-
-                continue;
-            }
-
-            if ($char === '"' || $char === "'") {
-                $quote = $char;
-
+            if ($this->consumeQuotedCharacter($char, $quote, $escaped)) {
                 continue;
             }
 
@@ -1669,6 +1601,29 @@ final readonly class SassNormalizer implements SourceNormalizer
         }
 
         return null;
+    }
+
+    private function consumeQuotedCharacter(string $char, ?string &$quote, bool &$escaped): bool
+    {
+        if ($quote !== null) {
+            if ($escaped) {
+                $escaped = false;
+            } elseif ($char === '\\') {
+                $escaped = true;
+            } elseif ($char === $quote) {
+                $quote = null;
+            }
+
+            return true;
+        }
+
+        if ($char !== '"' && $char !== "'") {
+            return false;
+        }
+
+        $quote = $char;
+
+        return true;
     }
 
     private function isIdentifierStartAt(string $line, int $position): bool

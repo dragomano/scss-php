@@ -1302,9 +1302,8 @@ describe('SassNormalizer', function () {
             $malformed = ".grid\n  /* comment\n";
 
             expect(fn() => $this->normalizer->normalize($malformed))
-                ->not->toThrow(InvalidSyntaxException::class);
-
-            expect($this->normalizer->normalize($malformed))->toContain('.grid');
+                ->not->toThrow(InvalidSyntaxException::class)
+                ->and($this->normalizer->normalize($malformed))->toContain('.grid');
         });
     });
 

@@ -58,22 +58,6 @@ use function trim;
 use function usort;
 
 /**
- * @phpstan-import-type Complex from SelectorTokenizer
- * @phpstan-import-type ExtendsBox from ExtendsState
- * @phpstan-type Extension array{extender: Complex, target: string, context: string, optional: bool, priority: int}
- * @phpstan-type Extender array{selector: Complex, original: bool, context: string}
- * @phpstan-type ExtensionMap array<string, array<string, Extension>>
- * @phpstan-type BoxMeta array<int, array{rawParts: array<int, string>, originals: array<int, string>, context: string}>
- * @phpstan-type ExtensionStore array{
- *     selectors: array<string, array<int, true>>,
- *     extensions: ExtensionMap,
- *     byExtender: array<string, list<Extension>>,
- *     contexts: array<int, string>,
- *     sourceSpecificity: array<string, int>,
- *     originals: array<string, true>,
- *     boxes: array<int, array<int, Complex>>
- * }
- *
  * @psalm-import-type Complex from SelectorTokenizer
  * @psalm-import-type ExtendsBox from ExtendsState
  * @psalm-type Extension=array{extender: Complex, target: string, context: string, optional: bool, priority: int}
@@ -810,6 +794,7 @@ final readonly class ExtendsResolver
      * @param ExtensionStore $store
      * @param Complex $complex
      * @param ExtensionMap $extensionsMap
+     * @param string $context
      * @return array<int, Complex>|null
      */
     private function extendSingleComplex(array &$store, array $complex, array $extensionsMap, string $context): ?array
@@ -883,6 +868,8 @@ final readonly class ExtendsResolver
      * @param ExtensionStore $store
      * @param SelectorComponent $component
      * @param ExtensionMap $extensionsMap
+     * @param string $context
+     * @param bool $inOriginal
      * @return array<int, Complex>|null
      */
     private function extendCompoundComponent(
@@ -1098,6 +1085,7 @@ final readonly class ExtendsResolver
      * @param ExtensionStore $store
      * @param string $simple
      * @param ExtensionMap $extensionsMap
+     * @param string $context
      * @return list<list<Extender>>|null
      */
     private function extendSimpleSelector(
@@ -1316,7 +1304,7 @@ final readonly class ExtendsResolver
                 }
 
                 if ($duplicateIndex >= 0) {
-                    $result = $this->rotateSlice($result, 0, $duplicateIndex + 1);
+                    $result = $this->rotateSlice($result, $duplicateIndex + 1);
 
                     continue;
                 }
@@ -1375,14 +1363,14 @@ final readonly class ExtendsResolver
      * @param list<Complex> $list
      * @return list<Complex>
      */
-    private function rotateSlice(array $list, int $start, int $end): array
+    private function rotateSlice(array $list, int $end): array
     {
         $moved = $list[$end - 1];
 
         return [
-            ...array_slice($list, 0, $start),
+            ...array_slice($list, 0, 0),
             $moved,
-            ...array_slice($list, $start, $end - $start - 1),
+            ...array_slice($list, 0, $end - 1),
             ...array_slice($list, $end),
         ];
     }
@@ -1539,6 +1527,7 @@ final readonly class ExtendsResolver
 
     /**
      * @param Complex $complex
+     * @param string $combinators
      * @return Complex
      */
     private function withAdditionalCombinators(array $complex, string $combinators): array
@@ -2203,13 +2192,12 @@ final readonly class ExtendsResolver
                     $matched = $this->tokenizer->doesCompoundSatisfy($selectorCompound, $superselectorCompound);
                 }
 
-                if ($matched) {
-                    $index++;
+                $index++;
 
+                if ($matched) {
                     break;
                 }
 
-                $index++;
             }
 
             if (! $matched) {
