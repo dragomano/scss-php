@@ -23,6 +23,8 @@ spec/
 *.json
 !composer.json
 
+run_spec*
+
 *.md
 !README*.md
 
