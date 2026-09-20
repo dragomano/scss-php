@@ -212,6 +212,6 @@ Don't forget to test and tidy up your code before submitting a pull request.
 ## Additional resources
 
 * https://sass-lang.com/documentation/
-* https://github.com/sass/sass
+* https://github.com/sass/sass-spec
 * https://tc39.es/ecma426/
 * https://evanw.github.io/source-map-visualization/

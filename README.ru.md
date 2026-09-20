@@ -212,6 +212,6 @@ echo $css;
 ## Дополнительные ресурсы
 
 * https://dragomano.github.io/dart-sass-docs-russian/
-* https://github.com/sass/sass
+* https://github.com/sass/sass-spec
 * https://tc39.es/ecma426/
 * https://evanw.github.io/source-map-visualization/
