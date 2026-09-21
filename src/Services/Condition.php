@@ -628,15 +628,11 @@ final readonly class Condition
 
     private function areModuleRefsEqual(ModuleRefNode $left, ModuleRefNode $right): bool
     {
-        if ($left->scope !== null && $right->scope !== null) {
-            return $left->scope === $right->scope;
-        }
-
-        if ($left->builtinName !== null && $right->builtinName !== null) {
+        if ($left->builtinName !== null || $right->builtinName !== null) {
             return $left->builtinName === $right->builtinName;
         }
 
-        return false;
+        return $left->scope !== null && $left->scope === $right->scope;
     }
 
     private function areColorsCrossType(AstNode $left, AstNode $right): bool
