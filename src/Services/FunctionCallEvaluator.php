@@ -8,9 +8,12 @@ use Bugo\SCSS\Builtins\Color\Conversion\HexColorConverter;
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
+use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
+use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
@@ -59,6 +62,9 @@ final readonly class FunctionCallEvaluator
         'unquote',
     ];
 
+    /**
+     * @param Closure(): Module $moduleAccessor
+     */
     public function __construct(
         private CompilerContext $ctx,
         private CompilerOptions $options,
@@ -72,6 +78,7 @@ final readonly class FunctionCallEvaluator
         private AstValueFormatterInterface $valueFormatter,
         private AstValueEvaluatorInterface $slashDivisionValueEvaluator,
         private LoggerInterface $logger,
+        private Closure $moduleAccessor,
     ) {}
 
     /**
@@ -100,6 +107,10 @@ final readonly class FunctionCallEvaluator
             return $this->evaluateBuiltinOrCssFunction($node, $env);
         }
 
+        if ($this->isMetaLoad($node, $env)) {
+            return $this->handleMetaLoad($node, $env);
+        }
+
         $resolvedUserFunction = $this->resolveUserFunction($node, $env);
 
         if ($resolvedUserFunction !== null) {
@@ -113,6 +124,73 @@ final readonly class FunctionCallEvaluator
         }
 
         return $this->evaluateBuiltinOrCssFunction($node, $env);
+    }
+
+    private function isMetaLoad(FunctionNode $node, Environment $env): bool
+    {
+        if (! NameHelper::hasNamespace($node->name)) {
+            return false;
+        }
+
+        $parts = NameHelper::splitQualifiedName($node->name);
+
+        if (NameNormalizer::normalize($parts['member'] ?? '') !== 'load') {
+            return false;
+        }
+
+        if ($env->getCurrentScope()->getModule($parts['namespace']) === null) {
+            return false;
+        }
+
+        return $this->ctx->functionRegistry->resolveModuleAlias($parts['namespace']) === 'meta';
+    }
+
+    private function handleMetaLoad(FunctionNode $node, Environment $env): AstNode
+    {
+        $resolved = $this->callArguments->resolveCallArguments($node->arguments, $env);
+        $urlNode  = $resolved->positional[0] ?? $resolved->named['url'] ?? null;
+
+        if (! ($urlNode instanceof StringNode)) {
+            return $node;
+        }
+
+        $configuration = $this->extractWithConfiguration($resolved->named['with'] ?? null);
+        $path          = $urlNode->value;
+
+        if (str_starts_with($path, 'sass:')) {
+            if ($configuration !== []) {
+                throw ModuleResolutionException::builtInModuleConfiguration($path);
+            }
+
+            $builtinName = substr($path, 5);
+            $moduleScope = $env->getCurrentScope()->getModule($builtinName);
+
+            return new ModuleRefNode(scope: $moduleScope, builtinName: $builtinName);
+        }
+
+        return ($this->moduleAccessor)()->loadModuleReference($path, $configuration);
+    }
+
+    /**
+     * @return array<string, AstNode>
+     */
+    private function extractWithConfiguration(?AstNode $value): array
+    {
+        if (! $value instanceof MapNode) {
+            return [];
+        }
+
+        $configuration = [];
+
+        foreach ($value->pairs as $pair) {
+            if (! ($pair->key instanceof StringNode)) {
+                continue;
+            }
+
+            $configuration[$pair->key->value] = $pair->value;
+        }
+
+        return $configuration;
     }
 
     private function resolveForwardedBuiltin(FunctionNode $node, Environment $env): ?AstNode

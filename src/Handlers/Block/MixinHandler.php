@@ -11,6 +11,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Scope;
@@ -43,6 +44,10 @@ final readonly class MixinHandler
 
         if ($this->isMetaLoadCss($node)) {
             return $this->handleMetaLoadCss($node, $ctx);
+        }
+
+        if ($this->isMetaCss($node)) {
+            return $this->handleMetaCss($node, $ctx);
         }
 
         [$mixin, $moduleScopeForInclude] = $this->resolveMixin(
@@ -87,11 +92,17 @@ final readonly class MixinHandler
             && $this->registry->resolveModuleAlias($node->namespace) === 'meta';
     }
 
+    private function isMetaCss(IncludeNode $node): bool
+    {
+        return $node->name === 'css'
+            && $node->namespace !== null
+            && $this->registry->resolveModuleAlias($node->namespace) === 'meta';
+    }
+
     private function handleMetaApply(IncludeNode $node, TraversalContext $ctx): string
     {
         $resolved = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
-
-        $first = $resolved->positional[0] ?? $resolved->named['mixin'] ?? null;
+        $first    = $resolved->positional[0] ?? $resolved->named['mixin'] ?? null;
 
         if ((! ($first instanceof StringNode) && ! ($first instanceof MixinRefNode))) {
             return '';
@@ -101,6 +112,7 @@ final readonly class MixinHandler
 
         if ($first instanceof MixinRefNode && $first->lockedDefinition !== null) {
             $mixin = $first->lockedDefinition;
+
             $moduleScopeForInclude = null;
         } else {
             [$namespace, $name] = $this->parseMixinReference($mixinName);
@@ -117,6 +129,7 @@ final readonly class MixinHandler
             : $resolved->positional;
 
         $restNamed = $resolved->named;
+
         unset($restNamed['mixin']);
 
         return $this->compileMixin(
@@ -134,8 +147,7 @@ final readonly class MixinHandler
     private function handleMetaLoadCss(IncludeNode $node, TraversalContext $ctx): string
     {
         $resolved = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
-
-        $urlNode = $resolved->positional[0] ?? $resolved->named['url'] ?? null;
+        $urlNode  = $resolved->positional[0] ?? $resolved->named['url'] ?? null;
 
         if (! ($urlNode instanceof StringNode)) {
             return '';
@@ -155,7 +167,8 @@ final readonly class MixinHandler
 
         $moduleState = $this->module->state();
 
-        $previousImportRoot             = $moduleState->currentImportRoot;
+        $previousImportRoot = $moduleState->currentImportRoot;
+
         $moduleState->currentImportRoot = $path;
 
         try {
@@ -178,6 +191,34 @@ final readonly class MixinHandler
             }
         }
 
+        return $this->emitModuleCss($css, $ctx);
+    }
+
+    private function handleMetaCss(IncludeNode $node, TraversalContext $ctx): string
+    {
+        $resolved  = $this->evaluation->resolveCallArguments($node->arguments, $ctx->env);
+        $moduleArg = $resolved->positional[0] ?? $resolved->named['module'] ?? null;
+
+        if ($moduleArg instanceof ModuleRefNode) {
+            $scope  = $moduleArg->scope;
+            $loaded = $scope !== null ? $this->module->state()->findByScope($scope) : null;
+
+            return $this->emitModuleCss($loaded !== null ? $loaded->css : '', $ctx);
+        }
+
+        if (! ($moduleArg instanceof StringNode)) {
+            return '';
+        }
+
+        $loaded = $this->module->state()->getByNamespace(
+            $this->module->deriveNamespaceFromUsePath($moduleArg->value),
+        );
+
+        return $this->emitModuleCss($loaded !== null ? $loaded->css : '', $ctx);
+    }
+
+    private function emitModuleCss(string $css, TraversalContext $ctx): string
+    {
         if ($css === '') {
             return '';
         }
@@ -219,7 +260,6 @@ final readonly class MixinHandler
         $includeCallScope = $ctx->env->getCurrentScope();
 
         $ctx->env->enterScope($mixin->closureScope);
-
         $ctx->env->getCurrentScope()->markAsCallableBody();
 
         $childCtx = new TraversalContext($ctx->env, $ctx->indent);

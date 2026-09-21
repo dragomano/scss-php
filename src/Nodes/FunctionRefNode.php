@@ -12,8 +12,8 @@ final class FunctionRefNode extends AstNode
     public function __construct(
         public readonly string $name,
         public readonly ?string $module = null,
-        public readonly ?CallableDefinition $lockedDefinition = null,
         public readonly ?Scope $capturedScope = null,
+        public readonly ?CallableDefinition $lockedDefinition = null,
         public readonly bool $css = false,
     ) {}
 }

@@ -7,11 +7,13 @@ use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Values\SassBoolean;
 use Bugo\SCSS\Values\SassMap;
+use Bugo\SCSS\Values\SassModule;
 use Bugo\SCSS\Values\SassString;
 use Bugo\SCSS\Values\ValueFactory;
 
@@ -60,5 +62,19 @@ describe('ValueFactory', function () {
 
         expect($value)->toBeInstanceOf(SassMap::class)
             ->and($value->toCss())->toBe('(width: 10px, nested: (color: red))');
+    });
+
+    it('converts a builtin module reference into a named module value', function () {
+        $value = $this->factory->fromAst(new ModuleRefNode(builtinName: 'meta'));
+
+        expect($value)->toBeInstanceOf(SassModule::class)
+            ->and($value->toCss())->toBe('get-module("meta")');
+    });
+
+    it('converts a user module reference into an unnamed module value', function () {
+        $value = $this->factory->fromAst(new ModuleRefNode(scope: new Scope()));
+
+        expect($value)->toBeInstanceOf(SassModule::class)
+            ->and($value->toCss())->toBe('get-module()');
     });
 });
