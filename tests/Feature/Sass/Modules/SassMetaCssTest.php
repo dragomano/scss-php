@@ -130,4 +130,25 @@ describe('Sass Meta css Feature', function () {
             expect($compiler->compileString($scss))->toEqualCss($expected);
         });
     });
+
+    describe('non-emitting arguments', function () {
+        it('emits nothing when the argument is neither a string nor a module value', function () {
+            $scss = <<<'SCSS'
+            @use "sass:meta";
+            @include meta.css(1);
+            SCSS;
+
+            expect((new Compiler())->compileString($scss))->toEqualCss('');
+        });
+
+        it('emits nothing for a built-in module without stored CSS', function () {
+            $scss = <<<'SCSS'
+            @use "sass:meta";
+            @use "sass:color";
+            @include meta.css(meta.get-module("color"));
+            SCSS;
+
+            expect((new Compiler())->compileString($scss))->toEqualCss('');
+        });
+    });
 });

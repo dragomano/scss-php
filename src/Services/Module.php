@@ -16,6 +16,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\ImportNode;
+use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\RootNode;
@@ -512,6 +513,36 @@ final readonly class Module
         } catch (Throwable) {
             return null;
         }
+    }
+
+    /**
+     * @param array<string, AstNode> $configuration
+     */
+    public function loadModuleReference(string $path, array $configuration = []): ModuleRefNode
+    {
+        $resolvedPath = $this->resolveModulePath($path) ?? $path;
+        $loaded       = $this->state()->getById($resolvedPath);
+
+        if ($loaded !== null) {
+            return new ModuleRefNode(scope: $loaded->scope);
+        }
+
+        $state              = $this->state();
+        $previousImportRoot = $state->currentImportRoot;
+
+        $state->currentImportRoot = $resolvedPath;
+
+        try {
+            $result = $this->loadAndEvaluateModule($resolvedPath, $configuration);
+        } finally {
+            $state->currentImportRoot = $previousImportRoot;
+        }
+
+        $namespace = $this->deriveNamespaceFromUsePath($path);
+
+        $state->registerModule($namespace, $resolvedPath, $result['scope'], $result['css']);
+
+        return new ModuleRefNode(scope: $result['scope']);
     }
 
     /**

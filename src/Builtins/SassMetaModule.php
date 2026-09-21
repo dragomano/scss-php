@@ -152,7 +152,7 @@ final class SassMetaModule extends AbstractModule
                 'function-exists'        => $this->functionExists($positional, $named, $context),
                 'get-function'           => $this->getFunction($positional, $named, $context),
                 'get-mixin'              => $this->getMixin($positional, $named, $context),
-                'get-module'             => $this->getModule($positional, $named, $context),
+                'get-module'             => $this->getModule($positional, $context),
                 'global-variable-exists' => $this->globalVariableExists($positional, $named, $context),
                 'inspect'                => $this->inspect($positional),
                 'keywords'               => $this->keywords($positional, $named),
@@ -417,7 +417,7 @@ final class SassMetaModule extends AbstractModule
                 if (! $hasBuiltin) {
                     $lockedDefinition = $moduleScope->findFunction($name)?->definition;
 
-                    return new FunctionRefNode($name, $moduleName, $lockedDefinition, $moduleScope);
+                    return new FunctionRefNode($name, $moduleName, $moduleScope, $lockedDefinition);
                 }
 
                 return new FunctionRefNode($name, $moduleName);
@@ -447,7 +447,7 @@ final class SassMetaModule extends AbstractModule
         if ($hasUser && ! $hasBuiltin) {
             $lockedDefinition = $scope->findFunction($name)?->definition;
 
-            return new FunctionRefNode($name, lockedDefinition: $lockedDefinition, capturedScope: $scope);
+            return new FunctionRefNode($name, capturedScope: $scope, lockedDefinition: $lockedDefinition);
         }
 
         return new FunctionRefNode($name);
@@ -471,7 +471,7 @@ final class SassMetaModule extends AbstractModule
                 $lockedDefinition = $moduleScope->findMixin($name)?->definition;
                 $refName          = $moduleName !== null ? $moduleName . '.' . $name : $name;
 
-                return new MixinRefNode($refName, lockedDefinition: $lockedDefinition);
+                return new MixinRefNode($refName, $lockedDefinition);
             }
 
             if ($moduleName === 'meta' && in_array($name, self::BUILTIN_META_MIXINS, true)) {
@@ -494,14 +494,13 @@ final class SassMetaModule extends AbstractModule
 
         $lockedDefinition = $scope->findMixin($name)?->definition;
 
-        return new MixinRefNode($name, lockedDefinition: $lockedDefinition);
+        return new MixinRefNode($name, $lockedDefinition);
     }
 
     /**
      * @param array<int, AstNode> $positional
-     * @param array<string, AstNode> $named
      */
-    private function getModule(array $positional, array $named, ?BuiltinCallContext $context): AstNode
+    private function getModule(array $positional, ?BuiltinCallContext $context): AstNode
     {
         $name  = $this->requiredString($positional, 'meta.get-module');
         $scope = $this->scopeFromContext($context);
@@ -643,7 +642,7 @@ final class SassMetaModule extends AbstractModule
         foreach ($moduleScope->getFunctions() as $name => $_function) {
             $pairs[] = new MapPair(
                 new StringNode($name, true),
-                new FunctionRefNode($name, $moduleName, $moduleScope->findFunction($name)?->definition, $moduleScope),
+                new FunctionRefNode($name, $moduleName, $moduleScope, $moduleScope->findFunction($name)?->definition),
             );
         }
 
@@ -678,7 +677,7 @@ final class SassMetaModule extends AbstractModule
                 new StringNode($name, true),
                 new MixinRefNode(
                     $prefix . $name,
-                    lockedDefinition: $scope?->findMixin($name)?->definition,
+                    $scope?->findMixin($name)?->definition,
                 ),
             );
         }

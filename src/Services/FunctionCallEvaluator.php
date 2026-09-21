@@ -168,20 +168,7 @@ final readonly class FunctionCallEvaluator
             return new ModuleRefNode(scope: $moduleScope, builtinName: $builtinName);
         }
 
-        $module       = ($this->moduleAccessor)();
-        $resolvedPath = $module->resolveModulePath($path) ?? $path;
-        $loaded       = $module->state()->getById($resolvedPath);
-
-        if ($loaded !== null) {
-            return new ModuleRefNode(scope: $loaded->scope);
-        }
-
-        $result    = $module->loadAndEvaluateModule($resolvedPath, $configuration);
-        $namespace = $module->deriveNamespaceFromUsePath($path);
-
-        $module->state()->registerModule($namespace, $resolvedPath, $result['scope'], $result['css']);
-
-        return new ModuleRefNode(scope: $result['scope']);
+        return ($this->moduleAccessor)()->loadModuleReference($path, $configuration);
     }
 
     /**

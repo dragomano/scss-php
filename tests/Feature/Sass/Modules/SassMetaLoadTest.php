@@ -159,4 +159,60 @@ describe('Sass Meta load Feature', function () {
             expect($compiler->compileString($scss))->toEqualCss('');
         });
     });
+
+    describe('non-load calls', function () {
+        it('leaves meta.load unevaluated when the url is not a string', function () {
+            $scss = <<<'SCSS'
+            @use "sass:meta";
+            a { b: meta.load(1); }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            a {
+              b: meta.load(1);
+            }
+            CSS;
+
+            expect((new Compiler())->compileString($scss))->toEqualCss($expected);
+        });
+
+        it('does not treat load on a non-module namespace as meta.load', function () {
+            $scss = <<<'SCSS'
+            @use "sass:meta";
+            a { b: foo.load(1); }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            a {
+              b: load(1);
+            }
+            CSS;
+
+            expect((new Compiler())->compileString($scss))->toEqualCss($expected);
+        });
+    });
+
+    describe('$with with non-string keys', function () {
+        it('skips configuration entries whose key is not a string', function () {
+            $loader = new MemoryLoader([
+                '/_other.scss' => '$a: x !default;',
+            ], '/');
+
+            $compiler = new Compiler(loader: $loader);
+
+            $scss = <<<'SCSS'
+            @use "sass:meta";
+            $m: meta.load("other", $with: (1: null));
+            c { d: meta.inspect(meta.module-variables($m)); }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            c {
+              d: ("a": x);
+            }
+            CSS;
+
+            expect($compiler->compileString($scss))->toEqualCss($expected);
+        });
+    });
 });
