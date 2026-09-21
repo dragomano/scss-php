@@ -49,6 +49,7 @@ use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\NameNormalizer;
 use Bugo\SCSS\Values\SassCalculation;
 use Bugo\SCSS\Values\SassMap;
+use Closure;
 use LogicException;
 use Psr\Log\LoggerInterface;
 
@@ -90,6 +91,9 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
 
     private EvaluationStrategyRegistry $registry;
 
+    /**
+     * @param Closure(): Module $moduleAccessor
+     */
     public function __construct(
         private CompilerContext $ctx,
         private CompilerOptions $options,
@@ -100,6 +104,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
         private ModuleVariableAssignerInterface $moduleVariableAssigner,
         private DiagnosticDirectiveHandlerInterface $diagnosticHandler,
         private LoggerInterface $logger,
+        private Closure $moduleAccessor,
     ) {
         $this->hexColorConverter = new HexColorConverter();
         $this->arithmetic        = new ArithmeticEvaluator();
@@ -972,6 +977,7 @@ final readonly class Evaluator implements AstValueEvaluatorInterface, AstValueFo
             $this,
             $this->createSlashDivisionValueEvaluator(),
             $this->logger,
+            $this->moduleAccessor,
         );
     }
 

@@ -255,6 +255,7 @@ final class CompilerRuntime
             $this->createModuleVariableAssigner(),
             $this->createDiagnosticDirectiveHandler(),
             $this->logger,
+            fn(): Module => $this->module(),
         );
     }
 
