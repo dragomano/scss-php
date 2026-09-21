@@ -91,6 +91,17 @@ final class ModuleState
         return $namespace !== null ? ($this->loadedModules[$namespace] ?? null) : null;
     }
 
+    public function findByScope(Scope $scope): ?LoadedModule
+    {
+        foreach ($this->loadedModules as $module) {
+            if ($module->scope === $scope) {
+                return $module;
+            }
+        }
+
+        return null;
+    }
+
     public function hasNamespace(string $namespace): bool
     {
         return isset($this->loadedModules[$namespace]);

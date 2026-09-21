@@ -82,6 +82,7 @@ final class SassMetaModule extends AbstractModule
 
     private const BUILTIN_META_MIXINS = [
         'apply',
+        'css',
         'load-css',
     ];
 
