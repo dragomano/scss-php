@@ -8,6 +8,7 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Runtime\Environment;
@@ -21,6 +22,7 @@ final readonly class PassthroughNodeStrategy implements EvaluationStrategyInterf
         return $node instanceof BooleanNode
             || $node instanceof ColorNode
             || $node instanceof MixinRefNode
+            || $node instanceof ModuleRefNode
             || $node instanceof NullNode
             || $node instanceof NumberNode;
     }

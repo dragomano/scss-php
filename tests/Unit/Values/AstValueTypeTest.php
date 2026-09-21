@@ -10,9 +10,11 @@ use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Values\AstValueType;
 
 describe('AstValueType', function () {
@@ -25,6 +27,8 @@ describe('AstValueType', function () {
             ->and(AstValueType::fromNode(new FunctionNode('calc'))->value)->toBe('calculation')
             ->and(AstValueType::fromNode(new FunctionNode('fn'))->value)->toBe('function')
             ->and(AstValueType::fromNode(new MixinRefNode('button'))->value)->toBe('mixin')
+            ->and(AstValueType::fromNode(new ModuleRefNode(builtinName: 'meta'))->value)->toBe('module')
+            ->and(AstValueType::fromNode(new ModuleRefNode(scope: new Scope()))->value)->toBe('module')
             ->and(AstValueType::fromNode(new BooleanNode(true))->value)->toBe('bool')
             ->and(AstValueType::fromNode(new NullNode())->value)->toBe('null')
             ->and(AstValueType::fromNode(new StringNode('abc'))->value)->toBe('string');

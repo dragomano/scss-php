@@ -14,6 +14,7 @@ use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -122,6 +123,10 @@ final readonly class ValueFactory
 
         if ($node instanceof MixinRefNode) {
             return new SassMixin($this->callableDisplayName($node->name));
+        }
+
+        if ($node instanceof ModuleRefNode) {
+            return new SassModule($node->builtinName);
         }
 
         if ($formatter !== null) {

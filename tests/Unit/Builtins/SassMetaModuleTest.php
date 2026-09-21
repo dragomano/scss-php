@@ -19,6 +19,7 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
@@ -47,6 +48,7 @@ describe('SassMetaModule', function () {
                 'function-exists',
                 'get-function',
                 'get-mixin',
+                'get-module',
                 'global-variable-exists',
                 'inspect',
                 'keywords',
@@ -515,6 +517,38 @@ describe('SassMetaModule', function () {
             ->and($reference->name)->toBe('div')
             ->and($reference->module)->toBe('math')
             ->and($reference->lockedDefinition)->toBeNull();
+    });
+
+    it('evaluates get-module for builtin modules', function () {
+        $this->registry->registerUse('sass:meta', null);
+
+        $module = $this->module->call('get-module', [new StringNode('meta')], [], $this->context);
+
+        expect($module)->toBeInstanceOf(ModuleRefNode::class)
+            ->and($module->builtinName)->toBe('meta')
+            ->and($module->scope)->toBeNull();
+    });
+
+    it('evaluates get-module for user modules', function () {
+        $moduleScope = new Scope();
+
+        $this->env->getCurrentScope()->addModule('helpers', $moduleScope);
+
+        $module = $this->module->call('get-module', [new StringNode('helpers')], [], $this->context);
+
+        expect($module)->toBeInstanceOf(ModuleRefNode::class)
+            ->and($module->scope)->toBe($moduleScope)
+            ->and($module->builtinName)->toBeNull();
+    });
+
+    it('throws when get-module target is an unknown namespace', function () {
+        expect(fn() => $this->module->call('get-module', [new StringNode('missing')], [], $this->context))
+            ->toThrow(ModuleResolutionException::class);
+    });
+
+    it('requires a string argument for get-module', function () {
+        expect(fn() => $this->module->call('get-module', [new NumberNode(1)], [], $this->context))
+            ->toThrow(MissingFunctionArgumentsException::class);
     });
 
     it('consumes the named function argument of call instead of forwarding it', function () {

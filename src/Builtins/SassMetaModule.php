@@ -22,6 +22,7 @@ use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RuleNode;
@@ -67,6 +68,7 @@ final class SassMetaModule extends AbstractModule
         'function-exists',
         'get-function',
         'get-mixin',
+        'get-module',
         'global-variable-exists',
         'inspect',
         'keywords',
@@ -96,6 +98,7 @@ final class SassMetaModule extends AbstractModule
         'function-exists'        => ['name', 'module'],
         'get-function'           => ['name', 'css', 'module'],
         'get-mixin'              => ['name', 'module'],
+        'get-module'             => ['module'],
         'global-variable-exists' => ['name', 'module'],
         'inspect'                => ['value'],
         'keywords'               => ['args'],
@@ -121,7 +124,7 @@ final class SassMetaModule extends AbstractModule
     {
         return $this->globalAliases(array_values(array_diff(
             self::FUNCTIONS,
-            ['calc-args', 'calc-name'],
+            ['calc-args', 'calc-name', 'get-module'],
         )));
     }
 
@@ -148,6 +151,7 @@ final class SassMetaModule extends AbstractModule
                 'function-exists'        => $this->functionExists($positional, $named, $context),
                 'get-function'           => $this->getFunction($positional, $named, $context),
                 'get-mixin'              => $this->getMixin($positional, $named, $context),
+                'get-module'             => $this->getModule($positional, $named, $context),
                 'global-variable-exists' => $this->globalVariableExists($positional, $named, $context),
                 'inspect'                => $this->inspect($positional),
                 'keywords'               => $this->keywords($positional, $named),
@@ -164,9 +168,6 @@ final class SassMetaModule extends AbstractModule
         }
     }
 
-    /**
-     * @param array<int, AstNode> $positional
-     */
     /**
      * @param array<int, AstNode> $positional
      * @param array<string, AstNode> $named
@@ -490,6 +491,30 @@ final class SassMetaModule extends AbstractModule
         $lockedDefinition = $scope->findMixin($name)?->definition;
 
         return new MixinRefNode($name, lockedDefinition: $lockedDefinition);
+    }
+
+    /**
+     * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
+     */
+    private function getModule(array $positional, array $named, ?BuiltinCallContext $context): AstNode
+    {
+        $name  = $this->requiredString($positional, 'meta.get-module');
+        $scope = $this->scopeFromContext($context);
+
+        $builtinName = $context?->registry?->resolveModuleAlias($name);
+
+        if ($builtinName !== null) {
+            return new ModuleRefNode(builtinName: $builtinName);
+        }
+
+        $moduleScope = $scope->getModule($name);
+
+        if ($moduleScope !== null) {
+            return new ModuleRefNode(scope: $moduleScope);
+        }
+
+        throw ModuleResolutionException::unknownNamespace($name);
     }
 
     /**

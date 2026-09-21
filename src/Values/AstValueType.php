@@ -13,6 +13,7 @@ use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 
@@ -29,6 +30,7 @@ enum AstValueType: string
     case List        = 'list';
     case Map         = 'map';
     case Mixin       = 'mixin';
+    case Module      = 'module';
     case Null        = 'null';
     case Number      = 'number';
     case String      = 'string';
@@ -82,6 +84,10 @@ enum AstValueType: string
 
         if ($node instanceof MixinRefNode) {
             return self::Mixin;
+        }
+
+        if ($node instanceof ModuleRefNode) {
+            return self::Module;
         }
 
         if ($node instanceof BooleanNode) {

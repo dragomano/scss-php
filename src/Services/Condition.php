@@ -18,6 +18,7 @@ use Bugo\SCSS\Nodes\FunctionRefNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
+use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
@@ -362,6 +363,10 @@ final readonly class Condition
             return $this->areMixinRefsEqual($left, $right);
         }
 
+        if ($left instanceof ModuleRefNode && $right instanceof ModuleRefNode) {
+            return $this->areModuleRefsEqual($left, $right);
+        }
+
         if ($left instanceof FunctionNode && $right instanceof FunctionNode) {
             return $this->areFunctionsEqual($left, $right, $env);
         }
@@ -616,6 +621,19 @@ final readonly class Condition
 
         if ($left->lockedDefinition === null && $right->lockedDefinition === null) {
             return $left->name === $right->name;
+        }
+
+        return false;
+    }
+
+    private function areModuleRefsEqual(ModuleRefNode $left, ModuleRefNode $right): bool
+    {
+        if ($left->scope !== null && $right->scope !== null) {
+            return $left->scope === $right->scope;
+        }
+
+        if ($left->builtinName !== null && $right->builtinName !== null) {
+            return $left->builtinName === $right->builtinName;
         }
 
         return false;
