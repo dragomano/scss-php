@@ -47,6 +47,7 @@
     "phpstan/phpstan": "^2.2",
     "rector/rector": "^2.6",
     "scssphp/scssphp": "^2.1",
+    "shyim/sasso-ffi": "^0.1.1",
     "symfony/cache": "^7|^8",
     "symfony/var-dumper": "^7|^8",
     "vimeo/psalm": "^6.16"
@@ -81,7 +82,13 @@
     "sort-packages": true,
     "allow-plugins": {
       "bugo/sass-embedded-php": true,
-      "pestphp/pest-plugin": true
+      "pestphp/pest-plugin": true,
+      "shyim/composer-binary-downloader": true
+    }
+  },
+  "extra": {
+    "allow-binaries": {
+      "shyim/sasso-ffi": true
     }
   }
 }

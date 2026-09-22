@@ -18,6 +18,7 @@ use Bugo\SCSS\Compiler as SassCompiler;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Loader;
 use Bugo\SCSS\Style;
+use Sasso\Compiler as SassFfiCompiler;
 use ScssPhp\ScssPhp\Compiler as ScssCompiler;
 use ScssPhp\ScssPhp\OutputStyle;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
@@ -46,6 +47,23 @@ final readonly class CachedBenchmarkCompiler implements CompilerAdapterInterface
         $css = $this->compiler->compileFile($this->entryPath);
 
         return new CompilationResult($css);
+    }
+}
+
+final readonly class SassoCompilerAdapter implements CompilerAdapterInterface
+{
+    public function __construct(private SassFfiCompiler $compiler) {}
+
+    public function warmup(?string $code, ?string $sourceFile): void
+    {
+        $this->compile($code, $sourceFile);
+    }
+
+    public function compile(?string $code, ?string $sourceFile, bool $includeSourceMap = true): CompilationResult
+    {
+        $source = $code ?? (($sourceFile !== null ? @file_get_contents($sourceFile) : false) ?: '');
+
+        return new CompilationResult($this->compiler->compile($source));
     }
 }
 
@@ -103,10 +121,11 @@ $allResults   = [];
 $aggregate    = [];
 $compilerList = [
     'bugo/scss-php',
-    'bugo/scss-php + cache',
+    'bugo/scss-php (with cache)',
     'bugo/sass-embedded-php (cli)',
     'bugo/sass-embedded-php',
     'scssphp/scssphp',
+    'shyim/sasso-ffi',
 ];
 
 for ($i = 0; $i < $benchmarkRuns; $i++) {
@@ -126,7 +145,7 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
 
             return new SassCompiler($options);
         })
-        ->addCompiler('bugo/scss-php + cache', function () use ($scss, $scssFile, $sourceMap, $minimize) {
+        ->addCompiler('bugo/scss-php (with cache)', function () use ($scss, $scssFile, $sourceMap, $minimize) {
             $options = new CompilerOptions(
                 style: $minimize ? Style::COMPRESSED : Style::EXPANDED,
                 outputFile: 'result-bugo-scss-php-cache.css',
@@ -179,6 +198,14 @@ for ($i = 0; $i < $benchmarkRuns; $i++) {
             ] : []);
 
             return $compiler;
+        })
+        ->addCompiler('shyim/sasso-ffi', function () use ($minimize) {
+            $compiler = new SassFfiCompiler();
+            $compiler->setStyle($minimize ? SassFfiCompiler::STYLE_COMPRESSED : SassFfiCompiler::STYLE_EXPANDED);
+            $compiler->setUrl('generated.scss');
+            $compiler->addImportPath(__DIR__);
+
+            return new SassoCompilerAdapter($compiler);
         })
         ->run();
 
