@@ -11,6 +11,7 @@ use function ltrim;
 use function max;
 use function str_contains;
 use function str_starts_with;
+use function strcspn;
 use function strlen;
 use function strpos;
 use function substr;
@@ -228,6 +229,14 @@ final readonly class ExpandedCssFormatter
         $parenDepth = 0;
 
         while ($i < $length) {
+            if (! $inString) {
+                $i += strcspn($css, "\"'()/{;", $i);
+
+                if ($i >= $length) {
+                    break;
+                }
+            }
+
             $char = $css[$i];
 
             if ($this->consumeQuotedChar($css, $length, $i, $inString, $quote)) {
@@ -305,6 +314,14 @@ final readonly class ExpandedCssFormatter
         $bodyStart = null;
 
         while ($i < $length) {
+            if (! $inString) {
+                $i += strcspn($css, "\"'/{}", $i);
+
+                if ($i >= $length) {
+                    break;
+                }
+            }
+
             $char = $css[$i];
 
             if ($this->consumeQuotedChar($css, $length, $i, $inString, $quote)) {

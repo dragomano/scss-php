@@ -32,7 +32,6 @@ use Throwable;
 
 use function count;
 use function implode;
-use function in_array;
 use function min;
 use function str_contains;
 use function str_starts_with;
@@ -43,23 +42,23 @@ use function substr;
 final readonly class FunctionCallEvaluator
 {
     private const STRING_FUNCTION_NAMES = [
-        'quote',
-        'str-index',
-        'str-insert',
-        'str-length',
-        'str-slice',
-        'string.index',
-        'string.insert',
-        'string.length',
-        'string.quote',
-        'string.slice',
-        'string.split',
-        'string.to-lower-case',
-        'string.to-upper-case',
-        'string.unquote',
-        'to-lower-case',
-        'to-upper-case',
-        'unquote',
+        'quote'                => true,
+        'str-index'            => true,
+        'str-insert'           => true,
+        'str-length'           => true,
+        'str-slice'            => true,
+        'string.index'         => true,
+        'string.insert'        => true,
+        'string.length'        => true,
+        'string.quote'         => true,
+        'string.slice'         => true,
+        'string.split'         => true,
+        'string.to-lower-case' => true,
+        'string.to-upper-case' => true,
+        'string.unquote'       => true,
+        'to-lower-case'        => true,
+        'to-upper-case'        => true,
+        'unquote'              => true,
     ];
 
     /**
@@ -440,7 +439,9 @@ final readonly class FunctionCallEvaluator
      */
     private function evaluateBuiltinOrCssFunction(FunctionNode $node, Environment $env): AstNode
     {
-        if (strtolower($node->name) === 'not' && count($node->arguments) === 1) {
+        $lowerName = strtolower($node->name);
+
+        if ($lowerName === 'not' && count($node->arguments) === 1) {
             $logical = $this->conditional->evaluateLogicalList(
                 new ListNode([new StringNode('not'), $node->arguments[0]], 'space'),
                 $env,
@@ -451,7 +452,7 @@ final readonly class FunctionCallEvaluator
             }
         }
 
-        $isModernIf = strtolower($node->name) === 'if' && $node->modernSyntax;
+        $isModernIf = $lowerName === 'if' && $node->modernSyntax;
 
         if ($isModernIf) {
             $arguments = $node->arguments;
@@ -463,7 +464,7 @@ final readonly class FunctionCallEvaluator
                     SassCalculation::isCalculationFunctionName($node->name),
                 );
             } catch (Throwable $expandFailure) {
-                if (strtolower($node->name) === 'if' && ! $node->modernSyntax) {
+                if ($lowerName === 'if' && ! $node->modernSyntax) {
                     $inlineFallback = $this->conditional->evaluateInlineIfFunction($node->name, $node->arguments, $env);
 
                     if ($inlineFallback !== null) {
@@ -479,7 +480,7 @@ final readonly class FunctionCallEvaluator
             $this->restoreCalcParenthesized($arguments, $node->arguments);
 
             if (
-                in_array(strtolower($node->name), ['channel', 'color.channel'], true)
+                ($lowerName === 'channel' || $lowerName === 'color.channel')
                 && isset($node->arguments[0])
                 && $node->arguments[0] instanceof FunctionNode
                 && strtolower($node->arguments[0]->name) === 'hwb'
@@ -488,7 +489,7 @@ final readonly class FunctionCallEvaluator
             }
         }
 
-        if (strtolower($node->name) === 'if' && count($arguments) >= 2 && ! $node->modernSyntax) {
+        if ($lowerName === 'if' && count($arguments) >= 2 && ! $node->modernSyntax) {
             $rawCond = $node->arguments[0] ?? $arguments[0];
             $condStr = $rawCond instanceof VariableReferenceNode
                 ? '$' . $rawCond->name
@@ -513,16 +514,20 @@ final readonly class FunctionCallEvaluator
             );
         }
 
-        $inlineIf = $this->conditional->evaluateInlineIfFunction($node->name, $node->arguments, $env);
+        if ($lowerName === 'if') {
+            $inlineIf = $this->conditional->evaluateInlineIfFunction($node->name, $node->arguments, $env);
 
-        if ($inlineIf !== null) {
-            return $inlineIf;
+            if ($inlineIf !== null) {
+                return $inlineIf;
+            }
         }
 
-        $urlFunction = $this->conditional->evaluateSpecialUrlFunction($node->name, $arguments, $env);
+        if ($lowerName === 'url') {
+            $urlFunction = $this->conditional->evaluateSpecialUrlFunction($node->name, $arguments, $env);
 
-        if ($urlFunction !== null) {
-            return $urlFunction;
+            if ($urlFunction !== null) {
+                return $urlFunction;
+            }
         }
 
         $simplifiedFunction = $this->calculation->simplifyFunction($node->name, $arguments, $env);
@@ -536,7 +541,7 @@ final readonly class FunctionCallEvaluator
             $node->line,
         );
 
-        $preferBuiltin = in_array(strtolower($node->name), ['max', 'min', 'clamp'], true);
+        $preferBuiltin = $lowerName === 'max' || $lowerName === 'min' || $lowerName === 'clamp';
 
         if (! $preferBuiltin && $simplifiedFunction !== null) {
             return $simplifiedFunction;
@@ -544,7 +549,7 @@ final readonly class FunctionCallEvaluator
 
         $resolved = $this->ctx->functionRegistry->tryCall(
             $node->name,
-            in_array(strtolower($node->name), self::STRING_FUNCTION_NAMES, true)
+            isset(self::STRING_FUNCTION_NAMES[$lowerName])
                 ? $this->stringifyCssFunctionArguments($arguments, $env)
                 : $arguments,
             $context,
@@ -570,23 +575,28 @@ final readonly class FunctionCallEvaluator
             return $simplifiedFunction;
         }
 
-        $fallbackArguments = $this->callArguments->expandCssCallArguments(
-            $node->arguments,
-            $env,
-            SassCalculation::isCalculationFunctionName($node->name),
-        );
-
         $cssName = $this->namespaceMember($node->name);
 
         if (str_contains($node->name, ':')) {
             $cssName = $node->name;
         }
 
+        $fallbackArguments = ! $isModernIf
+            && $cssName === $node->name
+            && $this->callArguments->canReuseCallArgumentsForCss($node->arguments)
+            ? $arguments
+            : $this->callArguments->expandCssCallArguments(
+                $node->arguments,
+                $env,
+                SassCalculation::isCalculationFunctionName($node->name),
+            );
+
         $fallback = new FunctionNode(
             name: $cssName,
             arguments: $this->calculation->normalizeArguments($cssName, $fallbackArguments),
             line: $node->line,
             parenthesized: $node->parenthesized,
+            resolved: true,
         );
 
         if ($this->options->style === Style::COMPRESSED) {

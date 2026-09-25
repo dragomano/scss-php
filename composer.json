@@ -58,7 +58,7 @@
     "rector": "vendor/bin/rector process --clear-cache",
     "phpstan": "vendor/bin/phpstan analyse -l 10 src --memory-limit=512M --debug --no-progress",
     "psalm": "vendor/bin/psalm --stats --no-cache",
-    "benchmark": "php benchmark.php 6",
+    "benchmark": "php -d opcache.enable_cli=1 -d opcache.jit=tracing -d opcache.jit_buffer_size=128M -d pcov.enabled=0 benchmark.php 6",
     "test": "vendor/bin/pest --colors=always --display-warnings",
     "test-coverage": [
       "@putenv RUN_SASS_SPEC=1",

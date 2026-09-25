@@ -11,16 +11,16 @@ This file contains a performance comparison of SCSS compilation runs across thre
 
 - **SCSS code**: Randomly generated, contains 200 classes with 4 nesting levels, variables, mixins and loops
 - **OS**: Linux 6.18.33.2-microsoft-standard-WSL2
-- **PHP version**: 8.5.10
+- **PHP version**: 8.5.11
 - **Testing method**: Compilation via `compileFile()` with execution time measurement
 
 ## Results
 
 | Compiler | Time (sec) | CSS Size (KB) | Memory (MB) |
 |------------|-------------|---------------|-------------|
-| bugo/scss-php | 0.6502 | 397.68 | 26.79 |
-| bugo/scss-php (with cache) | 0.0019 | 397.68 | 26.35 |
-| bugo/sass-embedded-php (cli) | 0.1057 | 397.66 | 1.57 |
-| bugo/sass-embedded-php | 0.0661 | 397.66 | 2.38 |
-| scssphp/scssphp | 0.4249 | 318.38 | 33.98 |
-| shyim/sasso-ffi | 0.0176 | 397.66 | 1.07 |
+| bugo/scss-php | 0.3135 | 397.68 | 31.45 |
+| bugo/scss-php (with cache) | 0.0019 | 397.68 | 26.78 |
+| bugo/sass-embedded-php (cli) | 0.1086 | 397.66 | 1.70 |
+| bugo/sass-embedded-php | 0.0671 | 397.66 | 2.38 |
+| scssphp/scssphp | 0.4157 | 318.38 | 38.16 |
+| shyim/sasso-ffi | 0.0180 | 397.66 | 1.15 |

@@ -27,6 +27,7 @@ final class FunctionNode extends AstNode
         /** @var array{0: float, 1: float, 2: float}|null */
         public ?array $originSrgbChannels = null,
         public ?StringNode $dynamicName = null,
+        public bool $resolved = false,
     ) {}
 
     public function withLine(int $line): self
@@ -42,6 +43,7 @@ final class FunctionNode extends AstNode
             $this->originColorSpace,
             $this->originSrgbChannels,
             $this->dynamicName,
+            $this->resolved,
         );
     }
 }

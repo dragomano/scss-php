@@ -25,6 +25,7 @@ use Bugo\SCSS\Services\Render;
 
 use function count;
 use function ltrim;
+use function str_contains;
 use function str_replace;
 
 final readonly class ChildrenCompilationStep implements CompilationStepInterface
@@ -234,7 +235,9 @@ final readonly class ChildrenCompilationStep implements CompilationStepInterface
             $this->render->appendChunk($ruleCtx->output, $separator);
         }
 
-        $formattedSelector = str_replace("\n", "\n" . $ruleCtx->prefix, $ruleCtx->selector);
+        $formattedSelector = str_contains($ruleCtx->selector, "\n")
+            ? str_replace("\n", "\n" . $ruleCtx->prefix, $ruleCtx->selector)
+            : $ruleCtx->selector;
 
         $this->render->appendChunk(
             $ruleCtx->output,

@@ -165,4 +165,12 @@ final readonly class CallArgumentResolver
     {
         return $this->cssArgument->expandCssCallArguments($arguments, $env, $skipConcatenation);
     }
+
+    /**
+     * @param array<int, AstNode> $arguments
+     */
+    public function canReuseCallArgumentsForCss(array $arguments): bool
+    {
+        return $this->cssArgument->canReuseCallArgumentsForCss($arguments);
+    }
 }

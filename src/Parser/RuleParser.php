@@ -497,26 +497,27 @@ final class RuleParser
             $this->stream->advance();
 
             $token = $this->stream->current();
+            $type  = $token->type;
 
-            if ($token->type === TokenType::LPAREN) {
+            if ($type === TokenType::LPAREN) {
                 $depth++;
 
                 continue;
             }
 
-            if ($token->type === TokenType::RPAREN) {
+            if ($type === TokenType::RPAREN) {
                 $depth = max(0, $depth - 1);
 
                 continue;
             }
 
-            if ($token->type === TokenType::RBRACE && $depth > 0) {
+            if ($type === TokenType::RBRACE && $depth > 0) {
                 $depth--;
 
                 continue;
             }
 
-            if ($this->stream->is(TokenType::HASH) && $this->stream->peek()->type === TokenType::LBRACE) {
+            if ($type === TokenType::HASH && $this->stream->peek()->type === TokenType::LBRACE) {
                 $depth++;
 
                 $this->stream->advance(2);
@@ -524,20 +525,18 @@ final class RuleParser
                 continue;
             }
 
-            if ($depth === 0 && $token->type === TokenType::LBRACE) {
-                $this->stream->setPosition($savedPosition);
+            if ($depth === 0) {
+                if ($type === TokenType::LBRACE) {
+                    $this->stream->setPosition($savedPosition);
 
-                return true;
-            }
+                    return true;
+                }
 
-            if ($depth === 0 && in_array($token->type, [
-                TokenType::SEMICOLON,
-                TokenType::RBRACE,
-                TokenType::EOF,
-            ], true)) {
-                $this->stream->setPosition($savedPosition);
+                if ($type === TokenType::SEMICOLON || $type === TokenType::RBRACE || $type === TokenType::EOF) {
+                    $this->stream->setPosition($savedPosition);
 
-                return false;
+                    return false;
+                }
             }
         }
 

@@ -203,6 +203,10 @@ describe('ConditionalEvaluator', function () {
             ->and($result->value)->toBe('yes');
     });
 
+    it('returns null for empty arguments', function () {
+        expect($this->evaluator->evaluateInlineIfFunction('if', [], $this->env))->toBeNull();
+    });
+
     it('recognizes likely sass boolean condition strings', function () {
         $this->env->getCurrentScope()->setVariableLocal('flag', new BooleanNode(false));
 

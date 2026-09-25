@@ -92,16 +92,16 @@ final readonly class ValueParser implements
                 $this->stream->skipWhitespace();
             }
 
-            foreach ($stopTokens as $tokenType) {
-                if ($this->stream->is($tokenType)) {
-                    return $this->wrapDeprecatedExpression(
-                        $currentGroup !== [] ? [...$groups, $currentGroup] : $groups,
-                        $deprecatedExpression,
-                    );
-                }
+            $currentType = $this->stream->current()->type;
+
+            if (in_array($currentType, $stopTokens, true)) {
+                return $this->wrapDeprecatedExpression(
+                    $currentGroup !== [] ? [...$groups, $currentGroup] : $groups,
+                    $deprecatedExpression,
+                );
             }
 
-            if ($this->stream->is(TokenType::COMMA)) {
+            if ($currentType === TokenType::COMMA) {
                 if (! empty($currentGroup)) {
                     $groups[] = $currentGroup;
                 }
@@ -226,7 +226,21 @@ final readonly class ValueParser implements
             return $interpolatedIdentifier;
         }
 
-        if ($this->stream->is(TokenType::STRING)) {
+        $type = $this->stream->current()->type;
+
+        if ($type === TokenType::IDENTIFIER) {
+            return $this->functions->parseIdentifierOrFunction();
+        }
+
+        if ($type === TokenType::NUMBER) {
+            return $this->parseNumber();
+        }
+
+        if ($type === TokenType::DOLLAR) {
+            return $this->parseVariableReference();
+        }
+
+        if ($type === TokenType::STRING) {
             $token = $this->stream->current();
 
             $this->stream->advance();
@@ -235,7 +249,7 @@ final readonly class ValueParser implements
         }
 
         if (
-            $this->stream->is(TokenType::HASH)
+            $type === TokenType::HASH
             && $this->stream->peek()->type === TokenType::HASH
             && $this->stream->peek(2)->type === TokenType::LBRACE
         ) {
@@ -246,7 +260,7 @@ final readonly class ValueParser implements
             return new StringNode('#' . $interpolation->value);
         }
 
-        if ($this->stream->is(TokenType::HASH)) {
+        if ($type === TokenType::HASH) {
             $token = $this->stream->current();
 
             $this->stream->advance();
@@ -257,11 +271,7 @@ final readonly class ValueParser implements
             return new StringNode('#' . $token->value);
         }
 
-        if ($this->stream->is(TokenType::DOLLAR)) {
-            return $this->parseVariableReference();
-        }
-
-        if ($this->stream->is(TokenType::CSS_VARIABLE)) {
+        if ($type === TokenType::CSS_VARIABLE) {
             $token = $this->stream->current();
 
             $this->stream->advance();
@@ -273,13 +283,13 @@ final readonly class ValueParser implements
             return new StringNode($token->value);
         }
 
-        if ($this->stream->is(TokenType::AMPERSAND)) {
+        if ($type === TokenType::AMPERSAND) {
             $this->stream->advance();
 
             return new StringNode('&');
         }
 
-        if ($this->stream->is(TokenType::EXCLAMATION)) {
+        if ($type === TokenType::EXCLAMATION) {
             $savedPosition = $this->stream->getPosition();
 
             $this->stream->advance();
@@ -299,20 +309,12 @@ final readonly class ValueParser implements
             return null;
         }
 
-        if ($this->stream->is(TokenType::NUMBER)) {
-            return $this->parseNumber();
-        }
-
-        if ($this->stream->is(TokenType::LPAREN)) {
+        if ($type === TokenType::LPAREN) {
             return $this->parseParenthesizedValue();
         }
 
-        if ($this->stream->is(TokenType::LBRACKET)) {
+        if ($type === TokenType::LBRACKET) {
             return $this->parseBracketedListValue();
-        }
-
-        if ($this->stream->is(TokenType::IDENTIFIER)) {
-            return $this->functions->parseIdentifierOrFunction();
         }
 
         return null;
@@ -1017,12 +1019,25 @@ final readonly class ValueParser implements
 
     private function tryParseInterpolatedIdentifierString(): ?StringNode
     {
-        if (! in_array($this->stream->current()->type, [
-            TokenType::IDENTIFIER,
-            TokenType::MINUS,
-            TokenType::HASH,
-            TokenType::CSS_VARIABLE,
-        ], true)) {
+        $currentType = $this->stream->current()->type;
+
+        if ($currentType === TokenType::HASH) {
+            if ($this->stream->peek()->type !== TokenType::LBRACE) {
+                return null;
+            }
+        } elseif (
+            $currentType === TokenType::IDENTIFIER
+            || $currentType === TokenType::MINUS
+            || $currentType === TokenType::CSS_VARIABLE
+        ) {
+            $nextType = $this->stream->peek()->type;
+
+            if (
+                ! in_array($nextType, [TokenType::HASH, TokenType::IDENTIFIER, TokenType::MINUS, TokenType::CSS_VARIABLE], true)
+            ) {
+                return null;
+            }
+        } else {
             return null;
         }
 

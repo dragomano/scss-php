@@ -4,25 +4,31 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Services\Evaluation;
 
-final readonly class EvaluationOptions
+final class EvaluationOptions
 {
+    private static ?self $default = null;
+
+    private static ?self $skipSlashArithmeticInstance = null;
+
+    private static ?self $skipConcatenationInstance = null;
+
     public function __construct(
-        public bool $skipSlashArithmetic = false,
-        public bool $skipConcatenation = false,
+        public readonly bool $skipSlashArithmetic = false,
+        public readonly bool $skipConcatenation = false,
     ) {}
 
     public static function default(): self
     {
-        return new self();
+        return self::$default ??= new self();
     }
 
     public function withSkipSlashArithmetic(): self
     {
-        return new self(skipSlashArithmetic: true);
+        return self::$skipSlashArithmeticInstance ??= new self(skipSlashArithmetic: true);
     }
 
     public function withSkipConcatenation(): self
     {
-        return new self(skipConcatenation: true);
+        return self::$skipConcatenationInstance ??= new self(skipConcatenation: true);
     }
 }

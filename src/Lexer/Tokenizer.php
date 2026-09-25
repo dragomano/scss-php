@@ -32,6 +32,8 @@ use function substr_count;
 
 final class Tokenizer
 {
+    private const IDENTIFIER_ASCII_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-';
+
     private string $source = '';
 
     private int $length = 0;
@@ -94,12 +96,12 @@ final class Tokenizer
 
     private function nextToken(?Token $lastToken = null): ?Token
     {
-        // Direct array access instead of peek() — avoids function call overhead
         $char = $this->source[$this->position];
 
-        // Inline whitespace check (faster than ctype_space for common ASCII chars)
-        if ($char === ' ' || $char === "\t" || $char === "\n" || $char === "\r" || $char === "\f" || $char === "\v") {
-            return $this->tokenizeWhitespace();
+        if ($char <= ' ') {
+            if ($char === ' ' || $char === "\t" || $char === "\n" || $char === "\r" || $char === "\f" || $char === "\v") {
+                return $this->tokenizeWhitespace();
+            }
         }
 
         if ($char === '/') {
@@ -118,6 +120,20 @@ final class Tokenizer
 
         if ($char === ':') {
             return $this->tokenizeOptionalDoubleCharOperator(':', TokenType::DOUBLE_COLON, TokenType::COLON);
+        }
+
+        if ($this->isDigit($char)) {
+            return $this->tokenizeNumber();
+        }
+
+        if ($char >= 'a' && $char <= 'z') {
+            if ($char !== 'u') {
+                return $this->tokenizeIdentifier($lastToken);
+            }
+        } elseif ($char >= 'A' && $char <= 'Z') {
+            if ($char !== 'U') {
+                return $this->tokenizeIdentifier($lastToken);
+            }
         }
 
         $singleCharToken = $this->singleCharToken($char);
@@ -199,10 +215,6 @@ final class Tokenizer
 
         if ($char === '"' || $char === "'") {
             return $this->tokenizeString();
-        }
-
-        if ($this->isDigit($char)) {
-            return $this->tokenizeNumber();
         }
 
         if (ctype_alpha($char) || $char === '_' || $char >= "\x80") {
@@ -307,8 +319,6 @@ final class Tokenizer
         }
 
         if ($this->position > $start) {
-            // If hex digits are followed by more name characters, the whole run is one CSS ID
-            // token; the value parser decides color vs plain text.
             while ($this->position < $this->length) {
                 $c = $this->source[$this->position];
 
@@ -828,19 +838,13 @@ final class Tokenizer
             $scanStart = $this->position;
 
             while ($this->position < $this->length) {
-                $char = $this->source[$this->position];
+                $this->position += strspn($this->source, self::IDENTIFIER_ASCII_CHARS, $this->position);
 
-                if ($char >= "\x80") {
-                    $this->position += $this->utf8SequenceWidth();
-
-                    continue;
-                }
-
-                if (! ctype_alnum($char) && $char !== '_' && $char !== '-') {
+                if ($this->position >= $this->length || $this->source[$this->position] < "\x80") {
                     break;
                 }
 
-                $this->position++;
+                $this->position += $this->utf8SequenceWidth();
             }
 
             if ($this->position > $scanStart) {
@@ -998,7 +1002,18 @@ final class Tokenizer
         while ($this->position < $this->length) {
             $char = $this->source[$this->position];
 
-            if ($char === ')' || $char === '(' || $char === '[' || $char === ']' || $char === ',' || $char === ';' || $char === '}' || $char === '{' || $char === '#' || $this->isSpace($char)) {
+            if (
+                $char === ')'
+                || $char === '('
+                || $char === '['
+                || $char === ']'
+                || $char === ','
+                || $char === ';'
+                || $char === '}'
+                || $char === '{'
+                || $char === '#'
+                || $this->isSpace($char)
+            ) {
                 break;
             }
 

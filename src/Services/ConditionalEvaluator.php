@@ -51,7 +51,7 @@ final readonly class ConditionalEvaluator
      */
     public function evaluateInlineIfFunction(string $name, array $arguments, Environment $env): ?AstNode
     {
-        if (strtolower($name) !== 'if' || $arguments === []) {
+        if ($arguments === []) {
             return null;
         }
 
@@ -63,7 +63,7 @@ final readonly class ConditionalEvaluator
      */
     public function evaluateSpecialUrlFunction(string $name, array $arguments, Environment $env): ?AstNode
     {
-        if (strtolower($name) !== 'url' || count($arguments) !== 1) {
+        if (count($arguments) !== 1) {
             return null;
         }
 

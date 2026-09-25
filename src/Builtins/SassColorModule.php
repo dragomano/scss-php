@@ -13,7 +13,16 @@ use Bugo\SCSS\Builtins\Color\Operations\ColorFunctionEvaluator;
 use Bugo\SCSS\Builtins\Color\Support\ColorModuleContext;
 use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
+use Bugo\SCSS\Nodes\BooleanNode;
+use Bugo\SCSS\Nodes\ColorNode;
+use Bugo\SCSS\Nodes\NullNode;
+use Bugo\SCSS\Nodes\NumberNode;
+use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
+
+use function count;
+use function implode;
+use function is_finite;
 
 final class SassColorModule extends AbstractModule
 {
@@ -100,6 +109,9 @@ final class SassColorModule extends AbstractModule
 
     private readonly ColorConstructorEvaluator $constructors;
 
+    /** @var array<string, AstNode> */
+    private array $colorResultCache = [];
+
     public function __construct(?ColorModuleComponents $components = null)
     {
         $context = new ColorModuleContext(
@@ -138,6 +150,33 @@ final class SassColorModule extends AbstractModule
      * @param array<string, AstNode> $named
      */
     public function call(string $name, array $positional, array $named, ?BuiltinCallContext $context = null): AstNode
+    {
+        $cacheKey = $context?->logWarning === null
+            ? $this->colorCacheKey($name, $positional, $named)
+            : null;
+
+        if ($cacheKey !== null && isset($this->colorResultCache[$cacheKey])) {
+            return clone $this->colorResultCache[$cacheKey];
+        }
+
+        $result = $this->dispatch($name, $positional, $named, $context);
+
+        if ($cacheKey !== null && $this->isCacheableResult($result)) {
+            if (count($this->colorResultCache) >= 4096) {
+                $this->colorResultCache = [];
+            }
+
+            $this->colorResultCache[$cacheKey] = clone $result;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
+     */
+    private function dispatch(string $name, array $positional, array $named, ?BuiltinCallContext $context): AstNode
     {
         $previousDisplayName = $this->beginBuiltinCall($name, $context);
 
@@ -220,6 +259,60 @@ final class SassColorModule extends AbstractModule
         } finally {
             $this->endBuiltinCall($previousDisplayName);
         }
+    }
+
+    /**
+     * @param array<int, AstNode> $positional
+     * @param array<string, AstNode> $named
+     */
+    private function colorCacheKey(string $name, array $positional, array $named): ?string
+    {
+        $parts = [$name];
+
+        foreach ($positional as $argument) {
+            $token = $this->cacheToken($argument);
+
+            if ($token === null) {
+                return null;
+            }
+
+            $parts[] = $token;
+        }
+
+        foreach ($named as $key => $argument) {
+            $token = $this->cacheToken($argument);
+
+            if ($token === null) {
+                return null;
+            }
+
+            $parts[] = $key . '=' . $token;
+        }
+
+        return implode('|', $parts);
+    }
+
+    private function cacheToken(AstNode $node): ?string
+    {
+        return match (true) {
+            $node instanceof NumberNode  => is_finite((float) $node->value)
+                ? 'n' . (string) $node->value . ':' . ($node->unit ?? '')
+                : null,
+            $node instanceof ColorNode   => 'c' . $node->value,
+            $node instanceof StringNode  => 's' . ($node->quoted ? 'q' : 'u') . $node->value,
+            $node instanceof BooleanNode => 'b' . ($node->value ? '1' : '0'),
+            $node instanceof NullNode    => 'x',
+            default                      => null,
+        };
+    }
+
+    private function isCacheableResult(AstNode $node): bool
+    {
+        return $node instanceof ColorNode
+            || $node instanceof NumberNode
+            || $node instanceof StringNode
+            || $node instanceof BooleanNode
+            || $node instanceof NullNode;
     }
 
     /**

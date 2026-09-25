@@ -33,6 +33,9 @@ final class Scope
     /** @var array<string, true> */
     private array $importedMembers = [];
 
+    /** @var array<string, true> */
+    private array $definedFunctionNames = [];
+
     /** @var array<string, array{scope: Scope, name: string}> */
     private array $importedVariables = [];
 
@@ -393,6 +396,8 @@ final class Scope
     {
         $name = $this->normalizeName($name);
 
+        $this->getGlobalScope()->definedFunctionNames[$name] = true;
+
         if ($global) {
             $this->getGlobalScope()->getFunctions()->set($name, $definition);
         } else {
@@ -431,7 +436,13 @@ final class Scope
 
     public function findFunction(string $name): ?ScopedCallableDefinition
     {
-        return $this->findFunctionNormalized($this->normalizeName($name));
+        $normalized = $this->normalizeName($name);
+
+        if (! isset($this->getGlobalScope()->definedFunctionNames[$normalized])) {
+            return null;
+        }
+
+        return $this->findFunctionNormalized($normalized);
     }
 
     public function getFunctions(): CallableDefinitionMap

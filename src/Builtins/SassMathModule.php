@@ -825,8 +825,9 @@ final class SassMathModule extends AbstractModule
 
             foreach ($numbers as $number) {
                 if ($unit !== null && $number->unit !== $unit && ! $this->unitsCompatible($unit, $number->unit)) {
-                    throw IncompatibleUnitsException::functionArguments(
-                        $this->builtinCallReference($wantMax ? 'math.max' : 'math.min'),
+                    throw new DeferToCssFunctionException(
+                        $this->builtinCallReference($wantMax ? 'math.max' : 'math.min')
+                        . ' should be emitted as a CSS function.',
                     );
                 }
 
@@ -855,6 +856,8 @@ final class SassMathModule extends AbstractModule
             $this->warnAboutDeprecatedMathFunction($context, $wantMax ? 'max' : 'min', $positional);
 
             return new NumberNode($result->value, $result->unit);
+        } catch (DeferToCssFunctionException $deferToCssFunctionException) {
+            throw $deferToCssFunctionException;
         } catch (SassThrowable $sassThrowable) {
             if ($this->shouldDeferToCss($sassThrowable)) {
                 throw new DeferToCssFunctionException($sassThrowable->getMessage(), 0, $sassThrowable);

@@ -66,6 +66,16 @@ describe('SassColorModule', function () {
         expect($result->value)->toBe('lime');
     });
 
+    it('evicts cached results once the cache cap is reached', function () {
+        $result = null;
+
+        for ($i = 0; $i <= 4100; $i++) {
+            $result = $this->module->call('red', [new ColorNode(sprintf('#%06x', $i))], []);
+        }
+
+        expect($result)->toBeInstanceOf(NumberNode::class);
+    });
+
     it('evaluates adjust-color', function () {
         $result = $this->module->call('adjust-color', [new ColorNode('#112233')], ['blue' => new NumberNode(10)]);
 

@@ -149,6 +149,39 @@ final readonly class CssArgumentEvaluator
     }
 
     /**
+     * @param array<int, AstNode> $arguments
+     */
+    public function canReuseCallArgumentsForCss(array $arguments): bool
+    {
+        foreach ($arguments as $argument) {
+            if ($argument instanceof SpreadArgumentNode || $argument instanceof NamedArgumentNode) {
+                return false;
+            }
+
+            if (
+                ($argument instanceof FunctionNode || $argument instanceof ListNode || $argument instanceof NumberNode)
+                && $argument->parenthesized > 0
+            ) {
+                return false;
+            }
+
+            if (
+                $argument instanceof ListNode
+                && count($argument->items) === 3
+                && $this->isSlashTriple($argument)
+            ) {
+                return false;
+            }
+
+            if ($this->shouldPreserveCssArgument($argument)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * @return array<int, AstNode>
      */
     public function expandSpreadValue(AstNode $spread): array
