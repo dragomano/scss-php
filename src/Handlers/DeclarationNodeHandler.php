@@ -97,6 +97,19 @@ final readonly class DeclarationNodeHandler
                 . ($node->important ? ' !important' : '') . ';';
         }
 
+        if (str_starts_with($property, '--') && $node->value instanceof StringNode) {
+            $value = $this->reindentCustomPropertyValue($node->value->value, $node->column - 1, $prefix);
+
+            if (str_contains($value, '#{')) {
+                $value = $this->text->interpolateText($value, $ctx->env);
+            }
+
+            $important = $node->important ? ' !important' : '';
+            $semicolon = str_ends_with($value, ';') ? '' : ';';
+
+            return $prefix . $property . ':' . $value . $important . $semicolon;
+        }
+
         $evaluatedValue = $this->evaluation->evaluateDeclarationValue($node->value, $property, $ctx->env);
 
         $valueOrigin = null;
@@ -145,10 +158,6 @@ final readonly class DeclarationNodeHandler
             $evaluatedValue = $reparsedValue;
         }
 
-        if ($reparsedValue instanceof AstNode) {
-            $evaluatedValue = $reparsedValue;
-        }
-
         $val = $reparsedValue === null && $formattedValue !== null
             ? $formattedValue
             : $this->evaluation->format($evaluatedValue, $ctx->env);
@@ -159,18 +168,6 @@ final readonly class DeclarationNodeHandler
         }
 
         $important = $node->important ? ' !important' : '';
-
-        if (str_starts_with($property, '--') && $node->value instanceof StringNode) {
-            $value = $this->reindentCustomPropertyValue($node->value->value, $node->column - 1, $prefix);
-
-            if (str_contains($value, '#{')) {
-                $value = $this->text->interpolateText($value, $ctx->env);
-            }
-
-            $semicolon = str_ends_with($value, ';') ? '' : ';';
-
-            return $prefix . $property . ':' . $value . $important . $semicolon;
-        }
 
         if ($valueOrigin !== null) {
             $this->render->addPendingValueMapping(

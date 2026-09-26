@@ -338,6 +338,40 @@ describe('Sass String Module Feature', function () {
 
             expect($css)->toEqualCss($expected);
         });
+
+        it('returns unique identifier string via interpolation', function () {
+            $scss = <<<'SCSS'
+            @use "sass:string";
+            .string-unique-id { value: "#{string.unique-id()}"; }
+            SCSS;
+
+            $css = $this->compiler->compileString($scss);
+
+            $expected = /** @lang text */ <<<'CSS'
+            .string-unique-id {
+              value: "u1";
+            }
+            CSS;
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('returns unique identifier string in a custom property', function () {
+            $scss = <<<'SCSS'
+            @use "sass:string";
+            .string-unique-id { --value: #{string.unique-id()}; }
+            SCSS;
+
+            $css = $this->compiler->compileString($scss);
+
+            $expected = /** @lang text */ <<<'CSS'
+            .string-unique-id {
+              --value: u1;
+            }
+            CSS;
+
+            expect($css)->toEqualCss($expected);
+        });
     });
 
     describe('string.unquote()', function () {
