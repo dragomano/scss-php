@@ -14,6 +14,22 @@ This file contains a performance comparison of SCSS compilation runs across thre
 - **PHP version**: 8.5.11
 - **Testing method**: Compilation via `compileFile()` with execution time measurement
 
+## How to Run
+
+The benchmark runs inside a Docker container based on [FrankenPHP](https://frankenphp.dev/), so no local PHP installation is required.
+
+1. Build the image (once, or after changing `benchmark.php` / dependencies):
+
+   ```bash
+   docker build -t scss-frankenphp .
+   ```
+
+2. Run the benchmark with the desired number of iterations (e.g. `1`):
+
+   ```bash
+   docker run --rm -v $(pwd):/app -w /app scss-frankenphp frankenphp php-cli benchmark.php 1
+   ```
+
 ## Results
 
 | Compiler | Time (sec) | CSS Size (KB) | Memory (MB) |
