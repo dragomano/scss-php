@@ -2,11 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Bugo\SCSS\Services;
+namespace Bugo\SCSS\SourceMap;
 
 use Bugo\SCSS\Nodes\Visitable;
-use Bugo\SCSS\Utils\SourceMapMapping;
-use Bugo\SCSS\Utils\SourceMapPosition;
 
 use function abs;
 use function count;
@@ -21,7 +19,7 @@ use function substr_count;
 
 use const PHP_INT_MAX;
 
-final class SourceMappingService
+final class SourceMapBuilder
 {
     public function shouldRemapMappingsAfterOptimization(
         ?string $sourceMapFile,

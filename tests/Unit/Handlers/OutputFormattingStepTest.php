@@ -5,9 +5,9 @@ declare(strict_types=1);
 use Bugo\SCSS\Handlers\Rule\OutputFormattingStep;
 use Bugo\SCSS\Handlers\Rule\RuleCompilationContext;
 use Bugo\SCSS\Nodes\RuleNode;
+use Bugo\SCSS\Output\GroupStartChunk;
+use Bugo\SCSS\Output\RawChunk;
 use Bugo\SCSS\Services\Render;
-use Bugo\SCSS\Utils\GroupStartChunk;
-use Bugo\SCSS\Utils\RawChunk;
 use Tests\Support\RuntimeFactory;
 
 describe('OutputFormattingStep', function () {

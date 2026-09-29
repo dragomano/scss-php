@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Bugo\SCSS\Utils;
+namespace Bugo\SCSS\Values;
 
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\StringNode;

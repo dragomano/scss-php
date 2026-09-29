@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Bugo\SCSS\Utils;
+namespace Bugo\SCSS\Selector;
+
+use Bugo\SCSS\Utils\StringEscapeDecoder;
 
 use function array_fill;
 use function array_fill_keys;

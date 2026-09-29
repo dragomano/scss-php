@@ -24,15 +24,15 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\Visitable;
+use Bugo\SCSS\Output\DeferredAtRuleChunk;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
-use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
+use Bugo\SCSS\Selector\SelectorHelper;
+use Bugo\SCSS\Selector\SelectorTokenizer;
 use Bugo\SCSS\Style;
 use Bugo\SCSS\Utils\MediaQuery;
-use Bugo\SCSS\Utils\SelectorHelper;
-use Bugo\SCSS\Utils\SelectorTokenizer;
 use Bugo\SCSS\Utils\StringHelper;
 
 use function array_fill_keys;

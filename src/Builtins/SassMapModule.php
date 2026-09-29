@@ -13,7 +13,7 @@ use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
-use Bugo\SCSS\Utils\AstValueComparator;
+use Bugo\SCSS\Values\AstValueComparator;
 
 use function array_filter;
 use function array_map;

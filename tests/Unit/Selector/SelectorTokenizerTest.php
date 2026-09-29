@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Utils\SelectorComponent;
-use Bugo\SCSS\Utils\SelectorTokenizer;
+use Bugo\SCSS\Selector\SelectorComponent;
+use Bugo\SCSS\Selector\SelectorTokenizer;
 
 describe('SelectorTokenizer', function () {
     beforeEach(function () {

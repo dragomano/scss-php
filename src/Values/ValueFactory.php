@@ -18,7 +18,6 @@ use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
-use Bugo\SCSS\Utils\SlashOperatorCompactor;
 
 use function array_values;
 use function strrpos;

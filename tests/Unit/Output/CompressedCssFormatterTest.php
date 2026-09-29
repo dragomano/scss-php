@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Utils\CompressedCssFormatter;
+use Bugo\SCSS\Output\CompressedCssFormatter;
 
 describe('CompressedCssFormatter', function () {
     beforeEach(function () {

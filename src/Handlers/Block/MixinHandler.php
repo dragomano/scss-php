@@ -13,6 +13,7 @@ use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MixinRefNode;
 use Bugo\SCSS\Nodes\ModuleRefNode;
 use Bugo\SCSS\Nodes\StringNode;
+use Bugo\SCSS\Output\RawChunk;
 use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Runtime\TraversalContext;
@@ -20,7 +21,6 @@ use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Module;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Utils\NameHelper;
-use Bugo\SCSS\Utils\RawChunk;
 
 use function array_slice;
 use function str_contains;

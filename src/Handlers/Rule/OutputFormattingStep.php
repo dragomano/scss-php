@@ -6,11 +6,11 @@ namespace Bugo\SCSS\Handlers\Rule;
 
 use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\Nodes\CommentNode;
+use Bugo\SCSS\Output\GroupStartChunk;
+use Bugo\SCSS\Output\OutputChunk;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\States\OutputState;
-use Bugo\SCSS\Utils\GroupStartChunk;
-use Bugo\SCSS\Utils\OutputChunk;
 
 use function array_pop;
 use function array_values;

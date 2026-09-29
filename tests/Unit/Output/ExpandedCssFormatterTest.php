@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Utils\ExpandedCssFormatter;
+use Bugo\SCSS\Output\ExpandedCssFormatter;
 
 describe('ExpandedCssFormatter', function () {
     beforeEach(function () {

@@ -11,9 +11,9 @@ use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
+use Bugo\SCSS\Output\RawChunk;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Services\Render;
-use Bugo\SCSS\Utils\RawChunk;
 use Tests\Support\RuntimeFactory;
 
 describe('DeferredChunkManager', function () {

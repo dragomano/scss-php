@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Services;
 
+use Bugo\SCSS\Builtins\Color\Support\CssNamedColors;
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
@@ -17,7 +18,6 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
-use Bugo\SCSS\Utils\CssNamedColors;
 use Bugo\SCSS\Values\AstValueTransformer;
 
 use function array_merge;

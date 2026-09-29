@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Utils\SourceMapGenerator;
-use Bugo\SCSS\Utils\SourceMapMapping;
-use Bugo\SCSS\Utils\SourceMapOptions;
-use Bugo\SCSS\Utils\SourceMapPosition;
+use Bugo\SCSS\SourceMap\SourceMapGenerator;
+use Bugo\SCSS\SourceMap\SourceMapMapping;
+use Bugo\SCSS\SourceMap\SourceMapOptions;
+use Bugo\SCSS\SourceMap\SourceMapPosition;
 
 beforeEach(function () {
     $this->generator = new SourceMapGenerator();

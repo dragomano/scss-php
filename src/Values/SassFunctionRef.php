@@ -17,9 +17,4 @@ final class SassFunctionRef extends AbstractSassValue
     {
         return true;
     }
-
-    public function name(): string
-    {
-        return $this->name;
-    }
 }

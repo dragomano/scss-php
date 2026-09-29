@@ -11,8 +11,8 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
-use Bugo\SCSS\Utils\SelectorComponent;
-use Bugo\SCSS\Utils\SelectorTokenizer;
+use Bugo\SCSS\Selector\SelectorComponent;
+use Bugo\SCSS\Selector\SelectorTokenizer;
 
 use function array_filter;
 use function array_flip;

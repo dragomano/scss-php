@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Bugo\SCSS\Utils;
+namespace Bugo\SCSS\Output;
 
 use Bugo\SCSS\Services\Render;
+use Bugo\SCSS\Utils\StringEscapeDecoder;
 
 use function implode;
 use function ltrim;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Bugo\SCSS\Runtime;
+namespace Bugo\SCSS\Output;
 
 final readonly class DeferredAtRuleChunk
 {

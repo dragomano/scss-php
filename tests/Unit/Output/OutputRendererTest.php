@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Utils\OutputRenderer;
+use Bugo\SCSS\Output\OutputRenderer;
 
 describe('OutputRenderer', function () {
     it('has default indent cache with empty indent for level 0', function () {

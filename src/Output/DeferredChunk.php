@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Bugo\SCSS\Utils;
+namespace Bugo\SCSS\Output;
+
+use Bugo\SCSS\SourceMap\SourceMapMapping;
 
 final readonly class DeferredChunk implements OutputChunk
 {

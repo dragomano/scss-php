@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Bugo\SCSS\Utils;
+namespace Bugo\SCSS\Selector;
 
 final readonly class SelectorComponent
 {

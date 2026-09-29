@@ -24,6 +24,8 @@ use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\VariableDefinition;
+use Bugo\SCSS\Selector\SelectorComponent;
+use Bugo\SCSS\Selector\SelectorTokenizer;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\EachLoopBinderInterface;
@@ -32,8 +34,6 @@ use Bugo\SCSS\Services\FunctionConditionEvaluatorInterface;
 use Bugo\SCSS\Services\LoopIterator;
 use Bugo\SCSS\Services\Text;
 use Bugo\SCSS\Services\VariableDeclarationApplierInterface;
-use Bugo\SCSS\Utils\SelectorComponent;
-use Bugo\SCSS\Utils\SelectorTokenizer;
 
 describe('ExtendsResolver', function () {
     beforeEach(function () {

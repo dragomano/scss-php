@@ -5,12 +5,6 @@ declare(strict_types=1);
 use Bugo\SCSS\Values\SassFunctionRef;
 
 describe('SassFunctionRef', function () {
-    it('name() returns the stored function name', function () {
-        $ref = new SassFunctionRef('lighten');
-
-        expect($ref->name())->toBe('lighten');
-    });
-
     it('toCss() wraps name in get-function() call', function () {
         $ref = new SassFunctionRef('darken');
 

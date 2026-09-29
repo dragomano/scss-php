@@ -20,20 +20,6 @@ describe('Context', function () {
 
             expect($service->options())->toBe($options);
         });
-
-        it('exposes logger', function () {
-            $options = new CompilerOptions();
-            $service = new Context($this->ctx, $options, $this->logger);
-
-            expect($service->logger())->toBe($this->logger);
-        });
-
-        it('returns currentSourceFile from context', function () {
-            $options = new CompilerOptions();
-            $service = new Context($this->ctx, $options, $this->logger);
-
-            expect($service->currentSourceFile())->toBe('theme.scss');
-        });
     });
 
     describe('logWarning()', function () {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Utils\SelectorHelper;
+use Bugo\SCSS\Selector\SelectorHelper;
 
 describe('SelectorHelper', function () {
     describe('splitList()', function () {

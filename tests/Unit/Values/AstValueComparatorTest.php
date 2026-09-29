@@ -13,7 +13,7 @@ use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Scope;
-use Bugo\SCSS\Utils\AstValueComparator;
+use Bugo\SCSS\Values\AstValueComparator;
 
 describe('AstValueComparator', function () {
     describe('equals()', function () {

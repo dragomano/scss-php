@@ -13,15 +13,15 @@ use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
+use Bugo\SCSS\Output\DeferredChunk;
+use Bugo\SCSS\Output\GroupStartChunk;
+use Bugo\SCSS\Output\OutputChunk;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\States\OutputState;
-use Bugo\SCSS\Utils\DeferredChunk;
-use Bugo\SCSS\Utils\GroupStartChunk;
-use Bugo\SCSS\Utils\OutputChunk;
 use Tests\Support\RuntimeFactory;
 
 it('handles @at-root blocks', function () {

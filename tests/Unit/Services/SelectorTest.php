@@ -20,11 +20,12 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
+use Bugo\SCSS\Output\DeferredAtRuleChunk;
 use Bugo\SCSS\Parser;
 use Bugo\SCSS\Runtime\AtRuleContextEntry;
-use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\Scope;
+use Bugo\SCSS\Selector\SelectorTokenizer;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\CalculationArgumentNormalizerInterface;
@@ -32,7 +33,6 @@ use Bugo\SCSS\Services\CssArgumentEvaluator;
 use Bugo\SCSS\Services\ModuleVariableAssigner;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Style;
-use Bugo\SCSS\Utils\SelectorTokenizer;
 use Tests\Support\RuntimeFactory;
 
 describe('Selector', function () {

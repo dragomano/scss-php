@@ -22,16 +22,6 @@ final readonly class Context
         return $this->options;
     }
 
-    public function logger(): LoggerInterface
-    {
-        return $this->logger;
-    }
-
-    public function currentSourceFile(): string
-    {
-        return $this->ctx->currentSourceFile;
-    }
-
     public function logWarning(string $message, ?int $line = null): void
     {
         $diagnostics = $this->diagnostics ?? new DiagnosticService($this->ctx, $this->options, $this->logger);

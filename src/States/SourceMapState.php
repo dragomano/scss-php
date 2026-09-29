@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\States;
 
-use Bugo\SCSS\Utils\SourceMapMapping;
+use Bugo\SCSS\SourceMap\SourceMapMapping;
 
 final class SourceMapState
 {

@@ -22,11 +22,11 @@ use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Selector\SelectorComponent;
+use Bugo\SCSS\Selector\SelectorHelper;
+use Bugo\SCSS\Selector\SelectorTokenizer;
 use Bugo\SCSS\States\ExtendsState;
 use Bugo\SCSS\Utils\NameNormalizer;
-use Bugo\SCSS\Utils\SelectorComponent;
-use Bugo\SCSS\Utils\SelectorHelper;
-use Bugo\SCSS\Utils\SelectorTokenizer;
 
 use function array_flip;
 use function array_key_exists;

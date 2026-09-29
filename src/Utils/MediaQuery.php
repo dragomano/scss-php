@@ -38,7 +38,7 @@ final readonly class MediaQuery
      */
     public static function parseList(string $prelude): ?array
     {
-        $parts = self::splitTopLevel($prelude);
+        $parts   = self::splitTopLevel($prelude);
         $queries = [];
 
         foreach ($parts as $part) {
@@ -296,7 +296,7 @@ final readonly class MediaQuery
             return null;
         }
 
-        $rest = substr($query, $i);
+        $rest       = substr($query, $i);
         $conditions = self::splitConditions($rest);
 
         if ($conditions === null || $conditions === []) {

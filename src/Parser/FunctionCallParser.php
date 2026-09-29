@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\Parser;
 
+use Bugo\SCSS\Builtins\Color\Support\CssNamedColors;
 use Bugo\SCSS\Lexer\TokenStream;
 use Bugo\SCSS\Lexer\TokenType;
 use Bugo\SCSS\Nodes\AstNode;
@@ -17,7 +18,6 @@ use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\VariableReferenceNode;
-use Bugo\SCSS\Utils\CssNamedColors;
 use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\StringEscapeDecoder;
 

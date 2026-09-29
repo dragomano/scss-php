@@ -17,9 +17,4 @@ final class SassMixin extends AbstractSassValue
     {
         return true;
     }
-
-    public function name(): string
-    {
-        return $this->name;
-    }
 }

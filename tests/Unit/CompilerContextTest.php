@@ -6,13 +6,13 @@ use Bugo\SCSS\Builtins\FunctionRegistry;
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Nodes\ColorNode;
 use Bugo\SCSS\Normalizers\NormalizerPipeline;
+use Bugo\SCSS\Output\OutputOptimizer;
+use Bugo\SCSS\Output\OutputRenderer;
+use Bugo\SCSS\SourceMap\SourceMapGenerator;
 use Bugo\SCSS\States\ConditionCacheState;
 use Bugo\SCSS\States\ModuleState;
 use Bugo\SCSS\States\OutputState;
 use Bugo\SCSS\States\SourceMapState;
-use Bugo\SCSS\Utils\OutputOptimizer;
-use Bugo\SCSS\Utils\OutputRenderer;
-use Bugo\SCSS\Utils\SourceMapGenerator;
 use Bugo\SCSS\Values\ValueFactory;
 
 describe('CompilerContext', function () {

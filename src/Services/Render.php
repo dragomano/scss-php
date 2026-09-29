@@ -8,13 +8,14 @@ use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\Visitable;
+use Bugo\SCSS\Output\DeferredChunk;
+use Bugo\SCSS\Output\GroupStartChunk;
+use Bugo\SCSS\Output\OutputChunk;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\SourceMap\SourceMapBuilder;
+use Bugo\SCSS\SourceMap\SourceMapOptions;
+use Bugo\SCSS\SourceMap\SourceMapPosition;
 use Bugo\SCSS\States\OutputState;
-use Bugo\SCSS\Utils\DeferredChunk;
-use Bugo\SCSS\Utils\GroupStartChunk;
-use Bugo\SCSS\Utils\OutputChunk;
-use Bugo\SCSS\Utils\SourceMapOptions;
-use Bugo\SCSS\Utils\SourceMapPosition;
 
 use function array_slice;
 use function array_splice;
@@ -36,7 +37,7 @@ final readonly class Render
         private CompilerContext $ctx,
         private CompilerOptions $options,
         private AstValueFormatterInterface $valueFormatter,
-        private SourceMappingService $sourceMapping = new SourceMappingService(),
+        private SourceMapBuilder $sourceMapping = new SourceMapBuilder(),
     ) {}
 
     public function indentPrefix(int $indent): string

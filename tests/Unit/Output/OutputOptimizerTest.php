@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Output\OutputOptimizer;
 use Bugo\SCSS\Style;
-use Bugo\SCSS\Utils\OutputOptimizer;
 
 beforeEach(function () {
     $this->optimizer = new OutputOptimizer();

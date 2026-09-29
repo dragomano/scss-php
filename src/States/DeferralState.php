@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Bugo\SCSS\States;
 
-use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
-use Bugo\SCSS\Utils\OutputChunk;
+use Bugo\SCSS\Output\DeferredAtRuleChunk;
+use Bugo\SCSS\Output\OutputChunk;
 
 final class DeferralState
 {

@@ -18,8 +18,8 @@ use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
-use Bugo\SCSS\Utils\AstValueComparator;
 use Bugo\SCSS\Utils\UnitConverter;
+use Bugo\SCSS\Values\AstValueComparator;
 use Bugo\SCSS\Values\AstValueSuggestionDescriber;
 
 use function abs;

@@ -16,6 +16,7 @@ use Bugo\SCSS\Handlers\ModuleNodeHandler;
 use Bugo\SCSS\Handlers\RootNodeHandler;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Selector\SelectorTokenizer;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\AstValueFormatterInterface;
 use Bugo\SCSS\Services\Condition;
@@ -41,7 +42,6 @@ use Bugo\SCSS\Services\RuntimeCalculationArgumentNormalizer;
 use Bugo\SCSS\Services\Selector;
 use Bugo\SCSS\Services\Text;
 use Bugo\SCSS\Services\VariableDeclarationApplier;
-use Bugo\SCSS\Utils\SelectorTokenizer;
 use Psr\Log\LoggerInterface;
 
 final class CompilerRuntime

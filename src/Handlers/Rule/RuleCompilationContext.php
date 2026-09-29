@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Handlers\Rule;
 
 use Bugo\SCSS\Nodes\RuleNode;
+use Bugo\SCSS\Output\OutputChunk;
 use Bugo\SCSS\Runtime\TraversalContext;
-use Bugo\SCSS\Utils\OutputChunk;
 
 final class RuleCompilationContext
 {

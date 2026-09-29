@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Bugo\SCSS\Runtime\DeferredAtRuleChunk;
+use Bugo\SCSS\Output\DeferredAtRuleChunk;
 use Bugo\SCSS\States\OutputState;
 
 describe('OutputState', function () {

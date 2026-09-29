@@ -6,11 +6,11 @@ use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Nodes\CommentNode;
 use Bugo\SCSS\Nodes\Visitable;
+use Bugo\SCSS\Output\DeferredChunk;
 use Bugo\SCSS\Runtime\TraversalContext;
-use Bugo\SCSS\Services\SourceMappingService;
-use Bugo\SCSS\Utils\DeferredChunk;
-use Bugo\SCSS\Utils\SourceMapMapping;
-use Bugo\SCSS\Utils\SourceMapPosition;
+use Bugo\SCSS\SourceMap\SourceMapBuilder;
+use Bugo\SCSS\SourceMap\SourceMapMapping;
+use Bugo\SCSS\SourceMap\SourceMapPosition;
 use Bugo\SCSS\Visitor;
 use Tests\Support\RuntimeFactory;
 
@@ -86,7 +86,7 @@ it('handles render edge cases for chunks source maps and remapping helpers', fun
     );
 
     $render = $runtime->render();
-    $helper = new SourceMappingService();
+    $builder = new SourceMapBuilder();
     $output = 'seed';
 
     $render->appendChunk($output, '');
@@ -108,21 +108,21 @@ it('handles render edge cases for chunks source maps and remapping helpers', fun
     $render->addPendingValueMapping(2, 4, 5, $owner);
 
     expect($compilerContext->sourceMapState->pendingValueMappings)->toBe([])
-        ->and($helper->shouldRemapMappingsAfterOptimization(
+        ->and($builder->shouldRemapMappingsAfterOptimization(
             'output.css.map',
             20001,
             str_repeat('a', 150000),
             str_repeat('b', 150000),
         ))
         ->toBeTrue()
-        ->and($helper->shouldRemapMappingsAfterOptimization(
+        ->and($builder->shouldRemapMappingsAfterOptimization(
             'output.css.map',
             75001,
             str_repeat('a', 150001),
             str_repeat('b', 156002),
         ))
         ->toBeFalse()
-        ->and($helper->shouldRemapMappingsAfterOptimization(
+        ->and($builder->shouldRemapMappingsAfterOptimization(
             'output.css.map',
             30000,
             str_repeat('a', 150001),
@@ -143,15 +143,15 @@ it('handles render edge cases for chunks source maps and remapping helpers', fun
 
     $mappings = [];
 
-    $helper->appendMapping($mappings, 2, 3, $invalidOrigin);
+    $builder->appendMapping($mappings, 2, 3, $invalidOrigin);
 
     expect($mappings)->toBe([])
-        ->and($helper->remapMappingsAfterOptimization([], 'before', 'after'))->toBe([]);
+        ->and($builder->remapMappingsAfterOptimization([], 'before', 'after'))->toBe([]);
 
-    $map = $helper->buildOldToNewOffsetMap('ab', 'aXb');
+    $map = $builder->buildOldToNewOffsetMap('ab', 'aXb');
 
     expect($map[1])->toBe(2)
-        ->and($helper->offsetToLineColumnUsingLineStarts([], 5))->toBe([1, 5]);
+        ->and($builder->offsetToLineColumnUsingLineStarts([], 5))->toBe([1, 5]);
 });
 
 it('tracks generated positions for multiline chunks', function () {
@@ -212,10 +212,10 @@ it('remaps multiline deferred chunk mappings using the original column on later 
 });
 
 it('covers edge branches of the source map remapping helper', function () {
-    $helper = new SourceMappingService();
+    $builder = new SourceMapBuilder();
 
-    expect($helper->shouldRemapMappingsAfterOptimization(null, 0, 'a', 'b'))->toBeFalse()
-        ->and($helper->shouldRemapMappingsAfterOptimization('output.css.map', 10, 'a', 'b'))->toBeTrue();
+    expect($builder->shouldRemapMappingsAfterOptimization(null, 0, 'a', 'b'))->toBeFalse()
+        ->and($builder->shouldRemapMappingsAfterOptimization('output.css.map', 10, 'a', 'b'))->toBeTrue();
 
     $originWithoutPositions = new class implements Visitable {
         public function accept(Visitor $visitor, TraversalContext $ctx): string
@@ -225,7 +225,7 @@ it('covers edge branches of the source map remapping helper', function () {
     };
 
     $mappings = [];
-    $helper->appendMapping($mappings, 1, 0, $originWithoutPositions);
+    $builder->appendMapping($mappings, 1, 0, $originWithoutPositions);
 
     $invalidOrigin = new class implements Visitable {
         public int $line = 0;
@@ -239,15 +239,15 @@ it('covers edge branches of the source map remapping helper', function () {
     };
 
     $invalidMappings = [];
-    $helper->appendMapping($invalidMappings, 1, 0, $invalidOrigin);
+    $builder->appendMapping($invalidMappings, 1, 0, $invalidOrigin);
 
     // Deletes a character from the middle of the text.
-    $deletionMap = $helper->buildOldToNewOffsetMap('abc', 'ac');
+    $deletionMap = $builder->buildOldToNewOffsetMap('abc', 'ac');
 
     // Falls back to advancing both cursors on a full mismatch.
-    $fallbackMap = $helper->buildOldToNewOffsetMap('ax', 'bx');
+    $fallbackMap = $builder->buildOldToNewOffsetMap('ax', 'bx');
 
-    $result = $helper->remapMappingsAfterOptimization(
+    $result = $builder->remapMappingsAfterOptimization(
         [
             new SourceMapMapping(new SourceMapPosition(1, 0), new SourceMapPosition(1, 0)),
             new SourceMapMapping(new SourceMapPosition(2, 1), new SourceMapPosition(1, 0)),
@@ -275,16 +275,16 @@ it('covers edge branches of the source map remapping helper', function () {
 });
 
 it('shifts generated positions by a prefix and skips empty inputs', function () {
-    $helper = new SourceMappingService();
+    $builder = new SourceMapBuilder();
 
     $mapping = new SourceMapMapping(new SourceMapPosition(1, 4), new SourceMapPosition(2, 0));
 
     // Empty mappings and empty prefix are both no-ops.
-    expect($helper->shiftMappingsByPrefix([], 'prefix'))->toBe([])
-        ->and($helper->shiftMappingsByPrefix([$mapping], ''))->toBe([$mapping]);
+    expect($builder->shiftMappingsByPrefix([], 'prefix'))->toBe([])
+        ->and($builder->shiftMappingsByPrefix([$mapping], ''))->toBe([$mapping]);
 
     // A single-line prefix shifts the column of first-line mappings.
-    $inlineShift = $helper->shiftMappingsByPrefix([$mapping], '@import "a.css";');
+    $inlineShift = $builder->shiftMappingsByPrefix([$mapping], '@import "a.css";');
 
     expect($inlineShift[0]->generated->line)->toBe(1)
         ->and($inlineShift[0]->generated->column)->toBe(20);
@@ -292,7 +292,7 @@ it('shifts generated positions by a prefix and skips empty inputs', function () 
     // A prefix with a newline shifts the line and leaves later-line columns untouched.
     $laterLine = new SourceMapMapping(new SourceMapPosition(2, 3), new SourceMapPosition(3, 0));
 
-    $lineShift = $helper->shiftMappingsByPrefix([$mapping, $laterLine], '@charset "UTF-8";' . "\n");
+    $lineShift = $builder->shiftMappingsByPrefix([$mapping, $laterLine], '@charset "UTF-8";' . "\n");
 
     expect($lineShift[0]->generated->line)->toBe(2)
         ->and($lineShift[0]->generated->column)->toBe(4)
@@ -301,12 +301,12 @@ it('shifts generated positions by a prefix and skips empty inputs', function () 
 });
 
 it('clamps raw mapping source positions to their minimum bounds', function () {
-    $helper   = new SourceMappingService();
+    $builder   = new SourceMapBuilder();
     $mappings = [];
 
     // sourceLine below 1 and sourceColumn 0 clamp to (1, 0); the -1 offset applies otherwise.
-    $helper->appendRawMapping($mappings, 3, 7, 0, 0);
-    $helper->appendRawMapping($mappings, 4, 8, 5, 6);
+    $builder->appendRawMapping($mappings, 3, 7, 0, 0);
+    $builder->appendRawMapping($mappings, 4, 8, 5, 6);
 
     expect($mappings[0]->generated->line)->toBe(3)
         ->and($mappings[0]->generated->column)->toBe(7)
@@ -317,10 +317,10 @@ it('clamps raw mapping source positions to their minimum bounds', function () {
 });
 
 it('maps trailing deletions when the optimized text is shorter', function () {
-    $helper = new SourceMappingService();
+    $builder = new SourceMapBuilder();
 
     // "bc" is deleted from the end, exercising the tail-fill loop.
-    $map = $helper->buildOldToNewOffsetMap('abc', 'a');
+    $map = $builder->buildOldToNewOffsetMap('abc', 'a');
 
     expect($map[0])->toBe(0)
         ->and($map[1])->toBe(1)

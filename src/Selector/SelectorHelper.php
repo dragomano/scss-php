@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Bugo\SCSS\Utils;
+namespace Bugo\SCSS\Selector;
+
+use Bugo\SCSS\Utils\StringHelper;
 
 use function array_filter;
 use function array_map;

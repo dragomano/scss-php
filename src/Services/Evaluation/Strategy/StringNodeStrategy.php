@@ -8,9 +8,9 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Selector\SelectorHelper;
 use Bugo\SCSS\Services\Evaluation\EvaluationOptions;
 use Bugo\SCSS\Services\Evaluation\EvaluationStrategyInterface;
-use Bugo\SCSS\Utils\SelectorHelper;
 use Bugo\SCSS\Utils\StringEscapeDecoder;
 use Closure;
 

@@ -8,13 +8,13 @@ use Bugo\SCSS\Handlers\Block\DeferredChunkManager;
 use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\UseNode;
+use Bugo\SCSS\Output\RawChunk;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Runtime\TraversalContext;
 use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Module;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
-use Bugo\SCSS\Utils\RawChunk;
 
 use function count;
 use function str_contains;

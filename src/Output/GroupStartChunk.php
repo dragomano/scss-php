@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Bugo\SCSS\Utils;
+namespace Bugo\SCSS\Output;
 
 final readonly class GroupStartChunk implements OutputChunk
 {
