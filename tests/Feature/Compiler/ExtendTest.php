@@ -199,6 +199,64 @@ describe('Compiler', function () {
                 ->toThrow(SassErrorException::class, 'You may not @extend selectors across media queries.');
         });
 
+        it('throws when the same selector is extended from different media queries', function () {
+            $source = <<<'SCSS'
+            @media screen {
+              a {@extend b !optional}
+            }
+
+            @media print {
+              a {@extend b !optional}
+            }
+            SCSS;
+
+            expect(fn() => $this->compiler->compileString($source))
+                ->toThrow(
+                    SassErrorException::class,
+                    'You may not @extend the same selector from within different media queries.',
+                );
+        });
+
+        it('throws when the same selector extends an undefined private placeholder from different media queries', function () {
+            $source = <<<'SCSS'
+            @media screen {
+              a {@extend %-foo !optional}
+            }
+
+            @media print {
+              a {@extend %-foo !optional}
+            }
+            SCSS;
+
+            expect(fn() => $this->compiler->compileString($source))
+                ->toThrow(
+                    SassErrorException::class,
+                    'You may not @extend the same selector from within different media queries.',
+                );
+        });
+
+        it('skips a bogus-combinator extender inside a media query without treating it as a real extend', function () {
+            $source = <<<'SCSS'
+            @media screen {
+              a > > b {
+                @extend .x;
+              }
+            }
+
+            .x {
+              c: d;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .x {
+              c: d;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
         it('throws when extending a rule declared outside media from an inner context', function () {
             $source = <<<'SCSS'
             .error {

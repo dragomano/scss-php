@@ -196,6 +196,9 @@ final readonly class ExtendsResolver
         /** @var BoxMeta $boxMeta */
         $boxMeta = [];
 
+        /** @var array<string, array<string, string>> $extenderContexts */
+        $extenderContexts = [];
+
         foreach ($state->events as $event) {
             if ($event['type'] === 'rule') {
                 /** @var array{type: 'rule', boxId: int, rawParts: array<int, string>, resolvedParts: array<int, string>, context: string} $event */
@@ -219,6 +222,8 @@ final readonly class ExtendsResolver
             }
 
             /** @var array{type: 'extend', boxId: int, target: string, context: string, optional: bool, priority: int} $event */
+            $this->assertExtendMediaContextIsConsistent($extenderContexts, $store, $event);
+
             if (! $this->assertExtendTargetExists($event['target'], $event['optional'])) {
                 continue;
             }
@@ -1641,6 +1646,44 @@ final readonly class ExtendsResolver
         }
 
         throw new SassErrorException('You may not @extend selectors across media queries.');
+    }
+
+    /**
+     * Detects the same extender extending the same target from two different media
+     * queries. This must run even when the target is skipped by
+     * assertExtendTargetExists() (e.g. an optional @extend of an undefined private
+     * placeholder), since the conflict is independent of whether the target exists.
+     *
+     * @param array<string, array<string, string>> $extenderContexts
+     * @param ExtensionStore $store
+     * @param array{type: 'extend', boxId: int, target: string, context: string, optional: bool, priority: int} $event
+     */
+    private function assertExtendMediaContextIsConsistent(array &$extenderContexts, array $store, array $event): void
+    {
+        $context = $event['context'];
+
+        if ($context === '') {
+            return;
+        }
+
+        $target = $event['target'];
+
+        foreach ($store['boxes'][$event['boxId']] ?? [] as $extender) {
+            if ($this->isUselessComplex($extender)) {
+                continue;
+            }
+
+            $key  = $this->complexKey($extender);
+            $seen = $extenderContexts[$target][$key] ?? '';
+
+            if ($seen !== '' && $seen !== $context) {
+                throw new SassErrorException(
+                    'You may not @extend the same selector from within different media queries.',
+                );
+            }
+
+            $extenderContexts[$target][$key] = $context;
+        }
     }
 
     /**
