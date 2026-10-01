@@ -22,7 +22,7 @@ use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\StringNode;
 
-describe('ColorChannelReader', function () {
+describe('ColorChannelInspector', function () {
     beforeEach(function () {
         $state = new class {
             public bool $isGlobal = false;

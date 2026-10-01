@@ -13,4 +13,11 @@ describe('AstValueInspector', function () {
             ->and(AstValueInspector::isNoneKeyword(new StringNode('none-ish')))->toBeFalse()
             ->and(AstValueInspector::isNoneKeyword(new NumberNode(1)))->toBeFalse();
     });
+
+    it('detects quoted string nodes', function () {
+        expect(AstValueInspector::isQuotedString(new StringNode('x', true)))->toBeTrue()
+            ->and(AstValueInspector::isQuotedString(new StringNode('x')))->toBeFalse()
+            ->and(AstValueInspector::isQuotedString(new NumberNode(1)))->toBeFalse()
+            ->and(AstValueInspector::isQuotedString(null))->toBeFalse();
+    });
 });

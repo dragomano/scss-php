@@ -238,5 +238,46 @@ describe('Compiler extended selectors edge cases', function () {
             }
             CSS);
         });
+
+        it('extends compound anchors into descendant chains', function () {
+            $source = <<<'SCSS'
+            .a {
+              color: red;
+            }
+
+            .b {
+              @extend .a;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .a, .b {
+              color: red;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('extends compound anchors through descendant chains', function () {
+            $source = <<<'SCSS'
+            a .b {
+              color: red;
+            }
+
+            c {
+              @extend b;
+            }
+            SCSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss(
+                /** @lang text */
+                <<<'CSS'
+                a .b {
+                  color: red;
+                }
+                CSS,
+            );
+        });
     });
 });

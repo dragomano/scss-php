@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
+use Bugo\SCSS\Exceptions\FunctionReturnValueException;
+use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Syntax;
 use Tests\Support\ArrayLogger;
@@ -167,6 +169,72 @@ describe('Compiler', function () {
         CSS;
 
         $css = $this->compiler->compileString($source);
+
+        expect($css)->toEqualCss($expected);
+    });
+
+    it('compiles real scss where @function calls sass:list', function () {
+        $scss = <<<'SCSS'
+        @use "sass:list";
+
+        @function second-item($values) {
+          @return list.nth($values, 2);
+        }
+
+        .card {
+          token: second-item(primary secondary tertiary);
+        }
+        SCSS;
+
+        $css = $this->compiler->compileString($scss);
+
+        $expected = /** @lang text */ <<<'CSS'
+        .card {
+          token: secondary;
+        }
+        CSS;
+
+        expect($css)->toEqualCss($expected);
+    });
+
+    it('throws when required argument is missing', function () {
+        expect(fn() => $this->compiler->compileString(<<<'SCSS'
+            @function greet($name) {
+              @return $name;
+            }
+            .x { content: greet(); }
+        SCSS))->toThrow(MissingFunctionArgumentsException::class);
+    });
+
+    it('throws when function has no @return statement', function () {
+        expect(fn() => $this->compiler->compileString(<<<'SCSS'
+            @function no-return() {
+              $x: 1;
+            }
+            .x { width: no-return(); }
+        SCSS))->toThrow(FunctionReturnValueException::class);
+    });
+
+    it('supports trailing commas in argument and parameter lists', function () {
+        $scss = <<<'SCSS'
+        @function pick($a, $b,) {
+          @return $a $b;
+        }
+
+        .x {
+          a: pick(1px, 2px,);
+          b: keep;
+        }
+        SCSS;
+
+        $css = $this->compiler->compileString($scss);
+
+        $expected = /** @lang text */ <<<'CSS'
+        .x {
+          a: 1px 2px;
+          b: keep;
+        }
+        CSS;
 
         expect($css)->toEqualCss($expected);
     });

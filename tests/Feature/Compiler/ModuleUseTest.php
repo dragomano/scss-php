@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\CannotModifyBuiltInVariableException;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
+use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 use Bugo\SCSS\LoadedFile;
 use Bugo\SCSS\Loader;
 use Bugo\SCSS\LoaderInterface;
@@ -453,6 +454,243 @@ describe('Compiler', function () {
 
             expect(fn() => $compiler->compileString('@use "a" with ($color: red);'))
                 ->toThrow(ModuleResolutionException::class);
+        });
+
+        it('ignores built-in sass modules in @use', function () {
+            $source = <<<'SCSS'
+            @use "sass:color";
+            .test { color: red; }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .test {
+              color: red;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('imports variables mixins and functions into current scope for wildcard namespace', function () {
+            $compiler = new Compiler(loader: new Loader([__DIR__ . '/../../fixtures']));
+
+            $source = <<<'SCSS'
+            @use "_configurable.scss" as *;
+
+            .box {
+              @include theme();
+              tone: tone();
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .box {
+              color: red;
+              margin: 8px;
+              tone: red;
+            }
+            CSS;
+
+            $css = $compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('imports module variables into current scope for wildcard namespace', function () {
+            $compiler = new Compiler(loader: new Loader([__DIR__ . '/../../fixtures']));
+
+            $source = <<<'SCSS'
+            @use "_theme.scss" as *;
+
+            .box {
+              color: $primary-color;
+              font-size: $font-size;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .box {
+              color: #007bff;
+              font-size: 16px;
+            }
+            CSS;
+
+            $css = $compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('throws when accessing private module variables via namespace', function () {
+            $compiler = new Compiler(loader: new Loader([__DIR__ . '/../../fixtures']));
+
+            $source = <<<'SCSS'
+            @use "_private-module.scss" as priv;
+
+            .box {
+              value: priv.$-hidden;
+            }
+            SCSS;
+
+            expect(fn() => $compiler->compileString($source))
+                ->toThrow(
+                    UndefinedSymbolException::class,
+                    "Undefined variable \$-hidden in module 'priv'.",
+                );
+        });
+
+        it('does not import private variables into scope for wildcard namespace', function () {
+            $compiler = new Compiler(loader: new Loader([__DIR__ . '/../../fixtures']));
+
+            $source = <<<'SCSS'
+            @use "_private-module.scss" as *;
+
+            .box {
+              visible: $public;
+              private: $-hidden;
+            }
+            SCSS;
+
+            expect(fn() => $compiler->compileString($source))
+                ->toThrow(UndefinedSymbolException::class, 'Undefined variable: $-hidden');
+        });
+
+        it('compiles mixin from .sass module via @use', function () {
+            $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
+
+            mkdir($tmpDir, 0777, true);
+
+            $modulePath = $tmpDir . '/_mixins.sass';
+
+            file_put_contents($modulePath, <<<'SASS'
+            =highlight($color)
+              border: 1px solid $color
+            SASS);
+
+            try {
+                $loader   = new Loader([$tmpDir]);
+                $compiler = new Compiler(loader: $loader);
+
+                $source = <<<'SCSS'
+                @use "mixins";
+                .test { @include mixins.highlight(blue); }
+                SCSS;
+
+                $expected = /** @lang text */ <<<'CSS'
+                .test {
+                  border: 1px solid blue;
+                }
+                CSS;
+
+                $css = $compiler->compileString($source);
+
+                expect($css)->toEqualCss($expected);
+            } finally {
+                if (file_exists($modulePath)) {
+                    unlink($modulePath);
+                }
+
+                if (is_dir($tmpDir)) {
+                    rmdir($tmpDir);
+                }
+            }
+        });
+
+        it('resolves directory _index.scss for @use', function () {
+            $tmpDir = sys_get_temp_dir() . '/dart-sass-index-use-' . uniqid('', true);
+            $moduleDir = $tmpDir . '/foundation';
+            mkdir($moduleDir, 0777, true);
+
+            $indexPath = $moduleDir . '/_index.scss';
+            file_put_contents($indexPath, <<<'SCSS'
+            .from-index {
+              color: red;
+            }
+            SCSS);
+
+            try {
+                $compiler = new Compiler(loader: new Loader([$tmpDir]));
+
+                $source = <<<'SCSS'
+                @use "foundation";
+                SCSS;
+
+                $expected = /** @lang text */ <<<'CSS'
+                .from-index {
+                  color: red;
+                }
+                CSS;
+
+                $css = $compiler->compileString($source);
+
+                expect($css)->toEqualCss($expected);
+            } finally {
+                if (file_exists($indexPath)) {
+                    unlink($indexPath);
+                }
+
+                if (is_dir($moduleDir)) {
+                    rmdir($moduleDir);
+                }
+
+                if (is_dir($tmpDir)) {
+                    rmdir($tmpDir);
+                }
+            }
+        });
+
+        it('resolves relative @use from directory _index.scss', function () {
+            $tmpDir = sys_get_temp_dir() . '/dart-sass-index-relative-' . uniqid('', true);
+            $moduleDir = $tmpDir . '/foundation';
+            mkdir($moduleDir, 0777, true);
+
+            $indexPath = $moduleDir . '/_index.scss';
+            $codePath  = $moduleDir . '/_code.scss';
+
+            file_put_contents($indexPath, <<<'SCSS'
+            @use "code";
+            SCSS);
+
+            file_put_contents($codePath, <<<'SCSS'
+            .from-code {
+              color: red;
+            }
+            SCSS);
+
+            try {
+                $compiler = new Compiler(loader: new Loader([$tmpDir]));
+
+                $source = <<<'SCSS'
+                @use "foundation";
+                SCSS;
+
+                $expected = /** @lang text */ <<<'CSS'
+                .from-code {
+                  color: red;
+                }
+                CSS;
+
+                $css = $compiler->compileString($source);
+
+                expect($css)->toEqualCss($expected);
+            } finally {
+                if (file_exists($indexPath)) {
+                    unlink($indexPath);
+                }
+
+                if (file_exists($codePath)) {
+                    unlink($codePath);
+                }
+
+                if (is_dir($moduleDir)) {
+                    rmdir($moduleDir);
+                }
+
+                if (is_dir($tmpDir)) {
+                    rmdir($tmpDir);
+                }
+            }
         });
     });
 });

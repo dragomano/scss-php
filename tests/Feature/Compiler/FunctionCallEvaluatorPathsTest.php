@@ -137,6 +137,7 @@ describe('Compiler', function () {
             $cases = [
                 ['.a { color: hsl(120, 50%, 50%, var(--a)); }', 'color: hsl(120, 50%, 50%, var(--a))'],
                 ['.a { color: rgb(1 2 3 / var(--a)); }',        'color: rgb(1, 2, 3, var(--a))'],
+                ['.a { color: rgb(none 1 2); }',               'color: rgb(none 1 2)'],
                 ['.a { color: rgba(1, 2, 3, var(--a)); }',      'color: rgba(1, 2, 3, var(--a))'],
             ];
 
