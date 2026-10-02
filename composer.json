@@ -70,7 +70,7 @@
     "test-spec": [
       "@putenv RUN_SASS_SPEC=1",
       "Composer\\Config::disableProcessTimeout",
-      "vendor/bin/pest tests/Feature/Compiler/SpecTest.php --colors=always"
+      "php -d pcov.enabled=0 -d xdebug.mode=off vendor/bin/pest tests/Feature/Compiler/SpecTest.php --colors=always"
     ],
     "update-spec": "php scripts/update-spec.php",
     "post-install-cmd": "php scripts/update-spec.php --if-missing",
