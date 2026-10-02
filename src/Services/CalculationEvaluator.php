@@ -787,11 +787,11 @@ final readonly class CalculationEvaluator
             return match ($strategy) {
                 'up'    => $numberValue > 0
                     ? new NumberNode(fdiv(1.0, 0.0), $number->unit)
-                    : new NumberNode($numberValue < 0 ? -0.0 : 0.0, $number->unit),
+                    : new NumberNode(self::signedZero($numberValue < 0), $number->unit),
                 'down'  => $numberValue < 0
                     ? new NumberNode(fdiv(-1.0, 0.0), $number->unit)
                     : new NumberNode(0.0, $number->unit),
-                default => new NumberNode($numberValue < 0 ? -0.0 : 0.0, $number->unit ?? $step->unit),
+                default => new NumberNode(self::signedZero($numberValue < 0), $number->unit ?? $step->unit),
             };
         }
 
@@ -822,6 +822,15 @@ final readonly class CalculationEvaluator
         };
 
         return new NumberNode($rounded * $convertedStep, $number->unit ?? $step->unit);
+    }
+
+    /**
+     * IEEE-754 signed zero, derived at runtime: OPcache folds `$x ? -0.0 : 0.0`
+     * into a lone -0.0 because the two zeros compare equal as floats.
+     */
+    private static function signedZero(bool $negative): float
+    {
+        return 0.0 * ($negative ? -1.0 : 1.0);
     }
 
     /**
@@ -898,8 +907,8 @@ final readonly class CalculationEvaluator
             is_nan($value)          => fdiv(0.0, 0.0),
             $value > 0.0            => 1.0,
             $value < 0.0            => -1.0,
-            fdiv(1.0, $value) < 0.0 => -0.0,
-            default                 => 0.0,
+            fdiv(1.0, $value) < 0.0 => self::signedZero(true),
+            default                 => self::signedZero(false),
         }, $number->unit);
     }
 
