@@ -1,0 +1,9 @@
+@mixin helper($x) {
+  x: $x;
+}
+
+@function double($x) {
+  @return $x * 2;
+}
+
+$value: 5;

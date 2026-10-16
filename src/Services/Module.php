@@ -556,6 +556,7 @@ final readonly class Module
         bool $fromImport = false,
         bool $compileCss = true,
         array $initialVariables = [],
+        ?Scope $inheritScope = null,
     ): array {
         $file = $fromImport ? $this->loader->load($path, true) : $this->loadModuleFile($path);
 
@@ -585,6 +586,10 @@ final readonly class Module
         }
 
         $moduleEnv->getCurrentScope()->setIncomingConfiguration(array_merge($initialVariables, $configuration));
+
+        if ($fromImport && $inheritScope !== null && $syntax !== Syntax::CSS) {
+            $this->seedInheritedMembers($moduleEnv->getCurrentScope(), $inheritScope);
+        }
 
         $emittedCss              = null;
         $previousImportRoot      = '';
@@ -973,6 +978,17 @@ final readonly class Module
                     ? new CallableDefinition($function->arguments, $function->body, $to, $function->line)
                     : $function,
             );
+        }
+    }
+
+    private function seedInheritedMembers(Scope $target, Scope $source): void
+    {
+        foreach ($source->getMixins() as $name => $mixin) {
+            $target->setMixin($name, $mixin);
+        }
+
+        foreach ($source->getFunctions() as $name => $function) {
+            $target->setFunction($name, $function);
         }
     }
 

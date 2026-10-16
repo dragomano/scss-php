@@ -139,6 +139,7 @@ final readonly class ModuleNodeHandler
                 true,
                 true,
                 $this->module->extractAstVariables($ctx->env->getCurrentScope()->getVariables()),
+                $ctx->env->getCurrentScope()->getGlobalScope(),
             );
 
             if (! ($data['cached'] ?? false)) {

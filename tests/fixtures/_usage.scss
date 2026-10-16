@@ -1,0 +1,11 @@
+b1 {
+  @include helper(1);
+}
+
+b2 {
+  w: double(3);
+}
+
+b3 {
+  v: $value;
+}

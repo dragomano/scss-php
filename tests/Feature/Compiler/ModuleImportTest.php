@@ -406,6 +406,34 @@ describe('Compiler', function () {
             }
         });
 
+        it('lets an imported file use members defined by an earlier imported file', function () {
+            $loader   = new Loader([__DIR__ . '/../../fixtures']);
+            $compiler = new Compiler(loader: $loader);
+
+            $source = <<<'SCSS'
+            @import "definitions";
+            @import "usage";
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            b1 {
+              x: 1;
+            }
+
+            b2 {
+              w: 6;
+            }
+
+            b3 {
+              v: 5;
+            }
+            CSS;
+
+            $css = $compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
         it('flattens selectors for @import inside nested rule context', function () {
             $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
             mkdir($tmpDir, 0777, true);
