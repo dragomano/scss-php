@@ -22,11 +22,14 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 
 use function abs;
+use function ceil;
 use function count;
 use function ctype_alnum;
 use function ctype_alpha;
+use function fmod;
 use function implode;
 use function in_array;
+use function round;
 use function rtrim;
 use function strlen;
 use function strpos;
@@ -110,7 +113,26 @@ final readonly class ColorChannelInspector
             );
         }
 
-        return $this->resolveChannelValue($color, $space, $channelName);
+        $value = $this->resolveChannelValue($color, $space, $channelName);
+
+        // dart-sass rounds the legacy red()/green()/blue() accessors to the nearest integer.
+        if ($space === 'rgb' && in_array($channelName, ['red', 'green', 'blue'], true)) {
+            return new NumberNode($this->roundLegacyChannel((float) $value->value));
+        }
+
+        return $value;
+    }
+
+    private function roundLegacyChannel(float $value): float
+    {
+        // The legacy serializer keeps 10 decimal places of the percentage form, so an
+        // exact half-tie can arrive up to ~1.3e-10 off in byte units; widen dart-sass'
+        // 1e-11 epsilon to 1e-9 to still round those ties up the way dart-sass does.
+        if (abs(fmod($value, 1.0) - 0.5) <= 1e-9) {
+            return ceil($value);
+        }
+
+        return round($value);
     }
 
     /**
