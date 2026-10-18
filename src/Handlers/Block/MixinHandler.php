@@ -203,7 +203,7 @@ final readonly class MixinHandler
             $scope  = $moduleArg->scope;
             $loaded = $scope !== null ? $this->module->state()->findByScope($scope) : null;
 
-            return $this->emitModuleCss($loaded !== null ? $loaded->css : '', $ctx);
+            return $this->emitModuleCss($loaded->css ?? '', $ctx);
         }
 
         if (! ($moduleArg instanceof StringNode)) {
@@ -214,7 +214,7 @@ final readonly class MixinHandler
             $this->module->deriveNamespaceFromUsePath($moduleArg->value),
         );
 
-        return $this->emitModuleCss($loaded !== null ? $loaded->css : '', $ctx);
+        return $this->emitModuleCss($loaded->css ?? '', $ctx);
     }
 
     private function emitModuleCss(string $css, TraversalContext $ctx): string

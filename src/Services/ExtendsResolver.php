@@ -2477,7 +2477,7 @@ final readonly class ExtendsResolver
     {
         $node = $env->getCurrentScope()->getStringVariable('__extend_directive_context');
 
-        return $node !== null ? $node->value : '';
+        return $node->value ?? '';
     }
 
     private function assertSimpleExtendTargetSelector(string $target): void

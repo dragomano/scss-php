@@ -27,7 +27,7 @@ final class EvaluationStrategyRegistry
 
         $strategy = $this->strategyByNodeClass[$nodeClass];
 
-        return $strategy === null ? $node : $strategy->evaluate($node, $env, $options);
+        return $strategy?->evaluate($node, $env, $options) ?? $node;
     }
 
     private function findStrategy(AstNode $node): ?EvaluationStrategyInterface
