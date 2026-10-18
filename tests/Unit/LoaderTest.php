@@ -213,6 +213,51 @@ describe('Loader', function () {
         });
     });
 
+    describe('setImportDirectory()', function () {
+        it('prioritizes the import directory over other search paths', function () {
+            $tmpDirA = sys_get_temp_dir() . '/dart-sass-loader-importdir-a-' . uniqid('', true);
+            $tmpDirB = sys_get_temp_dir() . '/dart-sass-loader-importdir-b-' . uniqid('', true);
+
+            mkdir($tmpDirA, 0777, true);
+            mkdir($tmpDirB, 0777, true);
+
+            $fileName = '_partial.scss';
+            $pathA    = $tmpDirA . '/' . $fileName;
+            $pathB    = $tmpDirB . '/' . $fileName;
+
+            file_put_contents($pathA, '.from-a { color: red; }');
+            file_put_contents($pathB, '.from-b { color: blue; }');
+
+            try {
+                $loader = new Loader([$tmpDirA]);
+
+                $previous = $loader->setImportDirectory($tmpDirB);
+
+                $result = $loader->load('partial', true);
+
+                $loader->setImportDirectory($previous);
+
+                expect($result->content)->toContain('.from-b');
+            } finally {
+                if (file_exists($pathA)) {
+                    unlink($pathA);
+                }
+
+                if (file_exists($pathB)) {
+                    unlink($pathB);
+                }
+
+                if (is_dir($tmpDirA)) {
+                    rmdir($tmpDirA);
+                }
+
+                if (is_dir($tmpDirB)) {
+                    rmdir($tmpDirB);
+                }
+            }
+        });
+    });
+
     describe('addPath()', function () {
         it('adds new path to search paths', function () {
             $newPath = __DIR__ . '/../fixtures';

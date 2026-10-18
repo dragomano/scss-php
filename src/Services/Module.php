@@ -88,7 +88,7 @@ final readonly class Module
             throw UndefinedSymbolException::variableInModule($node->module, $node->name);
         }
 
-        $value  = $evaluateValue ? $this->evaluation->evaluateValue($node->value, $env) : $node->value;
+        $value = $evaluateValue ? $this->evaluation->evaluateValue($node->value, $env) : $node->value;
 
         if ($moduleScope->findImportedVariableOrigin($node->name) !== null) {
             $moduleScope->setVariableLocal($node->name, $value, $node->default);
@@ -261,6 +261,8 @@ final readonly class Module
 
         $state->loadingFiles[$moduleId] = true;
 
+        $previousImportDirectory = $this->loader->setImportDirectory(dirname($file->path));
+
         $previousExtends  = $this->ctx->outputState->extends->enterModuleScope($moduleId);
         $previousModuleId = $state->currentModuleId;
 
@@ -271,6 +273,8 @@ final readonly class Module
                 ? $this->plainCssRenderer->render($moduleAst, $moduleEnv)
                 : $this->dispatcher->compile($moduleAst, $moduleEnv);
         } finally {
+            $this->loader->setImportDirectory($previousImportDirectory);
+
             $state->currentModuleId = $previousModuleId;
 
             $this->ctx->outputState->extends->leaveModuleScope($previousExtends);
@@ -357,8 +361,7 @@ final readonly class Module
         }
 
         $resolvedConfiguration = $this->resolveForwardConfiguration($node, $env);
-
-        $incomingConfig = $this->collectIncomingConfiguration($env);
+        $incomingConfig        = $this->collectIncomingConfiguration($env);
 
         if ($incomingConfig !== []) {
             $prefixedIncoming = $this->stripPrefixFromConfiguration($incomingConfig, $node->prefix);
@@ -560,12 +563,16 @@ final readonly class Module
     ): array {
         $file = $fromImport ? $this->loader->load($path, true) : $this->loadModuleFile($path);
 
+        $previousImportDirectory = $this->loader->setImportDirectory(dirname($file->path));
+
         $this->loader->addPath(dirname($file->path));
 
         if ($fromImport && $this->isImportOnlyFile($file->path)) {
             $cached = $this->ctx->moduleState->importedModules[$file->path] ?? null;
 
             if ($cached !== null) {
+                $this->loader->setImportDirectory($previousImportDirectory);
+
                 return ['scope' => $cached->scope, 'css' => $cached->css, 'cached' => true];
             }
         }
@@ -615,8 +622,8 @@ final readonly class Module
             $this->ctx->moduleState->importEmittedSnapshot = $emittedCss;
         }
 
-        $importRoot       = $this->ctx->moduleState->currentImportRoot;
-        $hasBranchScope   = $importRoot === $file->path
+        $importRoot     = $this->ctx->moduleState->currentImportRoot;
+        $hasBranchScope = $importRoot === $file->path
             && isset($this->ctx->outputState->extends->moduleScopesImport[$importRoot][$file->path]);
 
         $previousExtends = $fromImport
@@ -642,18 +649,20 @@ final readonly class Module
                     : $this->dispatcher->compile($moduleAst, $moduleEnv))
                 : '';
         } finally {
+            $this->loader->setImportDirectory($previousImportDirectory);
+
             $this->ctx->moduleState->currentModuleId = $previousModuleId;
 
             $this->ctx->outputState->extends->leaveModuleScope($previousExtends);
 
             if ($emittedCss !== null) {
                 $this->ctx->moduleState->importEvaluationDepth--;
+
                 unset($this->ctx->moduleState->loadingFiles[$file->path]);
 
                 $this->ctx->moduleState->restoreEmittedCssState($emittedCss);
 
-                $this->ctx->moduleState->currentImportRoot = $previousImportRoot;
-
+                $this->ctx->moduleState->currentImportRoot     = $previousImportRoot;
                 $this->ctx->moduleState->importEmittedSnapshot = $previousEmittedSnapshot;
             }
         }
@@ -699,7 +708,6 @@ final readonly class Module
         $ast    = $this->parseModuleAst($file->path, $this->ctx->normalizerPipeline->process($file->content, $syntax));
 
         $moduleEnv = new Environment();
-
         $moduleEnv->getCurrentScope()->markAsModuleRootScope();
 
         $previousImportRoot = $state->currentImportRoot;
@@ -729,7 +737,8 @@ final readonly class Module
      */
     public function inlineImportedFile(string $path, callable $compileChildren): ?string
     {
-        $file = $this->loader->load($path, true);
+        $file                    = $this->loader->load($path, true);
+        $previousImportDirectory = $this->loader->setImportDirectory(dirname($file->path));
 
         $this->loader->addPath(dirname($file->path));
 
@@ -737,6 +746,8 @@ final readonly class Module
         $syntax       = Syntax::fromPath($resolvedPath, $file->content);
 
         if ($syntax === Syntax::CSS) {
+            $this->loader->setImportDirectory($previousImportDirectory);
+
             return null;
         }
 
@@ -754,6 +765,8 @@ final readonly class Module
         try {
             return $compileChildren($ast->children);
         } finally {
+            $this->loader->setImportDirectory($previousImportDirectory);
+
             $state->importEvaluationDepth--;
 
             unset($state->loadingFiles[$resolvedPath]);

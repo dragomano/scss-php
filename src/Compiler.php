@@ -13,6 +13,7 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
 use function basename;
+use function dirname;
 use function file_put_contents;
 use function implode;
 use function str_contains;
@@ -75,6 +76,8 @@ final readonly class Compiler implements CompilerInterface
     public function compileFile(string $path): string
     {
         $loaded = $this->loader->load($path);
+
+        $this->loader->setImportDirectory(dirname($loaded->path));
 
         $sourceFile = $this->options->sourceFile !== 'input.scss'
             ? $this->options->sourceFile

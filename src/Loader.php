@@ -31,6 +31,8 @@ final class Loader implements LoaderInterface
     /** @var array<int, string> */
     private array $includePaths = [];
 
+    private ?string $importDirectory = null;
+
     /** @var Closure(): (string|false) */
     private readonly Closure $workDir;
 
@@ -78,6 +80,15 @@ final class Loader implements LoaderInterface
 
             array_unshift($this->includePaths, $real);
         }
+    }
+
+    public function setImportDirectory(?string $directory): ?string
+    {
+        $previous = $this->importDirectory;
+
+        $this->importDirectory = $directory;
+
+        return $previous;
     }
 
     public function load(string $url, bool $fromImport = false): LoadedFile
@@ -215,19 +226,24 @@ final class Loader implements LoaderInterface
      */
     private function resolveSearchPaths(): array
     {
-        $cwd = ($this->workDir)();
+        $paths = $this->importDirectory !== null ? [$this->importDirectory] : [];
+        $cwd   = ($this->workDir)();
 
-        if (! is_string($cwd)) {
-            return $this->includePaths;
+        if (is_string($cwd)) {
+            $resolvedCwd = realpath($cwd);
+
+            if ($resolvedCwd !== false && ! in_array($resolvedCwd, $paths, true)) {
+                $paths[] = $resolvedCwd;
+            }
         }
 
-        $resolvedCwd = realpath($cwd);
-
-        if ($resolvedCwd === false || in_array($resolvedCwd, $this->includePaths, true)) {
-            return $this->includePaths;
+        foreach ($this->includePaths as $includePath) {
+            if (! in_array($includePath, $paths, true)) {
+                $paths[] = $includePath;
+            }
         }
 
-        return [$resolvedCwd, ...$this->includePaths];
+        return $paths;
     }
 
     private function isImportOnlyPath(string $path): bool

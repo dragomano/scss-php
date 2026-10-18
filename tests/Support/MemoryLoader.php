@@ -21,6 +21,8 @@ final class MemoryLoader implements LoaderInterface
     /** @var array<int, string> */
     private array $searchPaths;
 
+    private ?string $importDirectory = null;
+
     /**
      * @param array<string, string> $files map of virtual path => content
      * @param string $baseDir virtual working directory of the entry file
@@ -53,6 +55,15 @@ final class MemoryLoader implements LoaderInterface
         array_unshift($this->searchPaths, $path);
     }
 
+    public function setImportDirectory(?string $directory): ?string
+    {
+        $previous = $this->importDirectory;
+
+        $this->importDirectory = $directory === null ? null : $this->normalizePath($directory);
+
+        return $previous;
+    }
+
     public function load(string $url, bool $fromImport = false): LoadedFile
     {
         if (str_starts_with($url, 'sass:')) {
@@ -61,7 +72,11 @@ final class MemoryLoader implements LoaderInterface
 
         $url = rtrim($url, '/\\');
 
-        foreach ($this->searchPaths as $dir) {
+        $searchPaths = $this->importDirectory !== null
+            ? [$this->importDirectory, ...$this->searchPaths]
+            : $this->searchPaths;
+
+        foreach ($searchPaths as $dir) {
             foreach ($this->candidates($url, $fromImport) as $candidate) {
                 $path = Path::join($dir, $candidate);
 

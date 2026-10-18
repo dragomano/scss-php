@@ -103,6 +103,11 @@ describe('Compiler', function () {
                     $this->inner->addPath($path);
                 }
 
+                public function setImportDirectory(?string $directory): ?string
+                {
+                    return $this->inner->setImportDirectory($directory);
+                }
+
                 public function load(string $url, bool $fromImport = false): LoadedFile
                 {
                     if ($url === '_functions.scss') {

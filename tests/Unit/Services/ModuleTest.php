@@ -32,6 +32,11 @@ describe('Module service', function () {
                 $this->paths[] = $path;
             }
 
+            public function setImportDirectory(?string $directory): ?string
+            {
+                return null;
+            }
+
             public function load(string $url, bool $fromImport = false): LoadedFile
             {
                 return $this->files[$url] ?? new LoadedFile($url, '');

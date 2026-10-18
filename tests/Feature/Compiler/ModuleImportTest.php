@@ -43,6 +43,47 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('does not let module subdirectories shadow later imports', function () {
+            $root = sys_get_temp_dir() . '/dart-sass-import-shadow-' . uniqid('', true);
+
+            mkdir($root . '/mix', 0777, true);
+
+            file_put_contents($root . '/_target.scss', "\$target: from-root;\n");
+            file_put_contents($root . '/mix/_target.scss', ".decoy { q: 1; }\n");
+            file_put_contents($root . '/main.scss', <<<'SCSS'
+            @import "mix/target";
+            @import "target";
+
+            .check {
+              v: $target;
+            }
+            SCSS);
+
+            try {
+                $compiler = new Compiler(loader: new Loader([$root]));
+
+                $expected = /** @lang text */ <<<'CSS'
+                .decoy {
+                  q: 1;
+                }
+
+                .check {
+                  v: from-root;
+                }
+                CSS;
+
+                $css = $compiler->compileFile($root . '/main.scss');
+
+                expect($css)->toEqualCss($expected);
+            } finally {
+                unlink($root . '/main.scss');
+                unlink($root . '/_target.scss');
+                unlink($root . '/mix/_target.scss');
+                rmdir($root . '/mix');
+                rmdir($root);
+            }
+        });
+
         it('supports @import with multiple files in a single directive', function () {
             $tmpDir = sys_get_temp_dir() . '/dart-sass-test-' . uniqid('', true);
 
