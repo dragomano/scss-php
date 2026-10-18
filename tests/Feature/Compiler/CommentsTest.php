@@ -33,5 +33,27 @@ describe('Compiler', function () {
 
             expect($this->compiler->compileString($source))->toEqualCss($expected);
         });
+
+        it('keeps selector list parts around an inline silent comment', function () {
+            $source = <<<'SCSS'
+            button,
+            [type="button"], // 1
+            [type="reset"],
+            [type="submit"] {
+              -webkit-appearance: button;
+            }
+            SCSS;
+
+            $expected = <<<'CSS'
+            button,
+            [type=button],
+            [type=reset],
+            [type=submit] {
+              -webkit-appearance: button;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
     });
 });

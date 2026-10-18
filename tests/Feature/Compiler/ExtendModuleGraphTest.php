@@ -85,8 +85,7 @@ describe('Compiler extend module graph', function () {
         SCSS);
 
         $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
-
-        $css = $compiler->compileString(@file_get_contents($tmpDir . '/root.scss'));
+        $css      = $compiler->compileString(@file_get_contents($tmpDir . '/root.scss'));
 
         expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
         .sh {
@@ -150,8 +149,7 @@ describe('Compiler extend module graph', function () {
         file_put_contents($tmpDir . '/root.scss', ".base { color: red; }\n.every { @extend .base; }\n@import '_n1';");
 
         $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
-
-        $css = $compiler->compileString(@file_get_contents($tmpDir . '/root.scss'));
+        $css      = $compiler->compileString(@file_get_contents($tmpDir . '/root.scss'));
 
         expect($css)->toContain('.every');
     });
@@ -191,8 +189,7 @@ describe('Compiler extend module graph', function () {
         SCSS);
 
         $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
-
-        $css = $compiler->compileString(@file_get_contents($tmpDir . '/root.scss'));
+        $css      = $compiler->compileString(@file_get_contents($tmpDir . '/root.scss'));
 
         expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
         .sh, .a1 {
@@ -254,8 +251,7 @@ describe('Compiler extend module graph', function () {
         SCSS);
 
         $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
-
-        $css = $compiler->compileString(@file_get_contents($tmpDir . '/root.scss'));
+        $css      = $compiler->compileString(@file_get_contents($tmpDir . '/root.scss'));
 
         expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
         .sh, .a1 {
@@ -333,8 +329,7 @@ describe('Compiler extend module graph', function () {
         SCSS);
 
         $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
-
-        $css = $compiler->compileString(@file_get_contents($tmpDir . '/root.scss'));
+        $css      = $compiler->compileString(@file_get_contents($tmpDir . '/root.scss'));
 
         expect($css)->toContain('.base, .every')
             ->and($css)->toContain('.sub-x');
@@ -393,5 +388,101 @@ describe('Compiler extend module graph', function () {
 
         expect(fn() => $compiler->compileString(file_get_contents($tmpDir . '/root.scss')))
             ->toThrow(InvalidLoopBoundaryException::class);
+    });
+
+    it('drops an uncollectable module together with its import edges while keeping sibling modules', function () {
+        $tmpDir = sys_get_temp_dir() . '/scss-php-moddrop-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        file_put_contents($tmpDir . '/_loop.scss', <<<'SCSS'
+        @import '_inner';
+
+        @for $i from oops through 1 {
+          .x {
+            color: red;
+          }
+        }
+        SCSS);
+
+        file_put_contents($tmpDir . '/_inner.scss', <<<'SCSS'
+        .inner-base {
+          color: blue;
+        }
+
+        .inner-a {
+          @extend .inner-base;
+        }
+        SCSS);
+
+        file_put_contents($tmpDir . '/root.scss', <<<'SCSS'
+        @use 'loop';
+        @import 'inner';
+
+        .base {
+          color: red;
+        }
+
+        .every {
+          @extend .base;
+        }
+        SCSS);
+
+        $compiler = new Compiler(loader: new Loader([$tmpDir]), logger: $this->logger);
+
+        expect(fn() => $compiler->compileString(file_get_contents($tmpDir . '/root.scss')))
+            ->toThrow(InvalidLoopBoundaryException::class);
+    });
+
+    it('collects extends in imported modules against the shared import scope', function () {
+        $tmpDir = sys_get_temp_dir() . '/scss-php-modchainscope-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        file_put_contents($tmpDir . '/_fn.scss', <<<'SCSS'
+        @function infix-for($name) {
+          @return "-" + $name;
+        }
+        SCSS);
+
+        file_put_contents($tmpDir . '/_vars.scss', <<<'SCSS'
+        $breakpoints: (sm: 576px, md: 768px) !default;
+        $enable-dark-mode: true !default;
+        SCSS);
+
+        file_put_contents($tmpDir . '/_maps.scss', <<<'SCSS'
+        @if $enable-dark-mode {
+          $dark-colors: (bg: #111) !default;
+        }
+        SCSS);
+
+        file_put_contents($tmpDir . '/_boxes.scss', <<<'SCSS'
+        %box-vars {
+          --box-color: #{map-get($dark-colors, bg)};
+        }
+
+        @each $name in map-keys($breakpoints) {
+          .box#{infix-for($name)} {
+            @extend %box-vars;
+          }
+        }
+        SCSS);
+
+        file_put_contents($tmpDir . '/root.scss', <<<'SCSS'
+        $dark-colors: (bg: #222) !default;
+        @import 'fn';
+        @import 'vars';
+        @import 'maps';
+        @import 'boxes';
+        SCSS);
+
+        $compiler = new Compiler(loader: new Loader([$tmpDir]));
+        $css      = $compiler->compileString(file_get_contents($tmpDir . '/root.scss'));
+
+        expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+        .box-md, .box-sm {
+          --box-color: #222;
+        }
+        CSS);
     });
 });

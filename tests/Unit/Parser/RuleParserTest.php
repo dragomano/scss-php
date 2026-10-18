@@ -488,7 +488,7 @@ describe('RuleParser', function () {
             expect($ruleParser->parseSelectorOrProperty())->toBe('p::before');
         });
 
-        it('stops selector parsing before a trailing comment token', function () {
+        it('consumes a trailing silent comment like whitespace', function () {
             [$ruleParser, $stream] = createRuleParserForTest([
                 ruleParserTestToken(TokenType::IDENTIFIER, 'color'),
                 ruleParserTestToken(TokenType::COMMENT_SILENT, '// note'),
@@ -496,7 +496,7 @@ describe('RuleParser', function () {
             ]);
 
             expect($ruleParser->parseSelectorOrProperty())->toBe('color')
-                ->and($stream->current()->type)->toBe(TokenType::COMMENT_SILENT);
+                ->and($stream->current()->type)->toBe(TokenType::EOF);
         });
     });
 

@@ -13,6 +13,7 @@ use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\EachNode;
 use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\ForNode;
+use Bugo\SCSS\Nodes\FunctionDeclarationNode;
 use Bugo\SCSS\Nodes\IfNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RootNode;
@@ -143,6 +144,21 @@ final readonly class ExtendsResolver
         }
 
         $this->collectChildren($node->body, $env);
+    }
+
+    public function seedCollectionScope(RootNode $ast, Environment $env, bool $seedVariables = false): void
+    {
+        foreach ($ast->children as $child) {
+            if ($child instanceof FunctionDeclarationNode) {
+                $env->getCurrentScope()->defineFunction($child->name, $child->arguments, $child->body);
+
+                continue;
+            }
+
+            if ($seedVariables && $child instanceof VariableDeclarationNode) {
+                $this->variableDeclarationApplier->apply($child, $env);
+            }
+        }
     }
 
     public function finalizeCollectedExtends(): void
@@ -1950,13 +1966,7 @@ final readonly class ExtendsResolver
     {
         foreach ($node->children as $child) {
             if ($child instanceof VariableDeclarationNode) {
-                $env->getCurrentScope()->setVariable(
-                    $child->name,
-                    $child->value,
-                    $child->global,
-                    $child->default,
-                    $child->line,
-                );
+                $this->variableDeclarationApplier->apply($child, $env);
 
                 continue;
             }

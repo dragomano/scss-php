@@ -27,9 +27,12 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Syntax;
 use Throwable;
 
+use function array_diff;
+use function array_diff_key;
 use function array_keys;
 use function array_reverse;
 use function array_shift;
+use function array_values;
 use function str_contains;
 use function str_starts_with;
 
@@ -264,20 +267,68 @@ final readonly class ExtendsGraphResolver
             return null;
         }
 
-        try {
-            foreach ($graph['post'] as $moduleId) {
-                $collected = $this->collectModuleStore($graph['asts'][$moduleId]);
+        $uncollectable = [];
+        $chainModules  = $this->transitiveClosure(self::ROOT_ID, $graph['importEdges'], []);
+        $chainEnv      = new Environment();
 
-                $graph['stores'][$moduleId]   = $collected['store'];
-                $graph['metas'][$moduleId]    = $collected['meta'];
-                $graph['contexts'][$moduleId] = $collected['contexts'];
-                $graph['breaks'][$moduleId]   = $collected['breaks'];
+        $this->extends->seedCollectionScope($rootAst, $chainEnv, seedVariables: true);
+
+        foreach ($graph['post'] as $moduleId) {
+            $env = isset($chainModules[$moduleId]) ? $chainEnv : new Environment();
+
+            try {
+                $collected = $this->collectModuleStore($graph['asts'][$moduleId], $env);
+            } catch (Throwable) {
+                $uncollectable[$moduleId] = true;
+
+                continue;
             }
-        } catch (Throwable) {
+
+            $graph['stores'][$moduleId]   = $collected['store'];
+            $graph['metas'][$moduleId]    = $collected['meta'];
+            $graph['contexts'][$moduleId] = $collected['contexts'];
+            $graph['breaks'][$moduleId]   = $collected['breaks'];
+        }
+
+        if ($uncollectable !== []) {
+            $this->dropModules($graph, $uncollectable);
+        }
+
+        if ($graph['asts'] === [] || ! $graph['hasExtend']) {
             return null;
         }
 
         return $graph;
+    }
+
+    /**
+     * @param ModuleGraph $graph
+     * @param-out ModuleGraph $graph
+     * @param array<string, true> $modules
+     */
+    private function dropModules(array &$graph, array $modules): void
+    {
+        $graph['asts']         = array_diff_key($graph['asts'], $modules);
+        $graph['post']         = array_values(array_diff($graph['post'], array_keys($modules)));
+        $graph['loadCssRoots'] = array_diff_key($graph['loadCssRoots'], $modules);
+
+        foreach (['upstream', 'importEdges'] as $edgeKind) {
+            $edges = [];
+
+            foreach ($graph[$edgeKind] as $from => $targets) {
+                if (isset($modules[$from])) {
+                    continue;
+                }
+
+                $kept = array_diff_key($targets, $modules);
+
+                if ($kept !== []) {
+                    $edges[$from] = $kept;
+                }
+            }
+
+            $graph[$edgeKind] = $edges;
+        }
     }
 
     /**
@@ -418,7 +469,8 @@ final readonly class ExtendsGraphResolver
                     }
 
                     $seen[$importedPath] = true;
-                    $paths[]             = [$importedPath, true, false];
+
+                    $paths[] = [$importedPath, true, false];
                 }
 
                 continue;
@@ -435,7 +487,8 @@ final readonly class ExtendsGraphResolver
             }
 
             $seen[$child->path] = true;
-            $paths[]            = [$child->path, false, false];
+
+            $paths[] = [$child->path, false, false];
         }
     }
 
@@ -509,13 +562,13 @@ final readonly class ExtendsGraphResolver
      *     breaks: array<string, bool>
      * }
      */
-    private function collectModuleStore(RootNode $ast): array
+    private function collectModuleStore(RootNode $ast, Environment $env): array
     {
         $state = $this->ctx->outputState->extends;
-
         $state->resetCollection();
 
-        $this->extends->collectExtends($ast, new Environment());
+        $this->extends->seedCollectionScope($ast, $env);
+        $this->extends->collectExtends($ast, $env);
 
         $built = $this->extends->buildExtensionStore();
 
@@ -529,7 +582,14 @@ final readonly class ExtendsGraphResolver
 
     /**
      * @param ModuleGraph $graph
-     * @return array<string, array{nodes: array<string, true>, upstream: array<string, array<string, true>>, post: list<string>, exclusive: array<string, true>, ancestors: list<string>}>
+     * @return array<string, array{
+     *   nodes: array<string, true>,
+     *   upstream: array<string,
+     *   array<string, true>>,
+     *   post: list<string>,
+     *   exclusive: array<string, true>,
+     *   ancestors: list<string>
+     * }>
      */
     private function resolveImportBranches(array $graph): array
     {
@@ -627,7 +687,8 @@ final readonly class ExtendsGraphResolver
                 }
 
                 $ancestors[$importer] = true;
-                $queue[]              = $importer;
+
+                $queue[] = $importer;
             }
         }
 
@@ -650,19 +711,20 @@ final readonly class ExtendsGraphResolver
         foreach ($graph['importEdges'][self::ROOT_ID] ?? [] as $dependency => $_) {
             if (! isset($visited[$dependency])) {
                 $visited[$dependency] = true;
-                $queue[]              = $dependency;
+
+                $queue[] = $dependency;
             }
         }
 
         while ($queue !== []) {
             $moduleId = array_shift($queue);
-
-            $chain[] = $moduleId;
+            $chain[]  = $moduleId;
 
             foreach ($graph['importEdges'][$moduleId] ?? [] as $dependency => $_) {
                 if (! isset($visited[$dependency])) {
                     $visited[$dependency] = true;
-                    $queue[]              = $dependency;
+
+                    $queue[] = $dependency;
                 }
             }
         }
@@ -686,14 +748,16 @@ final readonly class ExtendsGraphResolver
             foreach ($edges[$moduleId] ?? [] as $dependency => $_) {
                 if (! isset($visited[$dependency])) {
                     $visited[$dependency] = true;
-                    $queue[]              = $dependency;
+
+                    $queue[] = $dependency;
                 }
             }
 
             foreach ($extraEdges[$moduleId] ?? [] as $dependency => $_) {
                 if (! isset($visited[$dependency])) {
                     $visited[$dependency] = true;
-                    $queue[]              = $dependency;
+
+                    $queue[] = $dependency;
                 }
             }
         }
@@ -783,7 +847,6 @@ final readonly class ExtendsGraphResolver
     private function restoreCollection(array $snapshot): void
     {
         $state = $this->ctx->outputState->extends;
-
         $state->resetCollection();
 
         $state->events           = $snapshot['events'];

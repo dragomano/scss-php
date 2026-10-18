@@ -118,6 +118,18 @@ describe('ExtendsResolver', function () {
 
                     public function apply(AstNode $node, Environment $env): bool
                     {
+                        if ($node instanceof VariableDeclarationNode) {
+                            $env->getCurrentScope()->setVariable(
+                                $node->name,
+                                $node->value,
+                                $node->global,
+                                $node->default,
+                                $node->line,
+                            );
+
+                            return true;
+                        }
+
                         if (! $node instanceof StringNode || $node->value !== 'tick') {
                             return false;
                         }

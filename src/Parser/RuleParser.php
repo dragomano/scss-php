@@ -140,11 +140,6 @@ final class RuleParser
 
         $this->stream->skipWhitespace();
 
-        while ($this->stream->is(TokenType::COMMENT_LOUD) || $this->stream->is(TokenType::COMMENT_PRESERVED)) {
-            $this->stream->advance();
-            $this->stream->skipWhitespace();
-        }
-
         if ($this->stream->is(TokenType::LBRACE)) {
             return $this->context->parseRuleFromSelector($selectorOrProperty, $startLine, $startColumn);
         }
@@ -426,7 +421,25 @@ final class RuleParser
             }
 
             if ($token->type === TokenType::COMMENT_SILENT) {
-                break;
+                $this->stream->advance();
+
+                $commentLine = $token->line;
+
+                $this->stream->skipWhitespace();
+
+                if ($buffer !== '' && $buffer[-1] !== ' ') {
+                    $buffer .= ' ';
+                }
+
+                if (
+                    $this->stream->current()->line > $commentLine
+                    && $buffer !== ''
+                    && ! str_ends_with($buffer, "\n")
+                ) {
+                    $buffer .= "\n";
+                }
+
+                continue;
             }
 
             if ($token->type === TokenType::LPAREN) {
