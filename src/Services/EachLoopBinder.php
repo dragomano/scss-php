@@ -8,6 +8,7 @@ use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Values\ValueFactory;
 
@@ -22,6 +23,11 @@ final readonly class EachLoopBinder implements EachLoopBinderInterface
 
     public function items(AstNode $iterableValue): array
     {
+        if ($iterableValue instanceof NullNode) {
+            // Iterating over null in dart-sass produces no iterations.
+            return [];
+        }
+
         if ($iterableValue instanceof ListNode || $iterableValue instanceof ArgumentListNode) {
             return $iterableValue->items;
         }

@@ -248,6 +248,12 @@ final class Scope
 
             /** @var mixed $value */
             $value = $configured ?? $value;
+
+            if ($existingScope !== null && $existingScope !== $this && $this->isWriteThroughTarget($existingScope)) {
+                $existingScope->variables->set($name, $value, $line);
+
+                return;
+            }
         }
 
         $this->variables->set($name, $value, $line);

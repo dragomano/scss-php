@@ -140,6 +140,71 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('propagates !default reassignment from an @if block to the enclosing scope', function () {
+            $source = <<<'SCSS'
+            $map: null !default;
+
+            @if true {
+              $map: (a: 1, b: 2) !default;
+            }
+
+            .first {
+              v: map-get($map, a);
+            }
+
+            .second {
+              @each $key, $value in $map {
+                --item-#{$key}: #{$value};
+              }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .first {
+              v: 1;
+            }
+
+            .second {
+              --item-a: 1;
+              --item-b: 2;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('runs no iterations when @each receives null', function () {
+            $source = <<<'SCSS'
+            .pair {
+              count: 1;
+
+              @each $key, $value in null {
+                --#{$key}: #{$value};
+              }
+            }
+
+            .single {
+              count: 2;
+
+              @each $item in null {
+                --item: #{$item};
+              }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .pair {
+              count: 1;
+            }
+
+            .single {
+              count: 2;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
         it('treats only false and null as falsey in conditional directives', function () {
             $source = <<<'SCSS'
             .test {
