@@ -84,6 +84,62 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('resolves variable arithmetic inside @if operands', function () {
+            $source = <<<'SCSS'
+            @function fit($i, $limit) {
+              @if ($i > 3 and $limit >= $i * 2) {
+                @return $i * 2;
+              }
+
+              @return 0;
+            }
+
+            .small {
+              width: fit(4, 10);
+            }
+
+            .big {
+              width: fit(4, 6);
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .small {
+              width: 8;
+            }
+
+            .big {
+              width: 0;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
+        it('treats unicode variable names as bare references in conditions', function () {
+            $source = <<<'SCSS'
+            $цвет: firebrick;
+
+            .x {
+              @if $цвет {
+                color: $цвет;
+              }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .x {
+              color: firebrick;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
         it('treats only false and null as falsey in conditional directives', function () {
             $source = <<<'SCSS'
             .test {

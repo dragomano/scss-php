@@ -35,6 +35,7 @@ use function abs;
 use function array_key_exists;
 use function array_map;
 use function count;
+use function ctype_alnum;
 use function ctype_alpha;
 use function ctype_xdigit;
 use function in_array;
@@ -825,11 +826,11 @@ final readonly class Condition
             return $this->valueEvaluator->evaluate(new StringNode('&'), $env);
         }
 
-        if (str_starts_with($value, '$')) {
+        if (str_starts_with($value, '$') && $this->isBareVariableReference($value)) {
             return $this->valueEvaluator->evaluate(new VariableReferenceNode(substr($value, 1)), $env);
         }
 
-        if (str_contains($value, '(') || str_contains($value, '&')) {
+        if (str_contains($value, '(') || str_contains($value, '&') || str_starts_with($value, '$')) {
             $valueNode = $this->parser->parseInlineExpression($value);
 
             if ($line !== null && $valueNode instanceof FunctionNode) {
@@ -842,6 +843,26 @@ final readonly class Condition
         }
 
         return $this->resolveLiteralValue($value);
+    }
+
+    private function isBareVariableReference(string $value): bool
+    {
+        $length = strlen($value);
+
+        // Bytes >= 0x80 belong to Unicode identifiers; ASCII bytes must be name characters.
+        for ($i = 1; $i < $length; $i++) {
+            $char = $value[$i];
+
+            if ($char >= "\x80") {
+                continue;
+            }
+
+            if (! ctype_alnum($char) && $char !== '-' && $char !== '_') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
