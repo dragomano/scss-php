@@ -299,49 +299,22 @@ final readonly class ColorNodeConverter
         }
 
         if ($hasFractionalChannels) {
-            $r = new NumberNode(
-                (float) $this->runtime->spaceConverter->trimFloat($rgb->rValue() * 100.0 / 255.0, 10),
-                '%',
-            );
-            $g = new NumberNode(
-                (float) $this->runtime->spaceConverter->trimFloat($rgb->gValue() * 100.0 / 255.0, 10),
-                '%',
-            );
-            $b = new NumberNode(
-                (float) $this->runtime->spaceConverter->trimFloat($rgb->bValue() * 100.0 / 255.0, 10),
-                '%',
-            );
+            // Keep full double precision: dart-sass rounds only when serializing,
+            // and downstream color math consumes these node values directly.
+            $r = new NumberNode($rgb->rValue() * 100.0 / 255.0, '%');
+            $g = new NumberNode($rgb->gValue() * 100.0 / 255.0, '%');
+            $b = new NumberNode($rgb->bValue() * 100.0 / 255.0, '%');
         } else {
-            $r = new NumberNode(
-                (float) $this->runtime->spaceConverter->trimFloat(
-                    $this->runtime->spaceConverter->clamp($rgb->r, 255.0),
-                    10,
-                ),
-            );
-            $g = new NumberNode(
-                (float) $this->runtime->spaceConverter->trimFloat(
-                    $this->runtime->spaceConverter->clamp($rgb->g, 255.0),
-                    10,
-                ),
-            );
-            $b = new NumberNode(
-                (float) $this->runtime->spaceConverter->trimFloat(
-                    $this->runtime->spaceConverter->clamp($rgb->b, 255.0),
-                    10,
-                ),
-            );
+            $r = new NumberNode($this->runtime->spaceConverter->clamp($rgb->r, 255.0));
+            $g = new NumberNode($this->runtime->spaceConverter->clamp($rgb->g, 255.0));
+            $b = new NumberNode($this->runtime->spaceConverter->clamp($rgb->b, 255.0));
         }
 
         if (abs($rgb->a - 1.0) < 0.0000001) {
             return new FunctionNode('rgb', [$r, $g, $b]);
         }
 
-        $alpha = new NumberNode(
-            (float) $this->runtime->spaceConverter->trimFloat(
-                $this->runtime->spaceConverter->clamp($rgb->a, 1.0),
-                10,
-            ),
-        );
+        $alpha = new NumberNode($this->runtime->spaceConverter->clamp($rgb->a, 1.0));
 
         return new FunctionNode('rgba', [$r, $g, $b, $alpha]);
     }

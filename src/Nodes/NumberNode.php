@@ -32,9 +32,15 @@ final class NumberNode extends AstNode implements Stringable
                 return $this->value < 0 ? '-infinity' : 'infinity';
             }
 
-            if (floor($this->value) === $this->value && abs($this->value) < 1e21) {
-                return (int) $this->value . ($this->unit ?? '');
+            // Dart Sass serializes numbers rounded to 10 decimal places with
+            // trailing zeros stripped; whole numbers print without a point.
+            $rounded = round($this->value, 10);
+
+            if (floor($rounded) === $rounded && abs($rounded) < 1e21) {
+                return (int) $rounded . ($this->unit ?? '');
             }
+
+            return rtrim(rtrim(sprintf('%.10F', $rounded), '0'), '.') . ($this->unit ?? '');
         }
 
         return "$this->value" . ($this->unit ?? '');
