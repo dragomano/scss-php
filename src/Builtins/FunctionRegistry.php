@@ -10,12 +10,12 @@ use Bugo\SCSS\Nodes\NamedArgumentNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Utils\NameHelper;
 use Bugo\SCSS\Utils\NameNormalizer;
+use Bugo\SCSS\Values\SassCalculation;
 use Closure;
 
 use function in_array;
 use function is_string;
 use function str_starts_with;
-use function strtolower;
 use function substr;
 
 final class FunctionRegistry
@@ -110,8 +110,6 @@ final class FunctionRegistry
      */
     public function tryCall(string $name, array $arguments, ?BuiltinCallContext $context = null): ?AstNode
     {
-        $name = strtolower($name);
-
         [$positional, $named] = $this->splitArguments($arguments);
 
         $callContext = $this->withBuiltinDisplayName($context, $name);
@@ -147,7 +145,15 @@ final class FunctionRegistry
         $target = $this->resolveGlobalAlias($name) ?? $this->resolveStarModuleFunction($name);
 
         if ($target === null) {
-            return null;
+            if (! SassCalculation::isCalculationFunctionName($name)) {
+                return null;
+            }
+
+            $target = $this->resolveGlobalAlias(strtolower($name));
+
+            if ($target === null) {
+                return null;
+            }
         }
 
         [$moduleName, $function] = $target;
@@ -194,7 +200,12 @@ final class FunctionRegistry
         [$positional, $named] = $this->splitArguments($arguments);
 
         try {
-            return $module->call($matchedFunction, $positional, $named, $this->withBuiltinDisplayName($context, $matchedFunction));
+            return $module->call(
+                $matchedFunction,
+                $positional,
+                $named,
+                $this->withBuiltinDisplayName($context, $matchedFunction),
+            );
         } catch (DeferToCssFunctionException) {
             return null;
         }
@@ -311,8 +322,7 @@ final class FunctionRegistry
         }
 
         $factory = $this->moduleFactories[$moduleName];
-
-        $module = is_string($factory) ? new $factory() : $factory();
+        $module  = is_string($factory) ? new $factory() : $factory();
 
         $this->registerModule($module);
 

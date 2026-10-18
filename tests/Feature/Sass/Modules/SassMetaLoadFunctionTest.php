@@ -176,19 +176,14 @@ describe('Sass Meta load Feature', function () {
             expect((new Compiler())->compileString($scss))->toEqualCss($expected);
         });
 
-        it('does not treat load on a non-module namespace as meta.load', function () {
+        it('rejects dotted calls on a non-module namespace like dart-sass', function () {
             $scss = <<<'SCSS'
             @use "sass:meta";
             a { b: foo.load(1); }
             SCSS;
 
-            $expected = /** @lang text */ <<<'CSS'
-            a {
-              b: load(1);
-            }
-            CSS;
-
-            expect((new Compiler())->compileString($scss))->toEqualCss($expected);
+            expect(fn() => (new Compiler())->compileString($scss))
+                ->toThrow(ModuleResolutionException::class);
         });
     });
 

@@ -9,6 +9,8 @@ use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\ModuleResolutionException;
+use Bugo\SCSS\Exceptions\SassThrowable;
+use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\FunctionNode;
 use Bugo\SCSS\Nodes\ListNode;
@@ -374,21 +376,13 @@ final readonly class FunctionCallEvaluator
                 continue;
             }
 
-            if ($argument instanceof StringNode) {
-                if (AstValueInspector::isNoneKeyword($argument)) {
-                    $hasMissing = true;
+            if ($argument instanceof StringNode && AstValueInspector::isNoneKeyword($argument)) {
+                $hasMissing = true;
 
-                    continue;
-                }
-
-                return false;
+                continue;
             }
 
-            if (! $argument instanceof NumberNode) {
-                return false;
-            }
-
-            if ($argument->unit === '%') {
+            if ($argument instanceof NumberNode && $argument->unit === '%') {
                 $hasPercentage = true;
             }
         }
@@ -416,6 +410,66 @@ final readonly class FunctionCallEvaluator
             line: $node->line,
             parenthesized: $node->parenthesized,
         );
+    }
+
+    private function isUnknownNamespacedFunction(string $name, Environment $env): bool
+    {
+        $parts     = NameHelper::splitQualifiedName($name);
+        $namespace = $parts['namespace'];
+        $member    = $parts['member'] ?? '';
+
+        if (! self::isSassIdentifier($namespace) || ! self::isSassIdentifier($member)) {
+            return false;
+        }
+
+        if ($this->ctx->functionRegistry->isBuiltinAlias($namespace)) {
+            return ! $this->ctx->functionRegistry->hasFunction($member, $namespace);
+        }
+
+        $moduleScope = $env->getCurrentScope()->getModule($namespace);
+
+        return $moduleScope === null || $moduleScope->findFunction($member) === null;
+    }
+
+    private static function isSassIdentifier(string $value): bool
+    {
+        $length = strlen($value);
+
+        if ($length === 0) {
+            return false;
+        }
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $value[$i];
+
+            if ($char === '-' || $char === '_') {
+                continue;
+            }
+
+            $isLetter = ($char >= 'a' && $char <= 'z') || ($char >= 'A' && $char <= 'Z');
+
+            if ($isLetter || ($i > 0 && $char >= '0' && $char <= '9')) {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private function namespacedFunctionError(string $name, Environment $env): SassThrowable
+    {
+        $parts     = NameHelper::splitQualifiedName($name);
+        $namespace = $parts['namespace'];
+        $member    = $parts['member'] ?? '';
+
+        $knownModule = $this->ctx->functionRegistry->isBuiltinAlias($namespace)
+            || $env->getCurrentScope()->getModule($namespace) !== null;
+
+        return $knownModule
+            ? new UnknownSassFunctionException($namespace, $member)
+            : ModuleResolutionException::unknownNamespace($namespace);
     }
 
     private function namespaceMember(string $name): string
@@ -465,7 +519,11 @@ final readonly class FunctionCallEvaluator
                 );
             } catch (Throwable $expandFailure) {
                 if ($lowerName === 'if' && ! $node->modernSyntax) {
-                    $inlineFallback = $this->conditional->evaluateInlineIfFunction($node->name, $node->arguments, $env);
+                    $inlineFallback = $this->conditional->evaluateInlineIfFunction(
+                        $node->name,
+                        $node->arguments,
+                        $env,
+                    );
 
                     if ($inlineFallback !== null) {
                         return $inlineFallback;
@@ -573,6 +631,10 @@ final readonly class FunctionCallEvaluator
 
         if ($preferBuiltin && $simplifiedFunction !== null) {
             return $simplifiedFunction;
+        }
+
+        if (NameHelper::hasNamespace($node->name) && $this->isUnknownNamespacedFunction($node->name, $env)) {
+            throw $this->namespacedFunctionError($node->name, $env);
         }
 
         $cssName = $this->namespaceMember($node->name);

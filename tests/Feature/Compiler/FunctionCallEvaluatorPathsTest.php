@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
+use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\Exceptions\UndefinedSymbolException;
+use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
 use Bugo\SCSS\Loader;
 use Tests\Support\MemoryLoader;
 
@@ -51,29 +53,17 @@ describe('Compiler', function () {
 
                 $missCompiler = new Compiler(loader: new Loader([$tmpDir]));
 
-                $missedCss = $missCompiler->compileString(<<<'SCSS'
+                expect(fn() => $missCompiler->compileString(<<<'SCSS'
                 @use "fw" as f;
                 .a { b: f.rgb(1, 2, 3); }
-                SCSS);
-
-                expect($missedCss)->toEqualCss(/** @lang text */ <<<'CSS'
-                .a {
-                  b: rgb(1, 2, 3);
-                }
-                CSS);
+                SCSS))->toThrow(UnknownSassFunctionException::class);
 
                 $emptyCandidateCompiler = new Compiler(loader: new Loader([$tmpDir]));
 
-                $emptyCss = $emptyCandidateCompiler->compileString(<<<'SCSS'
+                expect(fn() => $emptyCandidateCompiler->compileString(<<<'SCSS'
                 @use "fw" as f;
                 .a { b: f.s-("abc"); }
-                SCSS);
-
-                expect($emptyCss)->toEqualCss(/** @lang text */ <<<'CSS'
-                .a {
-                  b: s-("abc");
-                }
-                CSS);
+                SCSS))->toThrow(UnknownSassFunctionException::class);
             } finally {
                 unlink($modulePath);
                 rmdir($tmpDir);
@@ -149,9 +139,10 @@ describe('Compiler', function () {
             }
         });
 
-        it('compares two insensitive function refs', function () {
+        it('compares two css function refs', function () {
             $css = $this->compiler->compileString(
-                ".a { content: meta.get-function('quote', \$css: true) == meta.get-function('quote', \$css: true); }",
+                '@use "sass:meta";' . PHP_EOL
+                . ".a { content: meta.get-function('quote', \$css: true) == meta.get-function('quote', \$css: true); }",
             );
 
             expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
@@ -161,9 +152,10 @@ describe('Compiler', function () {
             CSS);
         });
 
-        it('compares a missing missing function ref against another css function ref', function () {
+        it('compares a missing css function ref against another css function ref', function () {
             $css = $this->compiler->compileString(
-                ".a { content: meta.get-function('quote', \$css: true) == meta.get-function('unquote', \$css: true); }",
+                '@use "sass:meta";' . PHP_EOL
+                . ".a { content: meta.get-function('quote', \$css: true) == meta.get-function('unquote', \$css: true); }",
             );
 
             expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
@@ -189,32 +181,85 @@ describe('Compiler', function () {
             }
         });
 
-        it('serializes uppercase rgb constructors with top-level none channels as css functions', function () {
+        it('passes through uppercase function names verbatim like dart-sass', function (string $source, string $expected) {
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        })->with([
+            ['.a { b: RGB(13, 110, 253); }', ".a {\n  b: RGB(13, 110, 253);\n}"],
+            ['.a { b: RGBA(10, 88, 202, 1); }', ".a {\n  b: RGBA(10, 88, 202, 1);\n}"],
+            ['.a { b: MIX(red, blue, 50%); }', ".a {\n  b: MIX(red, blue, 50%);\n}"],
+            ['.a { filter: progid:DXImageTransform.Microsoft.gradient(a=1); }', ".a {\n  filter: progid:DXImageTransform.Microsoft.gradient(a=1);\n}"],
+        ]);
+
+        it('dispatches css calculation functions case-insensitively', function () {
+            $css = $this->compiler->compileString('.a { b: AbS(-2); c: MiN(1px, 2px); d: MIN(var(--a), var(--b)); }');
+
+            expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+            .a {
+              b: 2;
+              c: 1px;
+              d: min(var(--a), var(--b));
+            }
+            CSS);
+        });
+
+        it('errors on unknown dotted namespaces and members like dart-sass', function () {
+            expect(fn() => $this->compiler->compileString('.a { b: MATH.max(1, 2); }'))
+                ->toThrow(ModuleResolutionException::class);
+
+            expect(fn() => $this->compiler->compileString('@use "sass:color"; .a { b: color.QQQ(red); }'))
+                ->toThrow(UnknownSassFunctionException::class);
+        });
+
+        it('passes through known color module members whose arguments defer to css', function () {
+            $css = $this->compiler->compileString('@use "sass:color"; .a { b: color.alpha(c=d); }');
+
+            expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+            .a {
+              b: alpha(c=d);
+            }
+            CSS);
+        });
+
+        it('keeps none channels in builtin color results', function () {
+            // CSS Level 4 allows `none` channels; our rgb/rgba builtins keep them.
+            $css = $this->compiler->compileString(
+                '@use "sass:meta";' . PHP_EOL
+                . '.a { b: meta.call(meta.get-function("rgb"), none, 0, 0); }',
+            );
+
+            expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+            .a {
+              b: rgb(none, 0, 0);
+            }
+            CSS);
+        });
+
+        it('passes through an uppercase rgb constructor with a none channel verbatim', function () {
             $css = $this->compiler->compileString('.a { color: RGBA(none, 0, 0); }');
 
             expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
             .a {
-              color: rgba(none, 0, 0);
+              color: RGBA(none, 0, 0);
             }
             CSS);
         });
 
-        it('serializes uppercase rgb constructors with a non-none top-level string channel as css functions', function () {
+        it('passes through uppercase rgb constructors with a non-none string channel verbatim', function () {
             $css = $this->compiler->compileString('.a { color: RGBA(foo, 0, 0); }');
 
             expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
             .a {
-              color: rgba(foo, 0, 0);
+              color: RGBA(foo, 0, 0);
             }
             CSS);
         });
 
-        it('serializes uppercase rgb constructors with unresolved top-level channels as css functions', function () {
+        it('passes through uppercase rgb constructors with unresolved channels verbatim', function () {
             $css = $this->compiler->compileString('.a { color: RGBA(var(--r), 0, 0); }');
 
             expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
             .a {
-              color: rgba(var(--r), 0, 0);
+              color: RGBA(var(--r), 0, 0);
             }
             CSS);
         });
