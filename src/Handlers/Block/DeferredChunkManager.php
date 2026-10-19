@@ -841,18 +841,22 @@ final readonly class DeferredChunkManager
             return false;
         }
 
-        return $this->hasRenderableSiblingAfter($body, $childIndex);
+        return $this->hasNonRuleSiblingAfter($body, $childIndex);
     }
 
     /**
      * @param array<int, AstNode> $body
      */
-    private function hasRenderableSiblingAfter(array $body, int $childIndex): bool
+    private function hasNonRuleSiblingAfter(array $body, int $childIndex): bool
     {
         $siblings = array_slice($body, $childIndex + 1, null, true);
 
         foreach ($siblings as $sibling) {
             if ($sibling instanceof VariableDeclarationNode || $sibling instanceof ModuleVarDeclarationNode) {
+                continue;
+            }
+
+            if ($sibling instanceof RuleNode) {
                 continue;
             }
 

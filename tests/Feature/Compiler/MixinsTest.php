@@ -571,4 +571,141 @@ describe('Compiler', function () {
 
         expect($this->compiler->compileString($source))->toEqualCss($expected);
     });
+
+    it('keeps rules after a content mixin inside another mixin ordered and balanced', function () {
+        $source = <<<'SCSS'
+        @mixin hover {
+          &:hover {
+            @content;
+          }
+        }
+
+        @mixin button-variant($background, $border) {
+          color: #fff;
+          border-color: $border;
+
+          @include hover() {
+            color: #fff;
+          }
+
+          &:focus,
+          &.focus {
+            box-shadow: none;
+          }
+
+          &.disabled,
+          &:disabled {
+            color: #fff;
+          }
+        }
+
+        .btn-primary {
+          @include button-variant(#007bff, #007bff);
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .btn-primary {
+          color: #fff;
+          border-color: #007bff;
+        }
+        .btn-primary:hover {
+          color: #fff;
+        }
+        .btn-primary:focus, .btn-primary.focus {
+          box-shadow: none;
+        }
+        .btn-primary.disabled, .btn-primary:disabled {
+          color: #fff;
+        }
+        CSS;
+
+        expect($this->compiler->compileString($source))->toEqualCss($expected);
+    });
+
+    it('does not emit stray block closings when a content mixin is followed by nested rules', function () {
+        $source = <<<'SCSS'
+        @mixin hover {
+          &:hover {
+            @content;
+          }
+        }
+
+        @mixin v {
+          color: #fff;
+
+          @include hover() {
+            color: #fff;
+          }
+
+          &:focus {
+            box-shadow: none;
+          }
+
+          &.disabled {
+            color: #fff;
+          }
+        }
+
+        .btn-primary {
+          @include v;
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .btn-primary {
+          color: #fff;
+        }
+        .btn-primary:hover {
+          color: #fff;
+        }
+        .btn-primary:focus {
+          box-shadow: none;
+        }
+        .btn-primary.disabled {
+          color: #fff;
+        }
+        CSS;
+
+        expect($this->compiler->compileString($source))->toEqualCss($expected);
+    });
+
+    it('closes and reopens the parent rule around bubbling media inside included mixins', function () {
+        $source = <<<'SCSS'
+        @mixin with-media {
+          background: linear-gradient(red, blue);
+
+          @media (min-width: 100px) {
+            .btn .inner {
+              color: blue;
+            }
+          }
+
+          color: purple;
+        }
+
+        .btn {
+          border: 1px solid black;
+
+          @include with-media;
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .btn {
+          border: 1px solid black;
+          background: linear-gradient(red, blue);
+        }
+        @media (min-width: 100px) {
+          .btn .btn .inner {
+            color: blue;
+          }
+        }
+        .btn {
+          color: purple;
+        }
+        CSS;
+
+        expect($this->compiler->compileString($source))->toEqualCss($expected);
+    });
 });

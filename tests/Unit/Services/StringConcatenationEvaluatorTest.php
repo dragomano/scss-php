@@ -68,6 +68,28 @@ describe('StringConcatenationEvaluator', function () {
                 ->and($result->value)->toBe('-+moz');
         });
 
+        it('returns null when the operand after a unary prefix is not foldable', function () {
+            $list = new ListNode([new StringNode('-'), new StringNode('and'), new StringNode('x')], 'space');
+
+            expect($this->evaluator->evaluate($list))->toBeNull();
+        });
+
+        it('keeps a non-operator tail attached after folding a unary prefix', function () {
+            $list = new ListNode([
+                new StringNode('-'),
+                new NumberNode(3, 'rem'),
+                new StringNode('!important'),
+            ], 'space');
+
+            $result = $this->evaluator->evaluate($list);
+
+            expect($result)->toBeInstanceOf(ListNode::class)
+                ->and($result->items[0])->toBeInstanceOf(StringNode::class)
+                ->and($result->items[0]->value)->toBe('-3rem')
+                ->and($result->items[1])->toBeInstanceOf(StringNode::class)
+                ->and($result->items[1]->value)->toBe('!important');
+        });
+
         it('collapses number plus unit suffix into dimension', function () {
             $list = new ListNode([new NumberNode(42), new StringNode('+'), new StringNode('px')], 'space');
 

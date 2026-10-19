@@ -58,7 +58,7 @@ final readonly class StringConcatenationEvaluator
         }
 
         if ($count >= 3) {
-            $unaryChain = $this->foldLeadingUnaryChain($list->items, $env);
+            $unaryChain = $this->foldLeadingUnaryChain($list, $env);
 
             if ($unaryChain !== null) {
                 return $unaryChain;
@@ -84,7 +84,7 @@ final readonly class StringConcatenationEvaluator
         $anyFold = false;
 
         for ($pass = 0; $pass < 16; $pass++) {
-            [$items, $foldedNot] = $this->foldNotOperators($items);
+            [$items, $foldedNot]   = $this->foldNotOperators($items);
             [$items, $foldedPairs] = $this->foldBinaryPairs($items, $env);
 
             if (! $foldedNot && ! $foldedPairs) {
@@ -110,34 +110,63 @@ final readonly class StringConcatenationEvaluator
     }
 
     /**
-     * @param array<int, AstNode> $items
+     * @param ListNode $list
      */
-    private function foldLeadingUnaryChain(array $items, Environment $env): ?AstNode
+    private function foldLeadingUnaryChain(ListNode $list, Environment $env): ?AstNode
     {
+        $items = $list->items;
         $count = count($items);
 
         $operators = '';
+        $index     = 0;
 
-        foreach (array_slice($items, 0, $count - 1) as $item) {
+        while ($index < $count) {
+            $item = $items[$index];
+
             if (
                 ! $item instanceof StringNode
                 || $item->quoted
                 || $item->isSpecialString
                 || ! in_array($item->value, ['+', '-'], true)
             ) {
+                break;
+            }
+
+            // A run of unary signs must end before the last element, otherwise
+            // the whole list would consist of bare operators only.
+            if ($index === $count - 1) {
                 return null;
             }
 
             $operators .= $item->value;
+
+            $index++;
         }
 
-        $operand = $items[$count - 1];
+        if ($index === 0) {
+            return null;
+        }
+
+        $operand = $items[$index];
 
         if (! $this->isFoldableOperand($operand)) {
             return null;
         }
 
-        return new StringNode($operators . $this->valueFormatter->format($operand, $env));
+        $folded = new StringNode($operators . $this->valueFormatter->format($operand, $env));
+
+        if ($index === $count - 1) {
+            return $folded;
+        }
+
+        // The folded unary prefix may be followed by non-operator content such
+        // as the "!important" flag; keep that tail attached to the folded value.
+        return new ListNode(
+            [$folded, ...array_slice($items, $index + 1)],
+            $list->separator,
+            $list->bracketed,
+            $list->parenthesized,
+        );
     }
 
     private function isBareOperator(AstNode $node): bool
