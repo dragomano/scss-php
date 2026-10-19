@@ -705,7 +705,7 @@ final readonly class DeferredChunkManager
                 $parentHasRendered = $callScope->hasVariable('__parent_rule_has_rendered_children')
                     && $callScope->getVariable('__parent_rule_has_rendered_children') === true;
 
-                if ($this->shouldSplitParentRuleBlock($body, $childIndex, $output, $parentOpened, $ctx->env)) {
+                if ($this->shouldSplitParentRuleBlock($body, $childIndex, $output, $parentOpened, $parentReopen, $ctx->env)) {
                     $this->closeParentRuleBlock($output, $parentPrefix);
 
                     $parentOpened = false;
@@ -719,7 +719,7 @@ final readonly class DeferredChunkManager
             }
 
             if ($child instanceof RuleNode) {
-                if ($this->shouldSplitParentRuleBlock($body, $childIndex, $output, $parentOpened, $ctx->env)) {
+                if ($this->shouldSplitParentRuleBlock($body, $childIndex, $output, $parentOpened, $parentReopen, $ctx->env)) {
                     $this->closeParentRuleBlock($output, $parentPrefix);
 
                     $parentOpened = false;
@@ -730,20 +730,6 @@ final readonly class DeferredChunkManager
                 $this->appendIncludedRuleChunk($output, $first, $child, $ctx, $blockSplit);
 
                 continue;
-            }
-
-            if ($parentReopen && $output !== '') {
-                $parentSelector = $this->selector->getCurrentParentSelector($ctx->env);
-
-                if ($parentSelector !== null && $parentSelector !== '') {
-                    $formattedSelector = str_replace("\n", "\n" . $parentPrefix, $parentSelector);
-
-                    $this->render->appendChunk($output, "\n" . $parentPrefix . $formattedSelector . ' {');
-
-                    $parentReopen = false;
-                    $parentOpened = true;
-                    $blockSplit   = false;
-                }
             }
 
             $savedPosition = null;
@@ -760,6 +746,8 @@ final readonly class DeferredChunkManager
             }
 
             if ($child instanceof DeclarationNode) {
+                $this->reopenParentRuleBlock($output, $parentReopen, $parentOpened, $blockSplit, $parentPrefix, $ctx);
+
                 if (! $first) {
                     $this->render->appendChunk($output, "\n");
                 }
@@ -772,6 +760,7 @@ final readonly class DeferredChunkManager
                     $deferredChunk = $this->render->createDeferredChunk($compiled, $savedPosition);
 
                     $this->render->restorePosition($savedPosition);
+                    $this->reopenParentRuleBlock($output, $parentReopen, $parentOpened, $blockSplit, $parentPrefix, $ctx);
 
                     if (! $first) {
                         $this->render->appendChunk($output, "\n");
@@ -779,6 +768,8 @@ final readonly class DeferredChunkManager
 
                     $this->render->appendDeferredChunk($output, $deferredChunk);
                 } else {
+                    $this->reopenParentRuleBlock($output, $parentReopen, $parentOpened, $blockSplit, $parentPrefix, $ctx);
+
                     if (! $first) {
                         $this->render->appendChunk($output, "\n");
                     }
@@ -790,7 +781,11 @@ final readonly class DeferredChunkManager
             $first = false;
         }
 
-        $callScope->setVariableLocal('__include_block_was_split', $blockSplit);
+        // A nested content block reports its own split through the same scope, so a
+        // parent body must not clear the flag it did not set.
+        if ($blockSplit) {
+            $callScope->setVariableLocal('__include_block_was_split', true);
+        }
 
         return $output;
     }
@@ -800,6 +795,35 @@ final readonly class DeferredChunkManager
         $output = $this->render->trimTrailingNewlines($output);
 
         $this->render->appendChunk($output, "\n" . $parentPrefix . '}');
+    }
+
+    /**
+     * Reopens the parent rule for the content that follows a nested rule, so a
+     * child that renders nothing does not leave an empty rule block behind.
+     */
+    private function reopenParentRuleBlock(
+        string &$output,
+        bool &$parentReopen,
+        bool &$parentOpened,
+        bool &$blockSplit,
+        string $parentPrefix,
+        TraversalContext $ctx,
+    ): void {
+        $parentSelector = $parentReopen && $output !== ''
+            ? $this->selector->getCurrentParentSelector($ctx->env)
+            : null;
+
+        if ($parentSelector === null || $parentSelector === '') {
+            return;
+        }
+
+        $formattedSelector = str_replace("\n", "\n" . $parentPrefix, $parentSelector);
+
+        $this->render->appendChunk($output, "\n" . $parentPrefix . $formattedSelector . ' {');
+
+        $parentReopen = false;
+        $parentOpened = true;
+        $blockSplit   = false;
     }
 
     private function resolveIncludedRuleSelector(string $childSelector, string $parentSelector, TraversalContext $ctx): ?string
@@ -825,6 +849,7 @@ final readonly class DeferredChunkManager
         int $childIndex,
         string $output,
         bool $parentOpened,
+        bool $parentReopen,
         Environment $env,
     ): bool {
         if ($output === '') {
@@ -833,6 +858,10 @@ final readonly class DeferredChunkManager
 
         if ($parentOpened) {
             return true;
+        }
+
+        if ($parentReopen) {
+            return false;
         }
 
         $parentSelector = $this->selector->getCurrentParentSelector($env);

@@ -458,6 +458,13 @@ final readonly class SelectorTokenizer
         );
     }
 
+    public function hasLeadingTopLevelCombinator(string $selector): bool
+    {
+        $selector = ltrim($selector);
+
+        return $selector !== '' && in_array($selector[0], ['>', '+', '~'], true);
+    }
+
     public function hasBogusTopLevelCombinatorSequence(string $selector): bool
     {
         if (strpbrk($selector, '>+~') === false) {

@@ -124,4 +124,71 @@ describe('Output Formatting', function () {
 
         expect($css)->toEqualCss($expected);
     });
+
+    it('keeps included declarations, nested rules and extends in source order without empty blocks', function () {
+        $scss = <<<'SCSS'
+        @mixin up($bp) {
+          @if $bp == xs {
+            @media (min-width: 576px) { @content; }
+          } @else {
+            @content;
+          }
+        }
+
+        .a {
+          @each $bp in (xs, sm) {
+            $infix: if($bp == sm, "", "-sm");
+
+            &#{$infix} {
+              @include up($bp) {
+                flex-flow: row nowrap;
+
+                %ph-#{$bp} {
+                  flex-wrap: nowrap;
+                }
+
+                > .container {
+                  @extend %ph-#{$bp};
+                }
+
+                @each $size in (sm, md) {
+                  > .container-#{$size} {
+                    @extend %ph-#{$bp};
+                  }
+                }
+
+                .navbar-nav-scroll {
+                  overflow: visible;
+                }
+              }
+            }
+          }
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        @media (min-width: 576px) {
+          .a-sm {
+            flex-flow: row nowrap;
+          }
+          .a-sm > .container-md, .a-sm > .container-sm, .a-sm > .container {
+            flex-wrap: nowrap;
+          }
+          .a-sm .navbar-nav-scroll {
+            overflow: visible;
+          }
+        }
+        .a {
+          flex-flow: row nowrap;
+        }
+        .a > .container-md, .a > .container-sm, .a > .container {
+          flex-wrap: nowrap;
+        }
+        .a .navbar-nav-scroll {
+          overflow: visible;
+        }
+        CSS;
+
+        expect($this->compiler->compileString($scss))->toEqualCss($expected);
+    });
 });

@@ -115,6 +115,24 @@ describe('SelectorTokenizer', function () {
         expect($this->tokenizer->hasUnsupportedTopLevelCombinator('[data-test="a>b"] span'))->toBeFalse();
     });
 
+    it('hasLeadingTopLevelCombinator() detects a leading child combinator', function () {
+        expect($this->tokenizer->hasLeadingTopLevelCombinator('> .c'))->toBeTrue();
+    });
+
+    it('hasLeadingTopLevelCombinator() detects leading combinators after whitespace', function () {
+        expect($this->tokenizer->hasLeadingTopLevelCombinator('  + .c'))->toBeTrue()
+            ->and($this->tokenizer->hasLeadingTopLevelCombinator(' ~ .c'))->toBeTrue();
+    });
+
+    it('hasLeadingTopLevelCombinator() returns false for inner combinators', function () {
+        expect($this->tokenizer->hasLeadingTopLevelCombinator('.a > .c'))->toBeFalse()
+            ->and($this->tokenizer->hasLeadingTopLevelCombinator('.a .c'))->toBeFalse();
+    });
+
+    it('hasLeadingTopLevelCombinator() returns false for an empty selector', function () {
+        expect($this->tokenizer->hasLeadingTopLevelCombinator(''))->toBeFalse();
+    });
+
     it('hasBogusTopLevelCombinatorSequence() detects repeated top-level combinators', function () {
         expect($this->tokenizer->hasBogusTopLevelCombinatorSequence('div > + span'))->toBeTrue();
     });

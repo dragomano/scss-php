@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
+use Bugo\SCSS\Loader;
 use Tests\Support\ArrayLogger;
 
 describe('Compiler extended selectors edge cases', function () {
@@ -278,6 +279,35 @@ describe('Compiler extended selectors edge cases', function () {
                 }
                 CSS,
             );
+        });
+
+        it('resolves extended placeholders of imported files without repeating the parent selector', function () {
+            $tmpDir = sys_get_temp_dir() . '/scss-php-imported-placeholder-' . uniqid('', true);
+
+            mkdir($tmpDir, 0777, true);
+
+            file_put_contents($tmpDir . '/_parts.scss', <<<'SCSS'
+            .a {
+              .b {
+                %ph {
+                  color: red;
+                }
+
+                > .c {
+                  @extend %ph;
+                }
+              }
+            }
+            SCSS);
+
+            $compiler = new Compiler(loader: new Loader([$tmpDir]));
+            $css      = $compiler->compileString("@import 'parts';\n");
+
+            expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+            .a .b > .c {
+              color: red;
+            }
+            CSS);
         });
     });
 });

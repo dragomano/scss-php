@@ -2765,11 +2765,13 @@ final readonly class ExtendsResolver
             return null;
         }
 
-        if ($this->tokenizer->hasUnsupportedTopLevelCombinator($extender)) {
+        if ($this->tokenizer->hasLeadingTopLevelCombinator($extender)) {
             return null;
         }
 
-        return $this->tokenizer->weaveExtendedSelector($part, $target, $extender);
+        $woven = $this->tokenizer->weaveExtendedSelector($part, $target, $extender);
+
+        return $woven === [] ? null : $woven;
     }
 
     private function replaceExtendTargetInSelectorPartFallback(string $part, string $target, string $extender): ?string
