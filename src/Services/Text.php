@@ -1565,15 +1565,58 @@ final readonly class Text
             return false;
         }
 
-        if (str_starts_with($operand, 'if(')) {
-            return true;
+        if (
+            StringHelper::isQuoted($operand)
+            && $this->findQuotedLiteralEnd($operand, 0) === strlen($operand)
+        ) {
+            return false;
         }
 
         if ($operand[0] === '(' || $operand[0] === '[') {
             return true;
         }
 
-        return str_contains($operand, '+') || str_contains($operand, '*');
+        $length = strlen($operand);
+        $quote  = '';
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $operand[$i];
+
+            if ($quote !== '') {
+                if ($char === '\\') {
+                    $i++;
+
+                    continue;
+                }
+
+                if ($char === $quote) {
+                    $quote = '';
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+
+                continue;
+            }
+
+            if ($char === '(' || $char === '[' || $char === '+' || $char === '*') {
+                return true;
+            }
+
+            if (
+                ($char === '-' || $char === '/')
+                && $i > 0
+                && ctype_space($operand[$i - 1])
+                && ($i + 1 < $length && ctype_space($operand[$i + 1]))
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

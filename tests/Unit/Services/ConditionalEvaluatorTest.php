@@ -270,6 +270,56 @@ describe('ConditionalEvaluator', function () {
             ->and($css->value)->toBe('if(screen: yes; else: no)');
     });
 
+    it('forces sass truthiness for legacy if() conditions', function () {
+        $legacy = fn(AstNode $condition, AstNode $ifTrue, AstNode $ifFalse): ?AstNode => $this
+            ->evaluator
+            ->evaluateInlineIfFunction('if', [$condition, $ifTrue, $ifFalse], $this->env, allowCssConditions: false);
+
+        $string   = $legacy(new StringNode('sm'), new StringNode('yes'), new StringNode('no'));
+        $function = $legacy(new FunctionNode('unknown-css', []), new StringNode('yes'), new StringNode('no'));
+
+        $andList = $legacy(
+            new ListNode([new StringNode('screen'), new StringNode('and'), new BooleanNode(false)], 'space'),
+            new StringNode('yes'),
+            new StringNode('no'),
+        );
+
+        $orList = $legacy(
+            new ListNode([new StringNode('screen'), new StringNode('or'), new BooleanNode(false)], 'space'),
+            new StringNode('yes'),
+            new StringNode('no'),
+        );
+
+        $notList = $legacy(
+            new ListNode([new StringNode('not'), new StringNode('screen')], 'space'),
+            new StringNode('yes'),
+            new StringNode('no'),
+        );
+
+        $plainList = $legacy(
+            new ListNode([new StringNode('screen'), new StringNode('primary')], 'space'),
+            new StringNode('yes'),
+            new StringNode('no'),
+        );
+
+        $boolean = $legacy(new BooleanNode(false), new StringNode('yes'), new StringNode('no'));
+
+        expect($string)->toBeInstanceOf(StringNode::class)
+            ->and($string->value)->toBe('yes')
+            ->and($function)->toBeInstanceOf(StringNode::class)
+            ->and($function->value)->toBe('yes')
+            ->and($andList)->toBeInstanceOf(StringNode::class)
+            ->and($andList->value)->toBe('no')
+            ->and($orList)->toBeInstanceOf(StringNode::class)
+            ->and($orList->value)->toBe('yes')
+            ->and($notList)->toBeInstanceOf(StringNode::class)
+            ->and($notList->value)->toBe('no')
+            ->and($plainList)->toBeInstanceOf(StringNode::class)
+            ->and($plainList->value)->toBe('yes')
+            ->and($boolean)->toBeInstanceOf(StringNode::class)
+            ->and($boolean->value)->toBe('no');
+    });
+
     it('collapses url string concatenation with quotes escapes and empty segments', function () {
         $concatArg         = new NumberNode(10);
         $escapedQuoteArg   = new NumberNode(11);

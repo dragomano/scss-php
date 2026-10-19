@@ -182,4 +182,86 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
     });
+
+    describe('@media feature values', function () {
+        it('evaluates function calls and arithmetic in feature operands', function () {
+            $source = <<<'SCSS'
+            @function maxv() { @return 575.98px; }
+            $w: 768px;
+
+            @media (max-width: maxv()) { a { b: c } }
+            @media (max-width: $w - 20) { a { b: c } }
+            @media (device-aspect-ratio: 16/9) { a { b: c } }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            @media (max-width: 575.98px) {
+              a {
+                b: c;
+              }
+            }
+            @media (max-width: 748px) {
+              a {
+                b: c;
+              }
+            }
+            @media (device-aspect-ratio: 16/9) {
+              a {
+                b: c;
+              }
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('keeps legacy if() branches evaluating as sass truthiness inside media', function () {
+            $source = <<<'SCSS'
+            $grid-breakpoints: (xs: 0, sm: 576px, md: 768px);
+
+            @function breakpoint-next($name, $breakpoints: $grid-breakpoints, $names: map-keys($breakpoints)) {
+              $n: index($names, $name);
+              @return if($n != null and $n < length($names), nth($names, $n + 1), null);
+            }
+
+            @function breakpoint-max($name, $breakpoints: $grid-breakpoints) {
+              $next: breakpoint-next($name, $breakpoints);
+              @return if($next, map-get($breakpoints, $next) - .02, null);
+            }
+
+            @mixin media-breakpoint-down($name, $breakpoints: $grid-breakpoints) {
+              $max: breakpoint-max($name, $breakpoints);
+
+              @if $max {
+                @media (max-width: $max) {
+                  @content;
+                }
+              }
+            }
+
+            @each $breakpoint in map-keys($grid-breakpoints) {
+              .resp-#{$breakpoint} {
+                @include media-breakpoint-down($breakpoint) {
+                  display: block;
+                }
+              }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            @media (max-width: 575.98px) {
+              .resp-xs {
+                display: block;
+              }
+            }
+            @media (max-width: 767.98px) {
+              .resp-sm {
+                display: block;
+              }
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+    });
 });

@@ -523,6 +523,7 @@ final readonly class FunctionCallEvaluator
                         $node->name,
                         $node->arguments,
                         $env,
+                        allowCssConditions: false,
                     );
 
                     if ($inlineFallback !== null) {
@@ -573,7 +574,12 @@ final readonly class FunctionCallEvaluator
         }
 
         if ($lowerName === 'if') {
-            $inlineIf = $this->conditional->evaluateInlineIfFunction($node->name, $node->arguments, $env);
+            $inlineIf = $this->conditional->evaluateInlineIfFunction(
+                $node->name,
+                $node->arguments,
+                $env,
+                allowCssConditions: $node->modernSyntax,
+            );
 
             if ($inlineIf !== null) {
                 return $inlineIf;

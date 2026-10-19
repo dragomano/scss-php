@@ -49,13 +49,17 @@ final readonly class ConditionalEvaluator
     /**
      * @param array<int, AstNode> $arguments
      */
-    public function evaluateInlineIfFunction(string $name, array $arguments, Environment $env): ?AstNode
-    {
+    public function evaluateInlineIfFunction(
+        string $name,
+        array $arguments,
+        Environment $env,
+        bool $allowCssConditions = true,
+    ): ?AstNode {
         if ($arguments === []) {
             return null;
         }
 
-        return $this->evaluateInlineIfFunctionInner($arguments, $env);
+        return $this->evaluateInlineIfFunctionInner($arguments, $env, $allowCssConditions);
     }
 
     /**
@@ -107,7 +111,7 @@ final readonly class ConditionalEvaluator
     /**
      * @param array<int, AstNode> $arguments
      */
-    private function evaluateInlineIfFunctionInner(array $arguments, Environment $env): AstNode
+    private function evaluateInlineIfFunctionInner(array $arguments, Environment $env, bool $allowCssConditions): AstNode
     {
         $decoded  = $this->decodeIfArguments($arguments, $env);
         $clauses  = $decoded['clauses'];
@@ -116,7 +120,7 @@ final readonly class ConditionalEvaluator
         $isCss    = false;
 
         foreach ($clauses as [$condition, $value]) {
-            $result = $this->evaluateInlineIfCondition($condition, $env);
+            $result = $this->evaluateInlineIfCondition($condition, $env, ! $allowCssConditions);
 
             if ($result instanceof BoolConditionResult) {
                 if ($result->value) {
@@ -291,7 +295,7 @@ final readonly class ConditionalEvaluator
             && count($condition->items) > 0
             && $this->hasLogicalOperator($condition->items)
         ) {
-            $result = $this->evaluateInlineIfListCondition($condition->items, $env);
+            $result = $this->evaluateInlineIfListCondition($condition->items, $env, $forceBoolean);
 
             if ($result instanceof CssConditionResult) {
                 $result = new CssConditionResult(
@@ -313,7 +317,7 @@ final readonly class ConditionalEvaluator
         }
 
         if ($resolved instanceof ListNode && $resolved->separator === 'space' && count($resolved->items) > 0) {
-            return $this->evaluateInlineIfListCondition($resolved->items, $env);
+            return $this->evaluateInlineIfListCondition($resolved->items, $env, $forceBoolean);
         }
 
         if ($resolved instanceof BooleanNode) {
@@ -339,6 +343,10 @@ final readonly class ConditionalEvaluator
         }
 
         if ($resolved instanceof FunctionNode) {
+            if ($forceBoolean) {
+                return new BoolConditionResult($this->condition->isTruthy($resolved));
+            }
+
             return new CssConditionResult(
                 $this->wrapParensIfNeeded($isParenthesized, $this->valueFormatter->format($resolved, $env)),
             );
@@ -586,8 +594,11 @@ final readonly class ConditionalEvaluator
     /**
      * @param AstNode[] $items
      */
-    private function evaluateInlineIfListCondition(array $items, Environment $env): BoolConditionResult|CssConditionResult
-    {
+    private function evaluateInlineIfListCondition(
+        array $items,
+        Environment $env,
+        bool $forceBoolean = false,
+    ): BoolConditionResult|CssConditionResult {
         $items   = $this->normalizeLogicalOperatorFunctions($items);
         $orParts = $this->splitByOperator($items, 'or');
 
@@ -595,7 +606,7 @@ final readonly class ConditionalEvaluator
             $cssParts = [];
 
             foreach ($orParts as $part) {
-                $partResult = $this->evaluateInlineIfListCondition($part, $env);
+                $partResult = $this->evaluateInlineIfListCondition($part, $env, $forceBoolean);
 
                 if ($partResult instanceof BoolConditionResult) {
                     if ($partResult->value) {
@@ -625,7 +636,7 @@ final readonly class ConditionalEvaluator
             $cssParts = [];
 
             foreach ($andParts as $part) {
-                $partResult = $this->evaluateInlineIfListCondition($part, $env);
+                $partResult = $this->evaluateInlineIfListCondition($part, $env, $forceBoolean);
 
                 if ($partResult instanceof BoolConditionResult) {
                     if (! $partResult->value) {
@@ -658,10 +669,10 @@ final readonly class ConditionalEvaluator
                 return new BoolConditionResult(false);
             }
 
-            $restResult = $this->evaluateInlineIfCondition($rest[0], $env);
+            $restResult = $this->evaluateInlineIfCondition($rest[0], $env, $forceBoolean);
 
             if (count($rest) > 1) {
-                $restResult = $this->evaluateInlineIfListCondition($rest, $env);
+                $restResult = $this->evaluateInlineIfListCondition($rest, $env, $forceBoolean);
             }
 
             if ($restResult instanceof BoolConditionResult) {
@@ -684,7 +695,11 @@ final readonly class ConditionalEvaluator
         }
 
         if (count($items) === 1) {
-            return $this->evaluateInlineIfCondition($items[0], $env);
+            return $this->evaluateInlineIfCondition($items[0], $env, $forceBoolean);
+        }
+
+        if ($forceBoolean) {
+            return new BoolConditionResult(true);
         }
 
         return new CssConditionResult(

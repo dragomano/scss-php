@@ -407,6 +407,36 @@ describe('Text service', function () {
                 ->toBe('(width >= "a\\\"b")');
         });
 
+        it('evaluates a spaced subtraction operand in a feature value', function () {
+            expect($this->text->evaluateMediaFeatureOperands('(max-width: 768px - 20px)', $this->env))
+                ->toBe('(max-width: 748px)');
+        });
+
+        it('evaluates a parenthesized operand in a feature value', function () {
+            expect($this->text->evaluateMediaFeatureOperands('(min-width: (576px))', $this->env))
+                ->toBe('(min-width: 576px)');
+        });
+
+        it('keeps a quoted literal operand intact', function () {
+            expect($this->text->evaluateMediaFeatureOperands('(max-width: "600px")', $this->env))
+                ->toBe('(max-width: "600px")');
+        });
+
+        it('keeps a slash list operand intact', function () {
+            expect($this->text->evaluateMediaFeatureOperands('(device-aspect-ratio: 16/9)', $this->env))
+                ->toBe('(device-aspect-ratio: 16/9)');
+        });
+
+        it('keeps a plain value with a unit intact', function () {
+            expect($this->text->evaluateMediaFeatureOperands('(min-resolution: 120dpi)', $this->env))
+                ->toBe('(min-resolution: 120dpi)');
+        });
+
+        it('keeps an unknown function call operand literally', function () {
+            expect($this->text->evaluateMediaFeatureOperands('(max-width: foo())', $this->env))
+                ->toBe('(max-width: foo())');
+        });
+
         it('keeps the original operand when formatting yields an empty value', function () {
             $text = new Text(
                 new class implements ParserInterface {
