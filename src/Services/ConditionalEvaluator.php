@@ -290,6 +290,14 @@ final readonly class ConditionalEvaluator
         $isParenthesized = ($condition instanceof ListNode || $condition instanceof FunctionNode) && $condition->parenthesized;
 
         if (
+            $condition instanceof FunctionNode
+            && strtolower($condition->name) === 'sass'
+            && count($condition->arguments) >= 1
+        ) {
+            return $this->evaluateInlineIfCondition($condition->arguments[0], $env, true);
+        }
+
+        if (
             $condition instanceof ListNode
             && $condition->separator === 'space'
             && count($condition->items) > 0

@@ -106,8 +106,14 @@ final readonly class DeclarationNodeHandler
 
             $important = $node->important ? ' !important' : '';
             $semicolon = str_ends_with($value, ';') ? '' : ';';
+            $separator = '';
 
-            return $prefix . $property . ':' . $value . $important . $semicolon;
+            if (str_contains($node->property, '#{')) {
+                $separator = ' ';
+                $value     = ltrim($value);
+            }
+
+            return $prefix . $property . ':' . $separator . $value . $important . $semicolon;
         }
 
         $evaluatedValue = $this->evaluation->evaluateDeclarationValue($node->value, $property, $ctx->env);

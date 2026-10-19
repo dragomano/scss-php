@@ -497,6 +497,10 @@ final class RuleParser
             return true;
         }
 
+        if (str_contains($text, '[')) {
+            return true;
+        }
+
         return strlen($text) <= 10;
     }
 

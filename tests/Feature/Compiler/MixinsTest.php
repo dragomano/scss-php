@@ -708,4 +708,34 @@ describe('Compiler', function () {
 
         expect($this->compiler->compileString($source))->toEqualCss($expected);
     });
+
+    it('parses attribute selectors as rules inside mixin @if / @else branches', function () {
+        $source = <<<'SCSS'
+        @mixin sel($state) {
+          @if & {
+            &.is-#{$state} { @content; }
+          } @else {
+            [data-bs-validate] :#{$state} { @content; }
+          }
+        }
+
+        form {
+          @include sel("invalid") { color: red; }
+        }
+
+        @include sel("valid") { color: blue; }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        form.is-invalid {
+          color: red;
+        }
+
+        [data-bs-validate] :valid {
+          color: blue;
+        }
+        CSS;
+
+        expect($this->compiler->compileString($source))->toEqualCss($expected);
+    });
 });

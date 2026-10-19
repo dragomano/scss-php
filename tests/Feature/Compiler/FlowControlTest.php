@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Syntax;
 use Tests\Support\ArrayLogger;
+use Tests\Support\MemoryLoader;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -353,6 +354,87 @@ describe('Compiler', function () {
             CSS;
 
             expect($this->compiler->compileString($source, Syntax::SASS))->toEqualCss($expected);
+        });
+
+        it('evaluates if(sass(...)) conditions lazily across and-operands', function () {
+            $source = <<<'SCSS'
+            @use "sass:meta";
+
+            @mixin probe() {
+              box-sizing: if(sass(meta.variable-exists(include-column-box-sizing) and $include-column-box-sizing): border-box; else: null);
+              flex-shrink: 0;
+            }
+
+            .a { @include probe(); }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .a {
+              flex-shrink: 0;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('unwraps parenthesized sass(...) if conditions already resolved during evaluation', function () {
+            $source = <<<'SCSS'
+            $enable-feature: true;
+
+            .a {
+              width: if((sass($enable-feature)): 1px; else: 2px);
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .a {
+              width: 1px;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('unwraps sass wrappers restored by variable evaluation inside if conditions', function () {
+            $source = <<<'SCSS'
+            $c: (sass(true));
+
+            .a {
+              width: if(sass($c): 1px; else: 2px);
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .a {
+              width: 1px;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('picks the if(sass(...)) true branch when the guarded variable exists', function () {
+            $loader = new MemoryLoader([
+                '/_guard.scss' => '$include-column-box-sizing: true;',
+            ]);
+            $compiler = new Compiler(loader: $loader);
+
+            $source = <<<'SCSS'
+            @use "sass:meta";
+            @use "guard" as *;
+
+            .a {
+              box-sizing: if(sass(meta.variable-exists(include-column-box-sizing) and $include-column-box-sizing): border-box; else: null);
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .a {
+              box-sizing: border-box;
+            }
+            CSS;
+
+            expect($compiler->compileString($source))->toEqualCss($expected);
         });
     });
 });

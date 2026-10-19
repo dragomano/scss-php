@@ -178,7 +178,7 @@ final readonly class Module
         $namespace = $node->namespace ?? $this->deriveNamespaceFromUsePath($node->path);
         $loaded    = $state->getByNamespace($namespace);
 
-        if ($node->configuration === [] && $loaded !== null) {
+        if ($namespace !== '*' && $node->configuration === [] && $loaded !== null) {
             $env->getCurrentScope()->addModule($namespace, $loaded->scope);
             $env->getGlobalScope()->addModule($namespace, $loaded->scope);
 
@@ -196,12 +196,18 @@ final readonly class Module
         $moduleId = $file->path;
 
         if ($namespace === '*' && $node->configuration === [] && isset($state->anonymousUseModules[$moduleId])) {
+            $this->exportWildcardMembers($state->anonymousUseModules[$moduleId]->scope, $env->getCurrentScope());
+
             return '';
         }
 
         $loadedById = $state->getById($moduleId);
 
         if ($node->configuration === [] && $loadedById !== null) {
+            if ($namespace === '*') {
+                return $this->importWildcardUseModule($moduleId, $loadedById, $env);
+            }
+
             $state->addByNamespace($namespace, $loadedById);
 
             $env->getCurrentScope()->addModule($namespace, $loadedById->scope);
@@ -215,6 +221,14 @@ final readonly class Module
 
             if (isset($state->forwardedModules[$forwardKey])) {
                 $moduleData = $state->forwardedModules[$forwardKey];
+
+                if ($namespace === '*') {
+                    return $this->importWildcardUseModule(
+                        $moduleId,
+                        new LoadedModule($moduleId, $moduleData['scope'], $moduleData['css']),
+                        $env,
+                    );
+                }
 
                 $state->addByNamespace($namespace, new LoadedModule($moduleId, $moduleData['scope'], $moduleData['css']));
 
@@ -283,56 +297,11 @@ final readonly class Module
         }
 
         if ($namespace === '*') {
-            foreach (array_keys($moduleEnv->getCurrentScope()->getVariables()) as $name) {
-                if (NameNormalizer::isPrivate($name)) {
-                    continue;
-                }
-
-                if ($moduleEnv->getCurrentScope()->isImportedMember($name)) {
-                    continue;
-                }
-
-                $env->getCurrentScope()->setVariableLocal($name, $moduleEnv->getCurrentScope()->getVariable($name));
-                $env->getCurrentScope()->markImportedMember($name);
-                $env->getCurrentScope()->trackImportedVariable($name, $moduleEnv->getCurrentScope(), $name);
-            }
-
-            foreach ($moduleEnv->getCurrentScope()->getMixins() as $name => $mixin) {
-                if (NameNormalizer::isPrivate($name)) {
-                    continue;
-                }
-
-                if ($moduleEnv->getCurrentScope()->isImportedMember($name)) {
-                    continue;
-                }
-
-                $env->getCurrentScope()->setMixin($name, $mixin);
-                $env->getCurrentScope()->markImportedMember($name);
-            }
-
-            foreach ($moduleEnv->getCurrentScope()->getFunctions() as $name => $function) {
-                if (NameNormalizer::isPrivate($name)) {
-                    continue;
-                }
-
-                if ($moduleEnv->getCurrentScope()->isImportedMember($name)) {
-                    continue;
-                }
-
-                $env->getCurrentScope()->setFunction($name, $function);
-                $env->getCurrentScope()->markImportedMember($name);
-            }
-
-            $state->anonymousUseModules[$moduleId] = new LoadedModule($moduleId, $moduleEnv->getCurrentScope(), $compiledCss);
-
-            if (isset($state->emittedUseCss[$moduleId]) || isset($state->emittedModuleCss[$moduleId])) {
-                return '';
-            }
-
-            $state->emittedUseCss[$moduleId]    = true;
-            $state->emittedModuleCss[$moduleId] = true;
-
-            return $compiledCss;
+            return $this->importWildcardUseModule(
+                $moduleId,
+                new LoadedModule($moduleId, $moduleEnv->getCurrentScope(), $compiledCss),
+                $env,
+            );
         }
 
         if ($node->configuration === []) {
@@ -991,6 +960,70 @@ final readonly class Module
                     ? new CallableDefinition($function->arguments, $function->body, $to, $function->line)
                     : $function,
             );
+        }
+    }
+
+    private function importWildcardUseModule(string $moduleId, LoadedModule $module, Environment $env): string
+    {
+        $this->exportWildcardMembers($module->scope, $env->getCurrentScope());
+
+        $state = $this->state();
+
+        $state->anonymousUseModules[$moduleId] = $module;
+
+        if (isset($state->emittedUseCss[$moduleId]) || isset($state->emittedModuleCss[$moduleId])) {
+            return '';
+        }
+
+        $state->emittedUseCss[$moduleId]    = true;
+        $state->emittedModuleCss[$moduleId] = true;
+
+        return $module->css;
+    }
+
+    private function exportWildcardMembers(Scope $from, Scope $to): void
+    {
+        foreach (array_keys($from->getVariables()) as $name) {
+            if (NameNormalizer::isPrivate($name) || $from->isImportedMember($name)) {
+                continue;
+            }
+
+            // A member the module already owns through @forward or its own definition
+            // stays part of its interface: `@use ... as *` must not hide it behind
+            // an imported-member marker.
+            if ($to->hasVariable($name) && ! $to->isImportedMember($name)) {
+                continue;
+            }
+
+            $to->setVariableLocal($name, $from->getVariable($name));
+            $to->markImportedMember($name);
+            $to->trackImportedVariable($name, $from, $name);
+        }
+
+        foreach ($from->getMixins() as $name => $mixin) {
+            if (NameNormalizer::isPrivate($name) || $from->isImportedMember($name)) {
+                continue;
+            }
+
+            if ($to->hasMixin($name) && ! $to->isImportedMember($name)) {
+                continue;
+            }
+
+            $to->setMixin($name, $mixin);
+            $to->markImportedMember($name);
+        }
+
+        foreach ($from->getFunctions() as $name => $function) {
+            if (NameNormalizer::isPrivate($name) || $from->isImportedMember($name)) {
+                continue;
+            }
+
+            if ($to->hasFunction($name) && ! $to->isImportedMember($name)) {
+                continue;
+            }
+
+            $to->setFunction($name, $function);
+            $to->markImportedMember($name);
         }
     }
 

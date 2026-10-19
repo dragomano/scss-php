@@ -602,6 +602,141 @@ describe('Compiler', function () {
             }
         });
 
+        it('exports members of every wildcard-used module even when an earlier one was loaded via @forward', function () {
+            $loader = new MemoryLoader([
+                '/_config.scss'        => '@function defaults($defaults, $overrides) { @return $defaults; }',
+                '/_functions.scss'     => "@forward \"config\" show defaults;\n@use \"config\" as *;",
+                '/mixins/_tokens.scss' => '@mixin tokens($map) { @each $prop, $value in $map { #{$prop}: #{$value}; } }',
+            ]);
+            $compiler = new Compiler(loader: $loader);
+
+            $source = <<<'SCSS'
+            @use "sass:map";
+            @use "functions" as *;
+            @use "mixins/tokens" as *;
+
+            $tokens: map.set((), --x, 1px);
+
+            :root {
+              @include tokens($tokens);
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            :root {
+              --x: 1px;
+            }
+            CSS;
+
+            expect($compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('exports members for wildcard use of a module already forwarded in the same file', function () {
+            $loader = new MemoryLoader([
+                '/_lib.scss' => ".m-lib { color: red; }\n@mixin pr() { padding: 0; }",
+            ]);
+            $compiler = new Compiler(loader: $loader);
+
+            $source = <<<'SCSS'
+            @forward "lib";
+            @use "lib" as *;
+
+            .b {
+              @include pr();
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .m-lib {
+              color: red;
+            }
+
+            .b {
+              padding: 0;
+            }
+            CSS;
+
+            expect($compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('exports members via the forwarded-modules cache when the derived namespace is taken', function () {
+            $loader = new MemoryLoader([
+                '/_other.scss' => '.lib-other { color: gray; }',
+                '/_lib.scss'   => '@mixin pr() { padding: 0; }',
+            ]);
+            $compiler = new Compiler(loader: $loader);
+
+            $source = <<<'SCSS'
+            @use "_other.scss" as lib;
+            @forward "/_lib.scss";
+            @use "/_lib.scss" as *;
+
+            .b {
+              @include pr();
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .lib-other {
+              color: gray;
+            }
+
+            .b {
+              padding: 0;
+            }
+            CSS;
+
+            expect($compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('keeps forwarded mixins exportable when the same module is also wildcard-used inside', function () {
+            $loader = new MemoryLoader([
+                '/_config.scss'    => '@mixin tokens($map) { padding: $map; }',
+                '/_functions.scss' => "@forward \"config\" show tokens;\n@use \"config\" as *;",
+            ]);
+            $compiler = new Compiler(loader: $loader);
+
+            $source = <<<'SCSS'
+            @use "functions" as *;
+
+            .x {
+              @include tokens(1px);
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .x {
+              padding: 1px;
+            }
+            CSS;
+
+            expect($compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('keeps forwarded members exportable when the same module is also wildcard-used inside', function () {
+            $loader = new MemoryLoader([
+                '/_config.scss'    => '@function defaults($defaults, $overrides) { @return 5px; }',
+                '/_functions.scss' => "@forward \"config\" show defaults;\n@use \"config\" as *;",
+            ]);
+            $compiler = new Compiler(loader: $loader);
+
+            $source = <<<'SCSS'
+            @use "functions" as *;
+
+            :root {
+              width: defaults(1, 2);
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            :root {
+              width: 5px;
+            }
+            CSS;
+
+            expect($compiler->compileString($source))->toEqualCss($expected);
+        });
+
         it('resolves directory _index.scss for @use', function () {
             $tmpDir = sys_get_temp_dir() . '/dart-sass-index-use-' . uniqid('', true);
             $moduleDir = $tmpDir . '/foundation';
