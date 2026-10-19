@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Exceptions\SassErrorException;
+use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
@@ -512,5 +513,35 @@ describe('CssArgumentEvaluator', function () {
 
         expect($result[0])->toBeInstanceOf(ListNode::class)
             ->and($result[0]->separator)->toBe('comma');
+    });
+
+    it('falls back to the verbatim function when full evaluation throws', function () {
+        $evaluator = new CssArgumentEvaluator(
+            new class implements AstValueEvaluatorInterface {
+                public function evaluate(AstNode $node, Environment $env): AstNode
+                {
+                    if ($node instanceof FunctionNode) {
+                        throw UndefinedSymbolException::variable('missing');
+                    }
+
+                    return $node;
+                }
+            },
+            new class implements CalculationArgumentNormalizerInterface {
+                public function normalize(string $name, array $arguments): array
+                {
+                    return $arguments;
+                }
+            },
+        );
+
+        $env  = new Environment();
+        $args = [new ListNode([new StringNode('a'), new StringNode('and'), new StringNode('b')], 'space')];
+
+        $result = $evaluator->expandCssCallArguments([new FunctionNode('rgb', $args)], $env);
+
+        expect($result[0])->toBeInstanceOf(FunctionNode::class)
+            ->and($result[0]->name)->toBe('rgb')
+            ->and($result[0]->arguments)->toBe($args);
     });
 });

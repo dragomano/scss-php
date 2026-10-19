@@ -6,6 +6,7 @@ namespace Bugo\SCSS\Services;
 
 use Bugo\SCSS\Builtins\Color\Support\CssNamedColors;
 use Bugo\SCSS\Exceptions\SassErrorException;
+use Bugo\SCSS\Exceptions\SassThrowable;
 use Bugo\SCSS\Nodes\ArgumentListNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ColorNode;
@@ -265,6 +266,12 @@ final readonly class CssArgumentEvaluator
         }
 
         /** @var FunctionNode $node */
+        $evaluated = $this->tryEvaluateCssFallbackFunction($node, $env, $skipConcatenation);
+
+        if ($evaluated !== null) {
+            return $evaluated;
+        }
+
         $arguments = $this->expandCssCallArguments($node->arguments, $env, $skipConcatenation);
 
         return new FunctionNode(
@@ -272,6 +279,24 @@ final readonly class CssArgumentEvaluator
             arguments: $this->calculationArgumentNormalizer->normalize($node->name, $arguments),
             parenthesized: $node->parenthesized,
         );
+    }
+
+    private function tryEvaluateCssFallbackFunction(
+        FunctionNode $node,
+        Environment $env,
+        bool $skipConcatenation,
+    ): ?AstNode {
+        try {
+            $result = $this->evaluateArgument($node, $env, $skipConcatenation);
+        } catch (SassThrowable) {
+            return null;
+        }
+
+        if ($result instanceof FunctionNode && ($result->resolved || $result === $node)) {
+            return null;
+        }
+
+        return $result;
     }
 
     /**

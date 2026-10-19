@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\Exceptions\SassArgumentException;
+use Bugo\SCSS\Exceptions\UndefinedSymbolException;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -112,5 +113,37 @@ describe('Compiler', function () {
         $css = $this->compiler->compileString($scss);
 
         expect($css)->toEqualCss($expected);
+    });
+
+    it('computes rgba alpha expression nested inside a CSS function argument list', function () {
+        $scss = <<<'SCSS'
+        $black: #000;
+        $opacity: .2;
+        .wave {
+          mask-image: linear-gradient(130deg, $black 55%, rgba(0, 0, 0, (1 - $opacity)) 75%, $black 95%);
+        }
+        .other {
+          background: unknownfn(rgba(0, 0, 0, (1 - $opacity)));
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .wave {
+          mask-image: linear-gradient(130deg, #000 55%, rgba(0, 0, 0, 0.8) 75%, #000 95%);
+        }
+
+        .other {
+          background: unknownfn(rgba(0, 0, 0, 0.8));
+        }
+        CSS;
+
+        expect($this->compiler->compileString($scss))->toEqualCss($expected);
+    });
+
+    it('propagates undefined variables from rgba args nested inside CSS functions', function () {
+        $scss = /** @lang text */ 'a { x: unknownfn(rgba(0, 0, 0, ($missing))); }';
+
+        expect(fn() => $this->compiler->compileString($scss))
+            ->toThrow(UndefinedSymbolException::class, 'Undefined variable: $missing');
     });
 });
