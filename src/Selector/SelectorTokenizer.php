@@ -2483,7 +2483,7 @@ final readonly class SelectorTokenizer
             return false;
         }
 
-        if ($value[0] === '-' && ($length === 1 || $value[1] === '-')) {
+        if ($value[0] === '-' && ($length === 1 || ctype_digit($value[1]) || $value[1] === '-')) {
             return false;
         }
 

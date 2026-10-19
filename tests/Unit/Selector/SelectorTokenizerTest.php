@@ -534,6 +534,18 @@ describe('SelectorTokenizer 100% lines', function () {
             ->and($this->tokenizer->normalizeSelectorAttributes('[a="b]'))->toBe('[a="b]');
     });
 
+    it('normalizeSelectorAttributes() unquotes only valid css identifier values', function () {
+        expect($this->tokenizer->normalizeSelectorAttributes('[tabindex="-1"]'))->toBe('[tabindex="-1"]')
+            ->and($this->tokenizer->normalizeSelectorAttributes('[x="-9x"]'))->toBe('[x="-9x"]')
+            ->and($this->tokenizer->normalizeSelectorAttributes('[x="--z"]'))->toBe('[x="--z"]')
+            ->and($this->tokenizer->normalizeSelectorAttributes('[x="1.5"]'))->toBe('[x="1.5"]')
+            ->and($this->tokenizer->normalizeSelectorAttributes('[x="-webkit-x"]'))->toBe('[x=-webkit-x]')
+            ->and($this->tokenizer->normalizeSelectorAttributes('[x="-a"]'))->toBe('[x=-a]')
+            ->and($this->tokenizer->normalizeSelectorAttributes('[x="aB0_-"]'))->toBe('[x=aB0_-]')
+            ->and($this->tokenizer->normalizeSelectorAttributes('[x="42"]'))->toBe('[x="42"]')
+            ->and($this->tokenizer->normalizeSelectorAttributes('[x="foo"]'))->toBe('[x=foo]');
+    });
+
     it('tokenizeCompound() handles escape sequences', function () {
         expect($this->tokenizer->tokenizeCompound('\\41x'))->toBe(['\\41x'])
             ->and($this->tokenizer->tokenizeCompound('\\'))->toBe([])

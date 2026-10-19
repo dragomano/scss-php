@@ -44,6 +44,42 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('keeps quotes on non-identifier attribute selector values', function () {
+            $source = <<<'SCSS'
+            [tabindex="-1"]:focus { outline: none; }
+            [x="--z"] { color: red; }
+            [x="-webkit-x"] { color: red; }
+            [x="42"] { color: red; }
+            [x="foo"] { color: red; }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            [tabindex="-1"]:focus {
+              outline: none;
+            }
+
+            [x="--z"] {
+              color: red;
+            }
+
+            [x=-webkit-x] {
+              color: red;
+            }
+
+            [x="42"] {
+              color: red;
+            }
+
+            [x=foo] {
+              color: red;
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
         it('keeps nested selector behavior for include inside nested rule', function () {
             $source = <<<'SCSS'
             @mixin interactive-title {
