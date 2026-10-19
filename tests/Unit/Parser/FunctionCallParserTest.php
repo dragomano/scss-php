@@ -597,4 +597,28 @@ describe('FunctionCallParser edge cases', function () {
             ->and($value->modernSyntax)->toBeTrue()
             ->and($value->arguments)->toHaveCount(2);
     });
+
+    it('parses modern if() conditions with colons inside condition functions', function () {
+        $ast  = (new Parser())->parse('.a { color: if(media(min-width: 100px): red; else: blue); }');
+        $rule = $ast->children[0];
+
+        /** @var RuleNode $rule */
+        $decl = $rule->children[0];
+
+        /** @var DeclarationNode $decl */
+        $value = $decl->value;
+
+        expect($value)->toBeInstanceOf(FunctionNode::class)
+            ->and($value->name)->toBe('if')
+            ->and($value->modernSyntax)->toBeTrue()
+            ->and($value->arguments)->toHaveCount(4);
+
+        $condition = $value->arguments[0];
+
+        expect($condition)->toBeInstanceOf(FunctionNode::class)
+            ->and($condition->name)->toBe('media')
+            ->and($condition->arguments)->toHaveCount(1)
+            ->and($condition->arguments[0])->toBeInstanceOf(StringNode::class)
+            ->and($condition->arguments[0]->value)->toBe('min-width: 100px');
+    });
 });

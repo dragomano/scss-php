@@ -88,6 +88,37 @@ describe('Compiler', function () {
             expect($css)->toEqualCss($expected);
         });
 
+        it('outputs modern css if() condition functions with nested colons verbatim', function () {
+            $source = <<<'SCSS'
+            $width: 100px;
+            $color: red;
+
+            .card {
+              color: if(media(min-width: 100px): red; else: blue);
+              padding: if(style(display: flex; display: grid): 1px; else: 2px);
+              border: if(media(min-width: #{$width}) and style(color: #{$color}): solid; else: none);
+              outline: if(unknown(a: 1, b: 2): red; else: blue);
+              background: if(media(feature(x: 1px)): red; else: blue);
+              shadow: if(unknown(a: (x[1])): red; else: blue);
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .card {
+              color: if(media(min-width: 100px): red; else: blue);
+              padding: if(style(display: flex; display: grid): 1px; else: 2px);
+              border: if(media(min-width: 100px) and style(color: red): solid; else: none);
+              outline: if(unknown(a: 1, b: 2): red; else: blue);
+              background: if(media(feature(x: 1px)): red; else: blue);
+              shadow: if(unknown(a: (x[1])): red; else: blue);
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($source);
+
+            expect($css)->toEqualCss($expected);
+        });
+
         it('keeps custom property values as raw css while interpolating #{} fragments', function () {
             $source = <<<'SCSS'
             $primary: #81899b;

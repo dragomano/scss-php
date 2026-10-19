@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Parser;
 
 use Bugo\SCSS\Builtins\Color\Support\CssNamedColors;
+use Bugo\SCSS\Lexer\Token;
 use Bugo\SCSS\Lexer\TokenStream;
 use Bugo\SCSS\Lexer\TokenType;
 use Bugo\SCSS\Nodes\AstNode;
@@ -322,6 +323,7 @@ final readonly class FunctionCallParser
             $this->stream->skipWhitespace();
 
             $savedPos     = $this->stream->getPosition();
+            $savedToken   = $this->stream->current();
             $potentialArg = $this->parseSingleValueNode();
 
             if ($potentialArg !== null) {
@@ -380,6 +382,16 @@ final readonly class FunctionCallParser
                         }
                     } else {
                         $arg = $this->parseFunctionArgument();
+
+                        if ($arg !== null && $this->stream->is(TokenType::COLON)) {
+                            $rawArgument = $this->captureRawColonArgument($savedToken);
+
+                            if ($rawArgument !== '') {
+                                $arguments[] = new StringNode($rawArgument);
+
+                                continue;
+                            }
+                        }
 
                         if ($arg !== null) {
                             $arguments[] = $arg;
@@ -458,6 +470,67 @@ final readonly class FunctionCallParser
         $start = $open->start + 1;
 
         return trim(substr($source, $start, $closeStart - $start));
+    }
+
+    private function captureRawColonArgument(Token $argumentStart): string
+    {
+        $this->stream->consume(TokenType::COLON);
+
+        $source             = $this->stream->getSource();
+        $depth              = 0;
+        $bracketDepth       = 0;
+        $interpolationDepth = 0;
+        $stopStart          = null;
+
+        while (! $this->stream->isEof()) {
+            $token = $this->stream->current();
+
+            if ($token->type === TokenType::HASH && $this->stream->peek()->type === TokenType::LBRACE) {
+                $interpolationDepth++;
+
+                $this->stream->advance(2);
+
+                continue;
+            }
+
+            if ($interpolationDepth > 0) {
+                if ($token->type === TokenType::RBRACE) {
+                    $interpolationDepth--;
+                }
+
+                $this->stream->advance();
+
+                continue;
+            }
+
+            if ($token->type === TokenType::LPAREN) {
+                $depth++;
+            } elseif ($token->type === TokenType::LBRACKET) {
+                $bracketDepth++;
+            } elseif ($token->type === TokenType::RPAREN || $token->type === TokenType::RBRACKET) {
+                if ($depth === 0 && $bracketDepth === 0) {
+                    $stopStart = $token->start;
+
+                    break;
+                }
+
+                if ($token->type === TokenType::RPAREN) {
+                    $depth--;
+                } else {
+                    $bracketDepth--;
+                }
+            } elseif ($token->type === TokenType::COMMA && $depth === 0 && $bracketDepth === 0) {
+                $stopStart = $token->start;
+
+                break;
+            }
+
+            $this->stream->advance();
+        }
+
+        $end = $stopStart ?? strlen($source);
+
+        return trim(substr($source, $argumentStart->start, $end - $argumentStart->start));
     }
 
     private function parseFunctionArgument(): ?AstNode
