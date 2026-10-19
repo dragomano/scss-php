@@ -6,6 +6,7 @@ use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
 use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\SassErrorException;
+use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
@@ -14,20 +15,30 @@ use Bugo\SCSS\Nodes\ElseIfNode;
 use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\ForNode;
 use Bugo\SCSS\Nodes\IfNode;
+use Bugo\SCSS\Nodes\IncludeNode;
+use Bugo\SCSS\Nodes\MapNode;
+use Bugo\SCSS\Nodes\MapPair;
+use Bugo\SCSS\Nodes\MixinNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
+use Bugo\SCSS\Nodes\SpreadArgumentNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Runtime\VariableDefinition;
 use Bugo\SCSS\Selector\SelectorComponent;
 use Bugo\SCSS\Selector\SelectorTokenizer;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\AstValueFormatterInterface;
+use Bugo\SCSS\Services\CalculationArgumentNormalizerInterface;
+use Bugo\SCSS\Services\CallableParameterBinder;
+use Bugo\SCSS\Services\CallArgumentResolver;
+use Bugo\SCSS\Services\CssArgumentEvaluator;
 use Bugo\SCSS\Services\EachLoopBinderInterface;
 use Bugo\SCSS\Services\ExtendsResolver;
 use Bugo\SCSS\Services\FunctionConditionEvaluatorInterface;
@@ -160,6 +171,34 @@ describe('ExtendsResolver', function () {
                     }
                 },
                 new LoopIterator(),
+                new CallArgumentResolver(
+                    $parser,
+                    new CssArgumentEvaluator(
+                        new class ($evaluateValue) implements AstValueEvaluatorInterface {
+                            public function __construct(private readonly Closure $evaluateValue) {}
+
+                            public function evaluate(AstNode $node, Environment $env): AstNode
+                            {
+                                return ($this->evaluateValue)($node, $env);
+                            }
+                        },
+                        new class implements CalculationArgumentNormalizerInterface {
+                            public function normalize(string $name, array $arguments): array
+                            {
+                                return $arguments;
+                            }
+                        },
+                    ),
+                    new class ($evaluateValue) implements AstValueEvaluatorInterface {
+                        public function __construct(private readonly Closure $evaluateValue) {}
+
+                        public function evaluate(AstNode $node, Environment $env): AstNode
+                        {
+                            return ($this->evaluateValue)($node, $env);
+                        }
+                    },
+                ),
+                new CallableParameterBinder(),
             );
         };
 
@@ -379,6 +418,44 @@ describe('ExtendsResolver', function () {
                 }
             },
             new LoopIterator(),
+            new CallArgumentResolver(
+                new class implements ParserInterface {
+                    public function setTrackSourceLocations(bool $track): void {}
+
+                    public function setPlainCss(bool $plainCss): void {}
+
+                    public function parse(string $source): RootNode
+                    {
+                        return new RootNode();
+                    }
+
+                    public function parseInlineExpression(string $expr): AstNode
+                    {
+                        return new StringNode($expr);
+                    }
+                },
+                new CssArgumentEvaluator(
+                    new class implements AstValueEvaluatorInterface {
+                        public function evaluate(AstNode $node, Environment $env): AstNode
+                        {
+                            return $node;
+                        }
+                    },
+                    new class implements CalculationArgumentNormalizerInterface {
+                        public function normalize(string $name, array $arguments): array
+                        {
+                            return $arguments;
+                        }
+                    },
+                ),
+                new class implements AstValueEvaluatorInterface {
+                    public function evaluate(AstNode $node, Environment $env): AstNode
+                    {
+                        return $node;
+                    }
+                },
+            ),
+            new CallableParameterBinder(),
         );
 
         $resolver->collectExtends(
@@ -443,6 +520,198 @@ describe('ExtendsResolver', function () {
                 $env,
             ))
             ->toThrow(InvalidLoopBoundaryException::class);
+    });
+
+    it('skips content directives without available content blocks', function () {
+        $this->resolver->collectExtends(new DirectiveNode('content'), new Environment());
+
+        $env = new Environment();
+        $env->getCurrentScope()->setVariableLocal('__meta_content_block', new StringNode('not-a-block'));
+
+        $this->resolver->collectExtends(new DirectiveNode('content'), $env);
+
+        $env2 = new Environment();
+        $env2->getCurrentScope()->setVariableLocal('__meta_content_block', [
+            new RuleNode('.x', [new ExtendNode('%t')]),
+        ]);
+        $env2->getCurrentScope()->setVariableLocal('__meta_content_scope', new StringNode('not-a-scope'));
+
+        $this->resolver->collectExtends(new DirectiveNode('content'), $env2);
+
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([]);
+    });
+
+    it('collects content blocks in the scope captured at the include call site', function () {
+        $env = new Environment();
+        $env->getCurrentScope()->setVariableLocal('__meta_content_block', [
+            new RuleNode('.x', [new ExtendNode('%t')]),
+        ]);
+        $env->getCurrentScope()->setVariableLocal('__meta_content_scope', $env->getCurrentScope());
+
+        $this->resolver->collectExtends(new DirectiveNode('content'), $env);
+
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([
+            [
+                'target'   => '%t',
+                'source'   => '.x',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
+            ],
+        ]);
+    });
+
+    it('skips includes whose mixins are unknown during collection', function () {
+        $this->resolver->collectExtends(
+            new RootNode([
+                new IncludeNode(null, 'ghost'),
+                new RuleNode('.x', [new ExtendNode('%t')]),
+            ]),
+            new Environment(),
+        );
+
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([
+            [
+                'target'   => '%t',
+                'source'   => '.x',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
+            ],
+        ]);
+    });
+
+    it('stops expanding includes at maximum collection call depth', function () {
+        $this->ctx->moduleState->callDepth = 100;
+
+        $this->resolver->collectExtends(
+            new RootNode([
+                new MixinNode('m', [], [new RuleNode('.x', [new ExtendNode('%t')])]),
+                new IncludeNode(null, 'm'),
+            ]),
+            new Environment(),
+        );
+
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([]);
+    });
+
+    it('aborts include expansion when call arguments cannot be resolved', function () {
+        $this->resolver->collectExtends(
+            new RootNode([
+                new MixinNode('m'),
+                new IncludeNode(null, 'm', [new SpreadArgumentNode(new MapNode([
+                    new MapPair(new NumberNode(1), new StringNode('a')),
+                ]))]),
+                new RuleNode('.x', [new ExtendNode('%t')]),
+            ]),
+            new Environment(),
+        );
+
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([
+            [
+                'target'   => '%t',
+                'source'   => '.x',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
+            ],
+        ]);
+    });
+
+    it('collects extends from namespaced module mixins and skips missing namespaces', function () {
+        $moduleScope = new Scope();
+        $moduleScope->defineMixin('m', [], [new RuleNode('.x', [new ExtendNode('%t')])]);
+
+        $env = new Environment();
+        $env->getCurrentScope()->addModule('mod', $moduleScope);
+
+        $this->resolver->collectExtends(
+            new RootNode([new IncludeNode('missing-namespace', 'm'), new IncludeNode('mod', 'm')]),
+            $env,
+        );
+
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([
+            [
+                'target'   => '%t',
+                'source'   => '.x',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
+            ],
+        ]);
+    });
+
+    it('resolves mixin parameter defaults while expanding includes', function () {
+        $this->resolver->collectExtends(
+            new RootNode([
+                new MixinNode('m', [new ArgumentNode('a', new StringNode('1px'))], [
+                    new RuleNode('.x', [new ExtendNode('%t')]),
+                ]),
+                new IncludeNode(null, 'm'),
+            ]),
+            new Environment(),
+        );
+
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([
+            [
+                'target'   => '%t',
+                'source'   => '.x',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
+            ],
+        ]);
+    });
+
+    it('transplants selector context variables into expanded mixin scopes', function () {
+        $env = new Environment();
+        $env->getCurrentScope()->setVariableLocal('__at_root_context', new StringNode('root-context'));
+        $env->getCurrentScope()->setVariableLocal('__at_rule_stack', ['stack-marker']);
+
+        $this->resolver->collectExtends(
+            new RootNode([
+                new MixinNode('m', [], [new RuleNode('.x', [new ExtendNode('%t')])]),
+                new IncludeNode(null, 'm'),
+            ]),
+            $env,
+        );
+
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([
+            [
+                'target'   => '%t',
+                'source'   => '.x',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
+            ],
+        ]);
+    });
+
+    it('registers mixins defined inside collected bodies', function () {
+        $this->resolver->collectExtends(
+            new ForNode('i', new NumberNode(1), new NumberNode(3), false, [
+                new MixinNode('m', [], [new RuleNode('.x', [new ExtendNode('%t')])]),
+                new IncludeNode(null, 'm'),
+            ]),
+            new Environment(),
+        );
+
+        expect($this->ctx->outputState->extends->pendingExtends)->toBe([
+            [
+                'target'   => '%t',
+                'source'   => '.x',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 1,
+            ],
+            [
+                'target'   => '%t',
+                'source'   => '.x',
+                'context'  => '',
+                'optional' => false,
+                'priority' => 2,
+            ],
+        ]);
     });
 
     it('ignores empty extend registrations and empty extend target lists', function () {
@@ -642,6 +911,44 @@ describe('ExtendsResolver', function () {
                 }
             },
             new LoopIterator(),
+            new CallArgumentResolver(
+                new class implements ParserInterface {
+                    public function setTrackSourceLocations(bool $track): void {}
+
+                    public function setPlainCss(bool $plainCss): void {}
+
+                    public function parse(string $source): RootNode
+                    {
+                        return new RootNode();
+                    }
+
+                    public function parseInlineExpression(string $expr): AstNode
+                    {
+                        return new StringNode($expr);
+                    }
+                },
+                new CssArgumentEvaluator(
+                    new class implements AstValueEvaluatorInterface {
+                        public function evaluate(AstNode $node, Environment $env): AstNode
+                        {
+                            return $node;
+                        }
+                    },
+                    new class implements CalculationArgumentNormalizerInterface {
+                        public function normalize(string $name, array $arguments): array
+                        {
+                            return $arguments;
+                        }
+                    },
+                ),
+                new class implements AstValueEvaluatorInterface {
+                    public function evaluate(AstNode $node, Environment $env): AstNode
+                    {
+                        return $node;
+                    }
+                },
+            ),
+            new CallableParameterBinder(),
         );
 
         $resolver->collectExtends(

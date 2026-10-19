@@ -867,4 +867,179 @@ describe('Compiler', function () {
                 ->and($elapsed)->toBeLessThan(3.0);
         })->group('performance');
     });
+
+    describe('@include with extends', function () {
+        it('collects extends from a mixin body at the root level', function () {
+            $scss = <<<'SCSS'
+            @mixin stuff {
+              %p {
+                max-width: 540px;
+              }
+              .x {
+                @extend %p;
+              }
+            }
+            @include stuff;
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .x {
+              max-width: 540px;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($scss))->toEqualCss($expected);
+        });
+
+        it('collects extends inside mixin-generated media queries', function () {
+            $scss = <<<'SCSS'
+            @mixin media-up($min) {
+              @media (min-width: $min) {
+                @content;
+              }
+            }
+
+            @include media-up(576px) {
+              %r-sm {
+                max-width: 540px;
+              }
+              .container-sm {
+                @extend %r-sm;
+              }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            @media (min-width: 576px) {
+              .container-sm {
+                max-width: 540px;
+              }
+            }
+            CSS;
+
+            expect($this->compiler->compileString($scss))->toEqualCss($expected);
+        });
+
+        it('collects extends inside content blocks passed to mixins in loops', function () {
+            $scss = <<<'SCSS'
+            @mixin media-up($name) {
+              $min: map-get((xs: 0, sm: 576px, md: 768px), $name);
+
+              @if $min {
+                @media (min-width: $min) {
+                  @content;
+                }
+              } @else {
+                @content;
+              }
+            }
+
+            @each $breakpoint, $w in (sm: 540px, md: 720px) {
+              @include media-up($breakpoint) {
+                %r-#{$breakpoint} {
+                  max-width: $w;
+                }
+                .container-sm {
+                  @extend %r-#{$breakpoint};
+                }
+              }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            @media (min-width: 576px) {
+              .container-sm {
+                max-width: 540px;
+              }
+            }
+            @media (min-width: 768px) {
+              .container-sm {
+                max-width: 720px;
+              }
+            }
+            CSS;
+
+            expect($this->compiler->compileString($scss))->toEqualCss($expected);
+        });
+
+        it('reproduces bootstrap container max-widths via extends inside media', function () {
+            $scss = <<<'SCSS'
+            $grid-breakpoints: (xs: 0, sm: 576px, md: 768px);
+            $container-max-widths: (sm: 540px, md: 720px);
+            $enable-grid-classes: true;
+
+            @function breakpoint-min($name, $breakpoints: $grid-breakpoints) {
+              $min: map-get($breakpoints, $name);
+              @return if($min != 0, $min, null);
+            }
+
+            @function breakpoint-infix($name, $breakpoints: $grid-breakpoints) {
+              @return if(breakpoint-min($name, $breakpoints) == null, "", "-#{$name}");
+            }
+
+            @mixin media-breakpoint-up($name, $breakpoints: $grid-breakpoints) {
+              $min: breakpoint-min($name, $breakpoints);
+
+              @if $min {
+                @media (min-width: $min) {
+                  @content;
+                }
+              } @else {
+                @content;
+              }
+            }
+
+            .container, .container-fluid {
+              width: 100%;
+            }
+
+            @if $enable-grid-classes {
+              @each $breakpoint, $container-max-width in $container-max-widths {
+                .container-#{$breakpoint} {
+                  @extend .container-fluid;
+                }
+
+                @include media-breakpoint-up($breakpoint, $grid-breakpoints) {
+                  %responsive-container-#{$breakpoint} {
+                    max-width: $container-max-width;
+                  }
+
+                  $extend-breakpoint: true;
+
+                  @each $name, $width in $grid-breakpoints {
+                    @if ($extend-breakpoint) {
+                      .container#{breakpoint-infix($name, $grid-breakpoints)} {
+                        @extend %responsive-container-#{$breakpoint};
+                      }
+
+                      @if ($breakpoint == $name) {
+                        $extend-breakpoint: false;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .container, .container-fluid, .container-md, .container-sm {
+              width: 100%;
+            }
+
+            @media (min-width: 576px) {
+              .container-sm, .container {
+                max-width: 540px;
+              }
+            }
+            @media (min-width: 768px) {
+              .container-md, .container-sm, .container {
+                max-width: 720px;
+              }
+            }
+            CSS;
+
+            expect($this->compiler->compileString($scss))->toEqualCss($expected);
+        });
+    });
 });

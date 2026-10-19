@@ -19,6 +19,8 @@ use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\Selector\SelectorTokenizer;
 use Bugo\SCSS\Services\AstValueEvaluatorInterface;
 use Bugo\SCSS\Services\AstValueFormatterInterface;
+use Bugo\SCSS\Services\CallableParameterBinder;
+use Bugo\SCSS\Services\CallArgumentResolver;
 use Bugo\SCSS\Services\Condition;
 use Bugo\SCSS\Services\Context;
 use Bugo\SCSS\Services\CssArgumentEvaluator;
@@ -302,6 +304,20 @@ final class CompilerRuntime
             ),
             $this->createAstValueFormatter(),
             new LoopIterator(),
+            $this->createCallArgumentResolver(),
+            new CallableParameterBinder(),
+        );
+    }
+
+    private function createCallArgumentResolver(): CallArgumentResolver
+    {
+        return new CallArgumentResolver(
+            $this->parser,
+            new CssArgumentEvaluator(
+                $this->createAstValueEvaluator(),
+                new RuntimeCalculationArgumentNormalizer($this),
+            ),
+            $this->createAstValueEvaluator(),
         );
     }
 

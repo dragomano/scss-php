@@ -9,12 +9,15 @@ use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
 use Bugo\SCSS\Exceptions\SassErrorException;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
+use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\EachNode;
 use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\ForNode;
 use Bugo\SCSS\Nodes\FunctionDeclarationNode;
 use Bugo\SCSS\Nodes\IfNode;
+use Bugo\SCSS\Nodes\IncludeNode;
+use Bugo\SCSS\Nodes\MixinNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
@@ -22,12 +25,15 @@ use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\WhileNode;
+use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Selector\SelectorComponent;
 use Bugo\SCSS\Selector\SelectorHelper;
 use Bugo\SCSS\Selector\SelectorTokenizer;
 use Bugo\SCSS\States\ExtendsState;
 use Bugo\SCSS\Utils\NameNormalizer;
+use Throwable;
 
 use function array_flip;
 use function array_key_exists;
@@ -87,6 +93,8 @@ final readonly class ExtendsResolver
         private EachLoopBinderInterface $eachLoopBinder,
         private AstValueFormatterInterface $valueFormatter,
         private LoopIterator $loopIterator,
+        private CallArgumentResolver $callArgumentResolver,
+        private CallableParameterBinder $parameterBinder,
     ) {}
 
     public function collectExtends(AstNode $node, Environment $env): void
@@ -123,6 +131,12 @@ final readonly class ExtendsResolver
 
         if ($node instanceof EachNode) {
             $this->collectEachExtends($node, $env);
+
+            return;
+        }
+
+        if ($node instanceof IncludeNode) {
+            $this->collectIncludeExtends($node, $env, null, '');
 
             return;
         }
@@ -1964,6 +1978,21 @@ final readonly class ExtendsResolver
 
     private function collectRootExtends(RootNode $node, Environment $env): void
     {
+        $this->seedCollectionScope($node, $env);
+
+        foreach ($node->children as $child) {
+            if ($child instanceof MixinNode) {
+                $env->getCurrentScope()->defineMixin(
+                    $child->name,
+                    $child->arguments,
+                    $child->body,
+                    false,
+                    null,
+                    $child->line,
+                );
+            }
+        }
+
         foreach ($node->children as $child) {
             if ($child instanceof VariableDeclarationNode) {
                 $this->variableDeclarationApplier->apply($child, $env);
@@ -2051,6 +2080,12 @@ final readonly class ExtendsResolver
 
     private function collectDirectiveExtends(DirectiveNode $node, Environment $env): void
     {
+        if (strtolower(trim($node->name)) === 'content') {
+            $this->collectContentBlockExtends($env);
+
+            return;
+        }
+
         if (! $node->hasBlock) {
             return;
         }
@@ -2063,6 +2098,154 @@ final readonly class ExtendsResolver
         $body = $node->body;
 
         $this->collectExtendsInDirectiveContext($body, $contextSegment, $env);
+    }
+
+    private function collectContentBlockExtends(Environment $env): void
+    {
+        $currentScope = $env->getCurrentScope();
+
+        if (! $currentScope->hasVariable('__meta_content_block')) {
+            return;
+        }
+
+        $contentBlock = $currentScope->getVariable('__meta_content_block');
+
+        if (! is_array($contentBlock)) {
+            return;
+        }
+
+        $contentScope = $currentScope->getVariable('__meta_content_scope');
+
+        if (! $contentScope instanceof Scope) {
+            return;
+        }
+
+        /** @var array<int, AstNode> $contentBlock */
+        $env->enterScope($contentScope);
+
+        try {
+            $this->collectChildren($contentBlock, $env, null, '', applyDeclarations: true);
+        } finally {
+            $env->exitScope();
+        }
+    }
+
+    /**
+     * Mixin bodies are not part of the static AST, so @extend rules behind
+     * an @include are discovered by expanding the call the same way the
+     * traversal does.
+     */
+    private function collectIncludeExtends(
+        IncludeNode $node,
+        Environment $env,
+        ?string $selector,
+        string $currentContext,
+    ): void {
+        if ($node->namespace !== null && in_array($node->namespace, ['meta', 'sass:meta'], true)) {
+            return;
+        }
+
+        [$mixinDefinition, $moduleScope] = $this->resolveMixinForCollection($node, $env);
+
+        if ($mixinDefinition === null) {
+            return;
+        }
+
+        $moduleState = $this->ctx->moduleState;
+
+        if ($moduleState->callDepth >= 100) {
+            return;
+        }
+
+        $moduleState->callDepth++;
+
+        try {
+            $resolved = $this->callArgumentResolver->resolveCallArguments($node->arguments, $env);
+        } catch (Throwable) {
+            $moduleState->callDepth--;
+
+            return;
+        }
+
+        $includeCallScope = $env->getCurrentScope();
+
+        $env->enterScope($mixinDefinition->closureScope);
+        $env->getCurrentScope()->markAsCallableBody();
+
+        $executionScope = $env->getCurrentScope();
+
+        if ($moduleScope instanceof Scope) {
+            $executionScope->setVariableLocal('__module_global_target', $moduleScope);
+        }
+
+        $parentSelector = $includeCallScope->getStringVariable('__parent_selector');
+
+        if ($parentSelector !== null) {
+            $executionScope->setVariableLocal('__parent_selector', $parentSelector);
+        }
+
+        $atRootContext = $includeCallScope->getAstVariable('__at_root_context');
+
+        if ($atRootContext !== null) {
+            $executionScope->setVariableLocal('__at_root_context', $atRootContext);
+        }
+
+        if ($includeCallScope->hasVariable('__at_rule_stack')) {
+            $executionScope->setVariableLocal('__at_rule_stack', $includeCallScope->getVariable('__at_rule_stack'));
+        }
+
+        $executionScope->setVariableLocal('__meta_content_exists', new BooleanNode($node->hasContent));
+        $executionScope->setVariableLocal('__meta_content_block', $node->contentBlock);
+        $executionScope->setVariableLocal('__meta_content_arguments', $node->contentArguments);
+        $executionScope->setVariableLocal('__meta_content_scope', $includeCallScope);
+
+        try {
+            $this->parameterBinder->bind(
+                $mixinDefinition->arguments,
+                $resolved->positional,
+                $resolved->named,
+                $executionScope,
+                function (string $name, ?AstNode $defaultValue) use ($executionScope, $env): void {
+                    if ($defaultValue !== null) {
+                        $executionScope->setVariableLocal(
+                            $name,
+                            $this->valueEvaluator->evaluate($defaultValue, $env),
+                        );
+                    }
+                },
+                $resolved->separator,
+            );
+
+            $this->collectChildren($mixinDefinition->body, $env, $selector, $currentContext, applyDeclarations: true);
+        } catch (Throwable) {
+            // Collection is a best-effort pre-pass: the traversal re-evaluates
+            // the include with modules and diagnostics in place, so real errors
+            // must surface from there.
+        } finally {
+            $env->exitScope();
+
+            $moduleState->callDepth--;
+        }
+    }
+
+    /**
+     * @return array{0: CallableDefinition|null, 1: Scope|null}
+     */
+    private function resolveMixinForCollection(IncludeNode $node, Environment $env): array
+    {
+        $scope = $env->getCurrentScope();
+
+        if ($node->namespace !== null && $node->namespace !== '') {
+            $moduleScope = $scope->getModule($node->namespace);
+
+            if ($moduleScope === null) {
+                return [null, null];
+            }
+
+            return [$moduleScope->findMixin($node->name)?->definition, $moduleScope];
+        }
+
+        return [$scope->findMixin($node->name)?->definition, null];
     }
 
     private function collectIfExtends(IfNode $node, Environment $env, ?string $selector = null, string $currentContext = ''): void
@@ -2440,6 +2623,25 @@ final readonly class ExtendsResolver
 
             if ($child instanceof WhileNode) {
                 $this->collectWhileExtends($child, $env, $selector, $currentContext);
+
+                continue;
+            }
+
+            if ($child instanceof IncludeNode) {
+                $this->collectIncludeExtends($child, $env, $selector, $currentContext);
+
+                continue;
+            }
+
+            if ($child instanceof MixinNode) {
+                $env->getCurrentScope()->defineMixin(
+                    $child->name,
+                    $child->arguments,
+                    $child->body,
+                    false,
+                    null,
+                    $child->line,
+                );
 
                 continue;
             }
