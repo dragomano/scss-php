@@ -250,7 +250,9 @@ final readonly class StringConcatenationEvaluator
                 return ! $node->isSlashOperator;
             }
 
-            return ! in_array(strtolower(trim($node->value)), self::OPERATOR_WORDS, true);
+            // Operator tokens never carry surrounding whitespace; strings like
+            // " + " produced by unquote() or interpolation are literal operands.
+            return ! in_array(strtolower($node->value), self::OPERATOR_WORDS, true);
         }
 
         return $node instanceof NumberNode

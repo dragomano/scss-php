@@ -198,5 +198,33 @@ describe('StringConcatenationEvaluator', function () {
             expect($result)->toBeInstanceOf(StringNode::class)
                 ->and($result->value)->toBe('solid');
         });
+
+        it('treats whitespace-padded operator strings from unquote as literal operands', function () {
+            $leftPadded  = new ListNode([new NumberNode(1.5, 'rem'), new StringNode('+'), new StringNode(' + ')], 'space');
+            $rightPadded = new ListNode([new StringNode(' + '), new StringNode('+'), new NumberNode(2, 'px')], 'space');
+
+            $leftResult  = $this->evaluator->evaluate($leftPadded);
+            $rightResult = $this->evaluator->evaluate($rightPadded);
+
+            expect($leftResult)->toBeInstanceOf(StringNode::class)
+                ->and($leftResult->value)->toBe('1.5rem + ')
+                ->and($rightResult)->toBeInstanceOf(StringNode::class)
+                ->and($rightResult->value)->toBe(' + 2px');
+        });
+
+        it('folds chains containing whitespace-padded operator strings without extra separators', function () {
+            $list = new ListNode([
+                new NumberNode(1.5, 'rem'),
+                new StringNode('+'),
+                new StringNode(' + '),
+                new StringNode('+'),
+                new NumberNode(2, 'px'),
+            ], 'space');
+
+            $result = $this->evaluator->evaluate($list);
+
+            expect($result)->toBeInstanceOf(StringNode::class)
+                ->and($result->value)->toBe('1.5rem + 2px');
+        });
     });
 });

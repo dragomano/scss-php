@@ -164,5 +164,33 @@ describe('Compiler', function () {
 
             expect($css)->toEqualCss($expected);
         });
+
+        it('builds calc values from unquote concat chains like the bootstrap add helper', function () {
+            $scss = <<<'SCSS'
+            @function add($value1, $value2, $return-calc: true) {
+              @if type-of($value1) == number and type-of($value2) == number and comparable($value1, $value2) {
+                @return $value1 + $value2;
+              }
+
+              @return if($return-calc == true, calc(#{$value1} + #{$value2}), $value1 + unquote(" + ") + $value2);
+            }
+
+            $input-height: add(1.5 * 1em, add(0.75rem * 2, 2px, false));
+
+            .form-control {
+              height: $input-height;
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .form-control {
+              height: calc(1.5em + 1.5rem + 2px);
+            }
+            CSS;
+
+            $css = $this->compiler->compileString($scss);
+
+            expect($css)->toEqualCss($expected);
+        });
     });
 });
