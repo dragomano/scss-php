@@ -273,8 +273,12 @@ final class Scope
             return null;
         }
 
+        $origin = $scope->isImportedMember($normalized) ? ($scope->importedVariables[$normalized] ?? null) : null;
+
         /** @psalm-var mixed $value */
-        $value = $scope->variables->get($normalized);
+        $value = $origin === null
+            ? $scope->variables->get($normalized)
+            : $origin['scope']->getAstVariable($origin['name']);
 
         return $value instanceof AstNode ? $value : null;
     }

@@ -133,6 +133,13 @@ describe('SelectorTokenizer', function () {
         expect($this->tokenizer->hasLeadingTopLevelCombinator(''))->toBeFalse();
     });
 
+    it('treats attribute selectors as operands between combinators', function () {
+        expect($this->tokenizer->hasBogusTopLevelCombinatorSequence('.a > [class*=table] > .b'))->toBeFalse()
+            ->and($this->tokenizer->hasBogusTopLevelCombinatorSequence('.a > [class*=btn] + [class*=btn]'))->toBeFalse()
+            ->and($this->tokenizer->hasBogusTopLevelCombinatorSequence('.a > [data-value="> +"] > .b'))->toBeFalse()
+            ->and($this->tokenizer->hasBogusTopLevelCombinatorSequence('.a > [class*=table] > + .b'))->toBeTrue();
+    });
+
     it('hasBogusTopLevelCombinatorSequence() detects repeated top-level combinators', function () {
         expect($this->tokenizer->hasBogusTopLevelCombinatorSequence('div > + span'))->toBeTrue();
     });

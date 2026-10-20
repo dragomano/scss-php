@@ -25,6 +25,7 @@ use Bugo\SCSS\Services\Evaluator;
 use Bugo\SCSS\Services\Render;
 use Bugo\SCSS\Services\Selector;
 
+use function array_reverse;
 use function count;
 use function in_array;
 use function ltrim;
@@ -578,7 +579,10 @@ final readonly class AtRuleNodeHandler
                 return $output;
             }
 
-            if ($atRuleStack === []) {
+            if (
+                $atRuleStack === []
+                || (! $executionEntryScope->isInsideKeyframes() && $this->isEnclosingRuleCloserThanAtRule($executionEntryScope))
+            ) {
                 $childScope->setVariableLocal(
                     '__parent_rule_has_rendered_children',
                     $this->render->outputState()->deferral->currentRuleHasOutput,
@@ -643,7 +647,7 @@ final readonly class AtRuleNodeHandler
      */
     private function shouldWrapContentInParentRule(array $atRuleStack): bool
     {
-        foreach ($atRuleStack as $entry) {
+        foreach (array_reverse($atRuleStack) as $entry) {
             if ($entry->type === 'supports') {
                 return true;
             }
@@ -652,9 +656,7 @@ final readonly class AtRuleNodeHandler
                 continue;
             }
 
-            if ($entry->name === 'media') {
-                return true;
-            }
+            return $entry->name !== 'font-face' && ! $this->isKeyframesName($entry->name ?? '');
         }
 
         return false;

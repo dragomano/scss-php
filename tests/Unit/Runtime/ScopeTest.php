@@ -52,6 +52,29 @@ describe('Scope', function () {
         expect($child->getVariable('inherited'))->toBeInstanceOf(StringNode::class);
     });
 
+    it('reads current AST values through wildcard imports', function () {
+        $origin = new Scope();
+        $origin->setVariable('source_name', new StringNode('before'));
+
+        $importer = new Scope();
+        $importer->setVariable('local-name', new StringNode('before'));
+        $importer->trackImportedVariable('local-name', $origin, 'source-name');
+        $importer->markImportedMember('local-name');
+
+        $updated = new StringNode('after');
+        $origin->setVariable('source-name', $updated);
+
+        $child = new Scope($importer);
+
+        expect($child->getAstVariable('local_name'))->toBe($updated);
+
+        $shadow = new StringNode('shadow');
+        $child->setVariableLocal('local-name', $shadow);
+
+        expect($child->getAstVariable('local-name'))->toBe($shadow)
+            ->and($importer->getAstVariable('local-name'))->toBe($updated);
+    });
+
     it('getParent() returns null for root scope', function () {
         $scope = new Scope();
 

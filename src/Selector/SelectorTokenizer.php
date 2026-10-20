@@ -3512,8 +3512,6 @@ final readonly class SelectorTokenizer
 
             if ($char === ']' && $bracketDepth > 0) {
                 $bracketDepth--;
-
-                continue;
             }
 
             if ($char === '(') {
