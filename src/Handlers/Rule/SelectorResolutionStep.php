@@ -15,7 +15,6 @@ use function array_pop;
 use function ctype_digit;
 use function implode;
 use function str_contains;
-use function str_replace;
 use function str_starts_with;
 use function strlen;
 use function strtolower;
@@ -119,9 +118,7 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
             }
         }
 
-        $parentSelectorValue = str_replace("\n", ' ', $ruleCtx->parentSelector);
-
-        $scope->setVariableLocal('__parent_selector', new StringNode($parentSelectorValue));
+        $scope->setVariableLocal('__parent_selector', new StringNode($ruleCtx->parentSelector));
 
         return null;
     }

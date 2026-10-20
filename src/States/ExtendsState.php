@@ -8,6 +8,7 @@ namespace Bugo\SCSS\States;
  * @phpstan-type ExtendsBox array{
  *     rawParts: array<int, string>,
  *     selectors: array<int, string>,
+ *     breaks: array<int, bool>,
  *     originals: array<int, string>,
  *     context: string
  * }
@@ -21,6 +22,7 @@ namespace Bugo\SCSS\States;
  * @psalm-type ExtendsBox=array{
  *     rawParts: array<int, string>,
  *     selectors: array<int, string>,
+ *     breaks: array<int, bool>,
  *     originals: array<int, string>,
  *     context: string
  * }

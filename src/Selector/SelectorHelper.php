@@ -19,6 +19,7 @@ use function str_contains;
 use function str_ends_with;
 use function str_replace;
 use function str_split;
+use function str_starts_with;
 use function strlen;
 use function strpos;
 use function strspn;
@@ -58,6 +59,44 @@ final class SelectorHelper
     public static function resolveNested(string $selector, string $parentSelector): string
     {
         return self::computeNested($selector, $parentSelector);
+    }
+
+    /**
+     * Combines raw child and parent parts, keeping the line breaks the source wrote
+     * before a part, so extended selector lists stay wrapped like in dart-sass.
+     *
+     * @param array<int, string> $selectorParts raw child parts, leading whitespace kept
+     * @param array<int, string> $parentParts raw parent parts, leading whitespace kept
+     */
+    public static function combineNestedParts(array $selectorParts, array $parentParts): string
+    {
+        $combined = [];
+        $breaks   = [];
+
+        foreach ($parentParts as $parentIndex => $parentPart) {
+            $parentHasBreak = str_starts_with($parentPart, "\n");
+            $trimmedParent  = ltrim($parentPart);
+
+            foreach ($selectorParts as $selectorIndex => $selectorPart) {
+                $childHasBreak   = str_starts_with($selectorPart, "\n");
+                $trimmedSelector = ltrim($selectorPart);
+
+                $combined[] = $trimmedParent . ' ' . $trimmedSelector;
+                $breaks[]   = ($parentHasBreak && $parentIndex > 0) || ($childHasBreak && $selectorIndex > 0);
+            }
+        }
+
+        $result = '';
+
+        foreach ($combined as $index => $part) {
+            if ($index > 0) {
+                $result .= $breaks[$index] ? ",\n" : ', ';
+            }
+
+            $result .= $part;
+        }
+
+        return $result;
     }
 
     /**
@@ -179,10 +218,14 @@ final class SelectorHelper
             $parentHasBreak = str_contains($parentPart, "\n");
             $trimmedParent  = ltrim($parentPart);
 
-            foreach ($selectorParts as $selectorPart) {
+            foreach ($selectorParts as $ci => $selectorPart) {
+                // Dart Sass drops the source line break of a part that contains the
+                // parent selector, because the part is rebuilt during substitution.
+                $childHasBreak   = str_starts_with($selectorPart, "\n") && ! str_contains($selectorPart, '&');
                 $trimmedSelector = ltrim($selectorPart);
 
-                $break = ($parentHasBreak || ($pi > 0 && str_ends_with($parentParts[$pi - 1], "\n"))) && $pi > 0;
+                $break = (($parentHasBreak || ($pi > 0 && str_ends_with($parentParts[$pi - 1], "\n"))) && $pi > 0)
+                    || ($childHasBreak && $ci > 0);
 
                 if (str_contains($trimmedSelector, '&')) {
                     if (self::countTopLevelAmpersands($trimmedSelector) > 1) {

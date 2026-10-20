@@ -38,7 +38,6 @@ use Throwable;
 use function array_flip;
 use function array_key_exists;
 use function array_keys;
-use function array_merge;
 use function array_pop;
 use function array_reverse;
 use function array_slice;
@@ -78,11 +77,14 @@ use function usort;
  *     contexts: array<int, string>,
  *     sourceSpecificity: array<string, int>,
  *     originals: array<string, true>,
- *     boxes: array<int, array<int, Complex>>
+ *     boxes: array<int, array<int, Complex>>,
+ *     boxLineBreaks: array<int, array<string, true>>
  * }
  */
 final readonly class ExtendsResolver
 {
+    private const BOX_NONE = -1;
+
     public function __construct(
         private CompilerContext $ctx,
         private Text $text,
@@ -221,6 +223,7 @@ final readonly class ExtendsResolver
             'sourceSpecificity' => [],
             'originals'         => [],
             'boxes'             => [],
+            'boxLineBreaks'     => [],
         ];
 
         /** @var BoxMeta $boxMeta */
@@ -292,14 +295,20 @@ final readonly class ExtendsResolver
             );
 
             $selectors = [];
+            $breaks    = [];
 
             foreach ($trimmed as $complex) {
-                $selectors[] = $this->complexKey($complex);
+                $key = $this->complexKey($complex);
+
+                $selectors[] = $key;
+                $breaks[]    = isset($store['boxLineBreaks'][$boxId][$key])
+                    || $this->hasLineBreak($key);
             }
 
             $boxes[$boxId] = [
                 'rawParts'  => $boxMeta['rawParts'],
                 'selectors' => $selectors,
+                'breaks'    => $breaks,
                 'originals' => $boxMeta['originals'],
                 'context'   => $boxMeta['context'],
             ];
@@ -448,10 +457,7 @@ final readonly class ExtendsResolver
 
     public function applyExtendsToSelector(string $selector): string
     {
-        $lineBreaks = array_merge(
-            $this->ctx->outputState->extends->partLineBreaks,
-            $this->collectLineBreakMap($selector),
-        );
+        $ownLineBreaks = $this->collectLineBreakMap($selector);
 
         $selector = $this->tokenizer->canonicalizeSelectorEscapes($selector);
 
@@ -466,10 +472,13 @@ final readonly class ExtendsResolver
 
             foreach ($state->boxes as $box) {
                 if ($box['originals'] === $parts) {
-                    return $this->joinSelectorListWithLineBreaks(
+                    $joined = $this->joinSelectorListWithLineBreaks(
                         $this->renderBoxSelectors($box['selectors']),
-                        $lineBreaks,
+                        $ownLineBreaks,
+                        $this->mapBoxLineBreaks($box['selectors'], $box['breaks']),
                     );
+
+                    return $joined;
                 }
             }
 
@@ -483,6 +492,7 @@ final readonly class ExtendsResolver
         $parts  = SelectorHelper::splitList($selector, false);
         $result = [];
         $exact  = [];
+        $breaks = [];
 
         foreach ($parts as $part) {
             if ($part === '') {
@@ -498,12 +508,18 @@ final readonly class ExtendsResolver
                 $exact[]  = $part;
             }
 
-            foreach ($this->applyExtendsIncrementally($part) as $candidate) {
+            $partLineBreak = $ownLineBreaks[$this->canonicalBreakKey($part)] ?? $this->hasLineBreak($part);
+
+            foreach ($this->applyExtendsIncrementally($part, $partLineBreak) as $candidate => $inheritsLineBreak) {
                 if (str_contains($candidate, '%')) {
                     continue;
                 }
 
                 $result[] = $candidate;
+
+                if ($inheritsLineBreak) {
+                    $breaks[$candidate] = true;
+                }
             }
 
             if ($isPlaceholderPart) {
@@ -521,7 +537,8 @@ final readonly class ExtendsResolver
 
         return $this->joinSelectorListWithLineBreaks(
             $this->trimRedundantSelectors($unique, $uniqueExact),
-            $lineBreaks,
+            $ownLineBreaks,
+            $breaks,
         );
     }
 
@@ -559,7 +576,7 @@ final readonly class ExtendsResolver
 
         $extended = $store['extensions'] === []
             ? $complexes
-            : ($this->extendComplexListInStore($store, $complexes, $store['extensions'], $context) ?? $complexes);
+            : ($this->extendComplexListInStore($store, $complexes, $store['extensions'], $context, $boxId) ?? $complexes);
 
         $store['boxes'][$boxId]    = $extended;
         $store['contexts'][$boxId] = $context;
@@ -775,7 +792,7 @@ final readonly class ExtendsResolver
             $oldValue = $store['boxes'][$boxId] ?? [];
             $context  = $store['contexts'][$boxId] ?? '';
 
-            $newValue = $this->extendComplexListInStore($store, $oldValue, $newExtensions, $context);
+            $newValue = $this->extendComplexListInStore($store, $oldValue, $newExtensions, $context, $boxId);
 
             if ($newValue === null) {
                 continue;
@@ -793,12 +810,19 @@ final readonly class ExtendsResolver
      * @param ExtensionMap $extensionsMap
      * @return array<int, Complex>|null
      */
-    private function extendComplexListInStore(array &$store, array $list, array $extensionsMap, string $context): ?array
-    {
+    private function extendComplexListInStore(
+        array &$store,
+        array $list,
+        array $extensionsMap,
+        string $context,
+        int $boxId = self::BOX_NONE,
+    ): ?array {
         $extended  = null;
         $unchanged = [];
 
         foreach ($list as $complex) {
+            $inheritsLineBreak = $this->inheritsLineBreak($store, $boxId, $complex);
+
             $result = $this->extendSingleComplex($store, $complex, $extensionsMap, $context);
 
             if ($result === null) {
@@ -814,6 +838,10 @@ final readonly class ExtendsResolver
             $extended ??= $unchanged;
 
             foreach ($result as $item) {
+                if ($inheritsLineBreak) {
+                    $store['boxLineBreaks'][$boxId][$this->complexKey($item)] = true;
+                }
+
                 $extended[] = $item;
             }
         }
@@ -823,6 +851,20 @@ final readonly class ExtendsResolver
         }
 
         return $extended;
+    }
+
+    /**
+     * @param ExtensionStore $store
+     * @param Complex $complex
+     */
+    private function inheritsLineBreak(array &$store, int $boxId, array $complex): bool
+    {
+        if ($boxId === self::BOX_NONE) {
+            return false;
+        }
+
+        return $this->hasLineBreak($this->complexKey($complex))
+            || isset($store['boxLineBreaks'][$boxId][$this->complexKey($complex)]);
     }
 
     /**
@@ -1185,17 +1227,15 @@ final readonly class ExtendsResolver
      */
     private function extendPseudoSelector(array &$store, string $token, array $pseudo, array $extensionsMap, string $context): ?array
     {
-        $inner = $this->tokenizer->parseSelectorList($pseudo['selector']);
-
+        $inner         = $this->tokenizer->parseSelectorList($pseudo['selector']);
         $extendedInner = $this->extendComplexListInStore($store, $inner, $extensionsMap, $context);
 
         if ($extendedInner === null) {
             return null;
         }
 
-        $name           = $pseudo['name'];
-        $normalizedName  = $this->normalizePseudoName($name);
-
+        $name                 = $pseudo['name'];
+        $normalizedName       = $this->normalizePseudoName($name);
         $hadComplexOriginally = false;
 
         foreach ($inner as $complex) {
@@ -1317,9 +1357,8 @@ final readonly class ExtendsResolver
         /** @var list<Complex> $result */
         $result       = [];
         $numOriginals = 0;
-
-        $reversed   = array_reverse($complexes);
-        $totalCount = count($complexes);
+        $reversed     = array_reverse($complexes);
+        $totalCount   = count($complexes);
 
         foreach ($reversed as $reverseIndex => $complex) {
             $i = $totalCount - 1 - $reverseIndex;
@@ -1742,23 +1781,27 @@ final readonly class ExtendsResolver
 
     /**
      * @param array<int, string> $parts
-     * @param array<string, bool> $lineBreaks
+     * @param array<string, bool> $ownLineBreaks
+     * @param array<string, true> $inheritedLineBreaks
      */
-    private function joinSelectorListWithLineBreaks(array $parts, array $lineBreaks): string
-    {
+    private function joinSelectorListWithLineBreaks(
+        array $parts,
+        array $ownLineBreaks,
+        array $inheritedLineBreaks = [],
+    ): string {
         if ($parts === []) {
             return '';
         }
 
-        $result        = $parts[0];
-        $previousBreak = $lineBreaks[$this->canonicalBreakKey($parts[0])] ?? false;
+        $result = $parts[0];
 
         foreach (array_slice($parts, 1) as $part) {
-            $currentBreak = $lineBreaks[$this->canonicalBreakKey($part)] ?? false;
+            $key   = $this->canonicalBreakKey($part);
+            $break = ($ownLineBreaks[$key] ?? false)
+                || isset($inheritedLineBreaks[$key])
+                || $this->hasLineBreak($part);
 
-            $result .= ($previousBreak || $currentBreak ? ",\n" : ', ') . $part;
-
-            $previousBreak = $currentBreak;
+            $result .= ($break ? ",\n" : ', ') . $part;
         }
 
         return $result;
@@ -1770,6 +1813,31 @@ final readonly class ExtendsResolver
         $complexes = $this->tokenizer->parseSelectorList($trimmed);
 
         return $this->tokenizer->complexComponentsToString($complexes[0] ?? []);
+    }
+
+    private function hasLineBreak(string $selectorPart): bool
+    {
+        $key = $this->canonicalBreakKey($selectorPart);
+
+        return $this->ctx->outputState->extends->partLineBreaks[$key] ?? false;
+    }
+
+    /**
+     * @param array<int, string> $selectors
+     * @param array<int, bool> $breaks
+     * @return array<string, true>
+     */
+    private function mapBoxLineBreaks(array $selectors, array $breaks): array
+    {
+        $mapped = [];
+
+        foreach ($selectors as $index => $selector) {
+            if ($breaks[$index] ?? false) {
+                $mapped[$this->canonicalBreakKey($selector)] = true;
+            }
+        }
+
+        return $mapped;
     }
 
     /**
@@ -1792,17 +1860,20 @@ final readonly class ExtendsResolver
     }
 
     /**
-     * @return array<int, string>
+     * Extended selectors inherit the line break of the selector they replace,
+     * which is how Dart Sass keeps wrapped selector lists wrapped.
+     *
+     * @return array<string, bool> rendered selector => inherits a line break
      */
-    private function applyExtendsIncrementally(string $part): array
+    private function applyExtendsIncrementally(string $part, bool $partLineBreak): array
     {
-        $allResults = [$part];
+        $allResults = [$part => $partLineBreak || $this->hasLineBreak($part)];
         $seen       = [$part => true];
 
         foreach ($this->orderedExtends() as $extend) {
             $hasMatch = false;
 
-            foreach ($allResults as $selector) {
+            foreach ($allResults as $selector => $__) {
                 if (str_contains($selector, $extend['target'])) {
                     $hasMatch = true;
 
@@ -1816,18 +1887,20 @@ final readonly class ExtendsResolver
 
             $next = [];
 
-            foreach ($allResults as $selector) {
-                $next[] = $selector;
+            foreach ($allResults as $selector => $inheritsLineBreak) {
+                $next[$selector] = $inheritsLineBreak;
 
                 foreach ($this->replaceExtendTargetInSelectorPart(
                     $selector,
                     $extend['target'],
                     $extend['source'],
                 ) as $variant) {
-                    if ($variant !== '' && ! isset($seen[$variant])) {
-                        $seen[$variant] = true;
-                        $next[]         = $variant;
+                    if ($variant === '' || isset($seen[$variant])) {
+                        continue;
                     }
+
+                    $seen[$variant] = true;
+                    $next[$variant] = $inheritsLineBreak || $this->hasLineBreak($variant);
                 }
             }
 
@@ -1845,8 +1918,7 @@ final readonly class ExtendsResolver
     private function stripPseudoPlaceholdersFromPart(string $part): ?string
     {
         $parts = $this->tokenizer->splitAtTopLevel($part, [' ', '>', '+', '~']);
-
-        $kept = [];
+        $kept  = [];
 
         foreach ($parts as $raw) {
             $compound = $this->stripPseudoPlaceholdersFromCompound($raw);
@@ -1872,8 +1944,7 @@ final readonly class ExtendsResolver
     private function stripPseudoPlaceholdersFromCompound(string $compound): ?string
     {
         $tokens = $this->tokenizeSelectorCompound($compound);
-
-        $kept = [];
+        $kept   = [];
 
         foreach ($tokens as $token) {
             if (str_contains($token, '%')) {
@@ -1926,8 +1997,7 @@ final readonly class ExtendsResolver
     private function stripPseudoArgumentList(string $listText): string
     {
         $parts = $this->splitTopLevelSelectorList($listText);
-
-        $kept = [];
+        $kept  = [];
 
         foreach ($parts as $raw) {
             $cleaned = $this->stripPseudoPlaceholdersFromPart($raw);
@@ -2006,9 +2076,8 @@ final readonly class ExtendsResolver
 
     private function collectRuleExtends(RuleNode $node, Environment $env): void
     {
-        $rawSelector = $this->text->interpolateText($node->selector, $env);
-        $selector    = $rawSelector;
-
+        $rawSelector        = $this->text->interpolateText($node->selector, $env);
+        $selector           = $rawSelector;
         $parentSelectorNode = $env->getCurrentScope()->getStringVariable('__parent_selector');
         $parentSelector     = $parentSelectorNode?->value;
 
@@ -2018,9 +2087,8 @@ final readonly class ExtendsResolver
                 : $this->combineNestedSelectorWithParent($selector, $parentSelector);
         }
 
-        $rawSelector = $this->tokenizer->canonicalizeSelectorEscapes($rawSelector);
-        $selector    = $this->tokenizer->canonicalizeSelectorEscapes($selector);
-
+        $rawSelector    = $this->tokenizer->canonicalizeSelectorEscapes($rawSelector);
+        $selector       = $this->tokenizer->canonicalizeSelectorEscapes($selector);
         $currentContext = $this->getCurrentExtendDirectiveContext($env);
         $outputState    = $this->ctx->outputState;
 
@@ -2028,13 +2096,11 @@ final readonly class ExtendsResolver
             $outputState->extends->partLineBreaks += [$part => $hasBreak];
         }
 
-        $rawParts = $this->splitTopLevelSelectorList($rawSelector);
-
+        $rawParts      = $this->splitTopLevelSelectorList($rawSelector);
         $resolvedParts = [];
 
         foreach ($this->splitTopLevelSelectorList($selector) as $selectorPart) {
-            $selectorPart = $this->tokenizer->normalizeSelectorAttributes($selectorPart);
-
+            $selectorPart    = $this->tokenizer->normalizeSelectorAttributes($selectorPart);
             $resolvedParts[] = $selectorPart;
 
             $outputState->extends->selectorContexts[$selectorPart] ??= [];
@@ -2896,21 +2962,13 @@ final readonly class ExtendsResolver
 
     private function combineNestedSelectorWithParent(string $selector, string $parentSelector): string
     {
-        $selectorParts = $this->splitTopLevelSelectorList($selector);
-        $parentParts   = $this->splitTopLevelSelectorList($parentSelector);
+        $selectorParts = $this->tokenizer->splitAtTopLevel($selector, [','], handleQuotes: true, trim: false);
+        $parentParts   = $this->tokenizer->splitAtTopLevel($parentSelector, [','], handleQuotes: true, trim: false);
 
         if ($selectorParts === [] || $parentParts === []) {
             return $selector;
         }
 
-        $combined = [];
-
-        foreach ($parentParts as $parentPart) {
-            foreach ($selectorParts as $selectorPart) {
-                $combined[] = $parentPart . ' ' . $selectorPart;
-            }
-        }
-
-        return implode(', ', array_values(array_unique($combined)));
+        return SelectorHelper::combineNestedParts($selectorParts, $parentParts);
     }
 }

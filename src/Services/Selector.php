@@ -496,35 +496,7 @@ final readonly class Selector
             return $selector;
         }
 
-        $combined = [];
-        $breaks   = [];
-
-        foreach ($parentParts as $pi => $parentPart) {
-            $parentHasBreak = str_starts_with($parentPart, "\n");
-            $trimmedParent  = ltrim($parentPart);
-
-            foreach ($selectorParts as $cj => $selectorPart) {
-                $childHasBreak   = str_starts_with($selectorPart, "\n");
-                $trimmedSelector = ltrim($selectorPart);
-
-                $needsBreak = ($parentHasBreak && $pi > 0) || ($childHasBreak && $cj > 0);
-
-                $combined[] = $trimmedParent . ' ' . $trimmedSelector;
-                $breaks[]   = $needsBreak;
-            }
-        }
-
-        $result = '';
-
-        foreach ($combined as $i => $part) {
-            if ($i > 0) {
-                $result .= $breaks[$i] ? ",\n" : ', ';
-            }
-
-            $result .= $part;
-        }
-
-        return $result;
+        return SelectorHelper::combineNestedParts($selectorParts, $parentParts);
     }
 
     public function applyExtendsToSelector(string $selector): string

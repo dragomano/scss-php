@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
 use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Loader;
 use Bugo\SCSS\Style;
 use Tests\Support\ArrayLogger;
 
@@ -190,5 +191,133 @@ describe('Output Formatting', function () {
         CSS;
 
         expect($this->compiler->compileString($scss))->toEqualCss($expected);
+    });
+
+    it('keeps multi-line selector lists wrapped', function () {
+        $scss = <<<'SCSS'
+        .a1,
+        .a2,
+        .a3 {
+          color: red;
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .a1,
+        .a2,
+        .a3 {
+          color: red;
+        }
+        CSS;
+
+        expect($this->compiler->compileString($scss))->toEqualCss($expected);
+    });
+
+    it('does not wrap selector lists written on one line', function () {
+        $scss = <<<'SCSS'
+        .a, .b {
+          color: red;
+        }
+
+        .c {
+          @extend .b;
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .a, .b, .c {
+          color: red;
+        }
+        CSS;
+
+        expect($this->compiler->compileString($scss))->toEqualCss($expected);
+    });
+
+    it('keeps extended selectors of a wrapped list wrapped', function () {
+        $scss = <<<'SCSS'
+        .a,
+        .b {
+          color: red;
+        }
+
+        .c {
+          @extend .b;
+        }
+
+        .d {
+          @extend .b;
+        }
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        .a,
+        .b,
+        .d,
+        .c {
+          color: red;
+        }
+        CSS;
+
+        expect($this->compiler->compileString($scss))->toEqualCss($expected);
+    });
+
+    it('keeps wrapped lists wrapped when the parent selector is resolved inside a mixin', function () {
+        $scss = <<<'SCSS'
+        @mixin hover-focus() {
+          &:hover,
+          &:focus {
+            @content;
+          }
+        }
+
+        @mixin bg-variant($parent) {
+          a#{$parent},
+          button#{$parent} {
+            @include hover-focus() {
+              background-color: blue;
+            }
+          }
+        }
+
+        @include bg-variant(".bg-primary");
+        SCSS;
+
+        $expected = /** @lang text */ <<<'CSS'
+        a.bg-primary:hover, a.bg-primary:focus,
+        button.bg-primary:hover,
+        button.bg-primary:focus {
+          background-color: blue;
+        }
+        CSS;
+
+        expect($this->compiler->compileString($scss))->toEqualCss($expected);
+    });
+
+    it('keeps wrapped lists of imported files wrapped when extends apply', function () {
+        $tmpDir = sys_get_temp_dir() . '/scss-php-wrap-import-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        file_put_contents($tmpDir . '/_parts.scss', <<<'SCSS'
+        .a,
+        .b {
+          color: red;
+        }
+
+        .c {
+          @extend .b;
+        }
+        SCSS);
+
+        $compiler = new Compiler(loader: new Loader([$tmpDir]));
+        $css      = $compiler->compileString("@import 'parts';\n");
+
+        expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+        .a,
+        .b,
+        .c {
+          color: red;
+        }
+        CSS);
     });
 });
