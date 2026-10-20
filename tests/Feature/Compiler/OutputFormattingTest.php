@@ -320,4 +320,131 @@ describe('Output Formatting', function () {
         }
         CSS);
     });
+
+    it('keeps chained placeholder extenders wrapped in source order', function (bool $imported, Style $style) {
+        $containers = <<<'SCSS'
+        .container,
+        .container-fluid { width: 100%; }
+        @each $size in (sm, md, lg, xl) {
+          .container-#{$size} { @extend .container-fluid; }
+        }
+        SCSS;
+
+        $navbar = <<<'SCSS'
+        .navbar-expand {
+          %container-nesting { flex-wrap: nowrap; }
+          > .container,
+          > .container-fluid { @extend %container-nesting; }
+          @each $size in (sm, md, lg, xl) {
+            > .container-#{$size} { @extend %container-nesting; }
+          }
+        }
+        SCSS;
+
+        $tmpDir = sys_get_temp_dir() . '/scss-php-chained-wrap-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        file_put_contents($tmpDir . '/_containers.scss', $containers);
+        file_put_contents($tmpDir . '/_navbar.scss', $navbar);
+        file_put_contents($tmpDir . '/_layout.scss', "@import 'containers', 'navbar';");
+
+        $compiler = new Compiler(new CompilerOptions(style: $style), new Loader([$tmpDir]));
+        $source   = $imported ? "@import 'layout';" : $containers . "\n" . $navbar;
+        $css      = $compiler->compileString($source);
+
+        if ($style === Style::COMPRESSED) {
+            expect($css)->toBe('.container,.container-fluid,.container-xl,.container-lg,.container-md,.container-sm{width:100%}.navbar-expand > .container,.navbar-expand > .container-fluid,.navbar-expand > .container-sm,.navbar-expand > .container-md,.navbar-expand > .container-lg,.navbar-expand > .container-xl{flex-wrap:nowrap}');
+
+            return;
+        }
+
+        expect($css)->toEqualCss(/** @lang text */ <<<'CSS'
+        .container,
+        .container-fluid,
+        .container-xl,
+        .container-lg,
+        .container-md,
+        .container-sm {
+          width: 100%;
+        }
+
+        .navbar-expand > .container,
+        .navbar-expand > .container-fluid,
+        .navbar-expand > .container-sm,
+        .navbar-expand > .container-md,
+        .navbar-expand > .container-lg,
+        .navbar-expand > .container-xl {
+          flex-wrap: nowrap;
+        }
+        CSS);
+    })->with([false, true])->with([Style::EXPANDED, Style::COMPRESSED]);
+
+    it('preserves extender rule groups and their original line breaks across imports', function () {
+        $tmpDir = sys_get_temp_dir() . '/scss-php-extender-groups-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        file_put_contents($tmpDir . '/_columns.scss', <<<'SCSS'
+        %column { width: 100%; }
+        @each $size in (lg, xl) {
+          @for $i from 1 through 2 {
+            .col-#{$size}-#{$i} { @extend %column; }
+          }
+          .col-#{$size},
+          .col-#{$size}-auto { @extend %column; }
+        }
+        SCSS);
+
+        $compiler = new Compiler(loader: new Loader([$tmpDir]));
+
+        expect($compiler->compileString("@import 'external.css'; @import 'columns';"))->toEqualCss(/** @lang text */ <<<'CSS'
+        @import "external.css";
+        .col-xl,
+        .col-xl-auto, .col-xl-2, .col-xl-1, .col-lg,
+        .col-lg-auto, .col-lg-2, .col-lg-1 {
+          width: 100%;
+        }
+        CSS);
+    });
+
+    it('keeps line breaks local to each rule when selector lists repeat', function () {
+        $scss = <<<'SCSS'
+        .a,
+        .b { color: red; }
+        .a, .b { color: blue; }
+        .c { @extend .b; }
+        SCSS;
+
+        expect($this->compiler->compileString($scss))->toEqualCss(/** @lang text */ <<<'CSS'
+        .a,
+        .b,
+        .c {
+          color: red;
+        }
+
+        .a, .b, .c {
+          color: blue;
+        }
+        CSS);
+    });
+
+    it('keeps wrapped targets when an imported extender precedes the target file', function () {
+        $tmpDir = sys_get_temp_dir() . '/scss-php-forward-import-wrap-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        file_put_contents($tmpDir . '/_extenders.scss', '.c { @extend .b; }');
+        file_put_contents($tmpDir . '/_base.scss', ".a,\n.b { color: red; }");
+
+        $compiler = new Compiler(loader: new Loader([$tmpDir]));
+
+        expect($compiler->compileString("@import 'extenders', 'base';"))->toEqualCss(/** @lang text */ <<<'CSS'
+        .a,
+        .b,
+        .c {
+          color: red;
+        }
+        CSS);
+    });
 });

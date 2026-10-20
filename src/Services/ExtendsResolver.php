@@ -69,7 +69,7 @@ use function usort;
  * @psalm-type Extension=array{extender: Complex, target: string, context: string, optional: bool, priority: int}
  * @psalm-type Extender=array{selector: Complex, original: bool, context: string}
  * @psalm-type ExtensionMap=array<string, array<string, Extension>>
- * @psalm-type BoxMeta=array<int, array{rawParts: array<int, string>, originals: array<int, string>, context: string}>
+ * @psalm-type BoxMeta=array<int, array{rawParts: array<int, string>, originals: array<int, string>, originalBreaks: array<string, bool>, context: string}>
  * @psalm-type ExtensionStore=array{
  *     selectors: array<string, array<int, true>>,
  *     extensions: ExtensionMap,
@@ -78,7 +78,8 @@ use function usort;
  *     sourceSpecificity: array<string, int>,
  *     originals: array<string, true>,
  *     boxes: array<int, array<int, Complex>>,
- *     boxLineBreaks: array<int, array<string, true>>
+ *     boxLineBreaks: array<int, array<string, true>>,
+ *     extenderBreaks: array<string, true>
  * }
  */
 final readonly class ExtendsResolver
@@ -224,6 +225,7 @@ final readonly class ExtendsResolver
             'originals'         => [],
             'boxes'             => [],
             'boxLineBreaks'     => [],
+            'extenderBreaks'    => [],
         ];
 
         /** @var BoxMeta $boxMeta */
@@ -234,12 +236,19 @@ final readonly class ExtendsResolver
 
         foreach ($state->events as $event) {
             if ($event['type'] === 'rule') {
-                /** @var array{type: 'rule', boxId: int, rawParts: array<int, string>, resolvedParts: array<int, string>, context: string} $event */
+                /** @var array{type: 'rule', boxId: int, rawParts: array<int, string>, resolvedParts: array<int, string>, lineBreaks?: array<string, bool>, context: string} $event */
                 $boxMeta[$event['boxId']] = [
-                    'rawParts'  => $event['rawParts'],
-                    'originals' => $event['resolvedParts'],
-                    'context'   => $event['context'],
+                    'rawParts'       => $event['rawParts'],
+                    'originals'      => $event['resolvedParts'],
+                    'originalBreaks' => $event['lineBreaks'] ?? $state->partLineBreaks,
+                    'context'        => $event['context'],
                 ];
+
+                foreach ($event['lineBreaks'] ?? $state->partLineBreaks as $part => $hasBreak) {
+                    if ($hasBreak) {
+                        $store['boxLineBreaks'][$event['boxId']][$part] = true;
+                    }
+                }
 
                 $complexes = [];
 
@@ -268,6 +277,7 @@ final readonly class ExtendsResolver
                 $event['optional'],
                 $event['context'],
                 $event['priority'],
+                $event['boxId'],
             );
         }
 
@@ -301,16 +311,16 @@ final readonly class ExtendsResolver
                 $key = $this->complexKey($complex);
 
                 $selectors[] = $key;
-                $breaks[]    = isset($store['boxLineBreaks'][$boxId][$key])
-                    || $this->hasLineBreak($key);
+                $breaks[]    = isset($store['boxLineBreaks'][$boxId][$key]);
             }
 
             $boxes[$boxId] = [
-                'rawParts'  => $boxMeta['rawParts'],
-                'selectors' => $selectors,
-                'breaks'    => $breaks,
-                'originals' => $boxMeta['originals'],
-                'context'   => $boxMeta['context'],
+                'rawParts'       => $boxMeta['rawParts'],
+                'selectors'      => $selectors,
+                'breaks'         => $breaks,
+                'originals'      => $boxMeta['originals'],
+                'originalBreaks' => $boxMeta['originalBreaks'],
+                'context'        => $boxMeta['context'],
             ];
         }
 
@@ -348,6 +358,8 @@ final readonly class ExtendsResolver
             if ($foreignStore['extensions'] === []) {
                 continue;
             }
+
+            $store['extenderBreaks'] += $foreignStore['extenderBreaks'];
 
             foreach ($foreignStore['sourceSpecificity'] as $simple => $specificity) {
                 $store['sourceSpecificity'][$simple] = $specificity;
@@ -471,7 +483,7 @@ final readonly class ExtendsResolver
             $parts = $this->splitTopLevelSelectorList($selector);
 
             foreach ($state->boxes as $box) {
-                if ($box['originals'] === $parts) {
+                if ($box['originals'] === $parts && ($box['originalBreaks'] ?? $ownLineBreaks) === $ownLineBreaks) {
                     $joined = $this->joinSelectorListWithLineBreaks(
                         $this->renderBoxSelectors($box['selectors']),
                         $ownLineBreaks,
@@ -617,6 +629,7 @@ final readonly class ExtendsResolver
         bool $optional,
         string $context,
         int $priority,
+        int $boxId,
     ): void {
         $selectorsForTarget = $store['selectors'][$target] ?? null;
         $hadExistingExtensions = isset($store['byExtender'][$target]);
@@ -634,6 +647,10 @@ final readonly class ExtendsResolver
             }
 
             $key = $this->complexKey($extender);
+
+            if (isset($store['boxLineBreaks'][$boxId][$key])) {
+                $store['extenderBreaks'][$key] = true;
+            }
 
             if (isset($sources[$key])) {
                 if (! $optional) {
@@ -821,9 +838,7 @@ final readonly class ExtendsResolver
         $unchanged = [];
 
         foreach ($list as $complex) {
-            $inheritsLineBreak = $this->inheritsLineBreak($store, $boxId, $complex);
-
-            $result = $this->extendSingleComplex($store, $complex, $extensionsMap, $context);
+            $result = $this->extendSingleComplex($store, $complex, $extensionsMap, $context, $boxId);
 
             if ($result === null) {
                 if ($extended !== null) {
@@ -838,10 +853,6 @@ final readonly class ExtendsResolver
             $extended ??= $unchanged;
 
             foreach ($result as $item) {
-                if ($inheritsLineBreak) {
-                    $store['boxLineBreaks'][$boxId][$this->complexKey($item)] = true;
-                }
-
                 $extended[] = $item;
             }
         }
@@ -856,26 +867,17 @@ final readonly class ExtendsResolver
     /**
      * @param ExtensionStore $store
      * @param Complex $complex
-     */
-    private function inheritsLineBreak(array &$store, int $boxId, array $complex): bool
-    {
-        if ($boxId === self::BOX_NONE) {
-            return false;
-        }
-
-        return $this->hasLineBreak($this->complexKey($complex))
-            || isset($store['boxLineBreaks'][$boxId][$this->complexKey($complex)]);
-    }
-
-    /**
-     * @param ExtensionStore $store
-     * @param Complex $complex
      * @param ExtensionMap $extensionsMap
      * @param string $context
      * @return array<int, Complex>|null
      */
-    private function extendSingleComplex(array &$store, array $complex, array $extensionsMap, string $context): ?array
-    {
+    private function extendSingleComplex(
+        array &$store,
+        array $complex,
+        array $extensionsMap,
+        string $context,
+        int $boxId = self::BOX_NONE,
+    ): ?array {
         $lead = $complex[0]->lead ?? '';
 
         if ($this->countCombinatorWords($lead) > 1) {
@@ -927,7 +929,23 @@ final readonly class ExtendsResolver
         $first  = true;
 
         foreach ($this->tokenizer->paths($extendedNotExpanded) as $path) {
+            $lineBreak = $boxId === self::BOX_NONE
+                ? ($store['extenderBreaks'][$this->complexKey($complex)] ?? false)
+                : isset($store['boxLineBreaks'][$boxId][$this->complexKey($complex)]);
+
+            foreach ($path as $part) {
+                $lineBreak = $lineBreak || ($store['extenderBreaks'][$this->complexKey($part)] ?? false);
+            }
+
             foreach ($this->tokenizer->weave($path) as $output) {
+                if ($lineBreak) {
+                    if ($boxId === self::BOX_NONE) {
+                        $store['extenderBreaks'][$this->complexKey($output)] = true;
+                    } else {
+                        $store['boxLineBreaks'][$boxId][$this->complexKey($output)] = true;
+                    }
+                }
+
                 if ($first && $isOriginal) {
                     $store['originals'][$this->complexKey($output)] = true;
                 }
@@ -1797,9 +1815,8 @@ final readonly class ExtendsResolver
 
         foreach (array_slice($parts, 1) as $part) {
             $key   = $this->canonicalBreakKey($part);
-            $break = ($ownLineBreaks[$key] ?? false)
-                || isset($inheritedLineBreaks[$key])
-                || $this->hasLineBreak($part);
+            $break = $ownLineBreaks[$key]
+                ?? (isset($inheritedLineBreaks[$key]) || $this->hasLineBreak($part));
 
             $result .= ($break ? ",\n" : ', ') . $part;
         }
@@ -1809,7 +1826,7 @@ final readonly class ExtendsResolver
 
     private function canonicalBreakKey(string $selectorPart): string
     {
-        $trimmed   = trim($selectorPart);
+        $trimmed   = $this->tokenizer->normalizeSelectorAttributes(trim($selectorPart));
         $complexes = $this->tokenizer->parseSelectorList($trimmed);
 
         return $this->tokenizer->complexComponentsToString($complexes[0] ?? []);
@@ -2092,7 +2109,9 @@ final readonly class ExtendsResolver
         $currentContext = $this->getCurrentExtendDirectiveContext($env);
         $outputState    = $this->ctx->outputState;
 
-        foreach ($this->collectLineBreakMap($selector) as $part => $hasBreak) {
+        $lineBreaks = $this->collectLineBreakMap($selector);
+
+        foreach ($lineBreaks as $part => $hasBreak) {
             $outputState->extends->partLineBreaks += [$part => $hasBreak];
         }
 
@@ -2121,6 +2140,7 @@ final readonly class ExtendsResolver
             'boxId'         => $outputState->extends->ruleCount - 1,
             'rawParts'      => $rawParts,
             'resolvedParts' => $resolvedParts,
+            'lineBreaks'    => $lineBreaks,
             'context'       => $currentContext,
         ];
 

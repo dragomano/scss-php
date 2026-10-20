@@ -773,7 +773,6 @@ describe('ExtendsResolver', function () {
     });
 
     it('skips empty selector parts when collecting extends from rule with trailing comma', function () {
-        // ".foo," splits into [".foo", ""] — the empty part must be skipped
         $env = new Environment();
 
         $this->resolver->collectExtends(
@@ -787,10 +786,8 @@ describe('ExtendsResolver', function () {
     });
 
     it('skips empty parts in applyExtendsToSelector', function () {
-        // SelectorHelper::splitList with filterEmpty=false returns empty parts for leading comma
         $this->resolver->registerExtend('%ph', '.replacement');
 
-        // ", .foo" produces ["", ".foo"] with filterEmpty=false — empty part must be skipped
         $result = $this->resolver->applyExtendsToSelector(', .foo');
 
         expect($result)->toBe('.foo');
@@ -802,8 +799,6 @@ describe('ExtendsResolver', function () {
     });
 
     it('deduplicates extenders when the same extender appears via multiple paths', function () {
-        // .a selector extended by .b and .c; .c also extended by .b
-        // When resolving transitive extenders of .a: pending=[.c,.b], then .c adds .b again
         $this->resolver->registerExtend('.a', '.b');
         $this->resolver->registerExtend('.a', '.c');
         $this->resolver->registerExtend('.c', '.b');
@@ -818,7 +813,6 @@ describe('ExtendsResolver', function () {
     });
 
     it('skips already-seen nested extenders when traversing transitive chains', function () {
-        // .a→.b; .b→.c,.d; .c→.d  — when processing .c's nested extenders, .d is already in $seen
         $this->resolver->registerExtend('.a', '.b');
         $this->resolver->registerExtend('.b', '.c');
         $this->resolver->registerExtend('.b', '.d');
@@ -1086,7 +1080,7 @@ describe('ExtendsResolver', function () {
 
         expect($foreignStore['extensions'])->not->toBeEmpty();
 
-        $store = ['extensions' => [], 'byExtender' => [], 'sourceSpecificity' => []];
+        $store = ['extensions' => [], 'byExtender' => [], 'sourceSpecificity' => [], 'extenderBreaks' => []];
 
         $this->resolver->addForeignExtensionsToStore($store, [$foreignStore]);
 
@@ -1254,6 +1248,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [5 => ''],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'extenderBreaks'    => [],
             'boxes'             => [5 => [[new SelectorComponent('.t', '')]]],
         ];
 
@@ -1272,6 +1267,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'extenderBreaks'    => [],
             'boxes'             => [],
         ];
 
@@ -1361,6 +1357,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [0 => ''],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'extenderBreaks'    => [],
             'boxes'             => [0 => [[new SelectorComponent('.a', '')]]],
         ];
 
@@ -1379,6 +1376,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'extenderBreaks'    => [],
             'boxes'             => [],
         ];
 
@@ -1395,6 +1393,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [0 => ''],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'extenderBreaks'    => [],
             'boxes'             => [0 => [[new SelectorComponent('.a.b', '')]]],
         ];
 
@@ -1408,6 +1407,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'extenderBreaks'    => [],
             'boxes'             => [],
         ];
 
@@ -1425,6 +1425,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [0 => ''],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'extenderBreaks'    => [],
             'boxes'             => [0 => [[new SelectorComponent('.a.b', '')]]],
         ];
 
@@ -1438,6 +1439,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'extenderBreaks'    => [],
             'boxes'             => [],
         ];
 
@@ -1455,6 +1457,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [0 => ''],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'extenderBreaks'    => [],
             'boxes'             => [0 => [[new SelectorComponent('.a.b', '')]]],
         ];
 
@@ -1468,6 +1471,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'extenderBreaks'    => [],
             'boxes'             => [],
         ];
 
@@ -1482,5 +1486,11 @@ describe('ExtendsResolver', function () {
         $this->resolver->registerExtend('.g2', 'x *.a y');
 
         expect($this->resolver->applyExtendsToSelector('.g1, .g2'))->toBe('.g1, x .b, .g2, x *.a y');
+    });
+
+    it('inherits line breaks when applying extensions without selector boxes', function () {
+        $this->resolver->registerExtend('.b', '.c');
+
+        expect($this->resolver->applyExtendsToSelector(".a,\n.b"))->toBe(".a,\n.b,\n.c");
     });
 });

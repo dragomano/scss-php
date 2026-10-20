@@ -485,4 +485,21 @@ describe('Compiler extend module graph', function () {
         }
         CSS);
     });
+
+    it('preserves root evaluation errors when collecting a combined import chain fails', function () {
+        $tmpDir = sys_get_temp_dir() . '/scss-php-import-chain-error-' . uniqid('', true);
+
+        mkdir($tmpDir, 0777, true);
+
+        file_put_contents($tmpDir . '/_parts.scss', '.a { color: red; } .b { @extend .a; }');
+
+        $compiler = new Compiler(loader: new Loader([$tmpDir]));
+
+        expect(fn() => $compiler->compileString(<<<'SCSS'
+        @import 'parts';
+        @for $i from oops through 1 {
+          .x { color: red; }
+        }
+        SCSS))->toThrow(InvalidLoopBoundaryException::class);
+    });
 });

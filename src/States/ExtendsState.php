@@ -10,6 +10,7 @@ namespace Bugo\SCSS\States;
  *     selectors: array<int, string>,
  *     breaks: array<int, bool>,
  *     originals: array<int, string>,
+ *     originalBreaks?: array<string, bool>,
  *     context: string
  * }
  * @phpstan-type ExtendsScope array{
@@ -24,6 +25,7 @@ namespace Bugo\SCSS\States;
  *     selectors: array<int, string>,
  *     breaks: array<int, bool>,
  *     originals: array<int, string>,
+ *     originalBreaks?: array<string, bool>,
  *     context: string
  * }
  * @psalm-type ExtendsScope=array{
@@ -53,6 +55,7 @@ final class ExtendsState
      *     boxId: int,
      *     rawParts: array<int, string>,
      *     resolvedParts: array<int, string>,
+     *     lineBreaks?: array<string, bool>,
      *     context: string
      * }|array{
      *     type: 'extend',

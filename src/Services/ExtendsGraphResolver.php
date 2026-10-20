@@ -30,6 +30,7 @@ use Throwable;
 use function array_diff;
 use function array_diff_key;
 use function array_keys;
+use function array_push;
 use function array_reverse;
 use function array_shift;
 use function array_values;
@@ -58,6 +59,7 @@ use function str_starts_with;
  *         boxId: int,
  *         rawParts: array<int, string>,
  *         resolvedParts: array<int, string>,
+ *         lineBreaks?: array<string, bool>,
  *         context: string
  *     }|array{
  *         type: 'extend',
@@ -98,6 +100,24 @@ final readonly class ExtendsGraphResolver
         $graph    = $this->buildGraph($rootAst, $snapshot['events'] !== []);
 
         $this->restoreCollection($snapshot);
+
+        if ($graph !== null && $graph['upstream'] === [] && $graph['loadCssRoots'] === []) {
+            try {
+                $inlined  = [];
+                $children = $this->inlineImportChildren($rootAst, $graph, $inlined);
+
+                if (array_diff_key($graph['asts'], $inlined) === []) {
+                    $state->resetCollection();
+
+                    $this->extends->collectExtends(new RootNode($children), new Environment());
+                    $this->extends->finalizeCollectedExtends();
+
+                    return;
+                }
+            } catch (Throwable) {
+                $this->restoreCollection($snapshot);
+            }
+        }
 
         if ($graph === null) {
             $this->extends->finalizeCollectedExtends();
@@ -204,8 +224,7 @@ final readonly class ExtendsGraphResolver
         }
 
         foreach ($branches as $branchRoot => $branch) {
-            $branchStore = $branchStores[$branchRoot];
-
+            $branchStore     = $branchStores[$branchRoot];
             $inheritedStores = [];
 
             foreach ($branch['ancestors'] as $ancestorId) {
@@ -213,7 +232,6 @@ final readonly class ExtendsGraphResolver
             }
 
             $this->extends->addForeignExtensionsToStore($branchStore[$branchRoot], $inheritedStores);
-
             $this->propagateExtensions($branchStore, $branch['upstream'], array_reverse($branch['post']));
 
             foreach ($branch['nodes'] as $moduleId => $_) {
@@ -235,6 +253,50 @@ final readonly class ExtendsGraphResolver
         }
 
         $this->extends->applyExtensionStore($stores[self::ROOT_ID], $metas[self::ROOT_ID]);
+    }
+
+    /**
+     * @param ModuleGraph $graph
+     * @param array<string, true> $inlined
+     * @return array<int, AstNode>
+     */
+    private function inlineImportChildren(RootNode $ast, array $graph, array &$inlined, int $depth = 0): array
+    {
+        $children = [];
+
+        foreach ($ast->children as $child) {
+            if (! $child instanceof ImportNode || $depth >= self::MAX_DEPTH) {
+                $children[] = $child;
+
+                continue;
+            }
+
+            foreach ($child->imports as $import) {
+                $resolved = $this->module->resolveImport($import);
+
+                if ($resolved['type'] !== 'sass') {
+                    continue;
+                }
+
+                /** @var array{type: 'sass', path: string} $resolved */
+                $file = $this->tryLoad($resolved['path'], true);
+
+                if ($file !== null) {
+                    $inlined[$file->path] = true;
+
+                    $importAst = $graph['asts'][$file->path] ?? $this->parser->parse(
+                        $this->ctx->normalizerPipeline->process(
+                            $file->content,
+                            Syntax::fromPath($file->path, $file->content),
+                        ),
+                    );
+
+                    array_push($children, ...$this->inlineImportChildren($importAst, $graph, $inlined, $depth + 1));
+                }
+            }
+        }
+
+        return $children;
     }
 
     /**
