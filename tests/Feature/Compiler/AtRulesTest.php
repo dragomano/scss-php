@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
+use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\Style;
 
 describe('Compiler', function () {
     beforeEach(function () {
@@ -10,6 +12,94 @@ describe('Compiler', function () {
     });
 
     describe('@keyframes', function () {
+        it('joins keyframe selector lists on one line', function (string $stops, string $expectedStops, string $directive) {
+            $source = <<<SCSS
+            @$directive blink {
+              $stops { opacity: 1; }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<CSS
+            @$directive blink {
+              $expectedStops {
+                opacity: 1;
+              }
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        })->with([
+            'inline'               => ['0%, 100%', '0%, 100%'],
+            'newline after comma'  => ["0%,\n100%", '0%, 100%'],
+            'newline before comma' => ["0%\n,100%", '0%, 100%'],
+            'mixed stops'          => ["from,\n50%, to", 'from, 50%, to'],
+            'scientific notation'  => ["1E+1%,\n100%", '1e+1%, 100%'],
+            'interpolation'        => ["#{0%},\n#{100%}", '0%, 100%'],
+        ])->with(['keyframes', '-webkit-keyframes']);
+
+        it('joins keyframe selector lists inside cascade layers and nested style rules', function () {
+            $source = <<<'SCSS'
+            @layer utilities {
+              .a {
+                @-webkit-keyframes blink {
+                  0%,
+                  100% { opacity: 1; }
+                }
+              }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            @layer utilities {
+              @-webkit-keyframes blink {
+                0%, 100% {
+                  opacity: 1;
+                }
+              }
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('keeps keyframe selector lists compact in compressed output', function () {
+            $compiler = new Compiler(new CompilerOptions(style: Style::COMPRESSED));
+
+            $source = <<<'SCSS'
+            @keyframes blink {
+              0%,
+              100% { opacity: 1; }
+            }
+            SCSS;
+
+            expect($compiler->compileString($source))->toEqualCss('@keyframes blink{0%,100%{opacity:1}}');
+        });
+
+        it('preserves multiline style selectors after keyframes', function () {
+            $source = <<<'SCSS'
+            @keyframes blink {
+              0%,
+              100% { opacity: 1; }
+            }
+            .a,
+            .b { opacity: 0; }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            @keyframes blink {
+              0%, 100% {
+                opacity: 1;
+              }
+            }
+            .a,
+            .b {
+              opacity: 0;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
         it('keeps percentage keyframe selectors', function () {
             $source = <<<'SCSS'
             @keyframes b {

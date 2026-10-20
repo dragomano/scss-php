@@ -61,6 +61,7 @@ final readonly class SelectorResolutionStep implements CompilationStepInterface
             // Normalize scientific notation in keyframe selectors (13E+1% → 13e+1%)
             if ($insideKeyframes) {
                 $selector = $this->normalizeScientificNotation($selector);
+                $selector = implode(', ', $this->selector->splitTopLevelSelectorList($selector));
             }
 
             $scopeParentSelector = $scope->getStringVariable('__parent_selector')?->value;
