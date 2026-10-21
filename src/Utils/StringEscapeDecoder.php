@@ -176,7 +176,7 @@ final class StringEscapeDecoder
 
             if ($codePoint === 0x0A) {
                 $result .= ' ';
-            } elseif (self::isPrivateUseCodePoint($codePoint)) {
+            } elseif (self::needsNonAsciiEscape($codePoint)) {
                 $result .= '\\' . dechex($codePoint);
 
                 if (self::needsSeparatorAfter($decoded, $index + $width)) {
@@ -459,14 +459,13 @@ final class StringEscapeDecoder
             return true;
         }
 
-        return self::isPrivateUseCodePoint($codePoint);
+        return self::needsNonAsciiEscape($codePoint);
     }
 
-    private static function isPrivateUseCodePoint(int $codePoint): bool
+    private static function needsNonAsciiEscape(int $codePoint): bool
     {
         return ($codePoint >= 0xE000 && $codePoint <= 0xF8FF)
-            || ($codePoint >= 0xF0000 && $codePoint <= 0xFFFFD)
-            || ($codePoint >= 0x100000 && $codePoint <= 0x10FFFD);
+            || ($codePoint >= 0xF0000 && $codePoint <= 0x10FFFF);
     }
 
     private static function needsSeparatorAfter(string $value, int $nextIndex): bool

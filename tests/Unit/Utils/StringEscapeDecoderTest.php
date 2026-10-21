@@ -189,6 +189,29 @@ describe('StringEscapeDecoder', function () {
         });
     });
 
+    describe('non-ASCII serialization', function () {
+        it('matches Unicode escape boundaries in quoted and unquoted content', function (string $value, string $expected) {
+            expect(StringEscapeDecoder::encodeQuotedContent($value, '"'))->toBe($expected)
+                ->and(StringEscapeDecoder::encodeUnquotedContent($value))->toBe($expected);
+        })->with([
+            ["\u{FFFE}", "\u{FFFE}"],
+            ["\u{FFFF}", "\u{FFFF}"],
+            ["\u{1F600}", "\u{1F600}"],
+            ["\u{EFFFF}", "\u{EFFFF}"],
+            ["\u{F0000}", '\f0000'],
+            ["\u{FFFFD}", '\ffffd'],
+            ["\u{FFFFE}", '\ffffe'],
+            ["\u{FFFFF}", '\fffff'],
+            ["\u{100000}", '\100000'],
+            ["\u{10FFFD}", '\10fffd'],
+            ["\u{10FFFE}", '\10fffe'],
+            ["\u{10FFFF}", '\10ffff'],
+            ["\u{10FFFF}a", '\10ffff a'],
+            ["\u{10FFFF} q", '\10ffff  q'],
+            ["\u{10FFFF}q", '\10ffffq'],
+        ]);
+    });
+
     describe('hexToUtf8()', function () {
         it('encodes ASCII range', function () {
             expect(StringEscapeDecoder::hexToUtf8('41'))->toBe('A');
