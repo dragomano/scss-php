@@ -881,6 +881,19 @@ final class Tokenizer
         if (ctype_xdigit($escapeResult[0] ?? '')) {
             $codePoint = (int) hexdec($escapeResult);
 
+            if ($isFirst && $codePoint === 0) {
+                $next = $this->peekChar(0);
+
+                if (
+                    ! $this->isNameStartCodePoint($next)
+                    && ! $this->isDigit($next)
+                    && $next !== '\\'
+                    && ($next !== '#' || $this->peekChar() !== '{')
+                ) {
+                    return '\0 ';
+                }
+            }
+
             if ($isFirst && $codePoint >= 0x30 && $codePoint <= 0x39) {
                 return '\\' . strtolower(dechex($codePoint)) . ' ';
             }
@@ -962,7 +975,7 @@ final class Tokenizer
 
     private function normalizeIdentifierEscapedCodePoint(int $codePoint): string
     {
-        if ($this->isIdentifierCodePoint($codePoint)) {
+        if ($codePoint === 0 || $codePoint > 0x10FFFF || $this->isIdentifierCodePoint($codePoint)) {
             return StringEscapeDecoder::codePointToUtf8($codePoint);
         }
 

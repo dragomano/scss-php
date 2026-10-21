@@ -219,6 +219,28 @@ describe('Tokenizer', function () {
             ->and($tokens[2]->value)->toBe('b');
     });
 
+    it('normalizes invalid Unicode escapes while preserving standalone null identifiers', function (string $source, string $expected) {
+        $tokens = $this->tokenizer->tokenize($source);
+
+        expect($tokens[0]->type)->toBe(TokenType::IDENTIFIER)
+            ->and($tokens[0]->value)->toBe($expected);
+    })->with([
+        'null at the start' => ['\0xyz', "\u{FFFD}xyz"],
+        'null in the middle' => ['x\0y', "x\u{FFFD}y"],
+        'null at the end' => ['x\0', "x\u{FFFD}"],
+        'null before another escape' => ['\0\0', "\u{FFFD}\u{FFFD}"],
+        'null before a digit' => ['\0000001', "\u{FFFD}1"],
+        'null before interpolation' => ['\0#{x}', "\u{FFFD}"],
+        'first invalid code point' => ['\110000', "\u{FFFD}"],
+        'largest hex escape' => ['\FFFFFF', "\u{FFFD}"],
+        'standalone null' => ['\0', '\0 '],
+        'padded standalone null' => ['\000000', '\0 '],
+        'null before a delimiter' => ['\0;', '\0 '],
+        'null before a literal hash' => ['\0#foo', '\0 '],
+        'tab' => ['\9', '\9 '],
+        'newline' => ['\a', '\a '],
+    ]);
+
     it('tokenizes escaped identifiers and strings through the public api', function () {
         $escapedBackslashIdentifier = $this->tokenizer->tokenize('\\');
         $escapedQuestionIdentifier = $this->tokenizer->tokenize('\\?');
