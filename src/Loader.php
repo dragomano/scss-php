@@ -226,8 +226,9 @@ final class Loader implements LoaderInterface
      */
     private function resolveSearchPaths(): array
     {
-        $paths = $this->importDirectory !== null ? [$this->importDirectory] : [];
-        $cwd   = ($this->workDir)();
+        $importDirectory = $this->importDirectory !== null ? realpath($this->importDirectory) : false;
+        $paths           = $importDirectory !== false ? [$importDirectory] : [];
+        $cwd             = ($this->workDir)();
 
         if (is_string($cwd)) {
             $resolvedCwd = realpath($cwd);

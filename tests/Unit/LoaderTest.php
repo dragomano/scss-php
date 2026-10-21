@@ -214,6 +214,39 @@ describe('Loader', function () {
     });
 
     describe('setImportDirectory()', function () {
+        it('resolves relative import directories without other search paths', function () {
+            $loader = new Loader(workDir: static fn(): string|false => false);
+            $loader->setImportDirectory('tests/fixtures');
+
+            $result = $loader->load('theme');
+
+            expect($result->content)->toContain('$primary-color');
+        });
+
+        it('resolves symlinked import directories without other search paths', function () {
+            $link = sys_get_temp_dir() . '/dart-sass-loader-importdir-link-' . uniqid('', true);
+            symlink(__DIR__ . '/../fixtures', $link);
+
+            try {
+                $loader = new Loader(workDir: static fn(): string|false => false);
+                $loader->setImportDirectory($link);
+
+                $result = $loader->load('theme');
+
+                expect($result->content)->toContain('$primary-color');
+            } finally {
+                unlink($link);
+            }
+        })->skip(PHP_OS_FAMILY === 'Windows', 'Directory symlinks require extra privileges on Windows');
+
+        it('uses include paths when the import directory does not exist', function () {
+            $this->loader->setImportDirectory(__DIR__ . '/missing-import-directory');
+
+            $result = $this->loader->load('theme');
+
+            expect($result->content)->toContain('$primary-color');
+        });
+
         it('prioritizes the import directory over other search paths', function () {
             $tmpDirA = sys_get_temp_dir() . '/dart-sass-loader-importdir-a-' . uniqid('', true);
             $tmpDirB = sys_get_temp_dir() . '/dart-sass-loader-importdir-b-' . uniqid('', true);
