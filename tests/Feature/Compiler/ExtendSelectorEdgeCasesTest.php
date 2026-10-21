@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\Compiler;
+use Bugo\SCSS\CompilerOptions;
 use Bugo\SCSS\Loader;
+use Bugo\SCSS\Style;
 use Tests\Support\ArrayLogger;
+use Tests\Support\MemoryLoader;
 
 describe('Compiler extended selectors edge cases', function () {
     beforeEach(function () {
@@ -12,6 +15,101 @@ describe('Compiler extended selectors edge cases', function () {
     });
 
     describe('compileString()', function () {
+        it('trims descendant-covered child selectors from nested placeholder output', function (string $entry, Style $style) {
+            $source = <<<'SCSS'
+            .container-sm { @extend .container; }
+            .container-md { @extend .container; }
+            .navbar {
+              %flex { display: flex; }
+              .container,
+              .container-fluid { @extend %flex; }
+              @each $size in sm, md {
+                > .container-#{$size} { @extend %flex; }
+              }
+              > .container-sm { padding: 0; }
+            }
+            SCSS;
+
+            $compiler = new Compiler(
+                options: new CompilerOptions(style: $style),
+                loader: new MemoryLoader(['/_navbar.scss' => $source]),
+            );
+            $css = $compiler->compileString($entry === '' ? $source : $entry);
+
+            if ($style === Style::COMPRESSED) {
+                expect($css)->toEqualCss('.navbar .container,.navbar .container-sm,.navbar .container-md,.navbar .container-fluid{display:flex}.navbar > .container-sm{padding:0}');
+
+                return;
+            }
+
+            $expected = /** @lang text */ <<<'CSS'
+            .navbar .container, .navbar .container-sm, .navbar .container-md,
+            .navbar .container-fluid {
+              display: flex;
+            }
+            .navbar > .container-sm {
+              padding: 0;
+            }
+            CSS;
+
+            expect($css)->toEqualCss($expected);
+        })->with([
+            'inline'  => '',
+            '@import' => '@import "navbar";',
+            '@use'    => '@use "navbar";',
+        ])->with([Style::EXPANDED, Style::COMPRESSED]);
+
+        it('keeps child combinators when no descendant selector covers them', function () {
+            $source = <<<'SCSS'
+            .navbar {
+              %flex { display: flex; }
+              > .container-sm { @extend %flex; }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .navbar > .container-sm {
+              display: flex;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('preserves original extenders reused by a top-level placeholder', function () {
+            $source = <<<'SCSS'
+            %flex { display: flex; }
+            .navbar .container-sm { @extend %flex; }
+            .navbar > .container-sm { @extend %flex; }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .navbar > .container-sm, .navbar .container-sm {
+              display: flex;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
+        it('keeps child extenders whose specificity exceeds the covering descendant', function () {
+            $source = <<<'SCSS'
+            .navbar {
+              %flex { display: flex; }
+              .container-sm { @extend %flex; }
+              &.special > .container-sm { @extend %flex; }
+            }
+            SCSS;
+
+            $expected = /** @lang text */ <<<'CSS'
+            .navbar.special > .container-sm, .navbar .container-sm {
+              display: flex;
+            }
+            CSS;
+
+            expect($this->compiler->compileString($source))->toEqualCss($expected);
+        });
+
         it('extends complex selectors inside :is parentheses', function () {
             $css = $this->compiler->compileString(<<<'SCSS'
             .x:is(.a .b) { color: red }

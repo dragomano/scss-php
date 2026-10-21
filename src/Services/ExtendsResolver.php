@@ -77,6 +77,7 @@ use function usort;
  *     contexts: array<int, string>,
  *     sourceSpecificity: array<string, int>,
  *     originals: array<string, true>,
+ *     boxOriginals: array<int, array<string, true>>,
  *     boxes: array<int, array<int, Complex>>,
  *     boxLineBreaks: array<int, array<string, true>>,
  *     extenderBreaks: array<string, true>
@@ -223,6 +224,7 @@ final readonly class ExtendsResolver
             'contexts'          => [],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'boxOriginals'      => [],
             'boxes'             => [],
             'boxLineBreaks'     => [],
             'extenderBreaks'    => [],
@@ -301,7 +303,7 @@ final readonly class ExtendsResolver
             $trimmed = $this->trimExtendedComplexes(
                 $store,
                 $complexes,
-                fn(array $complex): bool => isset($store['originals'][$this->complexKey($complex)]),
+                fn(array $complex): bool => isset($store['boxOriginals'][$boxId][$this->complexKey($complex)]),
             );
 
             $selectors = [];
@@ -582,7 +584,10 @@ final readonly class ExtendsResolver
 
         if (! $isInvisible) {
             foreach ($complexes as $complex) {
-                $store['originals'][$this->complexKey($complex)] = true;
+                $key = $this->complexKey($complex);
+
+                $store['originals'][$key]            = true;
+                $store['boxOriginals'][$boxId][$key] = true;
             }
         }
 
@@ -884,7 +889,9 @@ final readonly class ExtendsResolver
             return null;
         }
 
-        $isOriginal = isset($store['originals'][$this->complexKey($complex)]);
+        $isOriginal = $boxId === self::BOX_NONE
+            ? isset($store['originals'][$this->complexKey($complex)])
+            : isset($store['boxOriginals'][$boxId][$this->complexKey($complex)]);
 
         /** @var list<list<Complex>>|null $extendedNotExpanded */
         $extendedNotExpanded = null;
@@ -946,8 +953,15 @@ final readonly class ExtendsResolver
                     }
                 }
 
-                if ($first && $isOriginal) {
+                $preservesOriginal = ($first && $isOriginal)
+                    || (count($path) === 1 && isset($store['originals'][$this->complexKey($path[0])]));
+
+                if ($preservesOriginal) {
                     $store['originals'][$this->complexKey($output)] = true;
+
+                    if ($boxId !== self::BOX_NONE) {
+                        $store['boxOriginals'][$boxId][$this->complexKey($output)] = true;
+                    }
                 }
 
                 $first = false;

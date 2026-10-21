@@ -1248,6 +1248,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [5 => ''],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'boxOriginals'      => [],
             'extenderBreaks'    => [],
             'boxes'             => [5 => [[new SelectorComponent('.t', '')]]],
         ];
@@ -1267,6 +1268,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'boxOriginals'      => [],
             'extenderBreaks'    => [],
             'boxes'             => [],
         ];
@@ -1357,6 +1359,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [0 => ''],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'boxOriginals'      => [],
             'extenderBreaks'    => [],
             'boxes'             => [0 => [[new SelectorComponent('.a', '')]]],
         ];
@@ -1376,6 +1379,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'boxOriginals'      => [],
             'extenderBreaks'    => [],
             'boxes'             => [],
         ];
@@ -1393,6 +1397,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [0 => ''],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'boxOriginals'      => [],
             'extenderBreaks'    => [],
             'boxes'             => [0 => [[new SelectorComponent('.a.b', '')]]],
         ];
@@ -1407,6 +1412,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'boxOriginals'      => [],
             'extenderBreaks'    => [],
             'boxes'             => [],
         ];
@@ -1425,6 +1431,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [0 => ''],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'boxOriginals'      => [],
             'extenderBreaks'    => [],
             'boxes'             => [0 => [[new SelectorComponent('.a.b', '')]]],
         ];
@@ -1439,6 +1446,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'boxOriginals'      => [],
             'extenderBreaks'    => [],
             'boxes'             => [],
         ];
@@ -1457,6 +1465,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [0 => ''],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'boxOriginals'      => [],
             'extenderBreaks'    => [],
             'boxes'             => [0 => [[new SelectorComponent('.a.b', '')]]],
         ];
@@ -1471,6 +1480,7 @@ describe('ExtendsResolver', function () {
             'contexts'          => [],
             'sourceSpecificity' => [],
             'originals'         => [],
+            'boxOriginals'      => [],
             'extenderBreaks'    => [],
             'boxes'             => [],
         ];
