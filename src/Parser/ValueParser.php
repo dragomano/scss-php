@@ -766,23 +766,25 @@ final readonly class ValueParser implements
 
             $next = $unit[$i + 1];
 
-            if (ctype_xdigit($next)) {
+            if ($next < "\x80" && ctype_xdigit($next)) {
                 $hex      = '';
                 $position = $i + 1;
 
-                while ($position < $length && strlen($hex) < 6 && ctype_xdigit($unit[$position])) {
+                while ($position < $length && strlen($hex) < 6 && $unit[$position] < "\x80" && ctype_xdigit($unit[$position])) {
                     $hex .= $unit[$position];
 
                     $position++;
                 }
 
-                if ($position < $length && ctype_space($unit[$position])) {
+                if ($position < $length && $unit[$position] < "\x80" && ctype_space($unit[$position])) {
                     $position++;
                 }
 
                 $codePoint = (int) hexdec($hex);
 
-                if ($codePoint < 0x20 || $codePoint === 0x7F) {
+                if ($codePoint === 0x25) {
+                    $result .= '\%';
+                } elseif ($codePoint < 0x20 || $codePoint === 0x7F) {
                     $result .= '\\' . strtolower(dechex($codePoint)) . ' ';
                 } else {
                     $result .= StringEscapeDecoder::codePointToUtf8($codePoint);
@@ -794,7 +796,7 @@ final readonly class ValueParser implements
             }
 
             $width   = $this->utf8WidthAt($unit, $i + 1);
-            $result .= substr($unit, $i + 1, $width);
+            $result .= $next === '%' ? '\%' : substr($unit, $i + 1, $width);
 
             $i += 1 + $width;
         }

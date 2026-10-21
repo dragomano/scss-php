@@ -284,6 +284,23 @@ describe('ValueParser', function () {
     });
 
     describe('escaped units', function () {
+        it('preserves escaped percentages as distinct units', function (string $source, string $expectedUnit) {
+            [$valueParser] = ($this->createValueParser)($source);
+
+            $number = $valueParser->parseSingleValue();
+
+            expect($number)->toBeInstanceOf(NumberNode::class)
+                ->and($number->unit)->toBe($expectedUnit);
+        })->with([
+            ['1\%', '\%'],
+            ['1\25', '\%'],
+            ['1\000025', '\%'],
+            ['1\25 ', '\%'],
+            ['1foo\%', 'foo\%'],
+            ['1\%foo', '\%foo'],
+            ['1foo\25 x', 'foo\%x'],
+        ]);
+
         it('decodes hex escape sequences in units', function (string $source, string $expectedUnit) {
             [$valueParser] = ($this->createValueParser)($source);
 
