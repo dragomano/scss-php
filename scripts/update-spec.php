@@ -14,7 +14,7 @@ declare(strict_types=1);
  *   --if-missing                          # skip download if spec/ already exists
  */
 
-$ref       = 'main';
+$ref       = 'fc9b6959b56dca95cc61fb91972972ac9d014a4b';
 $ifMissing = false;
 
 foreach (array_slice($argv, 1) as $arg) {
