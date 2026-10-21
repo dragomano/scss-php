@@ -47,6 +47,23 @@ describe(SassNumber::class, function () {
         expect($number->toCss())->toBe('2.5rem');
     });
 
+    it('escapes exponent-like units without changing other unit names', function (int|float $value, string $unit, bool $compressed, string $expected) {
+        expect((new SassNumber($value, $unit, $compressed))->toCss())->toBe($expected);
+    })->with([
+        [1, 'e1', false, '1\65 1'],
+        [1, 'E1', false, '1\65 1'],
+        [10, 'e12foo', false, '10\65 12foo'],
+        [-2, 'e1', false, '-2\65 1'],
+        [0.5, 'e1', false, '0.5\65 1'],
+        [0.5, 'E1', true, '.5\65 1'],
+        [0, 'e0', false, '0\65 0'],
+        [1, 'e', false, '1e'],
+        [1, 'E', false, '1E'],
+        [1, 'em', false, '1em'],
+        [1, 'e-', false, '1e-'],
+        [1, '', false, '1'],
+    ]);
+
     it('keeps only first ten digits after decimal point', function () {
         $number = new SassNumber(0.012345678912345);
 

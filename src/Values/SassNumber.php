@@ -203,6 +203,15 @@ final class SassNumber extends AbstractSassValue
 
     private function formatUnit(?string $unit): string
     {
+        if (
+            $unit !== null
+            && strlen($unit) > 1
+            && ($unit[0] === 'e' || $unit[0] === 'E')
+            && $unit[1] >= '0' && $unit[1] <= '9'
+        ) {
+            return '\65 ' . substr($unit, 1);
+        }
+
         return $unit ?? '';
     }
 
