@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Bugo\SCSS\Builtins\SassMapModule;
 use Bugo\SCSS\Exceptions\MissingFunctionArgumentsException;
 use Bugo\SCSS\Exceptions\UnknownSassFunctionException;
+use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\BooleanNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
@@ -50,6 +51,7 @@ describe('SassMapModule', function () {
                 new MapPair(new StringNode('x'), new NumberNode(1)),
             ])),
         ]);
+
         $right = new MapNode([
             new MapPair(new StringNode('a'), new MapNode([
                 new MapPair(new StringNode('y'), new NumberNode(2)),
@@ -94,6 +96,57 @@ describe('SassMapModule', function () {
 
         expect($result)->toBeInstanceOf(BooleanNode::class)
             ->and($result->value)->toBeFalse();
+    });
+
+    it('finds keys independently of their values', function (AstNode $value) {
+        $map = new MapNode([
+            new MapPair(new StringNode('class'), $value),
+            new MapPair(new StringNode('nested'), new MapNode([
+                new MapPair(new StringNode('class'), $value),
+            ])),
+            new MapPair(new NullNode(), $value),
+        ]);
+
+        foreach ([
+            [new StringNode('class', true)],
+            [new StringNode('nested'), new StringNode('class')],
+            [new NullNode()],
+        ] as $keys) {
+            $result    = $this->module->call('has-key', [$map, ...$keys], []);
+            $retrieved = $this->module->call('get', [$map, ...$keys], []);
+
+            expect($result)->toBeInstanceOf(BooleanNode::class)
+                ->and($result->value)->toBeTrue()
+                ->and($retrieved)->toBe($value);
+        }
+    })->with([
+        'null'         => [new NullNode()],
+        'false'        => [new BooleanNode(false)],
+        'zero'         => [new NumberNode(0)],
+        'empty string' => [new StringNode('')],
+        'empty map'    => [new MapNode()],
+    ]);
+
+    it('returns false for absent paths or paths through non-map values', function () {
+        $map = new MapNode([
+            new MapPair(new StringNode('class'), new NullNode()),
+            new MapPair(new StringNode('nested'), new MapNode([
+                new MapPair(new StringNode('class'), new NullNode()),
+            ])),
+        ]);
+
+        foreach ([
+            [new StringNode('missing')],
+            [new StringNode('missing'), new StringNode('class')],
+            [new StringNode('class'), new StringNode('missing')],
+            [new StringNode('nested'), new StringNode('missing')],
+            [new StringNode('nested'), new StringNode('class'), new StringNode('missing')],
+        ] as $keys) {
+            $result = $this->module->call('has-key', [$map, ...$keys], []);
+
+            expect($result)->toBeInstanceOf(BooleanNode::class)
+                ->and($result->value)->toBeFalse();
+        }
     });
 
     it('evaluates keys', function () {

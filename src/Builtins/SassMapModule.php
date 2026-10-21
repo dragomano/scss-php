@@ -11,13 +11,11 @@ use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\ListNode;
 use Bugo\SCSS\Nodes\MapNode;
 use Bugo\SCSS\Nodes\MapPair;
-use Bugo\SCSS\Nodes\NullNode;
 use Bugo\SCSS\Runtime\BuiltinCallContext;
 use Bugo\SCSS\Values\AstValueComparator;
 
 use function array_filter;
 use function array_map;
-use function array_pop;
 use function array_slice;
 use function array_values;
 use function count;
@@ -174,23 +172,7 @@ final class SassMapModule extends AbstractModule
             );
         }
 
-        $lastKey = array_pop($allKeys);
-
-        foreach ($allKeys as $key) {
-            $value = $this->findByKey($current, $key);
-
-            if ($value === null) {
-                return $this->nullNode();
-            }
-
-            if (! ($value instanceof MapNode)) {
-                return $this->nullNode();
-            }
-
-            $current = $value;
-        }
-
-        return $this->findByKey($current, $lastKey) ?? $this->nullNode();
+        return $this->findByKeyPath($current, $allKeys) ?? $this->nullNode();
     }
 
     /**
@@ -207,9 +189,9 @@ final class SassMapModule extends AbstractModule
 
         $this->warnAboutDeprecatedMapFunction($context, 'has-key', $positional);
 
-        $value = $this->get($positional, null);
+        $map = $this->asMap($positional[0], 'map.has-key');
 
-        return $this->boolNode(! ($value instanceof NullNode));
+        return $this->boolNode($this->findByKeyPath($map, array_slice($positional, 1)) !== null);
     }
 
     /**
@@ -519,6 +501,24 @@ final class SassMapModule extends AbstractModule
         $pairs[] = new MapPair($key, $this->modifyNested(new MapNode([]), $tail, $modify));
 
         return new MapNode($pairs);
+    }
+
+    /**
+     * @param array<int, AstNode> $keys
+     */
+    private function findByKeyPath(MapNode $map, array $keys): ?AstNode
+    {
+        $current = $map;
+
+        foreach ($keys as $key) {
+            if (! $current instanceof MapNode) {
+                return null;
+            }
+
+            $current = $this->findByKey($current, $key);
+        }
+
+        return $current;
     }
 
     private function findByKey(MapNode $map, AstNode $key): ?AstNode
