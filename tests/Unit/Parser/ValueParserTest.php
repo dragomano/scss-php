@@ -311,6 +311,21 @@ describe('ValueParser', function () {
                 ->and(count($decl->value->pairs))->toBe(2);
         });
 
+        it('parses unquoted dashed map keys without consuming the colon', function (string $source) {
+            $ast   = $this->parser->parse('$tokens: ' . $source . ';');
+            $value = $ast->children[0]->value;
+
+            expect($value)->toBeInstanceOf(MapNode::class);
+            /** @var MapNode $value */
+            expect($value->pairs)->toHaveCount(1)
+                ->and($value->pairs[0]->key)->toBeInstanceOf(StringNode::class)
+                ->and($value->pairs[0]->key->value)->toBe('--x')
+                ->and($value->pairs[0]->key->quoted)->toBeFalse()
+                ->and($value->pairs[0]->value)->toBeInstanceOf(NumberNode::class)
+                ->and($value->pairs[0]->value->value)->toBe(1)
+                ->and($value->pairs[0]->value->unit)->toBe('px');
+        })->with(['(--x:1px)', '(--x: 1px)', '(--x : 1px)', '(--x:1px,)']);
+
         it('parses map pair keys and values', function () {
             $ast  = $this->parser->parse('$x: (primary: #f00);');
             $decl = $ast->children[0];

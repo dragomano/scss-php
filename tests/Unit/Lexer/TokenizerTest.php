@@ -139,6 +139,22 @@ describe('Tokenizer', function () {
             ->and($tokens[0]->value)->toBe('--my-var');
     });
 
+    it('separates a dashed identifier from its following colon and value', function () {
+        $tokens = $this->tokenizer->tokenize('--x:1px');
+
+        expect(array_column($tokens, 'type'))->toBe([
+            TokenType::CSS_VARIABLE,
+            TokenType::COLON,
+            TokenType::NUMBER,
+            TokenType::EOF,
+        ])
+            ->and(array_column($tokens, 'value'))->toBe(['--x', ':', '1px', ''])
+            ->and($tokens[1]->start)->toBe(3)
+            ->and($tokens[1]->column)->toBe(4)
+            ->and($tokens[2]->start)->toBe(4)
+            ->and($tokens[2]->column)->toBe(5);
+    });
+
     it('tokenizes comparison operators', function () {
         $eqTokens = $this->tokenizer->tokenize('==');
         expect($eqTokens[0]->type)->toBe(TokenType::EQUALS);

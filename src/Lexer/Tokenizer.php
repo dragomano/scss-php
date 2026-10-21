@@ -1007,6 +1007,7 @@ final class Tokenizer
                 || $char === '('
                 || $char === '['
                 || $char === ']'
+                || $char === ':'
                 || $char === ','
                 || $char === ';'
                 || $char === '}'

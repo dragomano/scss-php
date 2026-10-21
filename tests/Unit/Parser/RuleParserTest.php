@@ -551,7 +551,7 @@ describe('RuleParser', function () {
             expect($value->value)->toBe('raw-accent');
         });
 
-        it('parses css variable tokens without an embedded colon as empty declarations', function () {
+        it('parses orphan css variable tokens as empty declarations', function () {
             [$ruleParser, $stream] = createRuleParserForTest([
                 ruleParserTestToken(TokenType::CSS_VARIABLE, '--orphan', 2, 4),
                 ruleParserTestToken(TokenType::EOF),
@@ -722,9 +722,11 @@ describe('RuleParser', function () {
             expect($ruleParser->parseSelectorOrProperty())->toBe('a');
         });
 
-        it('separates inline and tail parts of a custom property value', function () {
+        it('parses a custom property with a separate colon token', function () {
             [$ruleParser] = createRuleParserForTest([
-                ruleParserTestToken(TokenType::CSS_VARIABLE, '--x:foo'),
+                ruleParserTestToken(TokenType::CSS_VARIABLE, '--x'),
+                ruleParserTestToken(TokenType::WHITESPACE, ' '),
+                ruleParserTestToken(TokenType::COLON, ':'),
                 ruleParserTestToken(TokenType::EOF),
             ], [
                 'isInsideBraces' => static fn(): bool => true,
@@ -740,7 +742,7 @@ describe('RuleParser', function () {
             /** @var StringNode $value */
             $value = $node->value;
 
-            expect($value->value)->toBe('foo bar');
+            expect($value->value)->toBe('bar');
         });
     });
 });

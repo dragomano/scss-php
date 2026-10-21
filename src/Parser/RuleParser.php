@@ -21,9 +21,7 @@ use function str_ends_with;
 use function str_starts_with;
 use function strlen;
 use function strpbrk;
-use function strpos;
 use function strtolower;
-use function substr;
 use function trim;
 
 final class RuleParser
@@ -125,7 +123,7 @@ final class RuleParser
             if (str_starts_with($token->value, '--')) {
                 $continuedByInterpolation = $this->isVariableNameContinuedByInterpolation();
 
-                if (str_contains($token->value, ':') || ! $continuedByInterpolation) {
+                if (! $continuedByInterpolation) {
                     return $this->parseCssVariableDeclaration($token->value, $token->line, $token->column);
                 }
             }
@@ -276,10 +274,12 @@ final class RuleParser
 
     public function parseDeclarationFromProperty(string $property, int $line = 1, int $column = 1): DeclarationNode
     {
+        $hasDoubleColon = $this->stream->is(TokenType::DOUBLE_COLON);
+
         $this->stream->advance();
 
         if (str_starts_with(trim($property), '--')) {
-            $value = new StringNode($this->valueContext->parseCustomPropertyValue());
+            $value = new StringNode(($hasDoubleColon ? ':' : '') . $this->valueContext->parseCustomPropertyValue());
         } else {
             $value = $this->valueContext->parseValue();
         }
@@ -579,35 +579,16 @@ final class RuleParser
         return $isInterpolated;
     }
 
-    private function parseCssVariableDeclaration(string $tokenValue, int $line = 1, int $column = 1): DeclarationNode
+    private function parseCssVariableDeclaration(string $property, int $line = 1, int $column = 1): DeclarationNode
     {
-        $colonPosition = strpos($tokenValue, ':');
+        $this->stream->advance();
+        $this->stream->skipWhitespace();
 
-        if ($colonPosition === false) {
-            $this->stream->advance();
-
-            return new DeclarationNode($tokenValue, new StringNode(''), $line, $column, false);
+        if ($this->stream->match(TokenType::COLON, TokenType::DOUBLE_COLON)) {
+            return $this->parseDeclarationFromProperty($property, $line, $column);
         }
 
-        $property    = trim(substr($tokenValue, 0, $colonPosition));
-        $inlineValue = trim(substr($tokenValue, $colonPosition + 1));
-
-        $this->stream->advance();
-
-        $tailValue = $this->valueContext->parseCustomPropertyValue();
-        $separator = $inlineValue !== '' && $tailValue !== ''
-            && ! str_starts_with($tailValue, ' ')
-            && ! str_starts_with($tailValue, "\t")
-            && $tailValue[0] !== '('
-            ? ' '
-            : '';
-
-        $value     = $inlineValue . $separator . $tailValue;
-        $modifiers = $this->valueContext->parseValueModifiers();
-
-        $this->consumeSemicolon();
-
-        return new DeclarationNode($property, new StringNode($value), $line, $column, $modifiers['important']);
+        return new DeclarationNode($property, new StringNode(''), $line, $column, false);
     }
 
     private function parseCssFunctionResultDeclaration(string $property, int $line = 1, int $column = 1): DeclarationNode
