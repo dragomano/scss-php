@@ -34,9 +34,9 @@ The benchmark runs inside a Docker container based on [FrankenPHP](https://frank
 
 | Compiler | Time (sec) | CSS Size (KB) | Memory (MB) |
 |------------|-------------|---------------|-------------|
-| bugo/scss-php | 0.3135 | 397.68 | 31.45 |
-| bugo/scss-php (with cache) | 0.0019 | 397.68 | 26.78 |
-| bugo/sass-embedded-php (cli) | 0.1086 | 397.66 | 1.70 |
-| bugo/sass-embedded-php | 0.0671 | 397.66 | 2.38 |
-| scssphp/scssphp | 0.4157 | 318.38 | 38.16 |
-| shyim/sasso-ffi | 0.0180 | 397.66 | 1.15 |
+| bugo/scss-php | 0.3035 | 397.68 | 31.45 |
+| bugo/scss-php (with cache) | 0.0022 | 397.68 | 26.78 |
+| bugo/sass-embedded-php (cli) | 0.1112 | 397.66 | 1.70 |
+| bugo/sass-embedded-php | 0.0650 | 397.66 | 2.38 |
+| scssphp/scssphp | 0.4150 | 318.38 | 38.16 |
+| shyim/sasso-ffi | 0.0177 | 397.66 | 1.15 |
