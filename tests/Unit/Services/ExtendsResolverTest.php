@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bugo\SCSS\CompilerContext;
+use Bugo\SCSS\CompilerDispatcher;
 use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
 use Bugo\SCSS\Exceptions\MaxIterationsExceededException;
 use Bugo\SCSS\Exceptions\SassErrorException;
@@ -199,6 +200,7 @@ describe('ExtendsResolver', function () {
                     },
                 ),
                 new CallableParameterBinder(),
+                new CompilerDispatcher(),
             );
         };
 
@@ -456,6 +458,7 @@ describe('ExtendsResolver', function () {
                 },
             ),
             new CallableParameterBinder(),
+            new CompilerDispatcher(),
         );
 
         $resolver->collectExtends(
@@ -943,6 +946,7 @@ describe('ExtendsResolver', function () {
                 },
             ),
             new CallableParameterBinder(),
+            new CompilerDispatcher(),
         );
 
         $resolver->collectExtends(

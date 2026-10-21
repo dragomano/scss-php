@@ -306,6 +306,7 @@ final class CompilerRuntime
             new LoopIterator(),
             $this->createCallArgumentResolver(),
             new CallableParameterBinder(),
+            $this->dispatcher,
         );
     }
 
@@ -329,6 +330,7 @@ final class CompilerRuntime
             $this->parser,
             $this->extends(),
             $this->module(),
+            $this->options,
         );
     }
 

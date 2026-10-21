@@ -283,9 +283,7 @@ final readonly class Module
         $state->currentModuleId = $moduleId;
 
         try {
-            $compiledCss = $syntax === Syntax::CSS
-                ? $this->plainCssRenderer->render($moduleAst, $moduleEnv)
-                : $this->dispatcher->compile($moduleAst, $moduleEnv);
+            $compiledCss = $this->evaluateModuleAst($moduleAst, $moduleEnv, $syntax, $moduleId);
         } finally {
             $this->loader->setImportDirectory($previousImportDirectory);
 
@@ -613,9 +611,7 @@ final readonly class Module
 
         try {
             $css = $compileCss
-                ? ($syntax === Syntax::CSS
-                    ? $this->plainCssRenderer->render($moduleAst, $moduleEnv)
-                    : $this->dispatcher->compile($moduleAst, $moduleEnv))
+                ? $this->evaluateModuleAst($moduleAst, $moduleEnv, $syntax, $file->path)
                 : '';
         } finally {
             $this->loader->setImportDirectory($previousImportDirectory);
@@ -1209,6 +1205,19 @@ final readonly class Module
         } finally {
             $this->parser->setPlainCss(false);
         }
+    }
+
+    private function evaluateModuleAst(RootNode $ast, Environment $env, Syntax $syntax, string $moduleId): string
+    {
+        if ($this->ctx->moduleExtendsCollector !== null) {
+            ($this->ctx->moduleExtendsCollector)($ast, $env, $moduleId);
+
+            return '';
+        }
+
+        return $syntax === Syntax::CSS
+            ? $this->plainCssRenderer->render($ast, $env)
+            : $this->dispatcher->compile($ast, $env);
     }
 
     private function parseModuleAstWithSyntax(string $source, Syntax $syntax): RootNode

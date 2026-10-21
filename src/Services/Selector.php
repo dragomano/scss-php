@@ -387,11 +387,6 @@ final readonly class Selector
         ];
     }
 
-    public function collectExtends(AstNode $node, Environment $env): void
-    {
-        $this->extends->collectExtends($node, $env);
-    }
-
     public function getCurrentParentSelector(Environment $env): ?string
     {
         if (! $env->getCurrentScope()->hasVariable('__parent_selector')) {

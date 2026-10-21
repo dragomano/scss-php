@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Bugo\SCSS\Services;
 
 use Bugo\SCSS\CompilerContext;
+use Bugo\SCSS\CompilerOptions;
+use Bugo\SCSS\CompilerRuntime;
+use Bugo\SCSS\Exceptions\ModuleResolutionException;
 use Bugo\SCSS\LoadedFile;
 use Bugo\SCSS\LoaderInterface;
 use Bugo\SCSS\Nodes\AstNode;
@@ -24,7 +27,10 @@ use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\ParserInterface;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Style;
 use Bugo\SCSS\Syntax;
+use Bugo\SCSS\Values\ValueFactory;
+use Psr\Log\NullLogger;
 use Throwable;
 
 use function array_diff;
@@ -34,6 +40,7 @@ use function array_push;
 use function array_reverse;
 use function array_shift;
 use function array_values;
+use function dirname;
 use function str_contains;
 use function str_starts_with;
 
@@ -72,6 +79,7 @@ use function str_starts_with;
  *     pendingExtends: array<int, array{target: string, source: string, context: string, optional: bool, priority: int}>,
  *     selectorContexts: array<string, array<string, true>>,
  *     partLineBreaks: array<string, bool>,
+ *     ruleStack: array<int, int>,
  *     ruleCount: int,
  *     extendSequence: int
  * }
@@ -91,13 +99,14 @@ final readonly class ExtendsGraphResolver
         private ParserInterface $parser,
         private ExtendsResolver $extends,
         private Module $module,
+        private CompilerOptions $options,
     ) {}
 
-    public function finalize(RootNode $rootAst): void
+    public function finalize(RootNode $rootAst, bool $rootHasExtends = false): void
     {
         $state    = $this->ctx->outputState->extends;
         $snapshot = $this->captureCollection();
-        $graph    = $this->buildGraph($rootAst, $snapshot['events'] !== []);
+        $graph    = $this->buildGraph($rootAst, $rootHasExtends || $snapshot['events'] !== [], $snapshot);
 
         $this->restoreCollection($snapshot);
 
@@ -300,9 +309,10 @@ final readonly class ExtendsGraphResolver
     }
 
     /**
+     * @param CollectionSnapshot $rootSnapshot
      * @return ModuleGraph|null
      */
-    private function buildGraph(RootNode $rootAst, bool $rootHasExtends): ?array
+    private function buildGraph(RootNode $rootAst, bool $rootHasExtends, array &$rootSnapshot): ?array
     {
         /** @var ModuleGraph $graph */
         $graph = [
@@ -325,7 +335,35 @@ final readonly class ExtendsGraphResolver
             return null;
         }
 
-        if ($graph['asts'] === [] || ! $graph['hasExtend']) {
+        if (! $graph['hasExtend']) {
+            return null;
+        }
+
+        $hasModules = $graph['upstream'] !== [];
+
+        foreach ($rootAst->children as $child) {
+            $hasModules = $hasModules || $child instanceof UseNode || $child instanceof ForwardNode;
+        }
+
+        if ($hasModules) {
+            $moduleGraph = $graph;
+
+            try {
+                $this->collectModuleGraph($rootAst, $moduleGraph, $rootSnapshot);
+
+                return $moduleGraph['asts'] === [] ? null : $moduleGraph;
+            } catch (Throwable) {
+                $rootSnapshot = $this->captureCollection();
+            }
+        }
+
+        if ($rootHasExtends && $rootSnapshot['events'] === []) {
+            $this->extends->collectExtends($rootAst, new Environment());
+
+            $rootSnapshot = $this->captureCollection();
+        }
+
+        if ($graph['asts'] === []) {
             return null;
         }
 
@@ -361,6 +399,69 @@ final readonly class ExtendsGraphResolver
         }
 
         return $graph;
+    }
+
+    /**
+     * @param ModuleGraph $graph
+     * @param CollectionSnapshot $rootSnapshot
+     */
+    private function collectModuleGraph(RootNode $rootAst, array &$graph, array &$rootSnapshot): void
+    {
+        $context = new CompilerContext(valueFactory: new ValueFactory(compressed: $this->options->style === Style::COMPRESSED));
+        $context->moduleState->prefetchedFiles = $this->ctx->moduleState->prefetchedFiles;
+        $context->moduleState->prefetchedAsts = $this->ctx->moduleState->prefetchedAsts;
+
+        $runtime   = new CompilerRuntime($context, $this->options, $this->loader, $this->parser, new NullLogger());
+        $collector = $runtime->extendsGraph();
+        $active    = [];
+
+        $context->moduleExtendsCollector = function (RootNode $ast, Environment $env, string $moduleId) use ($collector, &$graph, &$rootSnapshot, &$active): void {
+            if (isset($active[$moduleId])) {
+                throw ModuleResolutionException::circularDependency($moduleId);
+            }
+
+            $active[$moduleId] = true;
+
+            $saved = $collector->captureCollection();
+
+            try {
+                $collected = $collector->collectModuleStore($ast, $env);
+
+                if ($moduleId === self::ROOT_ID) {
+                    $rootSnapshot = $collector->captureCollection();
+                } else {
+                    $graph['stores'][$moduleId]   = $collected['store'];
+                    $graph['metas'][$moduleId]    = $collected['meta'];
+                    $graph['contexts'][$moduleId] = $collected['contexts'];
+                    $graph['breaks'][$moduleId]   = $collected['breaks'];
+                }
+            } finally {
+                $collector->restoreCollection($saved);
+
+                unset($active[$moduleId]);
+            }
+        };
+
+        try {
+            ($context->moduleExtendsCollector)($rootAst, new Environment(), self::ROOT_ID);
+            $uncollectable = [];
+
+            foreach ($graph['post'] as $moduleId) {
+                if (isset($graph['stores'][$moduleId])) {
+                    continue;
+                }
+
+                try {
+                    $runtime->module()->loadAndEvaluateModule($moduleId);
+                } catch (Throwable) {
+                    $uncollectable[$moduleId] = true;
+                }
+            }
+
+            $this->dropModules($graph, $uncollectable);
+        } finally {
+            $context->moduleExtendsCollector = null;
+        }
     }
 
     /**
@@ -466,7 +567,13 @@ final readonly class ExtendsGraphResolver
                 $graph['hasExtend'] = true;
             }
 
-            $this->visitDependencies($dependency, $dependencyAst, $depth + 1, $graph);
+            $previousDirectory = $this->loader->setImportDirectory(dirname($dependency));
+
+            try {
+                $this->visitDependencies($dependency, $dependencyAst, $depth + 1, $graph);
+            } finally {
+                $this->loader->setImportDirectory($previousDirectory);
+            }
 
             $graph['post'][] = $dependency;
         }
@@ -898,6 +1005,7 @@ final readonly class ExtendsGraphResolver
             'pendingExtends'   => $state->pendingExtends,
             'selectorContexts' => $state->selectorContexts,
             'partLineBreaks'   => $state->partLineBreaks,
+            'ruleStack'        => $state->ruleStack,
             'ruleCount'        => $state->ruleCount,
             'extendSequence'   => $state->extendSequence,
         ];
@@ -915,6 +1023,7 @@ final readonly class ExtendsGraphResolver
         $state->pendingExtends   = $snapshot['pendingExtends'];
         $state->selectorContexts = $snapshot['selectorContexts'];
         $state->partLineBreaks   = $snapshot['partLineBreaks'];
+        $state->ruleStack        = $snapshot['ruleStack'];
         $state->ruleCount        = $snapshot['ruleCount'];
         $state->extendSequence   = $snapshot['extendSequence'];
     }

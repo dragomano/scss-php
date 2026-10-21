@@ -6,18 +6,24 @@ namespace Bugo\SCSS;
 
 use Bugo\Iris\Serializers\Serializer;
 use Bugo\SCSS\Builtins\FunctionRegistry;
+use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Normalizers\NormalizerPipeline;
 use Bugo\SCSS\Output\OutputOptimizer;
 use Bugo\SCSS\Output\OutputRenderer;
+use Bugo\SCSS\Runtime\Environment;
 use Bugo\SCSS\SourceMap\SourceMapGenerator;
 use Bugo\SCSS\States\ConditionCacheState;
 use Bugo\SCSS\States\ModuleState;
 use Bugo\SCSS\States\OutputState;
 use Bugo\SCSS\States\SourceMapState;
 use Bugo\SCSS\Values\ValueFactory;
+use Closure;
 
 final class CompilerContext
 {
+    /** @var Closure(RootNode, Environment, string): void|null */
+    public ?Closure $moduleExtendsCollector = null;
+
     public function __construct(
         public FunctionRegistry $functionRegistry = new FunctionRegistry(),
         public ValueFactory $valueFactory = new ValueFactory(),

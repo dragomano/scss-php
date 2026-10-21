@@ -7,6 +7,8 @@ namespace Bugo\SCSS\Services;
 use Bugo\SCSS\CompilerContext;
 use Bugo\SCSS\Exceptions\InvalidLoopBoundaryException;
 use Bugo\SCSS\Exceptions\SassErrorException;
+use Bugo\SCSS\NodeDispatcherInterface;
+use Bugo\SCSS\Nodes\ArgumentNode;
 use Bugo\SCSS\Nodes\AstNode;
 use Bugo\SCSS\Nodes\AtRootNode;
 use Bugo\SCSS\Nodes\BooleanNode;
@@ -14,19 +16,24 @@ use Bugo\SCSS\Nodes\DirectiveNode;
 use Bugo\SCSS\Nodes\EachNode;
 use Bugo\SCSS\Nodes\ExtendNode;
 use Bugo\SCSS\Nodes\ForNode;
+use Bugo\SCSS\Nodes\ForwardNode;
 use Bugo\SCSS\Nodes\FunctionDeclarationNode;
 use Bugo\SCSS\Nodes\IfNode;
+use Bugo\SCSS\Nodes\ImportNode;
 use Bugo\SCSS\Nodes\IncludeNode;
 use Bugo\SCSS\Nodes\MixinNode;
+use Bugo\SCSS\Nodes\ModuleVarDeclarationNode;
 use Bugo\SCSS\Nodes\NumberNode;
 use Bugo\SCSS\Nodes\RootNode;
 use Bugo\SCSS\Nodes\RuleNode;
 use Bugo\SCSS\Nodes\StringNode;
 use Bugo\SCSS\Nodes\SupportsNode;
+use Bugo\SCSS\Nodes\UseNode;
 use Bugo\SCSS\Nodes\VariableDeclarationNode;
 use Bugo\SCSS\Nodes\WhileNode;
 use Bugo\SCSS\Runtime\CallableDefinition;
 use Bugo\SCSS\Runtime\Environment;
+use Bugo\SCSS\Runtime\ResolvedCallArguments;
 use Bugo\SCSS\Runtime\Scope;
 use Bugo\SCSS\Selector\SelectorComponent;
 use Bugo\SCSS\Selector\SelectorHelper;
@@ -99,12 +106,22 @@ final readonly class ExtendsResolver
         private LoopIterator $loopIterator,
         private CallArgumentResolver $callArgumentResolver,
         private CallableParameterBinder $parameterBinder,
+        private NodeDispatcherInterface $dispatcher,
     ) {}
 
     public function collectExtends(AstNode $node, Environment $env): void
     {
         if ($node instanceof RootNode) {
             $this->collectRootExtends($node, $env);
+
+            return;
+        }
+
+        if (
+            $this->ctx->moduleExtendsCollector !== null
+            && ($node instanceof UseNode || $node instanceof ForwardNode || $node instanceof ImportNode)
+        ) {
+            $this->dispatcher->compile($node, $env);
 
             return;
         }
@@ -2095,7 +2112,7 @@ final readonly class ExtendsResolver
         }
 
         foreach ($node->children as $child) {
-            if ($child instanceof VariableDeclarationNode) {
+            if ($child instanceof VariableDeclarationNode || $child instanceof ModuleVarDeclarationNode) {
                 $this->variableDeclarationApplier->apply($child, $env);
 
                 continue;
@@ -2181,7 +2198,7 @@ final readonly class ExtendsResolver
     private function collectDirectiveExtends(DirectiveNode $node, Environment $env): void
     {
         if (strtolower(trim($node->name)) === 'content') {
-            $this->collectContentBlockExtends($env);
+            $this->collectContentBlockExtends($node, $env);
 
             return;
         }
@@ -2197,10 +2214,16 @@ final readonly class ExtendsResolver
         /** @var array<int, AstNode> $body */
         $body = $node->body;
 
+        if ($name === 'layer') {
+            $this->collectChildren($body, $env);
+
+            return;
+        }
+
         $this->collectExtendsInDirectiveContext($body, $contextSegment, $env);
     }
 
-    private function collectContentBlockExtends(Environment $env): void
+    private function collectContentBlockExtends(DirectiveNode $node, Environment $env): void
     {
         $currentScope = $env->getCurrentScope();
 
@@ -2220,11 +2243,31 @@ final readonly class ExtendsResolver
             return;
         }
 
+        $arguments = $currentScope->hasVariable('__meta_content_arguments')
+            ? $this->callArgumentResolver->extractArgumentNodes($currentScope->getVariable('__meta_content_arguments'))
+            : [];
+
+        $resolved = $this->callArgumentResolver->resolveCallArguments(
+            $this->callArgumentResolver->parseContentCallArguments($node->prelude),
+            $env,
+        );
+
+        $parentSelector = $currentScope->getStringVariable('__parent_selector');
+        $currentContext = $this->getCurrentExtendDirectiveContext($env);
+
         /** @var array<int, AstNode> $contentBlock */
         $env->enterScope($contentScope);
 
         try {
-            $this->collectChildren($contentBlock, $env, null, '', applyDeclarations: true);
+            $scope = $env->getCurrentScope();
+            $scope->setVariableLocal('__extend_directive_context', new StringNode($currentContext));
+
+            if ($parentSelector !== null) {
+                $scope->setVariableLocal('__parent_selector', $parentSelector);
+            }
+
+            $this->bindCollectionParameters($arguments, $resolved, $env);
+            $this->collectChildren($contentBlock, $env, $parentSelector?->value, $currentContext, applyDeclarations: true);
         } finally {
             $env->exitScope();
         }
@@ -2268,6 +2311,7 @@ final readonly class ExtendsResolver
         }
 
         $includeCallScope = $env->getCurrentScope();
+        $directiveContext = $this->getCurrentExtendDirectiveContext($env);
 
         $env->enterScope($mixinDefinition->closureScope);
         $env->getCurrentScope()->markAsCallableBody();
@@ -2294,28 +2338,14 @@ final readonly class ExtendsResolver
             $executionScope->setVariableLocal('__at_rule_stack', $includeCallScope->getVariable('__at_rule_stack'));
         }
 
+        $executionScope->setVariableLocal('__extend_directive_context', new StringNode($directiveContext));
         $executionScope->setVariableLocal('__meta_content_exists', new BooleanNode($node->hasContent));
         $executionScope->setVariableLocal('__meta_content_block', $node->contentBlock);
         $executionScope->setVariableLocal('__meta_content_arguments', $node->contentArguments);
         $executionScope->setVariableLocal('__meta_content_scope', $includeCallScope);
 
         try {
-            $this->parameterBinder->bind(
-                $mixinDefinition->arguments,
-                $resolved->positional,
-                $resolved->named,
-                $executionScope,
-                function (string $name, ?AstNode $defaultValue) use ($executionScope, $env): void {
-                    if ($defaultValue !== null) {
-                        $executionScope->setVariableLocal(
-                            $name,
-                            $this->valueEvaluator->evaluate($defaultValue, $env),
-                        );
-                    }
-                },
-                $resolved->separator,
-            );
-
+            $this->bindCollectionParameters($mixinDefinition->arguments, $resolved, $env);
             $this->collectChildren($mixinDefinition->body, $env, $selector, $currentContext, applyDeclarations: true);
         } catch (Throwable) {
             // Collection is a best-effort pre-pass: the traversal re-evaluates
@@ -2326,6 +2356,27 @@ final readonly class ExtendsResolver
 
             $moduleState->callDepth--;
         }
+    }
+
+    /**
+     * @param array<int, ArgumentNode> $arguments
+     */
+    private function bindCollectionParameters(array $arguments, ResolvedCallArguments $resolved, Environment $env): void
+    {
+        $scope = $env->getCurrentScope();
+
+        $this->parameterBinder->bind(
+            $arguments,
+            $resolved->positional,
+            $resolved->named,
+            $scope,
+            function (string $name, ?AstNode $defaultValue) use ($scope, $env): void {
+                if ($defaultValue !== null) {
+                    $scope->setVariableLocal($name, $this->valueEvaluator->evaluate($defaultValue, $env));
+                }
+            },
+            $resolved->separator,
+        );
     }
 
     /**
